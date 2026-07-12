@@ -48,8 +48,10 @@ import {
   updateAppSettings,
 } from "./app-settings-service";
 import { generateCoverFromMedia } from "./thumbnail-service";
+import { listIndexDatabasePaths, getLegacyIndexDatabasePaths } from "./index-db-path";
 
 let initialized = false;
+let initPromise: Promise<void> | null = null;
 let dataDir = "";
 let sql: TauriSqlAdapter | null = null;
 let activeVault: { meta: VaultMeta; path: string } | null = null;
@@ -77,6 +79,28 @@ async function listVaultEntries(): Promise<VaultEntry[]> {
   return entries.sort((a, b) => a.meta.name.localeCompare(b.meta.name));
 }
 
+async function removeLegacyIndexDatabaseFiles(): Promise<void> {
+  for (const dbPath of await getLegacyIndexDatabasePaths()) {
+    for (const suffix of ["", "-wal", "-shm"]) {
+      const path = `${dbPath}${suffix}`;
+      if (await fs.exists(path)) {
+        await fs.remove(path);
+      }
+    }
+  }
+}
+
+async function removeIndexDatabaseFiles(): Promise<void> {
+  for (const dbPath of await listIndexDatabasePaths()) {
+    for (const suffix of ["", "-wal", "-shm"]) {
+      const path = `${dbPath}${suffix}`;
+      if (await fs.exists(path)) {
+        await fs.remove(path);
+      }
+    }
+  }
+}
+
 async function rebuildIndexDatabase(): Promise<void> {
   if (sql) {
     await sql.close();
@@ -86,13 +110,7 @@ async function rebuildIndexDatabase(): Promise<void> {
   syncedVaultIds.clear();
   activeVault = null;
 
-  const dbPath = await join(await appDataDir(), "collector.db");
-  for (const suffix of ["", "-wal", "-shm"]) {
-    const path = `${dbPath}${suffix}`;
-    if (await fs.exists(path)) {
-      await fs.remove(path);
-    }
-  }
+  await removeIndexDatabaseFiles();
 
   sql = await TauriSqlAdapter.open();
   await runMigrations(sql);
@@ -127,14 +145,34 @@ async function ensureHealthyDatabase(): Promise<void> {
   }
 }
 
+/** Open SQLite index and repair legacy schema before any UI queries. */
+export async function warmupCollector(): Promise<void> {
+  await ensureInitialized();
+}
+
 async function ensureInitialized(): Promise<void> {
   if (initialized) {
     return;
   }
 
+  if (!initPromise) {
+    initPromise = initializeCollector().finally(() => {
+      initPromise = null;
+    });
+  }
+
+  await initPromise;
+}
+
+async function initializeCollector(): Promise<void> {
+  if (initialized) {
+    return;
+  }
+
   dataDir = await join(await appDataDir(), "collector");
-  sql = await TauriSqlAdapter.open();
   await fs.mkdir(dataDir);
+  await removeLegacyIndexDatabaseFiles();
+  sql = await TauriSqlAdapter.open();
   await ensureHealthyDatabase();
   initialized = true;
 }

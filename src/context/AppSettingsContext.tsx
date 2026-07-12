@@ -14,6 +14,7 @@ import {
   subscribeAppSettings,
   updateAppSettings,
 } from "../services/app-settings-service";
+import { warmupCollector } from "../services/collector-service";
 import type { NavFilter, ViewMode } from "../types/ui";
 import { navFilterToSetting } from "../types/ui";
 import type { Theme } from "../hooks/useTheme";
@@ -38,14 +39,15 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
-    ensureAppSettings()
-      .then((loaded) => {
+    Promise.all([ensureAppSettings(), warmupCollector()])
+      .then(([loaded]) => {
         if (!cancelled) {
           setSettings(loaded);
           setReady(true);
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("[collector] startup failed:", err);
         if (!cancelled) {
           setReady(true);
         }

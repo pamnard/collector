@@ -6,6 +6,7 @@ import {
   loadDashboardItems,
   listDashboardItemIds,
 } from "../services/collector-service";
+import { reportServiceError } from "../services/runtime-error";
 
 export { DASHBOARD_BATCH_SIZE };
 
@@ -64,6 +65,7 @@ export function useDashboardItems(
         if (requestVersionRef.current !== requestVersion) {
           return;
         }
+        reportServiceError("dashboard items", err);
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         if (requestVersionRef.current === requestVersion) {
@@ -92,6 +94,7 @@ export function useDashboardItems(
         if (requestVersionRef.current !== requestVersion) {
           return;
         }
+        reportServiceError("dashboard load more", err);
         setError(err instanceof Error ? err.message : String(err));
       })
       .finally(() => {

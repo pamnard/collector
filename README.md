@@ -66,6 +66,16 @@ Schema migrations: [DATABASE.md](docs/DATABASE.md), vault file format: [VAULT_SC
 npm run tauri build
 ```
 
+### Release (maintainers)
+
+Before tagging a GitHub release:
+
+```bash
+npm run verify:release
+```
+
+Full workflow: [docs/RELEASE.md](docs/RELEASE.md).
+
 ## License
 
 MIT

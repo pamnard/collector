@@ -92,7 +92,10 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
   async select<T>(query: string, bindValues: unknown[] = []): Promise<T[]> {
     const normalized = query.trim().replace(/\s+/g, " ");
 
-    if (normalized.startsWith("SELECT id FROM items WHERE vault_id = ?")) {
+    if (
+      normalized.startsWith("SELECT id FROM items WHERE vault_id = ?") ||
+      normalized.startsWith("SELECT i.id FROM items i WHERE i.vault_id = ?")
+    ) {
       const vaultId = bindValues[0];
       const table = this.tables.get("items") ?? new Map();
       let rows = [...table.values()].filter((row) => row.vault_id === vaultId);

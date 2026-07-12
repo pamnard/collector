@@ -51,7 +51,15 @@ Dev data (if used): replace `com.collector.app` with `com.collector.app.dev`.
 
 ## Maintainer checks
 
-Before publishing a release:
+Before publishing a release, run the full local gate:
+
+```bash
+npm run verify:release
+```
+
+See [RELEASE.md](./RELEASE.md) for the complete tag/publish workflow.
+
+Additional packaging checks (also included in `verify:release` on Linux):
 
 1. `bundle.linux.deb` has **no** `postRemoveScript` / `post_install_script` that touches `appDataDir`
 2. Run `scripts/verify-deb-packaging.sh path/to/Collector_*.deb` on the Linux artifact

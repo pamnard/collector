@@ -45,9 +45,10 @@ If the private key is lost, existing installs can no longer receive trusted upda
 
 Before publishing a draft release:
 
-1. Linux artifact passes `scripts/verify-deb-packaging.sh`
-2. No `postRemoveScript` in `tauri.conf.json` → `bundle.linux.deb`
-3. Smoke-test: upgrade preserves vault data ([PACKAGING.md](./PACKAGING.md))
+1. **`npm run verify:release` passes locally** — see [RELEASE.md](./RELEASE.md)
+2. Linux artifact passes `scripts/verify-deb-packaging.sh` (included in verify on Linux)
+3. No `postRemoveScript` in `tauri.conf.json` → `bundle.linux.deb`
+4. Smoke-test: upgrade preserves vault data ([PACKAGING.md](./PACKAGING.md))
 
 ## Testing updates
 

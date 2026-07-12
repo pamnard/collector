@@ -9,7 +9,7 @@
 
 ## Startup
 
-On launch:
+`collector.db` lives at `{appConfigDir}/collector.db` (Tauri SQL plugin requirement). Vault files live under `{appDataDir}/collector/`. On startup, junk copies under `{appDataDir}/collector.db` or `{appDataDir}/collector/collector.db` are removed.
 
 1. `runMigrations()` creates any missing tables/indexes.
 2. `ensureHealthyIndex()` validates required tables/columns and runs the same SQL probes the UI uses (nav filters, tags join, FTS).

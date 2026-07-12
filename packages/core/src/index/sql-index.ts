@@ -366,11 +366,11 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     }
 
     const rows = await this.selector.select<SqlSelectRow>(
-      `SELECT id
-       FROM items
-       WHERE vault_id = ?
+      `SELECT i.id
+       FROM items i
+       WHERE i.vault_id = ?
          ${navFilterClause(filter)}
-       ORDER BY created_at DESC`,
+       ORDER BY i.created_at DESC`,
       [vaultId],
     );
     return rows.map((row) => row.id);
