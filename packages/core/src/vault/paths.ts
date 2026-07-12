@@ -1,3 +1,4 @@
+import { posix } from "node:path";
 import { ITEM_FILES, VAULT_DIRS, VAULT_FILES } from "@collector/shared";
 
 export function vaultsRoot(dataDir: string): string {
@@ -37,8 +38,5 @@ export function itemMediaRoot(itemRootPath: string): string {
 }
 
 export function joinSegments(...parts: string[]): string {
-  return parts
-    .flatMap((part) => part.split(/[/\\]+/))
-    .filter(Boolean)
-    .join("/");
+  return posix.join(...parts.filter(Boolean));
 }

@@ -48,6 +48,18 @@ Vault files and the SQLite index live under `…/collector/`. Settings → «К�
 
 **Uninstall** removes the app only; data dirs above are kept unless you delete them manually. See [Packaging](docs/PACKAGING.md) for full removal commands and maintainer checks.
 
+### Preferences (config)
+
+UI preferences (`settings.json`) live under Tauri `appConfigDir()` — not in WebView `localStorage`:
+
+| Platform | Release | Dev (`tauri dev`) |
+|----------|---------|-------------------|
+| Linux | `~/.config/com.collector.app/collector/settings.json` | `~/.config/com.collector.app.dev/collector/settings.json` |
+| macOS | `~/Library/Application Support/com.collector.app/collector/settings.json` | `~/Library/Application Support/com.collector.app.dev/collector/settings.json` |
+| Windows | `%APPDATA%\com.collector.app\collector\settings.json` | `%APPDATA%\com.collector.app.dev\collector\settings.json` |
+
+Schema migrations: [DATABASE.md](docs/DATABASE.md), vault file format: [VAULT_SCHEMA.md](docs/VAULT_SCHEMA.md).
+
 ### Build
 
 ```bash

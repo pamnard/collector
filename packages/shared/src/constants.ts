@@ -35,7 +35,7 @@ export const MEDIA_TYPES = [
 
 export type MediaType = (typeof MEDIA_TYPES)[number];
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const VAULT_DIRS = {
   items: "items",

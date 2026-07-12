@@ -96,7 +96,4 @@ CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
   content,
   tokenize = 'unicode61'
 );
-
-INSERT OR IGNORE INTO schema_migrations(version, applied_at)
-VALUES (1, datetime('now'));
 `;

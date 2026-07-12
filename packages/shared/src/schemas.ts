@@ -32,6 +32,7 @@ export const itemFileSchema = z.object({
   is_favorite: z.boolean().default(false),
   tag_ids: z.array(z.string().uuid()).default([]),
   collection_ids: z.array(z.string().uuid()).default([]),
+  content_revision: z.number().int().default(1),
   created_at: z.string().datetime(),
   updated_at: z.string().datetime(),
 });
@@ -42,6 +43,7 @@ export const vaultMetaSchema = z.object({
   description: z.string().default(""),
   is_default: z.boolean().default(false),
   schema_version: z.number().int().default(SCHEMA_VERSION),
+  settings: z.record(z.unknown()).default({}),
   created_at: z.string().datetime(),
   updated_at: z.string().datetime(),
 });

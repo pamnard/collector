@@ -1,7 +1,7 @@
 {
   "name": "collector",
   "private": true,
-  "version": "0.1.3",
+  "version": "0.1.4",
   "type": "module",
   "workspaces": [
     "packages/*"
@@ -12,7 +12,7 @@
     "build": "npm run build:packages && tsc && vite build",
     "preview": "vite preview",
     "typecheck": "npm run typecheck --workspace @collector/shared && npm run typecheck --workspace @collector/db && npm run typecheck --workspace @collector/core && tsc --noEmit",
-    "test": "npm run test --workspace @collector/core",
+    "test": "npm run test --workspace @collector/db && npm run test --workspace @collector/core",
     "tauri": "tauri",
     "tauri:dev": "tauri dev --config src-tauri/tauri.conf.dev.json"
   },

@@ -47,4 +47,15 @@ export type { NavSearchFilter } from "./search/types.js";
 export { SqlVaultIndexAdapter, SqlVaultIndexStore } from "./index/sql-index.js";
 export type { SqlSelector } from "./index/sql-index.js";
 
-export { createId, nowIso } from "./util/ids.js";
+export {
+  createDefaultAppSettings,
+  mergeAppSettings,
+  readAppSettings,
+  writeAppSettings,
+  appSettingsPath,
+} from "./settings/app-settings-io.js";
+
+export {
+  migrateItemSchema,
+  migrateVaultSchema,
+} from "./vault/schema-migrate.js";

@@ -14,6 +14,7 @@ import {
   setDefaultVault,
   switchVault,
 } from "../services/collector-service";
+import { getAppConfigDirectory } from "../services/app-settings-service";
 
 export function SettingsPage() {
   const { theme, toggleTheme } = useTheme();
@@ -23,6 +24,7 @@ export function SettingsPage() {
     useCheckUpdatesOnStart();
   const { progress, checkForUpdates, installUpdate } = useAppUpdater();
   const [dataDir, setDataDir] = useState<string | null>(null);
+  const [configDir, setConfigDir] = useState<string | null>(null);
   const [appName, setAppName] = useState<string | null>(null);
   const [vaults, setVaults] = useState<VaultMeta[]>([]);
   const [activeVaultId, setActiveVaultId] = useState<string | null>(null);
@@ -30,13 +32,16 @@ export function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const loadSettings = useCallback(async () => {
-    const [directory, loadedVaults, activeVault, name] = await Promise.all([
+    const [directory, loadedVaults, activeVault, name, preferencesDir] =
+      await Promise.all([
       getDataDirectory(),
       listVaults(),
       getActiveVaultMeta(),
       getName().catch(() => "Collector"),
+      getAppConfigDirectory(),
     ]);
     setDataDir(directory);
+    setConfigDir(preferencesDir);
     setVaults(loadedVaults);
     setActiveVaultId(activeVault.id);
     setAppName(name);
@@ -129,6 +134,17 @@ export function SettingsPage() {
           )}
           {dataDir ? (
             <p className="text-secondary text-sm mt-1 break-all">{dataDir}</p>
+          ) : (
+            <p className="text-muted text-sm mt-1">Загрузка…</p>
+          )}
+        </div>
+
+        <div className="p-4">
+          <p className="font-medium">Настройки приложения</p>
+          {configDir ? (
+            <p className="text-secondary text-sm mt-1 break-all">
+              {configDir}/settings.json
+            </p>
           ) : (
             <p className="text-muted text-sm mt-1">Загрузка…</p>
           )}

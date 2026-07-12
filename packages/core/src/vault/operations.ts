@@ -1,4 +1,5 @@
 import type { ItemFile, VaultMeta } from "@collector/shared";
+import { SCHEMA_VERSION } from "@collector/shared";
 import type {
   CreateVaultInput,
   SyncReport,
@@ -35,7 +36,8 @@ export async function createVault(
     name: input.name,
     description: input.description ?? "",
     is_default: input.isDefault ?? false,
-    schema_version: 1,
+    schema_version: SCHEMA_VERSION,
+    settings: {},
     created_at: timestamp,
     updated_at: timestamp,
   };

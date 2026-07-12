@@ -1,10 +1,17 @@
 import { MIGRATION_001 } from "./migrations/001_initial.js";
+import { MIGRATION_002 } from "./migrations/002_item_sort_order.js";
 
-export const CURRENT_SCHEMA_VERSION = 1;
-
-export function getInitialMigration(): string {
-  return MIGRATION_001;
+export interface Migration {
+  version: number;
+  sql: string;
 }
+
+export const MIGRATIONS: Migration[] = [
+  { version: 1, sql: MIGRATION_001 },
+  { version: 2, sql: MIGRATION_002 },
+];
+
+export const CURRENT_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;
 
 export function splitSqlMigration(sql: string): string[] {
   const withoutLineComments = sql
@@ -22,8 +29,55 @@ export interface SqlExecutor {
   execute(query: string, bindValues?: unknown[]): Promise<number>;
 }
 
-export async function applyInitialMigration(db: SqlExecutor): Promise<void> {
-  for (const statement of splitSqlMigration(getInitialMigration())) {
-    await db.execute(statement);
+export interface SqlReader {
+  select<T>(query: string, bindValues?: unknown[]): Promise<T[]>;
+}
+
+export type SqlMigrator = SqlExecutor & SqlReader;
+
+async function readAppliedVersions(db: SqlReader): Promise<Set<number>> {
+  try {
+    const rows = await db.select<{ version: number }>(
+      "SELECT version FROM schema_migrations ORDER BY version",
+    );
+    return new Set(rows.map((row) => row.version));
+  } catch {
+    return new Set();
   }
+}
+
+async function recordMigration(db: SqlExecutor, version: number): Promise<void> {
+  await db.execute(
+    "INSERT INTO schema_migrations(version, applied_at) VALUES (?, datetime('now'))",
+    [version],
+  );
+}
+
+export async function runMigrations(db: SqlMigrator): Promise<number[]> {
+  const applied = await readAppliedVersions(db);
+  const newlyApplied: number[] = [];
+
+  for (const migration of MIGRATIONS) {
+    if (applied.has(migration.version)) {
+      continue;
+    }
+
+    for (const statement of splitSqlMigration(migration.sql)) {
+      await db.execute(statement);
+    }
+
+    await recordMigration(db, migration.version);
+    newlyApplied.push(migration.version);
+  }
+
+  return newlyApplied;
+}
+
+/** @deprecated use runMigrations */
+export async function applyInitialMigration(db: SqlMigrator): Promise<void> {
+  await runMigrations(db);
+}
+
+export function getInitialMigration(): string {
+  return MIGRATION_001;
 }

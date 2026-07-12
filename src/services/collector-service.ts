@@ -1,5 +1,5 @@
 import { appDataDir, join } from "@tauri-apps/api/path";
-import { applyInitialMigration } from "@collector/db";
+import { runMigrations } from "@collector/db";
 import type { ItemFile, VaultMeta } from "@collector/shared";
 import {
   SqlVaultIndexStore,
@@ -9,9 +9,9 @@ import {
   itemRoot,
   listItemsByIds,
   listItemsOnDisk,
+  migrateVaultSchema,
   readItemContent,
   readItemFile,
-  readVaultMeta,
   syncIndexFromFilesystem,
   upsertItem,
   vaultMetaPath,
@@ -23,8 +23,10 @@ import type { CreateItemInput, UpdateItemInput } from "../types/item";
 import type { NavFilter } from "../types/ui";
 import { TauriFileSystemAdapter } from "../adapters/tauri-fs";
 import { TauriSqlAdapter } from "../adapters/tauri-sql";
-
-const ACTIVE_VAULT_STORAGE_KEY = "active-vault-id";
+import {
+  ensureAppSettings,
+  updateAppSettings,
+} from "./app-settings-service";
 
 let initialized = false;
 let dataDir = "";
@@ -46,7 +48,8 @@ async function listVaultEntries(): Promise<VaultEntry[]> {
   for (const vaultId of await fs.readDir(root)) {
     const path = vaultRoot(root, vaultId);
     if (await fs.exists(vaultMetaPath(path))) {
-      entries.push({ meta: await readVaultMeta(fs, path), path });
+      const meta = await migrateVaultSchema(fs, path);
+      entries.push({ meta, path });
     }
   }
 
@@ -60,7 +63,7 @@ async function ensureInitialized(): Promise<void> {
 
   dataDir = await join(await appDataDir(), "collector");
   sql = await TauriSqlAdapter.open();
-  await applyInitialMigration(sql);
+  await runMigrations(sql);
   await fs.mkdir(dataDir);
   initialized = true;
 }
@@ -118,7 +121,8 @@ async function resolveActiveVault(): Promise<{ vault: VaultMeta; path: string }>
   const root = vaultsRoot(dataDir);
   await fs.mkdir(root);
 
-  const storedVaultId = localStorage.getItem(ACTIVE_VAULT_STORAGE_KEY);
+  const settings = await ensureAppSettings();
+  const storedVaultId = settings.active_vault_id ?? null;
   const existing = await listVaultEntries();
   const selected = pickVaultEntry(existing, storedVaultId);
 
@@ -146,6 +150,7 @@ async function resolveActiveVault(): Promise<{ vault: VaultMeta; path: string }>
         is_favorite: true,
         tag_ids: [],
         collection_ids: [],
+        content_revision: 1,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       },
@@ -241,6 +246,7 @@ export async function createItem(input: CreateItemInput): Promise<ItemFile> {
       is_favorite: false,
       tag_ids: [],
       collection_ids: [],
+      content_revision: 1,
       created_at: timestamp,
       updated_at: timestamp,
     },
@@ -297,7 +303,7 @@ export async function switchVault(vaultId: string): Promise<VaultMeta> {
   }
 
   activeVault = selected;
-  localStorage.setItem(ACTIVE_VAULT_STORAGE_KEY, vaultId);
+  await updateAppSettings({ active_vault_id: vaultId });
   return selected.meta;
 }
 
