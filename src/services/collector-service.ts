@@ -238,6 +238,48 @@ export async function searchItems(
   return listItemsByIds(getContext(), path, itemIds);
 }
 
+export const DASHBOARD_BATCH_SIZE = 60;
+const DASHBOARD_SEARCH_LIMIT = 10_000;
+
+export async function listDashboardItemIds(
+  filter: NavFilter,
+  query = "",
+): Promise<string[]> {
+  const trimmedSearch = query.trim();
+  const { vault, path } = await resolveActiveVault();
+  await ensureVaultIndexSynced(vault.id, path);
+
+  if (!trimmedSearch) {
+    return getIndex().listItemIdsByNavFilter(vault.id, filter);
+  }
+
+  const ftsQuery = buildFtsMatchQuery(trimmedSearch);
+  if (!ftsQuery) {
+    return getIndex().listItemIdsByNavFilter(vault.id, filter);
+  }
+
+  return getIndex().searchItemIds(
+    vault.id,
+    ftsQuery,
+    filter,
+    DASHBOARD_SEARCH_LIMIT,
+  );
+}
+
+export async function loadDashboardItems(
+  itemIds: string[],
+  offset: number,
+  limit = DASHBOARD_BATCH_SIZE,
+): Promise<ItemFile[]> {
+  if (!itemIds.length || offset >= itemIds.length) {
+    return [];
+  }
+
+  const { path } = await resolveActiveVault();
+  const batchIds = itemIds.slice(offset, offset + limit);
+  return listItemsByIds(getContext(), path, batchIds);
+}
+
 function matchesNavFilter(item: ItemFile, filter: NavFilter): boolean {
   if (isTagFilter(filter)) {
     return !item.is_archived && item.tag_ids.includes(filter.tagId);

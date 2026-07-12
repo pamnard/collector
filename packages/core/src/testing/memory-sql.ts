@@ -91,14 +91,24 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
 
   async select<T>(query: string, bindValues: unknown[] = []): Promise<T[]> {
     const normalized = query.trim().replace(/\s+/g, " ");
-    if (!normalized.startsWith("SELECT id FROM items WHERE vault_id = ?")) {
-      throw new Error(`Unsupported select in MemorySqlAdapter: ${normalized}`);
+
+    if (normalized.startsWith("SELECT id FROM items WHERE vault_id = ?")) {
+      const vaultId = bindValues[0];
+      const table = this.tables.get("items") ?? new Map();
+      let rows = [...table.values()].filter((row) => row.vault_id === vaultId);
+
+      if (normalized.includes("is_favorite = 1")) {
+        rows = rows.filter((row) => row.is_favorite === 1);
+      } else if (normalized.includes("is_archived = 1")) {
+        rows = rows.filter((row) => row.is_archived === 1);
+      } else if (normalized.includes("is_archived = 0")) {
+        rows = rows.filter((row) => row.is_archived === 0);
+      }
+
+      return rows.map((row) => ({ id: row.id })) as T[];
     }
 
-    const vaultId = bindValues[0];
-    const table = this.tables.get("items") ?? new Map();
-    const rows = [...table.values()].filter((row) => row.vault_id === vaultId);
-    return rows.map((row) => ({ id: row.id })) as T[];
+    throw new Error(`Unsupported select in MemorySqlAdapter: ${normalized.slice(0, 80)}`);
   }
 
   private insertFts(bindValues: unknown[]): number {

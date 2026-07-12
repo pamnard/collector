@@ -34,6 +34,7 @@ export interface VaultIndexAdapter {
   >;
   listItemIdsByTag(vaultId: string, tagId: string): Promise<string[]>;
   listItemIdsByFolderPrefix(vaultId: string, folderPath: string): Promise<string[]>;
+  listItemIdsByNavFilter(vaultId: string, filter: NavSearchFilter): Promise<string[]>;
   listFolderItemCounts(
     vaultId: string,
   ): Promise<Array<{ folder_path: string; item_count: number }>>;

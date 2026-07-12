@@ -205,6 +205,15 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     );
   }
 
+  async listItemIdsByNavFilter(
+    _vaultId: string,
+    _filter: NavSearchFilter,
+  ): Promise<string[]> {
+    throw new Error(
+      "listItemIdsByNavFilter requires select(); use SqlVaultIndexStore instead",
+    );
+  }
+
   async listFolderItemCounts(_vaultId: string): Promise<
     Array<{ folder_path: string; item_count: number }>
   > {
@@ -341,6 +350,28 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
          AND (i.folder_path = ? OR i.folder_path LIKE ?)
        ORDER BY i.created_at DESC`,
       [vaultId, folderPath, `${folderPath}/%`],
+    );
+    return rows.map((row) => row.id);
+  }
+
+  override async listItemIdsByNavFilter(
+    vaultId: string,
+    filter: NavSearchFilter,
+  ): Promise<string[]> {
+    if (isTagFilter(filter)) {
+      return this.listItemIdsByTag(vaultId, filter.tagId);
+    }
+    if (isFolderFilter(filter)) {
+      return this.listItemIdsByFolderPrefix(vaultId, filter.folderPath);
+    }
+
+    const rows = await this.selector.select<SqlSelectRow>(
+      `SELECT id
+       FROM items
+       WHERE vault_id = ?
+         ${navFilterClause(filter)}
+       ORDER BY created_at DESC`,
+      [vaultId],
     );
     return rows.map((row) => row.id);
   }
