@@ -10,6 +10,8 @@ export type {
 
 export {
   itemContentPath,
+  itemCoverPath,
+  itemCoverRelativePath,
   itemMediaRoot,
   itemMetaPath,
   itemRoot,
@@ -70,6 +72,11 @@ export {
 } from "./vault/media-operations.js";
 export type { MediaWithPath } from "./vault/media-operations.js";
 export { listMediaFiles, mediaFilePath } from "./vault/media-io.js";
+export {
+  applyItemCover,
+  clearItemCover,
+  resolveItemThumbnailAbsolutePath,
+} from "./vault/cover-operations.js";
 
 export { SqlVaultIndexAdapter, SqlVaultIndexStore } from "./index/sql-index.js";
 export type { SqlSelector } from "./index/sql-index.js";

@@ -10,9 +10,10 @@ import {
 
 interface MediaGalleryProps {
   itemId: string;
+  onUpdated?: () => void;
 }
 
-export function MediaGallery({ itemId }: MediaGalleryProps) {
+export function MediaGallery({ itemId, onUpdated }: MediaGalleryProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<MediaWithPath[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +49,7 @@ export function MediaGallery({ itemId }: MediaGalleryProps) {
       );
       await attachMediaFiles(itemId, payload);
       await loadMedia();
+      onUpdated?.();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -65,6 +67,7 @@ export function MediaGallery({ itemId }: MediaGalleryProps) {
     try {
       await deleteItemMedia(itemId, mediaId);
       await loadMedia();
+      onUpdated?.();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     }

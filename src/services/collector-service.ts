@@ -32,6 +32,9 @@ import {
   attachMediaFile,
   deleteMediaFile,
   listItemMediaWithPaths,
+  applyItemCover,
+  clearItemCover,
+  resolveItemThumbnailAbsolutePath,
 } from "@collector/core";
 import type { FolderTreeNode, MediaWithPath, TagWithCount } from "@collector/core";
 import type { Tag } from "@collector/shared";
@@ -44,6 +47,7 @@ import {
   ensureAppSettings,
   updateAppSettings,
 } from "./app-settings-service";
+import { generateCoverFromMedia } from "./thumbnail-service";
 
 let initialized = false;
 let dataDir = "";
@@ -454,6 +458,47 @@ export async function listItemMedia(itemId: string): Promise<MediaWithPath[]> {
   return listItemMediaWithPaths(getContext(), path, itemId);
 }
 
+async function syncItemCover(itemId: string): Promise<void> {
+  const { vault, path } = await resolveActiveVault();
+  const ctx = getContext();
+  const media = await listItemMediaWithPaths(ctx, path, itemId);
+  const candidate =
+    media.find((file) => file.media_type === "image") ??
+    media.find((file) => file.media_type === "video");
+
+  if (!candidate) {
+    await clearItemCover(ctx, path, vault.id, itemId);
+    return;
+  }
+
+  const data = await fs.readBinary(candidate.absolute_path);
+  const cover = await generateCoverFromMedia(
+    data,
+    candidate.filename,
+    candidate.media_type,
+  );
+
+  if (cover) {
+    await applyItemCover(ctx, path, vault.id, itemId, cover);
+  } else {
+    await clearItemCover(ctx, path, vault.id, itemId);
+  }
+}
+
+export async function resolveItemThumbnailPath(item: ItemFile): Promise<string | null> {
+  if (!item.thumbnail) {
+    return null;
+  }
+
+  const { path } = await resolveActiveVault();
+  const absolute = resolveItemThumbnailAbsolutePath(path, item.id, item.thumbnail);
+  if (!absolute || !(await fs.exists(absolute))) {
+    return null;
+  }
+
+  return absolute;
+}
+
 export async function attachMediaFiles(
   itemId: string,
   files: Array<{ filename: string; data: Uint8Array }>,
@@ -469,6 +514,7 @@ export async function attachMediaFiles(
       }),
     );
   }
+  await syncItemCover(itemId);
   return attached;
 }
 
@@ -478,4 +524,5 @@ export async function deleteItemMedia(
 ): Promise<void> {
   const { path } = await resolveActiveVault();
   await deleteMediaFile(getContext(), path, itemId, mediaId);
+  await syncItemCover(itemId);
 }

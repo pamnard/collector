@@ -47,6 +47,7 @@ export const ITEM_FILES = {
   content: "content.md",
   source: ".source.json",
   mediaManifest: "manifest.json",
+  cover: "cover.webp",
 } as const;
 
 export const VAULT_FILES = {

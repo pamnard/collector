@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ItemFile } from "@collector/shared";
 import { ItemFlagActions } from "../components/items/ItemFlagActions";
+import { ItemThumbnail } from "../components/items/ItemThumbnail";
 import { useShell } from "../components/layout/AppLayout";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import {
@@ -103,8 +104,15 @@ export function DashboardPage() {
         <ul className="grid gap-3 sm:grid-cols-2">
           {visibleItems.map((item) => (
             <li key={item.id}>
-              <div className="rounded-xl border border-border bg-card p-4 hover:border-indigo-500/40 hover:bg-input/20 transition-colors">
-                <div className="flex items-start justify-between gap-2">
+              <div className="rounded-xl border border-border bg-card overflow-hidden hover:border-indigo-500/40 hover:bg-input/20 transition-colors">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/item/${item.id}`)}
+                  className="block w-full text-left"
+                >
+                  <ItemThumbnail item={item} />
+                </button>
+                <div className="flex items-start justify-between gap-2 p-4 pt-3">
                   <button
                     type="button"
                     onClick={() => navigate(`/item/${item.id}`)}

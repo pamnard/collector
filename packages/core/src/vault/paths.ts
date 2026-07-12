@@ -36,6 +36,14 @@ export function itemMediaRoot(itemRootPath: string): string {
   return joinSegments(itemRootPath, VAULT_DIRS.media);
 }
 
+export function itemCoverPath(itemRootPath: string): string {
+  return joinSegments(itemMediaRoot(itemRootPath), ITEM_FILES.cover);
+}
+
+export function itemCoverRelativePath(): string {
+  return joinSegments(VAULT_DIRS.media, ITEM_FILES.cover);
+}
+
 export function joinSegments(...parts: string[]): string {
   const cleaned = parts.map((part) => part.replace(/\\/g, "/")).filter(Boolean);
   if (!cleaned.length) {

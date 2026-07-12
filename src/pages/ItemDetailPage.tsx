@@ -260,7 +260,14 @@ export function ItemDetailPage() {
             </div>
           </header>
 
-          <MediaGallery itemId={item.id} />
+          <MediaGallery
+            itemId={item.id}
+            onUpdated={() => {
+              void getItemById(item.id)
+                .then(({ item: loadedItem }) => setItem(loadedItem))
+                .finally(() => refreshVault());
+            }}
+          />
 
           {content && (
             <pre className="rounded-xl border border-border bg-card p-4 whitespace-pre-wrap text-sm leading-relaxed">
