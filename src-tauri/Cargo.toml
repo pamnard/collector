@@ -1,8 +1,8 @@
 [package]
 name = "collector"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "Offline-first desktop vault for articles, images, videos, notes, and bookmarks"
+authors = ["pamnard"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -24,4 +24,8 @@ tauri-plugin-fs = "2"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tauri-plugin-process = "2"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
 

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import type { VaultMeta } from "@collector/shared";
 import { useShell } from "../components/layout/AppLayout";
+import { useAppUpdater } from "../hooks/useAppUpdater";
 import { useTheme } from "../hooks/useTheme";
+import { useCheckUpdatesOnStart } from "../hooks/useUpdaterSettings";
 import { useViewMode } from "../hooks/useViewMode";
 import {
   getActiveVaultMeta,
@@ -15,6 +17,9 @@ export function SettingsPage() {
   const { theme, toggleTheme } = useTheme();
   const { viewMode } = useViewMode();
   const { refreshVault } = useShell();
+  const { enabled: checkUpdatesOnStart, setEnabled: setCheckUpdatesOnStart } =
+    useCheckUpdatesOnStart();
+  const { progress, checkForUpdates, installUpdate } = useAppUpdater();
   const [dataDir, setDataDir] = useState<string | null>(null);
   const [vaults, setVaults] = useState<VaultMeta[]>([]);
   const [activeVaultId, setActiveVaultId] = useState<string | null>(null);
@@ -122,6 +127,72 @@ export function SettingsPage() {
         <div className="p-4">
           <p className="font-medium">Версия</p>
           <p className="text-secondary text-sm mt-1">{__APP_VERSION__}</p>
+        </div>
+
+        <div className="p-4 space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="font-medium">Обновления</p>
+              <p className="text-secondary text-sm mt-1">
+                Канал: GitHub Releases (`latest.json`)
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={checkForUpdates}
+              disabled={progress.stage === "checking" || progress.stage === "downloading" || progress.stage === "installing"}
+              className="px-3 py-1.5 rounded-lg border border-border hover:bg-input/40 transition-colors text-sm disabled:opacity-50"
+            >
+              {progress.stage === "checking" ? "Проверка…" : "Проверить"}
+            </button>
+          </div>
+
+          <label className="inline-flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={checkUpdatesOnStart}
+              onChange={(event) => setCheckUpdatesOnStart(event.target.checked)}
+              className="rounded border-border"
+            />
+            Проверять при запуске
+          </label>
+
+          {progress.stage === "available" && (
+            <div className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 p-3 text-sm space-y-2">
+              <p>Доступна версия {progress.version}</p>
+              {progress.notes && (
+                <p className="text-secondary whitespace-pre-wrap">{progress.notes}</p>
+              )}
+              <button
+                type="button"
+                onClick={installUpdate}
+                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors text-sm"
+              >
+                Установить и перезапустить
+              </button>
+            </div>
+          )}
+
+          {progress.stage === "uptodate" && (
+            <p className="text-secondary text-sm">Установлена последняя версия.</p>
+          )}
+
+          {progress.stage === "downloading" && (
+            <p className="text-secondary text-sm">
+              Загрузка…
+              {progress.total
+                ? ` ${Math.round((progress.downloaded / progress.total) * 100)}%`
+                : ""}
+            </p>
+          )}
+
+          {progress.stage === "installing" && (
+            <p className="text-secondary text-sm">Установка…</p>
+          )}
+
+          {progress.stage === "error" && (
+            <p className="text-red-400 text-sm whitespace-pre-wrap">{progress.message}</p>
+          )}
         </div>
       </section>
     </div>

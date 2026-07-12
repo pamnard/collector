@@ -1,8 +1,12 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useCallback, useContext, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { CreateItemDialog } from "../items/CreateItemDialog";
 import { useNavState } from "../../hooks/useNavState";
 import { useTheme } from "../../hooks/useTheme";
+import {
+  useCheckUpdatesOnStart,
+  useStartupUpdateCheck,
+} from "../../hooks/useUpdaterSettings";
 import { useViewMode } from "../../hooks/useViewMode";
 import type { NavFilter, ViewMode } from "../../types/ui";
 import { Header } from "./Header";
@@ -39,6 +43,16 @@ export function AppLayout() {
   } = useNavState();
   const { viewMode, setViewMode } = useViewMode();
   const { theme, toggleTheme } = useTheme();
+  const { enabled: checkUpdatesOnStart } = useCheckUpdatesOnStart();
+  const [startupUpdateVersion, setStartupUpdateVersion] = useState<string | null>(
+    null,
+  );
+
+  const handleStartupUpdateFound = useCallback((version: string) => {
+    setStartupUpdateVersion(version);
+  }, []);
+
+  useStartupUpdateCheck(checkUpdatesOnStart, handleStartupUpdateFound);
 
   return (
     <ShellContext.Provider
@@ -70,7 +84,32 @@ export function AppLayout() {
             onToggleTheme={toggleTheme}
           />
 
-          <div className="flex-1 overflow-y-auto main-scrollbar pt-16">
+          {startupUpdateVersion && (
+            <div className="absolute top-16 left-0 right-0 z-30 flex items-center justify-between gap-3 border-b border-indigo-500/30 bg-indigo-500/10 px-4 py-2 text-sm">
+              <span>Доступно обновление {startupUpdateVersion}.</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate("/settings")}
+                  className="rounded-lg border border-indigo-500/40 px-3 py-1 hover:bg-indigo-500/10 transition-colors"
+                >
+                  Настройки
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStartupUpdateVersion(null)}
+                  className="text-secondary hover:text-primary transition-colors"
+                  aria-label="Скрыть"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div
+            className={`flex-1 overflow-y-auto main-scrollbar ${startupUpdateVersion ? "pt-24" : "pt-16"}`}
+          >
             <Outlet />
           </div>
         </main>

@@ -7,6 +7,8 @@
     "core:default",
     "opener:default",
     "fs:default",
-    "sql:default"
+    "sql:default",
+    "updater:default",
+    "process:default"
   ]
 }
