@@ -1,9 +1,22 @@
 import type { VaultMeta } from "@collector/shared";
 import type { SqlExecutor } from "@collector/db";
 import type { IndexedItem, VaultIndexAdapter } from "../adapters/types.js";
+import type { NavSearchFilter } from "../search/types.js";
 
 function serializeMetadata(metadata: Record<string, unknown>): string {
   return JSON.stringify(metadata);
+}
+
+function navFilterClause(filter: NavSearchFilter): string {
+  switch (filter) {
+    case "favorite":
+      return "AND i.is_favorite = 1";
+    case "archived":
+      return "AND i.is_archived = 1";
+    case "all":
+    default:
+      return "AND i.is_archived = 0";
+  }
 }
 
 export class SqlVaultIndexAdapter implements VaultIndexAdapter {
@@ -129,6 +142,17 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
       "listVaultItemIds requires select(); use SqlVaultIndexStore instead",
     );
   }
+
+  async searchItemIds(
+    _vaultId: string,
+    _ftsQuery: string,
+    _filter: NavSearchFilter,
+    _limit?: number,
+  ): Promise<string[]> {
+    throw new Error(
+      "searchItemIds requires select(); use SqlVaultIndexStore instead",
+    );
+  }
 }
 
 export interface SqlSelectRow {
@@ -148,6 +172,26 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     const rows = await this.selector.select<SqlSelectRow>(
       "SELECT id FROM items WHERE vault_id = ?",
       [vaultId],
+    );
+    return rows.map((row) => row.id);
+  }
+
+  override async searchItemIds(
+    vaultId: string,
+    ftsQuery: string,
+    filter: NavSearchFilter,
+    limit = 200,
+  ): Promise<string[]> {
+    const rows = await this.selector.select<SqlSelectRow>(
+      `SELECT i.id
+       FROM items_fts fts
+       INNER JOIN items i ON i.id = fts.item_id
+       WHERE fts MATCH ?
+         AND i.vault_id = ?
+         ${navFilterClause(filter)}
+       ORDER BY rank
+       LIMIT ?`,
+      [ftsQuery, vaultId, limit],
     );
     return rows.map((row) => row.id);
   }

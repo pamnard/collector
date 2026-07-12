@@ -2,35 +2,88 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ItemFile } from "@collector/shared";
 import { useShell } from "../components/layout/AppLayout";
-import { ensureActiveVault, listItems } from "../services/collector-service";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import {
+  ensureActiveVault,
+  listItems,
+  searchItems,
+} from "../services/collector-service";
 import { filterItems } from "../utils/filterItems";
 
 export function DashboardPage() {
   const { viewMode, searchQuery, activeFilter, vaultRevision } = useShell();
+  const debouncedSearch = useDebouncedValue(searchQuery, 300);
   const navigate = useNavigate();
   const [items, setItems] = useState<ItemFile[]>([]);
+  const [totalItems, setTotalItems] = useState(0);
   const [vaultName, setVaultName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
-    Promise.all([ensureActiveVault(), listItems()])
-      .then(([{ vault }, loadedItems]) => {
-        setVaultName(vault.name);
-        setItems(loadedItems);
-      })
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : String(err));
-      });
-  }, [vaultRevision]);
+    let cancelled = false;
+    setIsSearching(true);
+    setError(null);
 
-  const visibleItems = filterItems(items, activeFilter, searchQuery);
+    const loadItems = async () => {
+      const { vault } = await ensureActiveVault();
+      if (cancelled) {
+        return;
+      }
+
+      setVaultName(vault.name);
+
+      const trimmedSearch = debouncedSearch.trim();
+      if (trimmedSearch) {
+        const results = await searchItems(trimmedSearch, activeFilter);
+        if (cancelled) {
+          return;
+        }
+        setItems(results);
+        const allItems = await listItems();
+        if (cancelled) {
+          return;
+        }
+        setTotalItems(allItems.length);
+        return;
+      }
+
+      const loadedItems = await listItems();
+      if (cancelled) {
+        return;
+      }
+      setItems(loadedItems);
+      setTotalItems(loadedItems.length);
+    };
+
+    loadItems()
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsSearching(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [vaultRevision, debouncedSearch, activeFilter]);
+
+  const visibleItems = debouncedSearch.trim()
+    ? items
+    : filterItems(items, activeFilter);
 
   return (
     <div className="p-4 md:p-8 max-w-5xl">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold">{vaultName || "Vault"}</h1>
         <p className="text-secondary text-sm mt-1">
-          {visibleItems.length} из {items.length}
+          {visibleItems.length} из {totalItems}
+          {isSearching ? " · поиск…" : ""}
         </p>
       </div>
 
@@ -40,7 +93,7 @@ export function DashboardPage() {
         </pre>
       )}
 
-      {visibleItems.length === 0 && !error && (
+      {visibleItems.length === 0 && !error && !isSearching && (
         <p className="text-secondary">Ничего не найдено.</p>
       )}
 

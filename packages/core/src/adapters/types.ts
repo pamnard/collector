@@ -1,4 +1,5 @@
 import type { ItemFile, SourceRef, VaultMeta } from "@collector/shared";
+import type { NavSearchFilter } from "../search/types.js";
 
 export interface FileSystemAdapter {
   exists(path: string): Promise<boolean>;
@@ -24,6 +25,12 @@ export interface VaultIndexAdapter {
   upsertItem(record: IndexedItem, vaultId: string): Promise<void>;
   deleteItem(itemId: string): Promise<void>;
   listVaultItemIds(vaultId: string): Promise<string[]>;
+  searchItemIds(
+    vaultId: string,
+    ftsQuery: string,
+    filter: NavSearchFilter,
+    limit?: number,
+  ): Promise<string[]>;
 }
 
 export interface VaultContext {

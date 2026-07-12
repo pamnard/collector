@@ -3,13 +3,16 @@ import { applyInitialMigration } from "@collector/db";
 import type { ItemFile, VaultMeta } from "@collector/shared";
 import {
   SqlVaultIndexStore,
+  buildFtsMatchQuery,
   createVault,
   deleteItem as deleteItemOnDisk,
   itemRoot,
+  listItemsByIds,
   listItemsOnDisk,
   readItemContent,
   readItemFile,
   readVaultMeta,
+  syncIndexFromFilesystem,
   upsertItem,
   vaultMetaPath,
   vaultRoot,
@@ -17,6 +20,7 @@ import {
   writeVaultMeta,
 } from "@collector/core";
 import type { CreateItemInput, UpdateItemInput } from "../types/item";
+import type { NavFilter } from "../types/ui";
 import { TauriFileSystemAdapter } from "../adapters/tauri-fs";
 import { TauriSqlAdapter } from "../adapters/tauri-sql";
 
@@ -26,6 +30,7 @@ let initialized = false;
 let dataDir = "";
 let sql: TauriSqlAdapter | null = null;
 let activeVault: { meta: VaultMeta; path: string } | null = null;
+const syncedVaultIds = new Set<string>();
 const fs = new TauriFileSystemAdapter();
 
 type VaultEntry = { meta: VaultMeta; path: string };
@@ -69,6 +74,18 @@ function getIndex(): SqlVaultIndexStore {
 
 function getContext() {
   return { fs, index: getIndex() };
+}
+
+async function ensureVaultIndexSynced(
+  vaultId: string,
+  vaultPath: string,
+): Promise<void> {
+  if (syncedVaultIds.has(vaultId)) {
+    return;
+  }
+
+  await syncIndexFromFilesystem(getContext(), vaultPath, vaultId);
+  syncedVaultIds.add(vaultId);
 }
 
 function pickVaultEntry(
@@ -159,8 +176,36 @@ export async function ensureActiveVault(): Promise<{
 }
 
 export async function listItems(): Promise<ItemFile[]> {
-  const { path } = await resolveActiveVault();
+  const { vault, path } = await resolveActiveVault();
+  await ensureVaultIndexSynced(vault.id, path);
   return listItemsOnDisk(getContext(), path);
+}
+
+export async function searchItems(
+  query: string,
+  filter: NavFilter,
+): Promise<ItemFile[]> {
+  const ftsQuery = buildFtsMatchQuery(query);
+  const { vault, path } = await resolveActiveVault();
+  await ensureVaultIndexSynced(vault.id, path);
+
+  if (!ftsQuery) {
+    const items = await listItemsOnDisk(getContext(), path);
+    return items.filter((item) => matchesNavFilter(item, filter));
+  }
+
+  const itemIds = await getIndex().searchItemIds(vault.id, ftsQuery, filter);
+  return listItemsByIds(getContext(), path, itemIds);
+}
+
+function matchesNavFilter(item: ItemFile, filter: NavFilter): boolean {
+  if (filter === "all") {
+    return !item.is_archived;
+  }
+  if (filter === "favorite") {
+    return item.is_favorite;
+  }
+  return item.is_archived;
 }
 
 export async function getItemById(

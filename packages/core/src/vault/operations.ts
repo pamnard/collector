@@ -157,3 +157,21 @@ export async function listItemsOnDisk(
 
   return items;
 }
+
+export async function listItemsByIds(
+  ctx: VaultContext,
+  vaultPath: string,
+  itemIds: string[],
+): Promise<ItemFile[]> {
+  const items: ItemFile[] = [];
+
+  for (const itemId of itemIds) {
+    const itemPath = itemRoot(vaultPath, itemId);
+    if (!(await ctx.fs.exists(itemPath))) {
+      continue;
+    }
+    items.push(await readItemFile(ctx.fs, itemPath));
+  }
+
+  return items;
+}
