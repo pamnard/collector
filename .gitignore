@@ -15,6 +15,7 @@ packages/core/tmp
 
 # Editor directories and files
 .cursor/
+AGENTS.md
 .vscode/*
 !.vscode/extensions.json
 .idea
