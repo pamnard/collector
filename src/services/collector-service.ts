@@ -1,6 +1,7 @@
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { runMigrations } from "@collector/db";
 import type { ItemFile, VaultMeta } from "@collector/shared";
+import type { MediaFileMeta } from "@collector/shared";
 import {
   SqlVaultIndexStore,
   buildFtsMatchQuery,
@@ -28,8 +29,11 @@ import {
   listFolderTree as listFolderTreeOnVault,
   moveItemToFolder,
   renameFolder as renameFolderOnVault,
+  attachMediaFile,
+  deleteMediaFile,
+  listItemMediaWithPaths,
 } from "@collector/core";
-import type { FolderTreeNode, TagWithCount } from "@collector/core";
+import type { FolderTreeNode, MediaWithPath, TagWithCount } from "@collector/core";
 import type { Tag } from "@collector/shared";
 import type { CreateItemInput, UpdateItemInput } from "../types/item";
 import type { NavFilter } from "../types/ui";
@@ -443,4 +447,35 @@ export async function moveItemToFolderPath(
   const { vault, path } = await resolveActiveVault();
   await ensureVaultIndexSynced(vault.id, path);
   return moveItemToFolder(getContext(), path, vault.id, itemId, folderPath);
+}
+
+export async function listItemMedia(itemId: string): Promise<MediaWithPath[]> {
+  const { path } = await resolveActiveVault();
+  return listItemMediaWithPaths(getContext(), path, itemId);
+}
+
+export async function attachMediaFiles(
+  itemId: string,
+  files: Array<{ filename: string; data: Uint8Array }>,
+): Promise<MediaFileMeta[]> {
+  const { path } = await resolveActiveVault();
+  const ctx = getContext();
+  const attached: MediaFileMeta[] = [];
+  for (const file of files) {
+    attached.push(
+      await attachMediaFile(ctx, path, itemId, {
+        filename: file.filename,
+        data: file.data,
+      }),
+    );
+  }
+  return attached;
+}
+
+export async function deleteItemMedia(
+  itemId: string,
+  mediaId: string,
+): Promise<void> {
+  const { path } = await resolveActiveVault();
+  await deleteMediaFile(getContext(), path, itemId, mediaId);
 }

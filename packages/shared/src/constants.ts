@@ -46,6 +46,7 @@ export const ITEM_FILES = {
   meta: "item.json",
   content: "content.md",
   source: ".source.json",
+  mediaManifest: "manifest.json",
 } as const;
 
 export const VAULT_FILES = {

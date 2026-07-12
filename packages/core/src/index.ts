@@ -62,7 +62,14 @@ export {
   updateTag,
 } from "./vault/tag-operations.js";
 export type { TagWithCount } from "./vault/tag-operations.js";
-export { listTagsOnDisk, readTagsFile, writeTagsFile } from "./vault/tag-io.js";
+export {
+  attachMediaFile,
+  deleteMediaFile,
+  listItemMediaWithPaths,
+  syncItemMediaToIndex,
+} from "./vault/media-operations.js";
+export type { MediaWithPath } from "./vault/media-operations.js";
+export { listMediaFiles, mediaFilePath } from "./vault/media-io.js";
 
 export { SqlVaultIndexAdapter, SqlVaultIndexStore } from "./index/sql-index.js";
 export type { SqlSelector } from "./index/sql-index.js";

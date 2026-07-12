@@ -5,6 +5,7 @@ import type { ItemFile } from "@collector/shared";
 import { ItemForm } from "../components/items/ItemForm";
 import { ItemFlagActions } from "../components/items/ItemFlagActions";
 import { FolderPicker } from "../components/folders/FolderPicker";
+import { MediaGallery } from "../components/media/MediaGallery";
 import { TagPicker } from "../components/tags/TagPicker";
 import { useShell } from "../components/layout/AppLayout";
 import {
@@ -258,6 +259,8 @@ export function ItemDetailPage() {
               )}
             </div>
           </header>
+
+          <MediaGallery itemId={item.id} />
 
           {content && (
             <pre className="rounded-xl border border-border bg-card p-4 whitespace-pre-wrap text-sm leading-relaxed">

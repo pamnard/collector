@@ -1,4 +1,4 @@
-import type { ItemFile, SourceRef, Tag, VaultMeta } from "@collector/shared";
+import type { ItemFile, MediaFileMeta, SourceRef, Tag, VaultMeta } from "@collector/shared";
 import type { NavSearchFilter } from "../search/nav-filter.js";
 
 export interface FileSystemAdapter {
@@ -24,6 +24,9 @@ export interface VaultIndexAdapter {
   deleteVault(vaultId: string): Promise<void>;
   upsertItem(record: IndexedItem, vaultId: string): Promise<void>;
   deleteItem(itemId: string): Promise<void>;
+  upsertMedia(media: MediaFileMeta): Promise<void>;
+  deleteMedia(mediaId: string): Promise<void>;
+  deleteMediaForItem(itemId: string): Promise<void>;
   upsertTag(tag: Tag, vaultId: string): Promise<void>;
   deleteTag(tagId: string): Promise<void>;
   listTagsWithCounts(vaultId: string): Promise<

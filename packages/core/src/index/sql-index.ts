@@ -1,4 +1,4 @@
-import type { Tag, VaultMeta } from "@collector/shared";
+import type { MediaFileMeta, Tag, VaultMeta } from "@collector/shared";
 import type { SqlExecutor } from "@collector/db";
 import type { IndexedItem, VaultIndexAdapter } from "../adapters/types.js";
 import type { NavSearchFilter } from "../search/nav-filter.js";
@@ -140,7 +140,29 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     }
   }
 
+  async upsertMedia(media: MediaFileMeta): Promise<void> {
+    await this.db.execute(
+      `INSERT INTO media (id, item_id, filename, media_type, created_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         item_id = excluded.item_id,
+         filename = excluded.filename,
+         media_type = excluded.media_type,
+         created_at = excluded.created_at`,
+      [media.id, media.item_id, media.filename, media.media_type, media.created_at],
+    );
+  }
+
+  async deleteMedia(mediaId: string): Promise<void> {
+    await this.db.execute("DELETE FROM media WHERE id = ?", [mediaId]);
+  }
+
+  async deleteMediaForItem(itemId: string): Promise<void> {
+    await this.db.execute("DELETE FROM media WHERE item_id = ?", [itemId]);
+  }
+
   async deleteItem(itemId: string): Promise<void> {
+    await this.db.execute("DELETE FROM media WHERE item_id = ?", [itemId]);
     await this.db.execute("DELETE FROM source_refs WHERE item_id = ?", [itemId]);
     await this.db.execute("DELETE FROM items_fts WHERE item_id = ?", [itemId]);
     await this.db.execute("DELETE FROM items WHERE id = ?", [itemId]);

@@ -27,6 +27,14 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       return this.deleteByField("source_refs", "item_id", bindValues[0]);
     }
 
+    if (normalized.startsWith("DELETE FROM media WHERE item_id")) {
+      return this.deleteByField("media", "item_id", bindValues[0]);
+    }
+
+    if (normalized.startsWith("DELETE FROM media WHERE id")) {
+      return this.deleteByField("media", "id", bindValues[0]);
+    }
+
     if (normalized.startsWith("DELETE FROM items")) {
       return this.deleteByField("items", "id", bindValues[0]);
     }
@@ -66,6 +74,16 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
 
     if (normalized.startsWith("INSERT INTO items")) {
       return this.upsertItem(bindValues);
+    }
+
+    if (normalized.startsWith("INSERT INTO media")) {
+      return this.insertRow("media", {
+        id: bindValues[0],
+        item_id: bindValues[1],
+        filename: bindValues[2],
+        media_type: bindValues[3],
+        created_at: bindValues[4],
+      });
     }
 
     throw new Error(`Unsupported query in MemorySqlAdapter: ${normalized.slice(0, 80)}`);
