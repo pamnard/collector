@@ -1,20 +1,11 @@
 import { MIGRATION_001 } from "./migrations/001_initial.js";
-import { MIGRATION_002 } from "./migrations/002_item_sort_order.js";
 
 export interface Migration {
   version: number;
   sql: string;
 }
 
-import { MIGRATION_003 } from "./migrations/003_item_folder_path.js";
-import { MIGRATION_004 } from "./migrations/004_items_schema_repair.js";
-
-export const MIGRATIONS: Migration[] = [
-  { version: 1, sql: MIGRATION_001 },
-  { version: 2, sql: MIGRATION_002 },
-  { version: 3, sql: MIGRATION_003 },
-  { version: 4, sql: MIGRATION_004 },
-];
+export const MIGRATIONS: Migration[] = [{ version: 1, sql: MIGRATION_001 }];
 
 export const CURRENT_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;
 
@@ -39,42 +30,6 @@ export interface SqlReader {
 }
 
 export type SqlMigrator = SqlExecutor & SqlReader;
-
-async function tableHasColumn(
-  db: SqlReader,
-  table: string,
-  column: string,
-): Promise<boolean> {
-  const rows = await db.select<{ name: string }>(`PRAGMA table_info(${table})`);
-  return rows.some((row) => row.name === column);
-}
-
-function parseAddColumnStatement(
-  statement: string,
-): { table: string; column: string } | null {
-  const match = statement.match(
-    /^ALTER\s+TABLE\s+([A-Za-z_][A-Za-z0-9_]*)\s+ADD\s+COLUMN\s+([A-Za-z_][A-Za-z0-9_]*)/i,
-  );
-  if (!match) {
-    return null;
-  }
-  return { table: match[1]!, column: match[2]! };
-}
-
-async function executeMigrationStatement(
-  db: SqlMigrator,
-  statement: string,
-): Promise<void> {
-  const addColumn = parseAddColumnStatement(statement);
-  if (addColumn) {
-    const exists = await tableHasColumn(db, addColumn.table, addColumn.column);
-    if (exists) {
-      return;
-    }
-  }
-
-  await db.execute(statement);
-}
 
 async function readAppliedVersions(db: SqlReader): Promise<Set<number>> {
   try {
@@ -104,7 +59,7 @@ export async function runMigrations(db: SqlMigrator): Promise<number[]> {
     }
 
     for (const statement of splitSqlMigration(migration.sql)) {
-      await executeMigrationStatement(db, statement);
+      await db.execute(statement);
     }
 
     await recordMigration(db, migration.version);

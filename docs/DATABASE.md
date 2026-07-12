@@ -1,23 +1,28 @@
-# SQLite index migrations
+# SQLite search index
 
-The search index lives in `collector.db` under the app data directory. Schema changes are applied incrementally at startup via `runMigrations()` (`@collector/db`).
+`collector.db` is a **disposable search index**. Vault files on disk are the source of truth.
 
-## How it works
+## Schema
 
-1. `schema_migrations` table records applied versions.
-2. `MIGRATIONS` in `packages/db/src/migrate.ts` lists SQL scripts in order (001, 002, …).
-3. On launch, only **pending** migrations run; existing vault files on disk are untouched.
+- One migration: `001_initial.ts` defines the full current schema.
+- No incremental column patches — if the index DB is wrong, delete and rebuild from vault files.
 
-## Adding migration 003+
+## Startup
 
-1. Add `packages/db/src/migrations/00N_description.ts`.
-2. Append `{ version: N, sql: MIGRATION_00N }` to `MIGRATIONS`.
-3. Add a test in `packages/db/src/migrate.test.ts`.
-4. Ship in the next app release — users must not delete `collector.db` manually.
+On launch:
+
+1. `runMigrations()` creates any missing tables/indexes.
+2. `ensureHealthyIndex()` validates required tables/columns and runs the same SQL probes the UI uses (nav filters, tags join, FTS).
+3. If validation fails → delete `collector.db` (+ `-wal`/`-shm`), recreate schema, re-sync vaults from disk via `syncIndexFromFilesystem()`.
+
+## When the schema changes
+
+Edit `001_initial.ts` in place while the app has no production users with irreplaceable index-only data. Existing dev DBs self-heal via startup rebuild.
 
 ## Verify locally
 
 ```bash
 npm run test --workspace @collector/db
-scripts/verify-deb-packaging.sh path/to/Collector_*.deb
+npm run build:packages && npm run typecheck
+npm run tauri:dev   # open app — startup must not error
 ```

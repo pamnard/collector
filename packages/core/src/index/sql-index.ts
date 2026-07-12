@@ -283,10 +283,10 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
 
     const rows = await this.selector.select<SqlSelectRow>(
       `SELECT i.id
-       FROM items_fts fts
-       INNER JOIN items i ON i.id = fts.item_id
+       FROM items_fts
+       INNER JOIN items i ON i.id = items_fts.item_id
        ${extraJoin}
-       WHERE fts MATCH ?
+       WHERE items_fts MATCH ?
          AND i.vault_id = ?
          ${navFilterClause(filter)}
          ${folderClause}

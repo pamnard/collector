@@ -1,0 +1,32 @@
+export const INDEX_TABLES = [
+  "schema_migrations",
+  "vaults",
+  "items",
+  "tags",
+  "item_tags",
+  "collections",
+  "item_collections",
+  "media",
+  "source_refs",
+  "items_fts",
+] as const;
+
+export const ITEMS_COLUMNS = [
+  "id",
+  "vault_id",
+  "title",
+  "description",
+  "url",
+  "content_type",
+  "source_type",
+  "source_id",
+  "metadata_json",
+  "thumbnail_path",
+  "is_archived",
+  "is_favorite",
+  "has_content_file",
+  "sort_order",
+  "folder_path",
+  "created_at",
+  "updated_at",
+] as const;

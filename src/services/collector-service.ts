@@ -1,5 +1,5 @@
 import { appDataDir, join } from "@tauri-apps/api/path";
-import { runMigrations } from "@collector/db";
+import { ensureHealthyIndex, runMigrations } from "@collector/db";
 import type { ItemFile, VaultMeta } from "@collector/shared";
 import type { MediaFileMeta } from "@collector/shared";
 import {
@@ -77,6 +77,56 @@ async function listVaultEntries(): Promise<VaultEntry[]> {
   return entries.sort((a, b) => a.meta.name.localeCompare(b.meta.name));
 }
 
+async function rebuildIndexDatabase(): Promise<void> {
+  if (sql) {
+    await sql.close();
+  }
+
+  sql = null;
+  syncedVaultIds.clear();
+  activeVault = null;
+
+  const dbPath = await join(await appDataDir(), "collector.db");
+  for (const suffix of ["", "-wal", "-shm"]) {
+    const path = `${dbPath}${suffix}`;
+    if (await fs.exists(path)) {
+      await fs.remove(path);
+    }
+  }
+
+  sql = await TauriSqlAdapter.open();
+  await runMigrations(sql);
+}
+
+async function ensureHealthyDatabase(): Promise<void> {
+  if (!sql) {
+    throw new Error("Collector database is not initialized");
+  }
+
+  await runMigrations(sql);
+  let health = await ensureHealthyIndex(sql);
+  if (health.ok) {
+    return;
+  }
+
+  console.warn(
+    "[collector] SQLite index unhealthy, rebuilding from vault files:",
+    health.errors,
+  );
+  await rebuildIndexDatabase();
+
+  if (!sql) {
+    throw new Error("Collector database rebuild failed to reopen");
+  }
+
+  health = await ensureHealthyIndex(sql);
+  if (!health.ok) {
+    throw new Error(
+      `Index database failed startup checks: ${health.errors.join("; ")}`,
+    );
+  }
+}
+
 async function ensureInitialized(): Promise<void> {
   if (initialized) {
     return;
@@ -84,8 +134,8 @@ async function ensureInitialized(): Promise<void> {
 
   dataDir = await join(await appDataDir(), "collector");
   sql = await TauriSqlAdapter.open();
-  await runMigrations(sql);
   await fs.mkdir(dataDir);
+  await ensureHealthyDatabase();
   initialized = true;
 }
 

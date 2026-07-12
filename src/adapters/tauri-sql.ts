@@ -18,4 +18,8 @@ export class TauriSqlAdapter implements SqlExecutor, SqlSelector {
   async select<TRow>(query: string, bindValues: unknown[] = []): Promise<TRow[]> {
     return this.db.select<TRow[]>(query, bindValues);
   }
+
+  async close(): Promise<void> {
+    await this.db.close();
+  }
 }

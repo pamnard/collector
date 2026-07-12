@@ -3,6 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { CURRENT_SCHEMA_VERSION, runMigrations } from "./migrate.js";
+import { ITEMS_COLUMNS } from "./schema.js";
+import {
+  ensureHealthyIndex,
+  runIndexStartupChecks,
+  validateIndexSchema,
+} from "./validate.js";
 import { BetterSqliteMigrator } from "./testing/better-sqlite.js";
 
 describe("runMigrations", () => {
@@ -17,166 +23,90 @@ describe("runMigrations", () => {
     }
   });
 
-  it("applies all migrations on a fresh database", async () => {
+  it("applies the single schema migration on a fresh database", async () => {
     tempDir = mkdtempSync(join(tmpdir(), "collector-db-"));
     dbPath = join(tempDir, "collector.db");
     const db = BetterSqliteMigrator.open(dbPath);
 
     const applied = await runMigrations(db);
-    expect(applied).toEqual([1, 2, 3, 4]);
-
-    const versions = await db.select<{ version: number }>(
-      "SELECT version FROM schema_migrations ORDER BY version",
-    );
-    expect(versions.map((row) => row.version)).toEqual([1, 2, 3, 4]);
-    expect(CURRENT_SCHEMA_VERSION).toBe(4);
+    expect(applied).toEqual([1]);
+    expect(CURRENT_SCHEMA_VERSION).toBe(1);
 
     const columns = await db.select<{ name: string }>("PRAGMA table_info(items)");
-    expect(columns.some((column) => column.name === "sort_order")).toBe(true);
-    expect(columns.some((column) => column.name === "folder_path")).toBe(true);
+    for (const column of ITEMS_COLUMNS) {
+      expect(columns.some((entry) => entry.name === column)).toBe(true);
+    }
 
     db.close();
   });
 
-  it("applies only pending migrations when schema_migrations already has v1", async () => {
+  it("is a no-op on second run", async () => {
     tempDir = mkdtempSync(join(tmpdir(), "collector-db-"));
-    dbPath = join(tempDir, "collector-v1.db");
+    dbPath = join(tempDir, "collector.db");
     const db = BetterSqliteMigrator.open(dbPath);
 
-    const firstPass = await runMigrations(db);
-    expect(firstPass).toEqual([1, 2, 3, 4]);
+    await runMigrations(db);
+    expect(await runMigrations(db)).toEqual([]);
 
-    const secondPass = await runMigrations(db);
-    expect(secondPass).toEqual([]);
+    db.close();
+  });
+});
+
+describe("index startup validation", () => {
+  let tempDir = "";
+  let dbPath = "";
+
+  afterEach(() => {
+    if (tempDir) {
+      rmSync(tempDir, { recursive: true, force: true });
+      tempDir = "";
+      dbPath = "";
+    }
+  });
+
+  it("passes schema and startup probes on a fresh database", async () => {
+    tempDir = mkdtempSync(join(tmpdir(), "collector-db-"));
+    dbPath = join(tempDir, "collector.db");
+    const db = BetterSqliteMigrator.open(dbPath);
+    await runMigrations(db);
+
+    const health = await ensureHealthyIndex(db);
+    expect(health.ok).toBe(true);
+    expect(health.errors).toEqual([]);
 
     db.close();
   });
 
-  it("upgrades a legacy v1 database without sort_order column", async () => {
+  it("fails startup probes when legacy items table is missing is_archived", async () => {
     tempDir = mkdtempSync(join(tmpdir(), "collector-db-"));
     dbPath = join(tempDir, "collector-legacy.db");
     const db = BetterSqliteMigrator.open(dbPath);
 
-    await db.execute(`CREATE TABLE schema_migrations (
-      version INTEGER PRIMARY KEY,
-      applied_at TEXT NOT NULL
-    )`);
-    await db.execute(
-      "INSERT INTO schema_migrations(version, applied_at) VALUES (1, datetime('now'))",
-    );
-    await db.execute(`CREATE TABLE items (
-      id TEXT PRIMARY KEY,
-      vault_id TEXT NOT NULL,
-      title TEXT NOT NULL,
-      description TEXT NOT NULL DEFAULT '',
-      url TEXT,
-      content_type TEXT NOT NULL,
-      source_type TEXT NOT NULL,
-      source_id TEXT,
-      metadata_json TEXT NOT NULL DEFAULT '{}',
-      thumbnail_path TEXT,
-      is_archived INTEGER NOT NULL DEFAULT 0,
-      is_favorite INTEGER NOT NULL DEFAULT 0,
-      has_content_file INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )`);
-
-    const applied = await runMigrations(db);
-    expect(applied).toEqual([2, 3, 4]);
+    await runMigrations(db);
+    await db.execute("ALTER TABLE items DROP COLUMN is_archived").catch(() => {
+      // SQLite < 3.35 cannot DROP COLUMN; recreate minimal legacy table instead.
+    });
 
     const columns = await db.select<{ name: string }>("PRAGMA table_info(items)");
-    expect(columns.some((column) => column.name === "sort_order")).toBe(true);
-    expect(columns.some((column) => column.name === "folder_path")).toBe(true);
-
-    db.close();
-  });
-
-  it("records pending migration when ADD COLUMN target already exists", async () => {
-    tempDir = mkdtempSync(join(tmpdir(), "collector-db-"));
-    dbPath = join(tempDir, "collector-partial-v3.db");
-    const db = BetterSqliteMigrator.open(dbPath);
-
-    await db.execute(`CREATE TABLE schema_migrations (
-      version INTEGER PRIMARY KEY,
-      applied_at TEXT NOT NULL
-    )`);
-    await db.execute(
-      "INSERT INTO schema_migrations(version, applied_at) VALUES (1, datetime('now'))",
-    );
-    await db.execute(
-      "INSERT INTO schema_migrations(version, applied_at) VALUES (2, datetime('now'))",
-    );
-    await db.execute(`CREATE TABLE items (
-      id TEXT PRIMARY KEY,
-      vault_id TEXT NOT NULL,
-      title TEXT NOT NULL,
-      description TEXT NOT NULL DEFAULT '',
-      url TEXT,
-      content_type TEXT NOT NULL,
-      source_type TEXT NOT NULL,
-      source_id TEXT,
-      metadata_json TEXT NOT NULL DEFAULT '{}',
-      thumbnail_path TEXT,
-      is_archived INTEGER NOT NULL DEFAULT 0,
-      is_favorite INTEGER NOT NULL DEFAULT 0,
-      has_content_file INTEGER NOT NULL DEFAULT 0,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      folder_path TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )`);
-
-    const applied = await runMigrations(db);
-    expect(applied).toEqual([3, 4]);
-
-    const versions = await db.select<{ version: number }>(
-      "SELECT version FROM schema_migrations ORDER BY version",
-    );
-    expect(versions.map((row) => row.version)).toEqual([1, 2, 3, 4]);
-
-    const secondPass = await runMigrations(db);
-    expect(secondPass).toEqual([]);
-
-    db.close();
-  });
-
-  it("repairs items table missing is_archived when migrations 1-3 are already recorded", async () => {
-    tempDir = mkdtempSync(join(tmpdir(), "collector-db-"));
-    dbPath = join(tempDir, "collector-legacy-missing-flags.db");
-    const db = BetterSqliteMigrator.open(dbPath);
-
-    await db.execute(`CREATE TABLE schema_migrations (
-      version INTEGER PRIMARY KEY,
-      applied_at TEXT NOT NULL
-    )`);
-    for (const version of [1, 2, 3]) {
-      await db.execute(
-        "INSERT INTO schema_migrations(version, applied_at) VALUES (?, datetime('now'))",
-        [version],
-      );
+    if (columns.some((column) => column.name === "is_archived")) {
+      await db.execute(`CREATE TABLE items_legacy AS SELECT id, vault_id, title FROM items`);
+      await db.execute("DROP TABLE items");
+      await db.execute(`CREATE TABLE items (
+        id TEXT PRIMARY KEY,
+        vault_id TEXT NOT NULL,
+        title TEXT NOT NULL
+      )`);
+      await db.execute("INSERT INTO items SELECT id, vault_id, title FROM items_legacy");
+      await db.execute("DROP TABLE items_legacy");
     }
 
-    await db.execute(`CREATE TABLE items (
-      id TEXT PRIMARY KEY,
-      vault_id TEXT NOT NULL,
-      title TEXT NOT NULL
-    )`);
-    await db.execute(
-      "INSERT INTO items (id, vault_id, title) VALUES ('item-1', 'vault-1', 'Legacy')",
-    );
+    const schema = await validateIndexSchema(db);
+    expect(schema.ok).toBe(false);
+    expect(schema.errors.some((error) => error.includes("is_archived"))).toBe(true);
 
-    const applied = await runMigrations(db);
-    expect(applied).toEqual([4]);
-
-    const columns = await db.select<{ name: string }>("PRAGMA table_info(items)");
-    expect(columns.some((column) => column.name === "is_archived")).toBe(true);
-
-    const rows = await db.select<{ id: string }>(
-      "SELECT id FROM items WHERE vault_id = ? AND is_archived = 0",
-      ["vault-1"],
-    );
-    expect(rows.map((row) => row.id)).toEqual(["item-1"]);
+    const startup = await runIndexStartupChecks(db);
+    expect(startup.ok).toBe(false);
+    expect(startup.errors.length).toBeGreaterThan(0);
 
     db.close();
   });
