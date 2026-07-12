@@ -58,7 +58,7 @@ export function Sidebar({
           isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
       >
-        <div className="p-4 px-6 flex items-center justify-between border-b border-border">
+        <div className="h-16 px-6 flex items-center justify-between border-b border-border shrink-0">
           <button
             type="button"
             onClick={() => goToDashboard("all")}
