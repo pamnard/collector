@@ -7,15 +7,14 @@ export function getInitialMigration(): string {
 }
 
 export function splitSqlMigration(sql: string): string[] {
-  return sql
+  const withoutLineComments = sql
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("--"))
+    .join("\n");
+
+  return withoutLineComments
     .split(";")
-    .map((part) =>
-      part
-        .split("\n")
-        .filter((line) => !line.trim().startsWith("--"))
-        .join("\n")
-        .trim(),
-    )
+    .map((part) => part.trim())
     .filter(Boolean);
 }
 
