@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { TagWithCount } from "@collector/core";
-import { ItemFlagActions } from "./ItemFlagActions";
+import { ItemRowActions } from "./ItemRowActions";
 import { ItemTagBadges } from "./ItemTagBadges";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
 import { listTags } from "../../services/collector-service";
 import type { useDashboardItems } from "../../hooks/useDashboardItems";
+import { formatItemDate } from "../../utils/formatItemDate";
 
 interface ItemTableViewProps {
   dashboard: ReturnType<typeof useDashboardItems>;
@@ -33,19 +34,20 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
 
   return (
     <>
-      <div className="rounded-xl border border-border overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="rounded-xl border border-border overflow-x-auto">
+        <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-input/30 text-secondary">
             <tr>
               <th className="text-left px-4 py-2 font-medium">Название</th>
-              <th className="text-left px-4 py-2 font-medium hidden sm:table-cell">
-                Тип
-              </th>
-              <th className="text-left px-4 py-2 font-medium hidden md:table-cell">
+              <th className="text-left px-4 py-2 font-medium w-28">Тип</th>
+              <th className="text-left px-4 py-2 font-medium min-w-[120px]">
                 Теги
               </th>
-              <th className="text-right px-4 py-2 font-medium w-24">
-                Флаги
+              <th className="text-left px-4 py-2 font-medium w-28 whitespace-nowrap">
+                Обновлено
+              </th>
+              <th className="text-right px-4 py-2 font-medium w-32">
+                Действия
               </th>
             </tr>
           </thead>
@@ -57,26 +59,28 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
                 className="border-t border-border hover:bg-input/20 cursor-pointer [content-visibility:auto] [contain-intrinsic-size:56px]"
               >
                 <td className="px-4 py-3">
-                  <p>{item.title}</p>
+                  <p className="font-medium truncate max-w-xs">{item.title}</p>
                   {item.description && (
-                    <p className="text-secondary text-xs mt-1 line-clamp-1 md:hidden">
+                    <p className="text-secondary text-xs mt-1 line-clamp-1">
                       {item.description}
                     </p>
                   )}
                 </td>
-                <td className="px-4 py-3 text-secondary hidden sm:table-cell">
+                <td className="px-4 py-3 text-secondary whitespace-nowrap">
                   {item.content_type}
                 </td>
-                <td className="px-4 py-3 hidden md:table-cell">
+                <td className="px-4 py-3">
                   <ItemTagBadges tagIds={item.tag_ids} tagsById={tagsById} />
                 </td>
+                <td className="px-4 py-3 text-secondary whitespace-nowrap">
+                  {formatItemDate(item.updated_at)}
+                </td>
                 <td className="px-4 py-3 text-right">
-                  <ItemFlagActions
+                  <ItemRowActions
                     itemId={item.id}
                     isFavorite={item.is_favorite}
                     isArchived={item.is_archived}
                     onUpdated={onUpdated}
-                    compact
                   />
                 </td>
               </tr>
