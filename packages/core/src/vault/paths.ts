@@ -1,4 +1,3 @@
-import { posix } from "node:path";
 import { ITEM_FILES, VAULT_DIRS, VAULT_FILES } from "@collector/shared";
 
 export function vaultsRoot(dataDir: string): string {
@@ -38,5 +37,28 @@ export function itemMediaRoot(itemRootPath: string): string {
 }
 
 export function joinSegments(...parts: string[]): string {
-  return posix.join(...parts.filter(Boolean));
+  const cleaned = parts.map((part) => part.replace(/\\/g, "/")).filter(Boolean);
+  if (!cleaned.length) {
+    return "";
+  }
+
+  let prefix = "";
+  const rest = [...cleaned];
+
+  if (rest[0]!.startsWith("/")) {
+    prefix = "/";
+    rest[0] = rest[0]!.slice(1);
+  } else {
+    const driveMatch = rest[0]!.match(/^([A-Za-z]:)(?:\/(.*))?$/);
+    if (driveMatch) {
+      prefix = `${driveMatch[1]}/`;
+      rest[0] = driveMatch[2] ?? "";
+      if (!rest[0]) {
+        rest.shift();
+      }
+    }
+  }
+
+  const segments = rest.flatMap((part) => part.split("/")).filter(Boolean);
+  return prefix + segments.join("/");
 }
