@@ -17,10 +17,3 @@ export const tagsFileSchema = z.object({
 
 export type Tag = z.infer<typeof tagSchema>;
 export type TagsFile = z.infer<typeof tagsFileSchema>;
-
-export const navFilterSettingSchema = z.union([
-  z.enum(["all", "favorite", "archived"]),
-  z.object({ type: z.literal("tag"), tag_id: z.string().uuid() }),
-]);
-
-export type NavFilterSetting = z.infer<typeof navFilterSettingSchema>;

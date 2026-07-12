@@ -9,6 +9,7 @@ export interface ItemFormValues {
   is_favorite: boolean;
   is_archived: boolean;
   tag_ids: string[];
+  folder_path: string;
 }
 
 export interface CreateItemInput {
@@ -28,6 +29,7 @@ export interface UpdateItemInput {
   is_favorite?: boolean;
   is_archived?: boolean;
   tag_ids?: string[];
+  folder_path?: string;
 }
 
 export const EMPTY_ITEM_FORM: ItemFormValues = {
@@ -39,4 +41,5 @@ export const EMPTY_ITEM_FORM: ItemFormValues = {
   is_favorite: false,
   is_archived: false,
   tag_ids: [],
+  folder_path: "",
 };

@@ -6,9 +6,12 @@ export interface Migration {
   sql: string;
 }
 
+import { MIGRATION_003 } from "./migrations/003_item_folder_path.js";
+
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: MIGRATION_001 },
   { version: 2, sql: MIGRATION_002 },
+  { version: 3, sql: MIGRATION_003 },
 ];
 
 export const CURRENT_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;

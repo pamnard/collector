@@ -30,6 +30,10 @@ export interface VaultIndexAdapter {
     Array<Tag & { item_count: number }>
   >;
   listItemIdsByTag(vaultId: string, tagId: string): Promise<string[]>;
+  listItemIdsByFolderPrefix(vaultId: string, folderPath: string): Promise<string[]>;
+  listFolderItemCounts(
+    vaultId: string,
+  ): Promise<Array<{ folder_path: string; item_count: number }>>;
   listVaultItemIds(vaultId: string): Promise<string[]>;
   searchItemIds(
     vaultId: string,

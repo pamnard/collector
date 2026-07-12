@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import type { ItemFile } from "@collector/shared";
 import { ItemForm } from "../components/items/ItemForm";
 import { ItemFlagActions } from "../components/items/ItemFlagActions";
+import { FolderPicker } from "../components/folders/FolderPicker";
 import { TagPicker } from "../components/tags/TagPicker";
 import { useShell } from "../components/layout/AppLayout";
 import {
@@ -26,6 +27,7 @@ function toFormValues(
     is_favorite: item.is_favorite,
     is_archived: item.is_archived,
     tag_ids: item.tag_ids,
+    folder_path: item.folder_path,
   };
 }
 
@@ -77,6 +79,7 @@ export function ItemDetailPage() {
         is_favorite: formValues.is_favorite,
         is_archived: formValues.is_archived,
         tag_ids: formValues.tag_ids,
+        folder_path: formValues.folder_path,
       });
       const updatedContent = formValues.content.trim() || null;
       setItem(updated);
@@ -180,6 +183,15 @@ export function ItemDetailPage() {
             showFlags
           />
 
+          <FolderPicker
+            value={formValues.folder_path}
+            onChange={(folder_path) =>
+              setFormValues((current) =>
+                current ? { ...current, folder_path } : current,
+              )
+            }
+          />
+
           <TagPicker
             selectedTagIds={formValues.tag_ids}
             onChange={(tag_ids) =>
@@ -238,6 +250,11 @@ export function ItemDetailPage() {
               )}
               {item.is_archived && (
                 <span className="rounded-full bg-input px-2 py-1">архив</span>
+              )}
+              {item.folder_path && (
+                <span className="rounded-full bg-input px-2 py-1">
+                  {item.folder_path}
+                </span>
               )}
             </div>
           </header>

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { navFilterSettingSchema } from "./tags.js";
+import { navFilterSettingSchema } from "./folders.js";
 
 export const APP_SETTINGS_VERSION = 1;
 

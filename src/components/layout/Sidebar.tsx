@@ -5,6 +5,7 @@ import type { TagWithCount } from "@collector/core";
 import { listTags } from "../../services/collector-service";
 import type { NavFilter } from "../../types/ui";
 import { navFilterKey } from "../../types/ui";
+import { FolderTree } from "../folders/FolderTree";
 import { Logo } from "./Logo";
 import { SidebarMenu } from "./SidebarMenu";
 
@@ -141,6 +142,16 @@ export function Sidebar({
               </div>
             </SidebarMenu>
           )}
+
+          <SidebarMenu title="Папки">
+            <FolderTree
+              activeFilter={activeFilter}
+              onFilterSelect={onFilterSelect}
+              vaultRevision={vaultRevision}
+              isSettings={isSettings}
+              onNavigate={onClose}
+            />
+          </SidebarMenu>
         </nav>
 
         <div className="p-4 border-t border-border">

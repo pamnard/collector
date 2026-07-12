@@ -43,7 +43,16 @@ export {
 
 export { buildFtsMatchQuery } from "./search/fts-query.js";
 export type { NavSearchFilter } from "./search/nav-filter.js";
-export { navFilterFromSetting, navFilterToSetting } from "./search/nav-filter.js";
+export { navFilterFromSetting, navFilterToSetting, isFolderFilter, isTagFilter } from "./search/nav-filter.js";
+
+export {
+  createFolder,
+  deleteFolder,
+  listFolderTree,
+  moveItemToFolder,
+  renameFolder,
+} from "./vault/folder-operations.js";
+export type { FolderTreeNode } from "./vault/folder-tree.js";
 
 export {
   createTag,

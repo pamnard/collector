@@ -2,6 +2,7 @@ import type { Tag, VaultMeta } from "@collector/shared";
 import type { SqlExecutor } from "@collector/db";
 import type { IndexedItem, VaultIndexAdapter } from "../adapters/types.js";
 import type { NavSearchFilter } from "../search/nav-filter.js";
+import { isFolderFilter, isTagFilter } from "../search/nav-filter.js";
 
 type TagWithCount = Tag & { item_count: number };
 
@@ -10,7 +11,7 @@ function serializeMetadata(metadata: Record<string, unknown>): string {
 }
 
 function navFilterClause(filter: NavSearchFilter): string {
-  if (typeof filter === "object" && filter.type === "tag") {
+  if (isTagFilter(filter) || isFolderFilter(filter)) {
     return "AND i.is_archived = 0";
   }
 
@@ -62,8 +63,8 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
       `INSERT INTO items (
         id, vault_id, title, description, url, content_type, source_type, source_id,
         metadata_json, thumbnail_path, is_archived, is_favorite, has_content_file,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        folder_path, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         vault_id = excluded.vault_id,
         title = excluded.title,
@@ -77,6 +78,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
         is_archived = excluded.is_archived,
         is_favorite = excluded.is_favorite,
         has_content_file = excluded.has_content_file,
+        folder_path = excluded.folder_path,
         updated_at = excluded.updated_at`,
       [
         item.id,
@@ -92,6 +94,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
         item.is_archived ? 1 : 0,
         item.is_favorite ? 1 : 0,
         content ? 1 : 0,
+        item.folder_path ?? "",
         item.created_at,
         item.updated_at,
       ],
@@ -171,6 +174,23 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     );
   }
 
+  async listItemIdsByFolderPrefix(
+    _vaultId: string,
+    _folderPath: string,
+  ): Promise<string[]> {
+    throw new Error(
+      "listItemIdsByFolderPrefix requires select(); use SqlVaultIndexStore instead",
+    );
+  }
+
+  async listFolderItemCounts(_vaultId: string): Promise<
+    Array<{ folder_path: string; item_count: number }>
+  > {
+    throw new Error(
+      "listFolderItemCounts requires select(); use SqlVaultIndexStore instead",
+    );
+  }
+
   async listVaultItemIds(_vaultId: string): Promise<string[]> {
     throw new Error(
       "listVaultItemIds requires select(); use SqlVaultIndexStore instead",
@@ -216,24 +236,32 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     filter: NavSearchFilter,
     limit = 200,
   ): Promise<string[]> {
-    const tagJoin =
-      typeof filter === "object" && filter.type === "tag"
-        ? "INNER JOIN item_tags it ON it.item_id = i.id AND it.tag_id = ?"
-        : "";
-    const tagBind =
-      typeof filter === "object" && filter.type === "tag" ? [filter.tagId] : [];
+    let extraJoin = "";
+    const extraBinds: unknown[] = [];
+
+    if (isTagFilter(filter)) {
+      extraJoin = "INNER JOIN item_tags it ON it.item_id = i.id AND it.tag_id = ?";
+      extraBinds.push(filter.tagId);
+    }
+
+    let folderClause = "";
+    if (isFolderFilter(filter)) {
+      folderClause = "AND (i.folder_path = ? OR i.folder_path LIKE ?)";
+      extraBinds.push(filter.folderPath, `${filter.folderPath}/%`);
+    }
 
     const rows = await this.selector.select<SqlSelectRow>(
       `SELECT i.id
        FROM items_fts fts
        INNER JOIN items i ON i.id = fts.item_id
-       ${tagJoin}
+       ${extraJoin}
        WHERE fts MATCH ?
          AND i.vault_id = ?
          ${navFilterClause(filter)}
+         ${folderClause}
        ORDER BY rank
        LIMIT ?`,
-      [...tagBind, ftsQuery, vaultId, limit],
+      [...extraBinds, ftsQuery, vaultId, limit],
     );
     return rows.map((row) => row.id);
   }
@@ -265,7 +293,7 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     }));
   }
 
-  async listItemIdsByTag(vaultId: string, tagId: string): Promise<string[]> {
+  override async listItemIdsByTag(vaultId: string, tagId: string): Promise<string[]> {
     const rows = await this.selector.select<SqlSelectRow>(
       `SELECT i.id
        FROM items i
@@ -277,5 +305,37 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
       [vaultId, tagId],
     );
     return rows.map((row) => row.id);
+  }
+
+  override async listItemIdsByFolderPrefix(
+    vaultId: string,
+    folderPath: string,
+  ): Promise<string[]> {
+    const rows = await this.selector.select<SqlSelectRow>(
+      `SELECT i.id
+       FROM items i
+       WHERE i.vault_id = ?
+         AND i.is_archived = 0
+         AND (i.folder_path = ? OR i.folder_path LIKE ?)
+       ORDER BY i.created_at DESC`,
+      [vaultId, folderPath, `${folderPath}/%`],
+    );
+    return rows.map((row) => row.id);
+  }
+
+  override async listFolderItemCounts(
+    vaultId: string,
+  ): Promise<Array<{ folder_path: string; item_count: number }>> {
+    const rows = await this.selector.select<{
+      folder_path: string;
+      item_count: number;
+    }>(
+      `SELECT folder_path, COUNT(*) AS item_count
+       FROM items
+       WHERE vault_id = ? AND is_archived = 0
+       GROUP BY folder_path`,
+      [vaultId],
+    );
+    return rows;
   }
 }

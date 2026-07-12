@@ -25,6 +25,7 @@ function migrateItemV1ToV2(raw: RawRecord): RawRecord {
     ...raw,
     tag_ids: raw.tag_ids ?? [],
     collection_ids: raw.collection_ids ?? [],
+    folder_path: raw.folder_path ?? "",
     content_revision: raw.content_revision ?? 1,
     updated_at: new Date().toISOString(),
   };

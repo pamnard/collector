@@ -51,4 +51,5 @@ export const ITEM_FILES = {
 export const VAULT_FILES = {
   meta: "vault.meta.json",
   tags: "tags.json",
+  folders: "folders.json",
 } as const;

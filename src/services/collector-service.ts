@@ -23,12 +23,17 @@ import {
   listTagsWithCounts,
   syncTagsToIndex,
   updateTag as updateTagOnVault,
+  createFolder as createFolderOnVault,
+  deleteFolder as deleteFolderOnVault,
+  listFolderTree as listFolderTreeOnVault,
+  moveItemToFolder,
+  renameFolder as renameFolderOnVault,
 } from "@collector/core";
-import type { TagWithCount } from "@collector/core";
+import type { FolderTreeNode, TagWithCount } from "@collector/core";
 import type { Tag } from "@collector/shared";
 import type { CreateItemInput, UpdateItemInput } from "../types/item";
 import type { NavFilter } from "../types/ui";
-import { isTagFilter } from "../types/ui";
+import { isFolderFilter, isTagFilter } from "../types/ui";
 import { TauriFileSystemAdapter } from "../adapters/tauri-fs";
 import { TauriSqlAdapter } from "../adapters/tauri-sql";
 import {
@@ -159,6 +164,7 @@ async function resolveActiveVault(): Promise<{ vault: VaultMeta; path: string }>
         is_favorite: true,
         tag_ids: [],
         collection_ids: [],
+        folder_path: "",
         content_revision: 1,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -208,6 +214,13 @@ export async function searchItems(
       const itemIds = await getIndex().listItemIdsByTag(vault.id, filter.tagId);
       return listItemsByIds(getContext(), path, itemIds);
     }
+    if (isFolderFilter(filter)) {
+      const itemIds = await getIndex().listItemIdsByFolderPrefix(
+        vault.id,
+        filter.folderPath,
+      );
+      return listItemsByIds(getContext(), path, itemIds);
+    }
 
     const items = await listItemsOnDisk(getContext(), path);
     return items.filter((item) => matchesNavFilter(item, filter));
@@ -220,6 +233,16 @@ export async function searchItems(
 function matchesNavFilter(item: ItemFile, filter: NavFilter): boolean {
   if (isTagFilter(filter)) {
     return !item.is_archived && item.tag_ids.includes(filter.tagId);
+  }
+  if (isFolderFilter(filter)) {
+    if (item.is_archived) {
+      return false;
+    }
+    const path = filter.folderPath;
+    return (
+      item.folder_path === path ||
+      item.folder_path.startsWith(`${path}/`)
+    );
   }
   if (filter === "all") {
     return !item.is_archived;
@@ -263,6 +286,7 @@ export async function createItem(input: CreateItemInput): Promise<ItemFile> {
       is_favorite: false,
       tag_ids: [],
       collection_ids: [],
+      folder_path: "",
       content_revision: 1,
       created_at: timestamp,
       updated_at: timestamp,
@@ -288,6 +312,7 @@ export async function updateItem(
       is_favorite: input.is_favorite ?? existing.is_favorite,
       is_archived: input.is_archived ?? existing.is_archived,
       tag_ids: input.tag_ids ?? existing.tag_ids,
+      folder_path: input.folder_path ?? existing.folder_path,
     },
     content: input.content !== undefined ? input.content : existingContent,
   });
@@ -382,4 +407,40 @@ export async function deleteTag(tagId: string): Promise<void> {
   const { vault, path } = await resolveActiveVault();
   await ensureVaultIndexSynced(vault.id, path);
   await deleteTagOnVault(getContext(), path, vault.id, tagId);
+}
+
+export async function listFolderTree(): Promise<FolderTreeNode[]> {
+  const { vault, path } = await resolveActiveVault();
+  await ensureVaultIndexSynced(vault.id, path);
+  return listFolderTreeOnVault(getContext(), path, vault.id);
+}
+
+export async function createFolder(folderPath: string): Promise<string> {
+  const { vault, path } = await resolveActiveVault();
+  await ensureVaultIndexSynced(vault.id, path);
+  return createFolderOnVault(getContext(), path, folderPath);
+}
+
+export async function renameFolder(
+  oldPath: string,
+  newPath: string,
+): Promise<string> {
+  const { vault, path } = await resolveActiveVault();
+  await ensureVaultIndexSynced(vault.id, path);
+  return renameFolderOnVault(getContext(), path, vault.id, oldPath, newPath);
+}
+
+export async function deleteFolder(folderPath: string): Promise<void> {
+  const { vault, path } = await resolveActiveVault();
+  await ensureVaultIndexSynced(vault.id, path);
+  await deleteFolderOnVault(getContext(), path, vault.id, folderPath);
+}
+
+export async function moveItemToFolderPath(
+  itemId: string,
+  folderPath: string,
+): Promise<ItemFile> {
+  const { vault, path } = await resolveActiveVault();
+  await ensureVaultIndexSynced(vault.id, path);
+  return moveItemToFolder(getContext(), path, vault.id, itemId, folderPath);
 }

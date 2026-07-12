@@ -17,6 +17,7 @@ import {
   writeVaultMeta,
 } from "./item-io.js";
 import { writeTagsFile } from "./tag-io.js";
+import { writeFoldersFile } from "./folder-io.js";
 import {
   itemMediaRoot,
   itemRoot,
@@ -50,6 +51,7 @@ export async function createVault(
   await ctx.fs.mkdir(itemsRoot(vaultPath));
   await writeVaultMeta(ctx.fs, vaultPath, meta);
   await writeTagsFile(ctx.fs, vaultPath, { tags: [] });
+  await writeFoldersFile(ctx.fs, vaultPath, { paths: [] });
   await ctx.index.upsertVault(meta, vaultPath);
 
   return { meta, path: vaultPath };

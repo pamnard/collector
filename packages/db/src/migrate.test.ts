@@ -23,16 +23,17 @@ describe("runMigrations", () => {
     const db = BetterSqliteMigrator.open(dbPath);
 
     const applied = await runMigrations(db);
-    expect(applied).toEqual([1, 2]);
+    expect(applied).toEqual([1, 2, 3]);
 
     const versions = await db.select<{ version: number }>(
       "SELECT version FROM schema_migrations ORDER BY version",
     );
-    expect(versions.map((row) => row.version)).toEqual([1, 2]);
-    expect(CURRENT_SCHEMA_VERSION).toBe(2);
+    expect(versions.map((row) => row.version)).toEqual([1, 2, 3]);
+    expect(CURRENT_SCHEMA_VERSION).toBe(3);
 
     const columns = await db.select<{ name: string }>("PRAGMA table_info(items)");
     expect(columns.some((column) => column.name === "sort_order")).toBe(true);
+    expect(columns.some((column) => column.name === "folder_path")).toBe(true);
 
     db.close();
   });
@@ -43,7 +44,7 @@ describe("runMigrations", () => {
     const db = BetterSqliteMigrator.open(dbPath);
 
     const firstPass = await runMigrations(db);
-    expect(firstPass).toEqual([1, 2]);
+    expect(firstPass).toEqual([1, 2, 3]);
 
     const secondPass = await runMigrations(db);
     expect(secondPass).toEqual([]);
@@ -82,10 +83,11 @@ describe("runMigrations", () => {
     )`);
 
     const applied = await runMigrations(db);
-    expect(applied).toEqual([2]);
+    expect(applied).toEqual([2, 3]);
 
     const columns = await db.select<{ name: string }>("PRAGMA table_info(items)");
     expect(columns.some((column) => column.name === "sort_order")).toBe(true);
+    expect(columns.some((column) => column.name === "folder_path")).toBe(true);
 
     db.close();
   });
