@@ -13,14 +13,17 @@ Stack: **Tauri 2**, **React**, **TypeScript**, **SQLite**, files on disk.
 |---|-----------|------|
 | M0 | Foundation | Project structure, data layer, Tauri integration |
 | M1 | App Shell | Layout, in-app navigation, settings |
-| M2 | Content Core | CRUD, tags, folders, search, list/detail UI |
-| M3 | Capture & Portability | Import, export, manual capture, reindex |
-| M4 | Sync Plugins | Plugin system + Reddit / Telegram / Pinterest |
-| M5 | Polish & Release | Previews, CI, migration, encryption, auto-update |
+| M2 | **Release & Distribution** | GitHub Releases, CI builds, in-app updater |
+| M3 | Content Core | CRUD, tags, folders, search, list/detail UI |
+| M4 | Capture & Portability | Import, export, manual capture, reindex |
+| M5 | Sync Plugins | Plugin system + Reddit / Telegram / Pinterest (optional) |
+| M6 | Polish | Previews, markdown, migration, encryption |
+
+**Priority model:** ship installable releases early (M2), then product features (M3–M4). Plugins and polish are not release blockers.
 
 ---
 
-## M0 — Foundation
+## M0 — Foundation ✓
 
 Core architecture. No user-facing features beyond scaffold.
 
@@ -35,7 +38,7 @@ Core architecture. No user-facing features beyond scaffold.
 
 ---
 
-## M1 — App Shell
+## M1 — App Shell ✓
 
 App chrome and navigation. Single local owner — no accounts or login.
 
@@ -48,7 +51,20 @@ App chrome and navigation. Single local owner — no accounts or login.
 
 ---
 
-## M2 — Content Core
+## M2 — Release & Distribution
+
+**First priority after shell.** No local builds required for daily use.
+
+- GitHub Actions: build Linux, macOS, Windows on tag push
+- GitHub Releases: downloadable installers per platform
+- Tauri auto-updater + signing keys
+- Settings UI: current version, check for updates, install update
+
+**Exit criteria:** download app from GitHub Releases; click «Обновить» in Settings to move to next release.
+
+---
+
+## M3 — Content Core
 
 Main product value — browse and manage saved content.
 
@@ -68,7 +84,7 @@ Main product value — browse and manage saved content.
 
 ---
 
-## M3 — Capture & Portability
+## M4 — Capture & Portability
 
 Getting data in and moving vaults between machines.
 
@@ -83,9 +99,9 @@ Getting data in and moving vaults between machines.
 
 ---
 
-## M4 — Sync Plugins
+## M5 — Sync Plugins
 
-External sources as isolated plugins. Core stays unaware of specific services.
+External sources as isolated plugins. **Optional — not required for releases.**
 
 - Plugin API: `SyncPlugin` interface, `NormalizedItem`, cursor-based pull
 - Plugin registry and loader (workspace packages or dynamic import)
@@ -99,19 +115,17 @@ External sources as isolated plugins. Core stays unaware of specific services.
 
 ---
 
-## M5 — Polish & Release
+## M6 — Polish
 
-Production readiness.
+Nice-to-have improvements. Not release blockers.
 
 - Video / audio inline preview
 - PDF preview (pdf.js)
 - Markdown + GFM rendering for notes/articles
 - Migration tool from legacy Django `collector.tools` (Postgres → vault zip)
-- GitHub Actions: build Linux, macOS, Windows
-- Tauri auto-updater
 - Optional: vault encryption at rest (SQLCipher or file-level)
 
-**Exit criteria:** installable binaries for three platforms; legacy data migrates cleanly.
+**Exit criteria:** rich media viewing; legacy data migrates cleanly.
 
 ---
 
@@ -130,6 +144,12 @@ Items stored as `items/{id}/item.json` + optional `content.md` + `media/`. Folde
 ### Navigation
 
 Internal routes for SPA navigation only. Filters, search, and sidebar state live in app store — never in URL query params.
+
+### Release workflow
+
+```
+dev (npm run tauri dev) → merge → tag vX.Y.Z → CI → GitHub Release → in-app updater
+```
 
 ### Plugins
 
