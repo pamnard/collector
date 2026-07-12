@@ -7,11 +7,13 @@ export interface Migration {
 }
 
 import { MIGRATION_003 } from "./migrations/003_item_folder_path.js";
+import { MIGRATION_004 } from "./migrations/004_items_schema_repair.js";
 
 export const MIGRATIONS: Migration[] = [
   { version: 1, sql: MIGRATION_001 },
   { version: 2, sql: MIGRATION_002 },
   { version: 3, sql: MIGRATION_003 },
+  { version: 4, sql: MIGRATION_004 },
 ];
 
 export const CURRENT_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;
@@ -87,7 +89,7 @@ async function readAppliedVersions(db: SqlReader): Promise<Set<number>> {
 
 async function recordMigration(db: SqlExecutor, version: number): Promise<void> {
   await db.execute(
-    "INSERT INTO schema_migrations(version, applied_at) VALUES (?, datetime('now'))",
+    "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, datetime('now'))",
     [version],
   );
 }

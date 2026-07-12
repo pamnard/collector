@@ -23,13 +23,13 @@ describe("runMigrations", () => {
     const db = BetterSqliteMigrator.open(dbPath);
 
     const applied = await runMigrations(db);
-    expect(applied).toEqual([1, 2, 3]);
+    expect(applied).toEqual([1, 2, 3, 4]);
 
     const versions = await db.select<{ version: number }>(
       "SELECT version FROM schema_migrations ORDER BY version",
     );
-    expect(versions.map((row) => row.version)).toEqual([1, 2, 3]);
-    expect(CURRENT_SCHEMA_VERSION).toBe(3);
+    expect(versions.map((row) => row.version)).toEqual([1, 2, 3, 4]);
+    expect(CURRENT_SCHEMA_VERSION).toBe(4);
 
     const columns = await db.select<{ name: string }>("PRAGMA table_info(items)");
     expect(columns.some((column) => column.name === "sort_order")).toBe(true);
@@ -44,7 +44,7 @@ describe("runMigrations", () => {
     const db = BetterSqliteMigrator.open(dbPath);
 
     const firstPass = await runMigrations(db);
-    expect(firstPass).toEqual([1, 2, 3]);
+    expect(firstPass).toEqual([1, 2, 3, 4]);
 
     const secondPass = await runMigrations(db);
     expect(secondPass).toEqual([]);
@@ -83,7 +83,7 @@ describe("runMigrations", () => {
     )`);
 
     const applied = await runMigrations(db);
-    expect(applied).toEqual([2, 3]);
+    expect(applied).toEqual([2, 3, 4]);
 
     const columns = await db.select<{ name: string }>("PRAGMA table_info(items)");
     expect(columns.some((column) => column.name === "sort_order")).toBe(true);
@@ -128,15 +128,55 @@ describe("runMigrations", () => {
     )`);
 
     const applied = await runMigrations(db);
-    expect(applied).toEqual([3]);
+    expect(applied).toEqual([3, 4]);
 
     const versions = await db.select<{ version: number }>(
       "SELECT version FROM schema_migrations ORDER BY version",
     );
-    expect(versions.map((row) => row.version)).toEqual([1, 2, 3]);
+    expect(versions.map((row) => row.version)).toEqual([1, 2, 3, 4]);
 
     const secondPass = await runMigrations(db);
     expect(secondPass).toEqual([]);
+
+    db.close();
+  });
+
+  it("repairs items table missing is_archived when migrations 1-3 are already recorded", async () => {
+    tempDir = mkdtempSync(join(tmpdir(), "collector-db-"));
+    dbPath = join(tempDir, "collector-legacy-missing-flags.db");
+    const db = BetterSqliteMigrator.open(dbPath);
+
+    await db.execute(`CREATE TABLE schema_migrations (
+      version INTEGER PRIMARY KEY,
+      applied_at TEXT NOT NULL
+    )`);
+    for (const version of [1, 2, 3]) {
+      await db.execute(
+        "INSERT INTO schema_migrations(version, applied_at) VALUES (?, datetime('now'))",
+        [version],
+      );
+    }
+
+    await db.execute(`CREATE TABLE items (
+      id TEXT PRIMARY KEY,
+      vault_id TEXT NOT NULL,
+      title TEXT NOT NULL
+    )`);
+    await db.execute(
+      "INSERT INTO items (id, vault_id, title) VALUES ('item-1', 'vault-1', 'Legacy')",
+    );
+
+    const applied = await runMigrations(db);
+    expect(applied).toEqual([4]);
+
+    const columns = await db.select<{ name: string }>("PRAGMA table_info(items)");
+    expect(columns.some((column) => column.name === "is_archived")).toBe(true);
+
+    const rows = await db.select<{ id: string }>(
+      "SELECT id FROM items WHERE vault_id = ? AND is_archived = 0",
+      ["vault-1"],
+    );
+    expect(rows.map((row) => row.id)).toEqual(["item-1"]);
 
     db.close();
   });
