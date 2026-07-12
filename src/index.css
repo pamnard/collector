@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-main: 255 255 255;
+    --bg-sidebar: 229 231 235;
+    --bg-header: 255 255 255;
+    --bg-card: 255 255 255;
+    --bg-input: 243 244 246;
+    --text-main: 17 24 39;
+    --text-secondary: 75 85 99;
+    --text-muted: 107 114 128;
+    --border-main: 209 213 219;
+    --border-card: 229 231 235;
+  }
+
+  .dark {
+    --bg-main: 28 28 28;
+    --bg-sidebar: 22 22 22;
+    --bg-header: 25 25 25;
+    --bg-card: 30 30 30;
+    --bg-input: 42 42 42;
+    --text-main: 255 255 255;
+    --text-secondary: 156 163 175;
+    --text-muted: 107 114 128;
+    --border-main: 42 42 42;
+    --border-card: 31 41 55;
+  }
+}
+
+:root {
+  font-family: "Golos Text", system-ui, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  @apply bg-main text-primary transition-colors duration-200;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 dark:bg-gray-700 rounded-full;
+}
+
+.main-scrollbar::-webkit-scrollbar {
+  width: 14px;
+}
+
+.main-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.main-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 dark:bg-gray-700 rounded-full;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}

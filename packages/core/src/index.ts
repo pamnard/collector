@@ -16,9 +16,8 @@ export {
   itemSourcePath,
   itemsRoot,
   joinSegments,
-  userRoot,
-  userVaultsRoot,
   vaultMetaPath,
+  vaultsRoot,
   vaultRoot,
 } from "./vault/paths.js";
 

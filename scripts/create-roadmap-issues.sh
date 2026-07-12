@@ -26,7 +26,7 @@ create_issue() {
 }
 
 M0_TITLE="M0: Foundation"
-M1_TITLE="M1: Shell & Users"
+M1_TITLE="M1: App Shell"
 M2_TITLE="M2: Content Core"
 M3_TITLE="M3: Capture & Portability"
 M4_TITLE="M4: Sync Plugins"
@@ -34,7 +34,7 @@ M5_TITLE="M5: Polish & Release"
 
 if ! gh api "repos/${REPO}/milestones" --jq '.[].title' | grep -q "M0: Foundation"; then
   create_milestone "$M0_TITLE" "Project structure, vault filesystem, SQLite schema, core ops, Tauri plugins + IPC."
-  create_milestone "$M1_TITLE" "Local multi-user auth, app layout, routing, settings."
+  create_milestone "$M1_TITLE" "App layout, routing, settings."
   create_milestone "$M2_TITLE" "ContentItem CRUD, tags, collections, search, grid/table UI, detail page."
   create_milestone "$M3_TITLE" "Import/export, drag-drop, URL capture, reindex."
   create_milestone "$M4_TITLE" "Plugin API, keychain, scheduler, Reddit/Telegram/Pinterest plugins."
@@ -48,10 +48,10 @@ create_issue "Monorepo layout (packages/core, packages/db)" \
   "Set up npm/pnpm workspaces:\n- \`packages/core\` — domain logic, import pipeline\n- \`packages/db\` — schema, migrations, queries\n- \`packages/shared\` — types, zod schemas\n- app shell stays in repo root\n\nAcceptance: \`npm run build\` builds all packages; imports resolve." "$M0_TITLE"
 
 create_issue "Vault filesystem layout" \
-  "Implement on-disk structure:\n\`\`\`\n{dataDir}/users/{userId}/vaults/{vaultId}/\n  vault.meta.json\n  items/{itemId}/\n    item.json\n    content.md (optional)\n    media/\n    .source.json (optional)\n\`\`\`\n\nAcceptance: helper API to create item folder + write/read item.json." "$M0_TITLE"
+  "Implement on-disk structure:\n\`\`\`\n{dataDir}/vaults/{vaultId}/\n  vault.meta.json\n  items/{itemId}/\n    item.json\n    content.md (optional)\n    media/\n    .source.json (optional)\n\`\`\`\n\nAcceptance: helper API to create item folder + write/read item.json." "$M0_TITLE"
 
 create_issue "SQLite schema and migrations" \
-  "Tables: users, vaults, items, tags, item_tags, collections, item_collections, media, source_refs.\nFTS5 virtual table for search (can be M2 but schema here).\nUse Drizzle or versioned SQL migrations.\n\nAcceptance: migration runs on first launch; schema version tracked." "$M0_TITLE"
+  "Tables: vaults, items, tags, item_tags, collections, item_collections, media, source_refs.\nFTS5 virtual table for search (can be M2 but schema here).\nUse Drizzle or versioned SQL migrations.\n\nAcceptance: migration runs on first launch; schema version tracked." "$M0_TITLE"
 
 create_issue "Core vault operations" \
   "Implement in \`packages/core\`:\n- create/open vault\n- upsert item (file + index)\n- delete item\n- sync index from filesystem (full scan)\n\nAcceptance: integration test — write file, index updated; delete file, index cleaned." "$M0_TITLE"
@@ -60,12 +60,6 @@ create_issue "Tauri plugins (fs, sql) and IPC bridge" \
   "Add \`tauri-plugin-fs\`, \`tauri-plugin-sql\`.\nTyped IPC commands wrapping core ops (thin Rust, logic in TS).\nPreload + contextIsolation.\n\nAcceptance: renderer calls \`createItem\` via IPC; item appears on disk and in DB." "$M0_TITLE"
 
 echo "Creating M1 issues..."
-create_issue "Local users: model and password hashing" \
-  "Users table: id, username, password_hash (argon2), created_at.\nSession: current user in app state + secure storage.\nNo JWT — local only.\n\nAcceptance: register user, login, password verify, logout." "$M1_TITLE"
-
-create_issue "UI: login, register, switch user" \
-  "Auth screens before main app.\nSwitch user from settings (lock vault, return to login).\n\nAcceptance: two users can coexist; switching shows correct vaults." "$M1_TITLE"
-
 create_issue "App shell: Layout, Sidebar, Header" \
   "Port concepts from legacy collector UI:\n- collapsible sidebar\n- header with search placeholder, view toggle, add button\n- main scroll area\n\nTailwind + shadcn/ui optional.\n\nAcceptance: responsive layout, dark/light theme class support." "$M1_TITLE"
 

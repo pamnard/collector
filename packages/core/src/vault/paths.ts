@@ -1,11 +1,7 @@
 import { ITEM_FILES, VAULT_DIRS, VAULT_FILES } from "@collector/shared";
 
-export function userRoot(dataDir: string, userId: string): string {
-  return joinSegments(dataDir, "users", userId);
-}
-
-export function userVaultsRoot(dataDir: string, userId: string): string {
-  return joinSegments(userRoot(dataDir, userId), "vaults");
+export function vaultsRoot(dataDir: string): string {
+  return joinSegments(dataDir, "vaults");
 }
 
 export function vaultRoot(vaultsRoot: string, vaultId: string): string {

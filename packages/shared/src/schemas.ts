@@ -38,7 +38,6 @@ export const itemFileSchema = z.object({
 
 export const vaultMetaSchema = z.object({
   id: z.string().uuid(),
-  user_id: z.string().uuid(),
   name: z.string().min(1).max(200),
   description: z.string().default(""),
   is_default: z.boolean().default(false),

@@ -4,20 +4,22 @@ import type { ItemFile, VaultMeta } from "@collector/shared";
 import {
   SqlVaultIndexStore,
   createVault,
+  itemRoot,
   listItemsOnDisk,
+  readItemContent,
+  readItemFile,
   readVaultMeta,
   upsertItem,
-  userVaultsRoot,
   vaultRoot,
+  vaultsRoot,
 } from "@collector/core";
 import { TauriFileSystemAdapter } from "../adapters/tauri-fs";
 import { TauriSqlAdapter } from "../adapters/tauri-sql";
 
-const DEV_USER_ID = "00000000-0000-4000-8000-000000000001";
-
 let initialized = false;
 let dataDir = "";
 let sql: TauriSqlAdapter | null = null;
+let activeVault: { meta: VaultMeta; path: string } | null = null;
 const fs = new TauriFileSystemAdapter();
 
 async function ensureInitialized(): Promise<void> {
@@ -39,23 +41,27 @@ function getIndex(): SqlVaultIndexStore {
   return new SqlVaultIndexStore(sql);
 }
 
-export async function bootstrapDevVault(): Promise<{
-  vault: VaultMeta;
-  path: string;
-  items: ItemFile[];
-}> {
+function getContext() {
+  return { fs, index: getIndex() };
+}
+
+async function resolveActiveVault(): Promise<{ vault: VaultMeta; path: string }> {
   await ensureInitialized();
 
-  const ctx = { fs, index: getIndex() };
-  const vaultsRoot = userVaultsRoot(dataDir, DEV_USER_ID);
-  await fs.mkdir(vaultsRoot);
+  if (activeVault) {
+    return { vault: activeVault.meta, path: activeVault.path };
+  }
+
+  const ctx = getContext();
+  const root = vaultsRoot(dataDir);
+  await fs.mkdir(root);
 
   let vaultPath = "";
   let meta: VaultMeta | null = null;
 
-  const vaultIds = (await fs.exists(vaultsRoot)) ? await fs.readDir(vaultsRoot) : [];
+  const vaultIds = (await fs.exists(root)) ? await fs.readDir(root) : [];
   for (const vaultId of vaultIds) {
-    const candidatePath = vaultRoot(vaultsRoot, vaultId);
+    const candidatePath = vaultRoot(root, vaultId);
     if (await fs.exists(candidatePath)) {
       meta = await readVaultMeta(fs, candidatePath);
       vaultPath = candidatePath;
@@ -65,7 +71,6 @@ export async function bootstrapDevVault(): Promise<{
 
   if (!meta) {
     const created = await createVault(ctx, dataDir, {
-      userId: DEV_USER_ID,
       name: "Default Vault",
       isDefault: true,
     });
@@ -92,8 +97,46 @@ export async function bootstrapDevVault(): Promise<{
     });
   }
 
-  const items = await listItemsOnDisk(ctx, vaultPath);
-  return { vault: meta, path: vaultPath, items };
+  activeVault = { meta, path: vaultPath };
+  return { vault: meta, path: vaultPath };
+}
+
+/** @deprecated use ensureActiveVault */
+export async function bootstrapDevVault(): Promise<{
+  vault: VaultMeta;
+  path: string;
+  items: ItemFile[];
+}> {
+  const { vault, path } = await resolveActiveVault();
+  const items = await listItemsOnDisk(getContext(), path);
+  return { vault, path, items };
+}
+
+export async function ensureActiveVault(): Promise<{
+  vault: VaultMeta;
+  path: string;
+}> {
+  return resolveActiveVault();
+}
+
+export async function listItems(): Promise<ItemFile[]> {
+  const { path } = await resolveActiveVault();
+  return listItemsOnDisk(getContext(), path);
+}
+
+export async function getItemById(
+  itemId: string,
+): Promise<{ item: ItemFile; content: string | null }> {
+  const { path } = await resolveActiveVault();
+  const itemPath = itemRoot(path, itemId);
+
+  if (!(await fs.exists(itemPath))) {
+    throw new Error(`Item not found: ${itemId}`);
+  }
+
+  const item = await readItemFile(fs, itemPath);
+  const content = await readItemContent(fs, itemPath);
+  return { item, content };
 }
 
 export async function getDataDirectory(): Promise<string> {

@@ -100,13 +100,12 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
     const id = String(bindValues[0]);
     table.set(id, {
       id,
-      user_id: bindValues[1],
-      path: bindValues[2],
-      name: bindValues[3],
-      description: bindValues[4],
-      is_default: bindValues[5],
-      created_at: bindValues[6],
-      updated_at: bindValues[7],
+      path: bindValues[1],
+      name: bindValues[2],
+      description: bindValues[3],
+      is_default: bindValues[4],
+      created_at: bindValues[5],
+      updated_at: bindValues[6],
     });
     return 1;
   }

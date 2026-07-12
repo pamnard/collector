@@ -12,8 +12,8 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
   async upsertVault(meta: VaultMeta, vaultPath: string): Promise<void> {
     await this.db.execute(
       `INSERT INTO vaults (
-        id, user_id, path, name, description, is_default, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        id, path, name, description, is_default, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         path = excluded.path,
         name = excluded.name,
@@ -22,7 +22,6 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
         updated_at = excluded.updated_at`,
       [
         meta.id,
-        meta.user_id,
         vaultPath,
         meta.name,
         meta.description,

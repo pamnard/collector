@@ -29,10 +29,7 @@ describe("vault operations", () => {
     dataDir = await mkdtemp(join(tmpdir(), "collector-vault-"));
     const sql = new MemorySqlAdapter();
     const ctx = { fs, index: new SqlVaultIndexStore(sql) };
-    const userId = createId();
-
     const { meta, path } = await createVault(ctx, dataDir, {
-      userId,
       name: "My Vault",
       isDefault: true,
     });
@@ -46,10 +43,7 @@ describe("vault operations", () => {
     dataDir = await mkdtemp(join(tmpdir(), "collector-vault-"));
     const sql = new MemorySqlAdapter();
     const ctx = { fs, index: new SqlVaultIndexStore(sql) };
-    const userId = createId();
-
     const { meta, path } = await createVault(ctx, dataDir, {
-      userId,
       name: "Vault",
     });
 
@@ -85,10 +79,7 @@ describe("vault operations", () => {
     dataDir = await mkdtemp(join(tmpdir(), "collector-vault-"));
     const sql = new MemorySqlAdapter();
     const ctx = { fs, index: new SqlVaultIndexStore(sql) };
-    const userId = createId();
-
     const { meta, path } = await createVault(ctx, dataDir, {
-      userId,
       name: "Vault",
     });
 

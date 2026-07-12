@@ -19,8 +19,8 @@ import {
   itemMediaRoot,
   itemRoot,
   itemsRoot,
-  userVaultsRoot,
   vaultRoot,
+  vaultsRoot,
 } from "./paths.js";
 
 export async function createVault(
@@ -32,7 +32,6 @@ export async function createVault(
   const timestamp = nowIso();
   const meta: VaultMeta = {
     id: vaultId,
-    user_id: input.userId,
     name: input.name,
     description: input.description ?? "",
     is_default: input.isDefault ?? false,
@@ -41,8 +40,8 @@ export async function createVault(
     updated_at: timestamp,
   };
 
-  const vaultsRoot = userVaultsRoot(dataDir, input.userId);
-  const vaultPath = vaultRoot(vaultsRoot, vaultId);
+  const root = vaultsRoot(dataDir);
+  const vaultPath = vaultRoot(root, vaultId);
 
   await ctx.fs.mkdir(vaultPath);
   await ctx.fs.mkdir(itemsRoot(vaultPath));

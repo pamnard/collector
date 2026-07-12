@@ -32,7 +32,6 @@ export interface VaultContext {
 }
 
 export interface CreateVaultInput {
-  userId: string;
   name: string;
   description?: string;
   isDefault?: boolean;

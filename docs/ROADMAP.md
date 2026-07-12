@@ -12,8 +12,8 @@ Stack: **Tauri 2**, **React**, **TypeScript**, **SQLite**, files on disk.
 | # | Milestone | Goal |
 |---|-----------|------|
 | M0 | Foundation | Project structure, data layer, Tauri integration |
-| M1 | Shell & Users | Local multi-user auth, app layout, navigation |
-| M2 | Content Core | CRUD, tags, collections, search, list/detail UI |
+| M1 | App Shell | Layout, in-app navigation, settings |
+| M2 | Content Core | CRUD, tags, folders, search, list/detail UI |
 | M3 | Capture & Portability | Import, export, manual capture, reindex |
 | M4 | Sync Plugins | Plugin system + Reddit / Telegram / Pinterest |
 | M5 | Polish & Release | Previews, CI, migration, encryption, auto-update |
@@ -26,7 +26,7 @@ Core architecture. No user-facing features beyond scaffold.
 
 - Monorepo layout (`packages/core`, `packages/db`, app shell)
 - Vault filesystem layout (`vaults/{id}/items/{id}/item.json`, `media/`)
-- SQLite schema: users, vaults, items, tags, collections, media, source_refs
+- SQLite schema: vaults, items, tags, folders, media, source_refs
 - Migrations (Drizzle or sql files)
 - Core vault operations: open, create, list, sync index from files
 - Tauri plugins: `fs`, `sql`; typed IPC bridge to renderer
@@ -35,17 +35,16 @@ Core architecture. No user-facing features beyond scaffold.
 
 ---
 
-## M1 — Shell & Users
+## M1 — App Shell
 
-Local multi-user (profiles on one machine), app chrome.
+App chrome and navigation. Single local owner — no accounts or login.
 
-- User model: register, login, password hash (argon2), switch user
-- Login / register UI
 - App layout: sidebar, header, main outlet
-- React Router + URL query params for filters
+- In-app routing: `/`, `/item/:id`, `/settings` (internal only, not visible to user)
+- Filter/search state in app store + localStorage (not URL query params)
 - Settings: theme (light/dark), default vault, data directory
 
-**Exit criteria:** two local users, each with isolated vaults; basic navigation works.
+**Exit criteria:** basic navigation works; settings persist.
 
 ---
 
@@ -54,16 +53,16 @@ Local multi-user (profiles on one machine), app chrome.
 Main product value — browse and manage saved content.
 
 - ContentItem CRUD (all types: article, video, image, note, bookmark, pdf, audio)
-- Tags (per vault, M2M)
-- Collections (tree via `parent_id`, M2M)
+- Tags (per vault, M2M via tag_ids)
+- Folders (filesystem tree, one folder per item — Obsidian-style)
 - Media attach/detach, stored under item folder
 - Thumbnail generation for images/video frames
 - Favorite / archive flags
 - FTS5 full-text search (title, description, content)
-- Dashboard: masonry grid (TeaserCard)
+- Dashboard: card grid view (local SQLite index)
 - Dashboard: table view toggle
-- Item detail page (metadata, media gallery, markdown content)
-- Sidebar: All / Favorites / Archive / by tag / by collection
+- Item detail page (inline edit, metadata, media gallery, markdown content)
+- Sidebar: All / Favorites / Archive / by tag / by folder
 
 **Exit criteria:** full content lifecycle in UI; search and filters work on 1000+ items.
 
@@ -93,7 +92,7 @@ External sources as isolated plugins. Core stays unaware of specific services.
 - Credential storage: OS keychain (Stronghold / keyring plugin)
 - Background sync scheduler (interval + manual trigger)
 - Plugin: Reddit saved posts
-- Plugin: Telegram (export or user-session pull)
+- Plugin: Telegram (export import)
 - Plugin: Pinterest boards/pins
 
 **Exit criteria:** install plugin, authenticate, pull items into vault idempotently via `source_refs`.
@@ -122,9 +121,15 @@ Production readiness.
 
 Files on disk. SQLite is an index (search, filters, joins). Reindex recovers from corruption.
 
-### Multi-user
+### Data layout
 
-Local accounts, not network auth. Each user has own vaults under `{dataDir}/users/{userId}/`.
+All vaults live under `{dataDir}/vaults/{vaultId}/`. Single local owner — no user accounts.
+
+Items stored as `items/{id}/item.json` + optional `content.md` + `media/`. Folder path is metadata (one folder per item), not duplicate file storage.
+
+### Navigation
+
+Internal routes for SPA navigation only. Filters, search, and sidebar state live in app store — never in URL query params.
 
 ### Plugins
 
