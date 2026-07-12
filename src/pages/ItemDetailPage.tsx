@@ -3,6 +3,7 @@ import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { ItemFile } from "@collector/shared";
 import { ItemForm } from "../components/items/ItemForm";
+import { ItemFlagActions } from "../components/items/ItemFlagActions";
 import { TagPicker } from "../components/tags/TagPicker";
 import { useShell } from "../components/layout/AppLayout";
 import {
@@ -131,6 +132,19 @@ export function ItemDetailPage() {
 
         {item && !isEditing && (
           <div className="flex items-center gap-2">
+            <ItemFlagActions
+              itemId={item.id}
+              isFavorite={item.is_favorite}
+              isArchived={item.is_archived}
+              onUpdated={() => {
+                void getItemById(item.id).then(({ item: loaded, content: loadedContent }) => {
+                  setItem(loaded);
+                  setContent(loadedContent);
+                  setFormValues(toFormValues(loaded, loadedContent));
+                });
+                refreshVault();
+              }}
+            />
             <button
               type="button"
               onClick={() => setIsEditing(true)}

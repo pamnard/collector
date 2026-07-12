@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ItemFile } from "@collector/shared";
+import { ItemFlagActions } from "../components/items/ItemFlagActions";
 import { useShell } from "../components/layout/AppLayout";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import {
@@ -11,7 +12,8 @@ import {
 import { filterItems } from "../utils/filterItems";
 
 export function DashboardPage() {
-  const { viewMode, searchQuery, activeFilter, vaultRevision } = useShell();
+  const { viewMode, searchQuery, activeFilter, vaultRevision, refreshVault } =
+    useShell();
   const debouncedSearch = useDebouncedValue(searchQuery, 300);
   const navigate = useNavigate();
   const [items, setItems] = useState<ItemFile[]>([]);
@@ -101,19 +103,30 @@ export function DashboardPage() {
         <ul className="grid gap-3 sm:grid-cols-2">
           {visibleItems.map((item) => (
             <li key={item.id}>
-              <button
-                type="button"
-                onClick={() => navigate(`/item/${item.id}`)}
-                className="w-full text-left rounded-xl border border-border bg-card p-4 hover:border-indigo-500/40 hover:bg-input/20 transition-colors"
-              >
-                <p className="font-medium truncate">{item.title}</p>
-                {item.description && (
-                  <p className="text-secondary text-sm mt-1 line-clamp-2">
-                    {item.description}
-                  </p>
-                )}
-                <p className="text-muted text-xs mt-2">{item.content_type}</p>
-              </button>
+              <div className="rounded-xl border border-border bg-card p-4 hover:border-indigo-500/40 hover:bg-input/20 transition-colors">
+                <div className="flex items-start justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/item/${item.id}`)}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <p className="font-medium truncate">{item.title}</p>
+                    {item.description && (
+                      <p className="text-secondary text-sm mt-1 line-clamp-2">
+                        {item.description}
+                      </p>
+                    )}
+                    <p className="text-muted text-xs mt-2">{item.content_type}</p>
+                  </button>
+                  <ItemFlagActions
+                    itemId={item.id}
+                    isFavorite={item.is_favorite}
+                    isArchived={item.is_archived}
+                    onUpdated={refreshVault}
+                    compact
+                  />
+                </div>
+              </div>
             </li>
           ))}
         </ul>
@@ -125,6 +138,9 @@ export function DashboardPage() {
                 <th className="text-left px-4 py-2 font-medium">Название</th>
                 <th className="text-left px-4 py-2 font-medium hidden sm:table-cell">
                   Тип
+                </th>
+                <th className="text-right px-4 py-2 font-medium w-24">
+                  Флаги
                 </th>
               </tr>
             </thead>
@@ -138,6 +154,15 @@ export function DashboardPage() {
                   <td className="px-4 py-3">{item.title}</td>
                   <td className="px-4 py-3 text-secondary hidden sm:table-cell">
                     {item.content_type}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <ItemFlagActions
+                      itemId={item.id}
+                      isFavorite={item.is_favorite}
+                      isArchived={item.is_archived}
+                      onUpdated={refreshVault}
+                      compact
+                    />
                   </td>
                 </tr>
               ))}
