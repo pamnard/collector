@@ -1,5 +1,6 @@
 import { createContext, useContext, useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useNavigate } from "react-router-dom";
+import { CreateItemDialog } from "../items/CreateItemDialog";
 import { useNavState } from "../../hooks/useNavState";
 import { useTheme } from "../../hooks/useTheme";
 import { useViewMode } from "../../hooks/useViewMode";
@@ -11,6 +12,8 @@ interface ShellContextValue {
   viewMode: ViewMode;
   searchQuery: string;
   activeFilter: NavFilter;
+  vaultRevision: number;
+  refreshVault: () => void;
 }
 
 const ShellContext = createContext<ShellContextValue | null>(null);
@@ -24,7 +27,10 @@ export function useShell(): ShellContextValue {
 }
 
 export function AppLayout() {
+  const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [vaultRevision, setVaultRevision] = useState(0);
   const {
     activeFilter,
     setActiveFilter,
@@ -35,7 +41,15 @@ export function AppLayout() {
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <ShellContext.Provider value={{ viewMode, searchQuery, activeFilter }}>
+    <ShellContext.Provider
+      value={{
+        viewMode,
+        searchQuery,
+        activeFilter,
+        vaultRevision,
+        refreshVault: () => setVaultRevision((value) => value + 1),
+      }}
+    >
       <div className="flex h-screen bg-main text-primary font-sans overflow-hidden transition-colors duration-200">
         <Sidebar
           isOpen={isSidebarOpen}
@@ -51,7 +65,7 @@ export function AppLayout() {
             onOpenSidebar={() => setIsSidebarOpen(true)}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
-            onAddClick={() => undefined}
+            onAddClick={() => setIsCreateOpen(true)}
             theme={theme}
             onToggleTheme={toggleTheme}
           />
@@ -61,6 +75,17 @@ export function AppLayout() {
           </div>
         </main>
       </div>
+
+      {isCreateOpen && (
+        <CreateItemDialog
+          onClose={() => setIsCreateOpen(false)}
+          onCreated={(itemId) => {
+            setIsCreateOpen(false);
+            setVaultRevision((value) => value + 1);
+            navigate(`/item/${itemId}`);
+          }}
+        />
+      )}
     </ShellContext.Provider>
   );
 }

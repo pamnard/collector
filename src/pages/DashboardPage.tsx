@@ -6,7 +6,7 @@ import { ensureActiveVault, listItems } from "../services/collector-service";
 import { filterItems } from "../utils/filterItems";
 
 export function DashboardPage() {
-  const { viewMode, searchQuery, activeFilter } = useShell();
+  const { viewMode, searchQuery, activeFilter, vaultRevision } = useShell();
   const navigate = useNavigate();
   const [items, setItems] = useState<ItemFile[]>([]);
   const [vaultName, setVaultName] = useState("");
@@ -21,7 +21,7 @@ export function DashboardPage() {
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : String(err));
       });
-  }, []);
+  }, [vaultRevision]);
 
   const visibleItems = filterItems(items, activeFilter, searchQuery);
 
