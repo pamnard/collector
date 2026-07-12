@@ -1,0 +1,16 @@
+{
+  "id": "90edb383-3555-41c7-9839-da2cd7e7ebdf",
+  "vault_id": "a7186233-5cb6-44a7-b8a7-8d2f54e51ff9",
+  "title": "Bookmark",
+  "description": "",
+  "url": "https://example.com",
+  "content_type": "bookmark",
+  "source_type": "manual",
+  "metadata": {},
+  "is_archived": false,
+  "is_favorite": false,
+  "tag_ids": [],
+  "collection_ids": [],
+  "created_at": "2026-07-12T14:53:51.119Z",
+  "updated_at": "2026-07-12T14:53:51.119Z"
+}

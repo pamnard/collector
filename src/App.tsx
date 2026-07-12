@@ -1,49 +1,59 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useState } from "react";
+import {
+  bootstrapDevVault,
+  getDataDirectory,
+} from "./services/collector-service";
 import "./App.css";
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+interface DevState {
+  vaultName: string;
+  dataDir: string;
+  itemTitles: string[];
+}
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+function App() {
+  const [state, setState] = useState<DevState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    bootstrapDevVault()
+      .then(async ({ vault, items }) => {
+        setState({
+          vaultName: vault.name,
+          dataDir: await getDataDirectory(),
+          itemTitles: items.map((item) => item.title),
+        });
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : String(err));
+      });
+  }, []);
 
   return (
     <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+      <h1>Collector</h1>
+      <p className="subtitle">M0 foundation — vault on disk + SQLite index</p>
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
+      {error && <pre className="error">{error}</pre>}
 
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
+      {state && (
+        <section className="panel">
+          <p>
+            <strong>Vault:</strong> {state.vaultName}
+          </p>
+          <p>
+            <strong>Data dir:</strong> {state.dataDir}
+          </p>
+          <p>
+            <strong>Items:</strong>
+          </p>
+          <ul>
+            {state.itemTitles.map((title) => (
+              <li key={title}>{title}</li>
+            ))}
+          </ul>
+        </section>
+      )}
     </main>
   );
 }

@@ -6,7 +6,18 @@ Built with **Tauri 2**, **React**, and **TypeScript**.
 
 ## Status
 
-Early scaffold. See [Roadmap](docs/ROADMAP.md) and [GitHub Milestones](https://github.com/pamnard/collector/milestones).
+M0 foundation in progress — monorepo, vault filesystem, SQLite index, Tauri adapters.
+
+See [Roadmap](docs/ROADMAP.md) and [GitHub Milestones](https://github.com/pamnard/collector/milestones).
+
+## Monorepo
+
+| Package | Purpose |
+|---------|---------|
+| `packages/shared` | Types, Zod schemas, constants |
+| `packages/db` | SQLite migrations |
+| `packages/core` | Vault filesystem + index operations |
+| `src/` | Tauri app shell + React UI |
 
 ## Development
 

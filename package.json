@@ -3,17 +3,28 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build:packages": "npm run build --workspace @collector/shared && npm run build --workspace @collector/db && npm run build --workspace @collector/core",
+    "build": "npm run build:packages && tsc && vite build",
     "preview": "vite preview",
+    "typecheck": "npm run typecheck --workspace @collector/shared && npm run typecheck --workspace @collector/db && npm run typecheck --workspace @collector/core && tsc --noEmit",
+    "test": "npm run test --workspace @collector/core",
     "tauri": "tauri"
   },
   "dependencies": {
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
+    "@collector/core": "*",
+    "@collector/db": "*",
+    "@collector/shared": "*",
     "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-opener": "^2"
+    "@tauri-apps/plugin-fs": "^2",
+    "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-sql": "^2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
     "@types/react": "^19.1.8",
