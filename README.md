@@ -6,7 +6,7 @@ Built with **Tauri 2**, **React**, and **TypeScript**.
 
 ## Status
 
-Early scaffold. Core vault, file storage, and sync plugins are planned.
+Early scaffold. See [Roadmap](docs/ROADMAP.md) and [GitHub Milestones](https://github.com/pamnard/collector/milestones).
 
 ## Development
 
