@@ -1,13 +1,19 @@
-import type { VaultMeta } from "@collector/shared";
+import type { Tag, VaultMeta } from "@collector/shared";
 import type { SqlExecutor } from "@collector/db";
 import type { IndexedItem, VaultIndexAdapter } from "../adapters/types.js";
-import type { NavSearchFilter } from "../search/types.js";
+import type { NavSearchFilter } from "../search/nav-filter.js";
+
+type TagWithCount = Tag & { item_count: number };
 
 function serializeMetadata(metadata: Record<string, unknown>): string {
   return JSON.stringify(metadata);
 }
 
 function navFilterClause(filter: NavSearchFilter): string {
+  if (typeof filter === "object" && filter.type === "tag") {
+    return "AND i.is_archived = 0";
+  }
+
   switch (filter) {
     case "favorite":
       return "AND i.is_favorite = 1";
@@ -137,6 +143,34 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     await this.db.execute("DELETE FROM items WHERE id = ?", [itemId]);
   }
 
+  async upsertTag(tag: Tag, vaultId: string): Promise<void> {
+    await this.db.execute(
+      `INSERT INTO tags (id, vault_id, name, color, created_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         name = excluded.name,
+         color = excluded.color`,
+      [tag.id, vaultId, tag.name, tag.color ?? null, tag.created_at],
+    );
+  }
+
+  async deleteTag(tagId: string): Promise<void> {
+    await this.db.execute("DELETE FROM item_tags WHERE tag_id = ?", [tagId]);
+    await this.db.execute("DELETE FROM tags WHERE id = ?", [tagId]);
+  }
+
+  async listTagsWithCounts(_vaultId: string): Promise<TagWithCount[]> {
+    throw new Error(
+      "listTagsWithCounts requires select(); use SqlVaultIndexStore instead",
+    );
+  }
+
+  async listItemIdsByTag(_vaultId: string, _tagId: string): Promise<string[]> {
+    throw new Error(
+      "listItemIdsByTag requires select(); use SqlVaultIndexStore instead",
+    );
+  }
+
   async listVaultItemIds(_vaultId: string): Promise<string[]> {
     throw new Error(
       "listVaultItemIds requires select(); use SqlVaultIndexStore instead",
@@ -182,16 +216,65 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     filter: NavSearchFilter,
     limit = 200,
   ): Promise<string[]> {
+    const tagJoin =
+      typeof filter === "object" && filter.type === "tag"
+        ? "INNER JOIN item_tags it ON it.item_id = i.id AND it.tag_id = ?"
+        : "";
+    const tagBind =
+      typeof filter === "object" && filter.type === "tag" ? [filter.tagId] : [];
+
     const rows = await this.selector.select<SqlSelectRow>(
       `SELECT i.id
        FROM items_fts fts
        INNER JOIN items i ON i.id = fts.item_id
+       ${tagJoin}
        WHERE fts MATCH ?
          AND i.vault_id = ?
          ${navFilterClause(filter)}
        ORDER BY rank
        LIMIT ?`,
-      [ftsQuery, vaultId, limit],
+      [...tagBind, ftsQuery, vaultId, limit],
+    );
+    return rows.map((row) => row.id);
+  }
+
+  override async listTagsWithCounts(vaultId: string): Promise<TagWithCount[]> {
+    const rows = await this.selector.select<{
+      id: string;
+      name: string;
+      color: string | null;
+      created_at: string;
+      item_count: number;
+    }>(
+      `SELECT t.id, t.name, t.color, t.created_at, COUNT(it.item_id) AS item_count
+       FROM tags t
+       LEFT JOIN item_tags it ON it.tag_id = t.id
+       LEFT JOIN items i ON i.id = it.item_id AND i.vault_id = ?
+       WHERE t.vault_id = ?
+       GROUP BY t.id
+       ORDER BY t.name COLLATE NOCASE`,
+      [vaultId, vaultId],
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      color: row.color,
+      created_at: row.created_at,
+      item_count: row.item_count,
+    }));
+  }
+
+  async listItemIdsByTag(vaultId: string, tagId: string): Promise<string[]> {
+    const rows = await this.selector.select<SqlSelectRow>(
+      `SELECT i.id
+       FROM items i
+       INNER JOIN item_tags it ON it.item_id = i.id
+       WHERE i.vault_id = ?
+         AND it.tag_id = ?
+         AND i.is_archived = 0
+       ORDER BY i.created_at DESC`,
+      [vaultId, tagId],
     );
     return rows.map((row) => row.id);
   }

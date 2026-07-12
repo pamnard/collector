@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { navFilterSettingSchema } from "./tags.js";
 
 export const APP_SETTINGS_VERSION = 1;
 
@@ -7,7 +8,7 @@ export const appSettingsSchema = z.object({
   theme: z.enum(["light", "dark"]).default("light"),
   active_vault_id: z.string().uuid().nullable().optional(),
   view_mode: z.enum(["grid", "table"]).default("grid"),
-  nav_filter: z.enum(["all", "favorite", "archived"]).default("all"),
+  nav_filter: navFilterSettingSchema.default("all"),
   nav_search: z.string().default(""),
   check_updates_on_start: z.boolean().default(false),
 });

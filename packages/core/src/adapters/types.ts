@@ -1,5 +1,5 @@
-import type { ItemFile, SourceRef, VaultMeta } from "@collector/shared";
-import type { NavSearchFilter } from "../search/types.js";
+import type { ItemFile, SourceRef, Tag, VaultMeta } from "@collector/shared";
+import type { NavSearchFilter } from "../search/nav-filter.js";
 
 export interface FileSystemAdapter {
   exists(path: string): Promise<boolean>;
@@ -24,6 +24,12 @@ export interface VaultIndexAdapter {
   deleteVault(vaultId: string): Promise<void>;
   upsertItem(record: IndexedItem, vaultId: string): Promise<void>;
   deleteItem(itemId: string): Promise<void>;
+  upsertTag(tag: Tag, vaultId: string): Promise<void>;
+  deleteTag(tagId: string): Promise<void>;
+  listTagsWithCounts(vaultId: string): Promise<
+    Array<Tag & { item_count: number }>
+  >;
+  listItemIdsByTag(vaultId: string, tagId: string): Promise<string[]>;
   listVaultItemIds(vaultId: string): Promise<string[]>;
   searchItemIds(
     vaultId: string,

@@ -1,6 +1,10 @@
-import { Archive, Inbox, Settings, Star, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Archive, Inbox, Settings, Star, Tag, X } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
+import type { TagWithCount } from "@collector/core";
+import { listTags } from "../../services/collector-service";
 import type { NavFilter } from "../../types/ui";
+import { navFilterKey } from "../../types/ui";
 import { Logo } from "./Logo";
 import { SidebarMenu } from "./SidebarMenu";
 
@@ -9,10 +13,11 @@ interface SidebarProps {
   onClose: () => void;
   activeFilter: NavFilter;
   onFilterSelect: (filter: NavFilter) => void;
+  vaultRevision: number;
 }
 
 const navItems: Array<{
-  id: NavFilter;
+  id: "all" | "favorite" | "archived";
   label: string;
   icon: typeof Inbox;
 }> = [
@@ -26,10 +31,20 @@ export function Sidebar({
   onClose,
   activeFilter,
   onFilterSelect,
+  vaultRevision,
 }: SidebarProps) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const isSettings = pathname === "/settings";
+  const [tags, setTags] = useState<TagWithCount[]>([]);
+
+  useEffect(() => {
+    listTags()
+      .then(setTags)
+      .catch(() => setTags([]));
+  }, [vaultRevision]);
+
+  const activeKey = navFilterKey(activeFilter);
 
   const goToDashboard = (filter: NavFilter) => {
     onFilterSelect(filter);
@@ -85,7 +100,7 @@ export function Sidebar({
                   type="button"
                   onClick={() => goToDashboard(id)}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                    !isSettings && activeFilter === id
+                    !isSettings && activeKey === id
                       ? "bg-indigo-50 dark:bg-indigo-600/10 text-indigo-600 dark:text-indigo-400"
                       : "text-secondary hover:bg-input hover:text-primary"
                   }`}
@@ -96,6 +111,36 @@ export function Sidebar({
               ))}
             </div>
           </SidebarMenu>
+
+          {tags.length > 0 && (
+            <SidebarMenu title="Теги">
+              <div className="space-y-1">
+                {tags.map((tag) => {
+                  const filter: NavFilter = { type: "tag", tagId: tag.id };
+                  const selected =
+                    !isSettings && activeKey === navFilterKey(filter);
+                  return (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => goToDashboard(filter)}
+                      className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg transition-colors ${
+                        selected
+                          ? "bg-indigo-50 dark:bg-indigo-600/10 text-indigo-600 dark:text-indigo-400"
+                          : "text-secondary hover:bg-input hover:text-primary"
+                      }`}
+                    >
+                      <span className="inline-flex items-center gap-2 min-w-0">
+                        <Tag size={16} className="shrink-0" />
+                        <span className="truncate">{tag.name}</span>
+                      </span>
+                      <span className="text-xs text-muted">{tag.item_count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </SidebarMenu>
+          )}
         </nav>
 
         <div className="p-4 border-t border-border">

@@ -42,7 +42,18 @@ export {
 } from "./vault/operations.js";
 
 export { buildFtsMatchQuery } from "./search/fts-query.js";
-export type { NavSearchFilter } from "./search/types.js";
+export type { NavSearchFilter } from "./search/nav-filter.js";
+export { navFilterFromSetting, navFilterToSetting } from "./search/nav-filter.js";
+
+export {
+  createTag,
+  deleteTag,
+  listTagsWithCounts,
+  syncTagsToIndex,
+  updateTag,
+} from "./vault/tag-operations.js";
+export type { TagWithCount } from "./vault/tag-operations.js";
+export { listTagsOnDisk, readTagsFile, writeTagsFile } from "./vault/tag-io.js";
 
 export { SqlVaultIndexAdapter, SqlVaultIndexStore } from "./index/sql-index.js";
 export type { SqlSelector } from "./index/sql-index.js";

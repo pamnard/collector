@@ -3,6 +3,7 @@ import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { ItemFile } from "@collector/shared";
 import { ItemForm } from "../components/items/ItemForm";
+import { TagPicker } from "../components/tags/TagPicker";
 import { useShell } from "../components/layout/AppLayout";
 import {
   deleteItem,
@@ -23,6 +24,7 @@ function toFormValues(
     content: content ?? "",
     is_favorite: item.is_favorite,
     is_archived: item.is_archived,
+    tag_ids: item.tag_ids,
   };
 }
 
@@ -73,6 +75,7 @@ export function ItemDetailPage() {
         content: formValues.content.trim() || null,
         is_favorite: formValues.is_favorite,
         is_archived: formValues.is_archived,
+        tag_ids: formValues.tag_ids,
       });
       const updatedContent = formValues.content.trim() || null;
       setItem(updated);
@@ -161,6 +164,15 @@ export function ItemDetailPage() {
             values={formValues}
             onChange={setFormValues}
             showFlags
+          />
+
+          <TagPicker
+            selectedTagIds={formValues.tag_ids}
+            onChange={(tag_ids) =>
+              setFormValues((current) =>
+                current ? { ...current, tag_ids } : current,
+              )
+            }
           />
 
           <div className="flex justify-end gap-2">

@@ -70,6 +70,7 @@ export function AppLayout() {
           onClose={() => setIsSidebarOpen(false)}
           activeFilter={activeFilter}
           onFilterSelect={setActiveFilter}
+          vaultRevision={vaultRevision}
         />
 
         <main className="flex-1 flex flex-col w-full overflow-hidden bg-main transition-colors duration-200 relative">

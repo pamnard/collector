@@ -15,6 +15,7 @@ import {
   updateAppSettings,
 } from "../services/app-settings-service";
 import type { NavFilter, ViewMode } from "../types/ui";
+import { navFilterToSetting } from "../types/ui";
 import type { Theme } from "../hooks/useTheme";
 
 interface AppSettingsContextValue {
@@ -68,7 +69,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       settings,
       setTheme: (theme) => patch({ theme }),
       setViewMode: (view_mode) => patch({ view_mode }),
-      setNavFilter: (nav_filter) => patch({ nav_filter }),
+      setNavFilter: (filter) => patch({ nav_filter: navFilterToSetting(filter) }),
       setNavSearch: (nav_search) => patch({ nav_search }),
       setCheckUpdatesOnStart: (check_updates_on_start) =>
         patch({ check_updates_on_start }),

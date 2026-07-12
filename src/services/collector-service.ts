@@ -18,9 +18,17 @@ import {
   vaultRoot,
   vaultsRoot,
   writeVaultMeta,
+  createTag as createTagOnVault,
+  deleteTag as deleteTagOnVault,
+  listTagsWithCounts,
+  syncTagsToIndex,
+  updateTag as updateTagOnVault,
 } from "@collector/core";
+import type { TagWithCount } from "@collector/core";
+import type { Tag } from "@collector/shared";
 import type { CreateItemInput, UpdateItemInput } from "../types/item";
 import type { NavFilter } from "../types/ui";
+import { isTagFilter } from "../types/ui";
 import { TauriFileSystemAdapter } from "../adapters/tauri-fs";
 import { TauriSqlAdapter } from "../adapters/tauri-sql";
 import {
@@ -88,6 +96,7 @@ async function ensureVaultIndexSynced(
   }
 
   await syncIndexFromFilesystem(getContext(), vaultPath, vaultId);
+  await syncTagsToIndex(getContext(), vaultPath, vaultId);
   syncedVaultIds.add(vaultId);
 }
 
@@ -195,6 +204,11 @@ export async function searchItems(
   await ensureVaultIndexSynced(vault.id, path);
 
   if (!ftsQuery) {
+    if (isTagFilter(filter)) {
+      const itemIds = await getIndex().listItemIdsByTag(vault.id, filter.tagId);
+      return listItemsByIds(getContext(), path, itemIds);
+    }
+
     const items = await listItemsOnDisk(getContext(), path);
     return items.filter((item) => matchesNavFilter(item, filter));
   }
@@ -204,6 +218,9 @@ export async function searchItems(
 }
 
 function matchesNavFilter(item: ItemFile, filter: NavFilter): boolean {
+  if (isTagFilter(filter)) {
+    return !item.is_archived && item.tag_ids.includes(filter.tagId);
+  }
   if (filter === "all") {
     return !item.is_archived;
   }
@@ -270,6 +287,7 @@ export async function updateItem(
       content_type: input.content_type ?? existing.content_type,
       is_favorite: input.is_favorite ?? existing.is_favorite,
       is_archived: input.is_archived ?? existing.is_archived,
+      tag_ids: input.tag_ids ?? existing.tag_ids,
     },
     content: input.content !== undefined ? input.content : existingContent,
   });
@@ -334,4 +352,34 @@ export async function setDefaultVault(vaultId: string): Promise<void> {
       activeVault = { meta: updated, path: entry.path };
     }
   }
+}
+
+export async function listTags(): Promise<TagWithCount[]> {
+  const { vault, path } = await resolveActiveVault();
+  await ensureVaultIndexSynced(vault.id, path);
+  return listTagsWithCounts(getContext(), vault.id, path);
+}
+
+export async function createTag(input: {
+  name: string;
+  color?: string | null;
+}): Promise<Tag> {
+  const { vault, path } = await resolveActiveVault();
+  await ensureVaultIndexSynced(vault.id, path);
+  return createTagOnVault(getContext(), path, vault.id, input);
+}
+
+export async function updateTagRecord(
+  tagId: string,
+  input: { name?: string; color?: string | null },
+): Promise<Tag> {
+  const { vault, path } = await resolveActiveVault();
+  await ensureVaultIndexSynced(vault.id, path);
+  return updateTagOnVault(getContext(), path, vault.id, tagId, input);
+}
+
+export async function deleteTag(tagId: string): Promise<void> {
+  const { vault, path } = await resolveActiveVault();
+  await ensureVaultIndexSynced(vault.id, path);
+  await deleteTagOnVault(getContext(), path, vault.id, tagId);
 }

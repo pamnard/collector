@@ -16,6 +16,7 @@ import {
   writeItemSourceRef,
   writeVaultMeta,
 } from "./item-io.js";
+import { writeTagsFile } from "./tag-io.js";
 import {
   itemMediaRoot,
   itemRoot,
@@ -48,6 +49,7 @@ export async function createVault(
   await ctx.fs.mkdir(vaultPath);
   await ctx.fs.mkdir(itemsRoot(vaultPath));
   await writeVaultMeta(ctx.fs, vaultPath, meta);
+  await writeTagsFile(ctx.fs, vaultPath, { tags: [] });
   await ctx.index.upsertVault(meta, vaultPath);
 
   return { meta, path: vaultPath };
