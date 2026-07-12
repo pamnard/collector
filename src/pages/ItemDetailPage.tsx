@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { ItemFile } from "@collector/shared";
-import { ItemForm } from "../components/items/ItemForm";
+import { MarkdownContent } from "../components/content/MarkdownContent";
+import { ItemDetailInlineEditor } from "../components/items/ItemDetailInlineEditor";
+import { ItemDetailMetadata } from "../components/items/ItemDetailMetadata";
 import { ItemFlagActions } from "../components/items/ItemFlagActions";
-import { FolderPicker } from "../components/folders/FolderPicker";
 import { MediaGallery } from "../components/media/MediaGallery";
-import { TagPicker } from "../components/tags/TagPicker";
 import { useShell } from "../components/layout/AppLayout";
 import {
   deleteItem,
@@ -44,22 +44,23 @@ export function ItemDetailPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const reloadItem = async (itemId: string) => {
+    const { item: loadedItem, content: loadedContent } = await getItemById(itemId);
+    setItem(loadedItem);
+    setContent(loadedContent);
+    setFormValues(toFormValues(loadedItem, loadedContent));
+    return { item: loadedItem, content: loadedContent };
+  };
+
   useEffect(() => {
     if (!id) {
       setError("Item id is missing");
       return;
     }
 
-    getItemById(id)
-      .then(({ item: loadedItem, content: loadedContent }) => {
-        setItem(loadedItem);
-        setContent(loadedContent);
-        setFormValues(toFormValues(loadedItem, loadedContent));
-        setIsEditing(false);
-      })
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : String(err));
-      });
+    reloadItem(id).catch((err: unknown) => {
+      setError(err instanceof Error ? err.message : String(err));
+    });
   }, [id]);
 
   const handleSave = async () => {
@@ -122,6 +123,14 @@ export function ItemDetailPage() {
     setError(null);
   };
 
+  const handleItemUpdated = () => {
+    if (!item) {
+      return;
+    }
+
+    void reloadItem(item.id).finally(() => refreshVault());
+  };
+
   return (
     <div className="p-4 md:p-8 max-w-3xl">
       <div className="mb-4 flex items-center justify-between gap-4">
@@ -134,20 +143,34 @@ export function ItemDetailPage() {
           Назад
         </button>
 
+        {item && isEditing && formValues && (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCancelEdit}
+              disabled={isSaving}
+              className="px-3 py-1.5 rounded-lg border border-border hover:bg-input/40 transition-colors text-sm"
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSave()}
+              disabled={isSaving || !formValues.title.trim()}
+              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors text-sm disabled:opacity-50"
+            >
+              {isSaving ? "Сохранение…" : "Сохранить"}
+            </button>
+          </div>
+        )}
+
         {item && !isEditing && (
           <div className="flex items-center gap-2">
             <ItemFlagActions
               itemId={item.id}
               isFavorite={item.is_favorite}
               isArchived={item.is_archived}
-              onUpdated={() => {
-                void getItemById(item.id).then(({ item: loaded, content: loadedContent }) => {
-                  setItem(loaded);
-                  setContent(loadedContent);
-                  setFormValues(toFormValues(loaded, loadedContent));
-                });
-                refreshVault();
-              }}
+              onUpdated={handleItemUpdated}
             />
             <button
               type="button"
@@ -159,7 +182,7 @@ export function ItemDetailPage() {
             </button>
             <button
               type="button"
-              onClick={handleDelete}
+              onClick={() => void handleDelete()}
               disabled={isDeleting}
               className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors text-sm disabled:opacity-50"
             >
@@ -177,103 +200,27 @@ export function ItemDetailPage() {
       )}
 
       {item && isEditing && formValues && (
-        <div className="space-y-4">
-          <ItemForm
-            values={formValues}
-            onChange={setFormValues}
-            showFlags
-          />
-
-          <FolderPicker
-            value={formValues.folder_path}
-            onChange={(folder_path) =>
-              setFormValues((current) =>
-                current ? { ...current, folder_path } : current,
-              )
-            }
-          />
-
-          <TagPicker
-            selectedTagIds={formValues.tag_ids}
-            onChange={(tag_ids) =>
-              setFormValues((current) =>
-                current ? { ...current, tag_ids } : current,
-              )
-            }
-          />
-
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={handleCancelEdit}
-              disabled={isSaving}
-              className="px-4 py-2 rounded-lg border border-border hover:bg-input/40 transition-colors text-sm"
-            >
-              Отмена
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={isSaving || !formValues.title.trim()}
-              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors text-sm disabled:opacity-50"
-            >
-              {isSaving ? "Сохранение…" : "Сохранить"}
-            </button>
-          </div>
-        </div>
+        <ItemDetailInlineEditor values={formValues} onChange={setFormValues} />
       )}
 
       {item && !isEditing && (
-        <article className="space-y-4">
+        <article className="space-y-6">
           <header>
             <h1 className="text-2xl font-semibold">{item.title}</h1>
             {item.description && (
               <p className="text-secondary mt-2">{item.description}</p>
             )}
-            {item.url && (
-              <a
-                href={item.url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-indigo-400 text-sm mt-2 inline-block break-all hover:underline"
-              >
-                {item.url}
-              </a>
-            )}
-            <div className="flex flex-wrap gap-2 mt-3 text-xs text-muted">
-              <span className="rounded-full bg-input px-2 py-1">
-                {item.content_type}
-              </span>
-              {item.is_favorite && (
-                <span className="rounded-full bg-input px-2 py-1">
-                  избранное
-                </span>
-              )}
-              {item.is_archived && (
-                <span className="rounded-full bg-input px-2 py-1">архив</span>
-              )}
-              {item.folder_path && (
-                <span className="rounded-full bg-input px-2 py-1">
-                  {item.folder_path}
-                </span>
-              )}
-            </div>
           </header>
 
-          <MediaGallery
-            itemId={item.id}
-            onUpdated={() => {
-              void getItemById(item.id)
-                .then(({ item: loadedItem }) => setItem(loadedItem))
-                .finally(() => refreshVault());
-            }}
-          />
+          <ItemDetailMetadata item={item} />
 
           {content && (
-            <pre className="rounded-xl border border-border bg-card p-4 whitespace-pre-wrap text-sm leading-relaxed">
-              {content}
-            </pre>
+            <section className="rounded-xl border border-border bg-card p-4 md:p-6">
+              <MarkdownContent content={content} />
+            </section>
           )}
+
+          <MediaGallery itemId={item.id} onUpdated={handleItemUpdated} />
         </article>
       )}
     </div>

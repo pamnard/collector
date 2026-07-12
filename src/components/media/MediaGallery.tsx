@@ -1,11 +1,12 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { ImagePlus, Trash2 } from "lucide-react";
+import { ImagePlus, Star, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MediaWithPath } from "@collector/core";
 import {
   attachMediaFiles,
   deleteItemMedia,
   listItemMedia,
+  setItemCoverFromMedia,
 } from "../../services/collector-service";
 
 interface MediaGalleryProps {
@@ -18,6 +19,7 @@ export function MediaGallery({ itemId, onUpdated }: MediaGalleryProps) {
   const [files, setFiles] = useState<MediaWithPath[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [coverMediaId, setCoverMediaId] = useState<string | null>(null);
 
   const loadMedia = useCallback(async () => {
     setError(null);
@@ -73,6 +75,19 @@ export function MediaGallery({ itemId, onUpdated }: MediaGalleryProps) {
     }
   };
 
+  const handleSetCover = async (mediaId: string) => {
+    setCoverMediaId(mediaId);
+    setError(null);
+    try {
+      await setItemCoverFromMedia(itemId, mediaId);
+      onUpdated?.();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCoverMediaId(null);
+    }
+  };
+
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">
@@ -119,14 +134,28 @@ export function MediaGallery({ itemId, onUpdated }: MediaGalleryProps) {
               )}
               <div className="flex items-center justify-between gap-2 p-3">
                 <p className="text-sm truncate">{file.filename}</p>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(file.id)}
-                  className="rounded-lg p-1.5 text-secondary hover:text-red-400 hover:bg-red-500/10"
-                  aria-label={`Удалить ${file.filename}`}
-                >
-                  <Trash2 size={16} />
-                </button>
+                <div className="flex items-center gap-1">
+                  {(file.media_type === "image" || file.media_type === "video") && (
+                    <button
+                      type="button"
+                      onClick={() => void handleSetCover(file.id)}
+                      disabled={coverMediaId === file.id}
+                      className="rounded-lg p-1.5 text-secondary hover:text-amber-400 hover:bg-amber-500/10 disabled:opacity-50"
+                      aria-label={`Сделать обложкой ${file.filename}`}
+                      title="Сделать обложкой"
+                    >
+                      <Star size={16} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void handleDelete(file.id)}
+                    className="rounded-lg p-1.5 text-secondary hover:text-red-400 hover:bg-red-500/10"
+                    aria-label={`Удалить ${file.filename}`}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
             </div>
           ))}

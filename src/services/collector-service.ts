@@ -541,6 +541,37 @@ export async function resolveItemThumbnailPath(item: ItemFile): Promise<string |
   return absolute;
 }
 
+export async function setItemCoverFromMedia(
+  itemId: string,
+  mediaId: string,
+): Promise<ItemFile> {
+  const { vault, path } = await resolveActiveVault();
+  const ctx = getContext();
+  const media = await listItemMediaWithPaths(ctx, path, itemId);
+  const file = media.find((entry) => entry.id === mediaId);
+
+  if (!file) {
+    throw new Error(`Media not found: ${mediaId}`);
+  }
+
+  if (file.media_type !== "image" && file.media_type !== "video") {
+    throw new Error("Cover can only be set from image or video files");
+  }
+
+  const data = await fs.readBinary(file.absolute_path);
+  const cover = await generateCoverFromMedia(
+    data,
+    file.filename,
+    file.media_type,
+  );
+
+  if (!cover) {
+    throw new Error("Failed to generate cover from media");
+  }
+
+  return applyItemCover(ctx, path, vault.id, itemId, cover);
+}
+
 export async function attachMediaFiles(
   itemId: string,
   files: Array<{ filename: string; data: Uint8Array }>,
