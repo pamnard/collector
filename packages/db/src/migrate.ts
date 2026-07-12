@@ -38,6 +38,42 @@ export interface SqlReader {
 
 export type SqlMigrator = SqlExecutor & SqlReader;
 
+async function tableHasColumn(
+  db: SqlReader,
+  table: string,
+  column: string,
+): Promise<boolean> {
+  const rows = await db.select<{ name: string }>(`PRAGMA table_info(${table})`);
+  return rows.some((row) => row.name === column);
+}
+
+function parseAddColumnStatement(
+  statement: string,
+): { table: string; column: string } | null {
+  const match = statement.match(
+    /^ALTER\s+TABLE\s+([A-Za-z_][A-Za-z0-9_]*)\s+ADD\s+COLUMN\s+([A-Za-z_][A-Za-z0-9_]*)/i,
+  );
+  if (!match) {
+    return null;
+  }
+  return { table: match[1]!, column: match[2]! };
+}
+
+async function executeMigrationStatement(
+  db: SqlMigrator,
+  statement: string,
+): Promise<void> {
+  const addColumn = parseAddColumnStatement(statement);
+  if (addColumn) {
+    const exists = await tableHasColumn(db, addColumn.table, addColumn.column);
+    if (exists) {
+      return;
+    }
+  }
+
+  await db.execute(statement);
+}
+
 async function readAppliedVersions(db: SqlReader): Promise<Set<number>> {
   try {
     const rows = await db.select<{ version: number }>(
@@ -66,7 +102,7 @@ export async function runMigrations(db: SqlMigrator): Promise<number[]> {
     }
 
     for (const statement of splitSqlMigration(migration.sql)) {
-      await db.execute(statement);
+      await executeMigrationStatement(db, statement);
     }
 
     await recordMigration(db, migration.version);

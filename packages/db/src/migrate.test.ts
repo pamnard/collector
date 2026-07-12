@@ -91,4 +91,53 @@ describe("runMigrations", () => {
 
     db.close();
   });
+
+  it("records pending migration when ADD COLUMN target already exists", async () => {
+    tempDir = mkdtempSync(join(tmpdir(), "collector-db-"));
+    dbPath = join(tempDir, "collector-partial-v3.db");
+    const db = BetterSqliteMigrator.open(dbPath);
+
+    await db.execute(`CREATE TABLE schema_migrations (
+      version INTEGER PRIMARY KEY,
+      applied_at TEXT NOT NULL
+    )`);
+    await db.execute(
+      "INSERT INTO schema_migrations(version, applied_at) VALUES (1, datetime('now'))",
+    );
+    await db.execute(
+      "INSERT INTO schema_migrations(version, applied_at) VALUES (2, datetime('now'))",
+    );
+    await db.execute(`CREATE TABLE items (
+      id TEXT PRIMARY KEY,
+      vault_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      url TEXT,
+      content_type TEXT NOT NULL,
+      source_type TEXT NOT NULL,
+      source_id TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      thumbnail_path TEXT,
+      is_archived INTEGER NOT NULL DEFAULT 0,
+      is_favorite INTEGER NOT NULL DEFAULT 0,
+      has_content_file INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      folder_path TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+
+    const applied = await runMigrations(db);
+    expect(applied).toEqual([3]);
+
+    const versions = await db.select<{ version: number }>(
+      "SELECT version FROM schema_migrations ORDER BY version",
+    );
+    expect(versions.map((row) => row.version)).toEqual([1, 2, 3]);
+
+    const secondPass = await runMigrations(db);
+    expect(secondPass).toEqual([]);
+
+    db.close();
+  });
 });
