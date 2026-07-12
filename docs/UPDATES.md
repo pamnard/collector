@@ -41,6 +41,14 @@ If the private key is lost, existing installs can no longer receive trusted upda
 
 `bundle.createUpdaterArtifacts` must be `true` in `tauri.conf.json`.
 
+## Release checklist (packaging)
+
+Before publishing a draft release:
+
+1. Linux artifact passes `scripts/verify-deb-packaging.sh`
+2. No `postRemoveScript` in `tauri.conf.json` → `bundle.linux.deb`
+3. Smoke-test: upgrade preserves vault data ([PACKAGING.md](./PACKAGING.md))
+
 ## Testing updates
 
 1. Ensure `TAURI_SIGNING_PRIVATE_KEY` is set in repo secrets

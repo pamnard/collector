@@ -44,7 +44,9 @@ npm run tauri dev
 
 Vault files and the SQLite index live under `…/collector/`. Settings → «Каталог данных» shows the active path.
 
-Explicit dev config merge file: `src-tauri/tauri.conf.dev.json` (applied automatically via `build.rs` when running `tauri dev`).
+**Upgrade** replaces the app binary only — vaults stay in place (`.deb` over `.deb`, or in-app updater).
+
+**Uninstall** removes the app only; data dirs above are kept unless you delete them manually. See [Packaging](docs/PACKAGING.md) for full removal commands and maintainer checks.
 
 ### Build
 
