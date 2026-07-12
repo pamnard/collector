@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { getName } from "@tauri-apps/api/app";
+import { RefreshCw } from "lucide-react";
 import type { VaultMeta } from "@collector/shared";
 import { useShell } from "../components/layout/AppLayout";
 import { useAppUpdater } from "../hooks/useAppUpdater";
@@ -21,20 +23,23 @@ export function SettingsPage() {
     useCheckUpdatesOnStart();
   const { progress, checkForUpdates, installUpdate } = useAppUpdater();
   const [dataDir, setDataDir] = useState<string | null>(null);
+  const [appName, setAppName] = useState<string | null>(null);
   const [vaults, setVaults] = useState<VaultMeta[]>([]);
   const [activeVaultId, setActiveVaultId] = useState<string | null>(null);
   const [isSavingVault, setIsSavingVault] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadSettings = useCallback(async () => {
-    const [directory, loadedVaults, activeVault] = await Promise.all([
+    const [directory, loadedVaults, activeVault, name] = await Promise.all([
       getDataDirectory(),
       listVaults(),
       getActiveVaultMeta(),
+      getName().catch(() => "Collector"),
     ]);
     setDataDir(directory);
     setVaults(loadedVaults);
     setActiveVaultId(activeVault.id);
+    setAppName(name);
   }, []);
 
   useEffect(() => {
@@ -117,6 +122,11 @@ export function SettingsPage() {
 
         <div className="p-4">
           <p className="font-medium">Каталог данных</p>
+          {appName && (
+            <p className="text-secondary text-sm mt-1">
+              Среда: {appName.includes("Dev") ? "разработка" : "release"}
+            </p>
+          )}
           {dataDir ? (
             <p className="text-secondary text-sm mt-1 break-all">{dataDir}</p>
           ) : (
@@ -147,15 +157,27 @@ export function SettingsPage() {
             </button>
           </div>
 
-          <label className="inline-flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={checkUpdatesOnStart}
-              onChange={(event) => setCheckUpdatesOnStart(event.target.checked)}
-              className="rounded border-border"
-            />
-            Проверять при запуске
-          </label>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="font-medium text-sm">Проверять при запуске</p>
+              <p className="text-secondary text-xs mt-0.5">
+                {checkUpdatesOnStart ? "Включено" : "Выключено"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCheckUpdatesOnStart(!checkUpdatesOnStart)}
+              aria-pressed={checkUpdatesOnStart}
+              aria-label="Проверять обновления при запуске"
+              className={`inline-flex items-center justify-center rounded-lg border p-2 transition-colors ${
+                checkUpdatesOnStart
+                  ? "border-indigo-500/40 bg-indigo-500/10 text-indigo-400"
+                  : "border-border text-secondary hover:bg-input/40 hover:text-primary"
+              }`}
+            >
+              <RefreshCw size={18} />
+            </button>
+          </div>
 
           {progress.stage === "available" && (
             <div className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 p-3 text-sm space-y-2">

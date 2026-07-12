@@ -1,0 +1,11 @@
+{
+  "identifier": "com.collector.app.dev",
+  "productName": "Collector Dev",
+  "app": {
+    "windows": [
+      {
+        "title": "Collector Dev"
+      }
+    ]
+  }
+}

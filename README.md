@@ -6,9 +6,7 @@ Built with **Tauri 2**, **React**, and **TypeScript**.
 
 ## Status
 
-M0 foundation in progress — monorepo, vault filesystem, SQLite index, Tauri adapters.
-
-See [Roadmap](docs/ROADMAP.md) and [GitHub Milestones](https://github.com/pamnard/collector/milestones).
+M1 app shell + M2 release pipeline (CI, updater). See [Roadmap](docs/ROADMAP.md).
 
 ## Monorepo
 
@@ -33,6 +31,20 @@ See [Roadmap](docs/ROADMAP.md) and [GitHub Milestones](https://github.com/pamnar
 npm install
 npm run tauri dev
 ```
+
+`tauri dev` uses bundle identifier `com.collector.app.dev` — a **separate data directory** from the installed release (`com.collector.app`). Dev and production vaults cannot collide unless you manually point at the same path.
+
+### Data locations
+
+| Platform | Release | Dev (`tauri dev`) |
+|----------|---------|-------------------|
+| Linux | `~/.local/share/com.collector.app/collector/` | `~/.local/share/com.collector.app.dev/collector/` |
+| macOS | `~/Library/Application Support/com.collector.app/collector/` | `~/Library/Application Support/com.collector.app.dev/collector/` |
+| Windows | `%APPDATA%\com.collector.app\collector\` | `%APPDATA%\com.collector.app.dev\collector\` |
+
+Vault files and the SQLite index live under `…/collector/`. Settings → «Каталог данных» shows the active path.
+
+Explicit dev config merge file: `src-tauri/tauri.conf.dev.json` (applied automatically via `build.rs` when running `tauri dev`).
 
 ### Build
 

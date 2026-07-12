@@ -13,7 +13,8 @@
     "preview": "vite preview",
     "typecheck": "npm run typecheck --workspace @collector/shared && npm run typecheck --workspace @collector/db && npm run typecheck --workspace @collector/core && tsc --noEmit",
     "test": "npm run test --workspace @collector/core",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev --config src-tauri/tauri.conf.dev.json"
   },
   "dependencies": {
     "@collector/core": "*",
