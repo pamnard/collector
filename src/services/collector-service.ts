@@ -13,7 +13,7 @@ import {
   migrateVaultSchema,
   readItemContent,
   readItemFile,
-  syncIndexFromFilesystem,
+  syncVaultIndexFromFilesystem,
   upsertItem,
   vaultMetaPath,
   vaultRoot,
@@ -22,7 +22,6 @@ import {
   createTag as createTagOnVault,
   deleteTag as deleteTagOnVault,
   listTagsWithCounts,
-  syncTagsToIndex,
   updateTag as updateTagOnVault,
   createFolder as createFolderOnVault,
   deleteFolder as deleteFolderOnVault,
@@ -196,8 +195,12 @@ async function ensureVaultIndexSynced(
     return;
   }
 
-  await syncIndexFromFilesystem(getContext(), vaultPath, vaultId);
-  await syncTagsToIndex(getContext(), vaultPath, vaultId);
+  const report = await syncVaultIndexFromFilesystem(getContext(), vaultPath);
+  if (report.vaultId !== vaultId) {
+    throw new Error(
+      `Vault id mismatch during index sync: expected ${vaultId}, got ${report.vaultId}`,
+    );
+  }
   syncedVaultIds.add(vaultId);
 }
 

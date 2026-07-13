@@ -14,6 +14,7 @@
     "typecheck": "npm run typecheck --workspace @collector/shared && npm run typecheck --workspace @collector/db && npm run typecheck --workspace @collector/core && tsc --noEmit",
     "test": "npm run test --workspace @collector/db && npm run test --workspace @collector/core",
     "test:startup": "npm run build:packages && node scripts/startup-index-smoke.mjs",
+    "test:vault-index": "npm run build:packages && node scripts/vault-index-rebuild-smoke.mjs",
     "verify:release": "bash scripts/verify-release.sh",
     "tauri": "tauri",
     "tauri:dev": "tauri dev --config src-tauri/tauri.conf.dev.json"

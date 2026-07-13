@@ -13,7 +13,7 @@
 
 1. `runMigrations()` creates any missing tables/indexes.
 2. `ensureHealthyIndex()` validates required tables/columns and runs the same SQL probes the UI uses (nav filters, tags join, FTS).
-3. If validation fails → delete `collector.db` (+ `-wal`/`-shm`), recreate schema, re-sync vaults from disk via `syncIndexFromFilesystem()`.
+3. If validation fails → delete `collector.db` (+ `-wal`/`-shm`), recreate schema, re-sync vaults from disk via `syncVaultIndexFromFilesystem()` (vault row → tags → items).
 
 ## When the schema changes
 

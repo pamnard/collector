@@ -111,8 +111,10 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     await this.db.execute("DELETE FROM item_collections WHERE item_id = ?", [item.id]);
     for (const collectionId of item.collection_ids) {
       await this.db.execute(
-        "INSERT INTO item_collections (item_id, collection_id) VALUES (?, ?)",
-        [item.id, collectionId],
+        `INSERT INTO item_collections (item_id, collection_id)
+         SELECT ?, ?
+         WHERE EXISTS (SELECT 1 FROM collections WHERE id = ?)`,
+        [item.id, collectionId, collectionId],
       );
     }
 
@@ -124,6 +126,10 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
 
     if (sourceRef) {
       await this.db.execute("DELETE FROM source_refs WHERE item_id = ?", [item.id]);
+      await this.db.execute(
+        "DELETE FROM source_refs WHERE plugin_id = ? AND external_id = ?",
+        [sourceRef.plugin_id, sourceRef.external_id],
+      );
       await this.db.execute(
         `INSERT INTO source_refs (
           id, item_id, plugin_id, external_id, synced_at, metadata_json
