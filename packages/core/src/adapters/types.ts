@@ -39,6 +39,7 @@ export interface VaultIndexAdapter {
     vaultId: string,
   ): Promise<Array<{ folder_path: string; item_count: number }>>;
   listVaultItemIds(vaultId: string): Promise<string[]>;
+  listVaultItemTimestamps(vaultId: string): Promise<Array<{ id: string; updated_at: string }>>;
   searchItemIds(
     vaultId: string,
     ftsQuery: string,

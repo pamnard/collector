@@ -234,6 +234,12 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     );
   }
 
+  async listVaultItemTimestamps(_vaultId: string): Promise<Array<{ id: string; updated_at: string }>> {
+    throw new Error(
+      "listVaultItemTimestamps requires select(); use SqlVaultIndexStore instead",
+    );
+  }
+
   async searchItemIds(
     _vaultId: string,
     _ftsQuery: string,
@@ -265,6 +271,16 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
       [vaultId],
     );
     return rows.map((row) => row.id);
+  }
+
+  override async listVaultItemTimestamps(
+    vaultId: string,
+  ): Promise<Array<{ id: string; updated_at: string }>> {
+    const rows = await this.selector.select<{ id: string; updated_at: string }>(
+      "SELECT id, updated_at FROM items WHERE vault_id = ?",
+      [vaultId],
+    );
+    return rows;
   }
 
   override async searchItemIds(

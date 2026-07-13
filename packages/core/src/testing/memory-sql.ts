@@ -111,6 +111,13 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       return rows.map((row) => ({ id: row.id })) as T[];
     }
 
+    if (normalized.startsWith("SELECT id, updated_at FROM items WHERE vault_id = ?")) {
+      const vaultId = bindValues[0];
+      const table = this.tables.get("items") ?? new Map();
+      const rows = [...table.values()].filter((row) => row.vault_id === vaultId);
+      return rows.map((row) => ({ id: row.id, updated_at: row.updated_at })) as T[];
+    }
+
     if (
       normalized.startsWith(
         "SELECT folder_path, COUNT(*) AS item_count FROM items WHERE vault_id = ?",

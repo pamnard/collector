@@ -117,12 +117,30 @@ export async function syncIndexFromFilesystem(
   }
 
   const diskItemIds = new Set(await ctx.fs.readDir(itemsDir));
-  const indexedIds = new Set(await ctx.index.listVaultItemIds(vaultId));
+  const indexedItems = await ctx.index.listVaultItemTimestamps(vaultId);
+  const indexTimestamps = new Map<string, string>();
+  const indexedIds = new Set<string>();
 
+  for (const item of indexedItems) {
+    indexTimestamps.set(item.id, item.updated_at);
+    indexedIds.add(item.id);
+  }
+
+  // Считываем и обновляем файлы по одному (но только если изменились или новые!)
   for (const itemId of diskItemIds) {
     const itemPath = itemRoot(vaultPath, itemId);
     try {
+      // Чтобы не читать JSONы, если они уже проиндексированы,
+      // мы можем прочитать только файл item.json (самый маленький),
+      // сравнить updated_at с тем, что в базе.
       const item = await readItemFile(ctx.fs, itemPath);
+      const dbUpdatedAt = indexTimestamps.get(itemId);
+
+      if (dbUpdatedAt === item.updated_at) {
+        // Файл не изменился и уже есть в базе, пропускаем!
+        continue;
+      }
+
       const content = await readItemContent(ctx.fs, itemPath);
       const sourceRef = await readItemSourceRef(ctx.fs, itemPath);
       await ctx.index.upsertItem({ item, content, sourceRef }, vaultId);

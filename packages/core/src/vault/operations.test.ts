@@ -196,6 +196,9 @@ describe("vault operations", () => {
       },
     });
 
+    // Удаляем из индекса, чтобы проверить восстановление индекса из файлов на диске
+    await ctx.index.deleteItem(itemId);
+
     const report = await syncIndexFromFilesystem(ctx, path, meta.id);
     expect(report.indexed).toBe(1);
     expect(report.errors).toHaveLength(0);
