@@ -23,6 +23,7 @@
     "@collector/core": "*",
     "@collector/db": "*",
     "@collector/shared": "*",
+    "@fontsource/golos-text": "^5.2.8",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-fs": "^2",
     "@tauri-apps/plugin-opener": "^2",

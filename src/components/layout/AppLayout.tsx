@@ -10,8 +10,8 @@ import {
 import { useViewMode } from "../../hooks/useViewMode";
 import type { NavFilter, ViewMode } from "../../types/ui";
 import { Header } from "./Header";
+import { MainScrollArea } from "./MainScrollArea";
 import { Sidebar } from "./Sidebar";
-import { DevMockBanner } from "../dev/DevMockBanner";
 
 interface ShellContextValue {
   viewMode: ViewMode;
@@ -65,7 +65,7 @@ export function AppLayout() {
         refreshVault: () => setVaultRevision((value) => value + 1),
       }}
     >
-      <div className="flex h-screen bg-main text-primary font-sans overflow-hidden transition-colors duration-200">
+      <div className="flex h-screen overflow-hidden bg-main font-sans text-primary transition-colors duration-200">
         <Sidebar
           isOpen={isSidebarOpen}
           onClose={() => setIsSidebarOpen(false)}
@@ -74,24 +74,19 @@ export function AppLayout() {
           vaultRevision={vaultRevision}
         />
 
-        <main className="flex-1 flex flex-col w-full overflow-hidden bg-main transition-colors duration-200 relative">
-          <Header
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            onOpenSidebar={() => setIsSidebarOpen(true)}
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
-            onAddClick={() => setIsCreateOpen(true)}
-            theme={theme}
-            onToggleTheme={toggleTheme}
-          />
-
-          <DevMockBanner />
+        <main className="relative flex min-h-0 flex-1 overflow-hidden bg-main transition-colors duration-200">
+          <MainScrollArea
+            contentInsetClass={startupUpdateVersion ? "pt-24" : "pt-16"}
+            gutterCoverClass={startupUpdateVersion ? "h-24" : "h-16"}
+            gutterInsetClass={startupUpdateVersion ? "top-24" : "top-16"}
+          >
+            <Outlet />
+          </MainScrollArea>
 
           {startupUpdateVersion && (
-            <div className="absolute top-16 left-0 right-0 z-30 flex items-center justify-between gap-3 border-b border-indigo-500/30 bg-indigo-500/10 px-4 py-2 text-sm">
+            <div className="pointer-events-none absolute top-16 left-0 right-[14px] z-30 flex items-center justify-between gap-3 border-b border-indigo-500/30 bg-indigo-500/10 px-4 py-2 text-sm">
               <span>Доступно обновление {startupUpdateVersion}.</span>
-              <div className="flex items-center gap-2">
+              <div className="pointer-events-auto flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => navigate("/settings")}
@@ -111,11 +106,16 @@ export function AppLayout() {
             </div>
           )}
 
-          <div
-            className={`flex-1 overflow-y-auto main-scrollbar ${startupUpdateVersion ? "pt-24" : "pt-16"}`}
-          >
-            <Outlet />
-          </div>
+          <Header
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            onOpenSidebar={() => setIsSidebarOpen(true)}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            onAddClick={() => setIsCreateOpen(true)}
+            theme={theme}
+            onToggleTheme={toggleTheme}
+          />
         </main>
       </div>
 

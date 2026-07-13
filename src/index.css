@@ -73,6 +73,14 @@ body {
   background-clip: content-box;
 }
 
+.scrollbar-none {
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
 /* Masonry grid (react-masonry-css) — matches collector.tools */
 .my-masonry-grid {
   display: flex;

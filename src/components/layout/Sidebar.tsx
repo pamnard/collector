@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Settings, X } from "lucide-react";
+import { Hash, Settings, X } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { TagWithCount } from "@collector/core";
 import { listTags } from "../../services/collector-service";
@@ -47,6 +47,10 @@ export function Sidebar({
     onClose();
   };
 
+  const isTagSelected = (tagId: string) =>
+    !isSettings &&
+    activeKey === navFilterKey({ type: "tag", tagId });
+
   return (
     <>
       {isOpen && (
@@ -59,11 +63,11 @@ export function Sidebar({
       )}
 
       <aside
-        className={`fixed md:static inset-y-0 left-0 z-50 w-72 bg-sidebar border-r border-border flex flex-col transition-transform duration-300 ease-in-out shrink-0 ${
+        className={`fixed md:static inset-y-0 left-0 z-50 w-72 bg-sidebar border-r border-border flex flex-col transition-all duration-300 ease-in-out shrink-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
       >
-        <div className="h-16 px-6 flex items-center justify-between border-b border-border shrink-0">
+        <div className="h-16 px-6 flex items-center justify-between border-b border-border shrink-0 box-border">
           <button
             type="button"
             onClick={() => goToDashboard("all")}
@@ -81,7 +85,7 @@ export function Sidebar({
           </button>
         </div>
 
-        <nav className="flex-1 px-4 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 px-4 space-y-6 overflow-y-auto custom-scrollbar">
           <SidebarMenu title="Коллекции">
             <SidebarCollections
               activeFilter={activeFilter}
@@ -93,26 +97,24 @@ export function Sidebar({
 
           {tags.length > 0 && (
             <SidebarMenu title="Теги">
-              <div className="flex flex-wrap gap-x-3 gap-y-2 px-1">
-                {tags.map((tag) => {
-                  const filter: NavFilter = { type: "tag", tagId: tag.id };
-                  const selected =
-                    !isSettings && activeKey === navFilterKey(filter);
-                  return (
-                    <button
-                      key={tag.id}
-                      type="button"
-                      onClick={() => goToDashboard(filter)}
-                      className={`text-sm transition-colors ${
-                        selected
-                          ? "text-primary"
-                          : "text-secondary hover:text-primary"
-                      }`}
-                    >
-                      # {tag.name}
-                    </button>
-                  );
-                })}
+              <div className="flex flex-wrap gap-2 px-2">
+                {tags.map((tag) => (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    onClick={() =>
+                      goToDashboard({ type: "tag", tagId: tag.id })
+                    }
+                    className={`flex items-center gap-1 text-sm transition-colors ${
+                      isTagSelected(tag.id)
+                        ? "text-indigo-600 dark:text-indigo-400"
+                        : "text-muted hover:text-primary"
+                    }`}
+                  >
+                    <Hash size={14} />
+                    <span className="truncate max-w-[150px]">{tag.name}</span>
+                  </button>
+                ))}
               </div>
             </SidebarMenu>
           )}
