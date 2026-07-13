@@ -10,6 +10,7 @@ import {
   writeAppSettings,
 } from "@collector/core";
 import { TauriFileSystemAdapter } from "../adapters/tauri-fs";
+import { isDevMock } from "../dev/is-dev-mock";
 
 const LEGACY_KEYS = {
   theme: "theme",
@@ -24,6 +25,7 @@ let configDir = "";
 let cache: AppSettings | null = null;
 const fs = new TauriFileSystemAdapter();
 const listeners = new Set<(settings: AppSettings) => void>();
+const DEV_MOCK_SETTINGS_KEY = "collector-dev-mock-settings";
 
 function notify(settings: AppSettings): void {
   for (const listener of listeners) {
@@ -60,7 +62,35 @@ function readLegacySettings(): Partial<AppSettings> {
   };
 }
 
+function readDevMockSettings(): AppSettings | null {
+  const raw = localStorage.getItem(DEV_MOCK_SETTINGS_KEY);
+  if (!raw) {
+    return null;
+  }
+  return mergeAppSettings(DEFAULT_APP_SETTINGS, JSON.parse(raw) as Partial<AppSettings>);
+}
+
+function writeDevMockSettings(settings: AppSettings): void {
+  localStorage.setItem(DEV_MOCK_SETTINGS_KEY, JSON.stringify(settings));
+}
+
 export async function ensureAppSettings(): Promise<AppSettings> {
+  if (isDevMock()) {
+    if (cache) {
+      return cache;
+    }
+
+    const stored = readDevMockSettings();
+    if (stored) {
+      cache = stored;
+      return cache;
+    }
+
+    cache = mergeAppSettings(createDefaultAppSettings(), readLegacySettings());
+    writeDevMockSettings(cache);
+    return cache;
+  }
+
   if (cache) {
     return cache;
   }
@@ -87,6 +117,13 @@ export async function updateAppSettings(
 ): Promise<AppSettings> {
   const current = await ensureAppSettings();
   cache = mergeAppSettings(current, patch);
+
+  if (isDevMock()) {
+    writeDevMockSettings(cache);
+    notify(cache);
+    return cache;
+  }
+
   await writeAppSettings(fs, await ensureConfigDir(), cache);
   notify(cache);
   return cache;

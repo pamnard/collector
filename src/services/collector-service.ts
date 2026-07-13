@@ -48,6 +48,8 @@ import {
 } from "./app-settings-service";
 import { generateCoverFromMedia } from "./thumbnail-service";
 import { listIndexDatabasePaths, getLegacyIndexDatabasePaths } from "./index-db-path";
+import { isDevMock } from "../dev/is-dev-mock";
+import * as devMockCollector from "../dev/mock-collector";
 
 let initialized = false;
 let initPromise: Promise<void> | null = null;
@@ -146,6 +148,9 @@ async function ensureHealthyDatabase(): Promise<void> {
 
 /** Open SQLite index and repair legacy schema before any UI queries. */
 export async function warmupCollector(): Promise<void> {
+  if (isDevMock()) {
+    return devMockCollector.warmupCollector();
+  }
   await ensureInitialized();
 }
 
@@ -291,6 +296,9 @@ export async function ensureActiveVault(): Promise<{
   vault: VaultMeta;
   path: string;
 }> {
+  if (isDevMock()) {
+    return devMockCollector.ensureActiveVault();
+  }
   return resolveActiveVault();
 }
 
@@ -336,6 +344,10 @@ export async function listDashboardItemIds(
   filter: NavFilter,
   query = "",
 ): Promise<string[]> {
+  if (isDevMock()) {
+    return devMockCollector.listDashboardItemIds(filter, query);
+  }
+
   const trimmedSearch = query.trim();
   const { vault, path } = await resolveActiveVault();
   await ensureVaultIndexSynced(vault.id, path);
@@ -362,6 +374,10 @@ export async function loadDashboardItems(
   offset: number,
   limit = DASHBOARD_BATCH_SIZE,
 ): Promise<ItemFile[]> {
+  if (isDevMock()) {
+    return devMockCollector.loadDashboardItems(itemIds, offset, limit);
+  }
+
   if (!itemIds.length || offset >= itemIds.length) {
     return [];
   }
@@ -440,6 +456,10 @@ export async function updateItem(
   itemId: string,
   input: UpdateItemInput,
 ): Promise<ItemFile> {
+  if (isDevMock()) {
+    return devMockCollector.updateItem(itemId, input);
+  }
+
   const { vault, path } = await resolveActiveVault();
   const { item: existing, content: existingContent } = await getItemById(itemId);
 
@@ -521,6 +541,10 @@ export async function setDefaultVault(vaultId: string): Promise<void> {
 }
 
 export async function listTags(): Promise<TagWithCount[]> {
+  if (isDevMock()) {
+    return devMockCollector.listTags();
+  }
+
   const { vault, path } = await resolveActiveVault();
   await ensureVaultIndexSynced(vault.id, path);
   return listTagsWithCounts(getContext(), vault.id, path);
@@ -551,6 +575,10 @@ export async function deleteTag(tagId: string): Promise<void> {
 }
 
 export async function listFolderTree(): Promise<FolderTreeNode[]> {
+  if (isDevMock()) {
+    return devMockCollector.listFolderTree();
+  }
+
   const { vault, path } = await resolveActiveVault();
   await ensureVaultIndexSynced(vault.id, path);
   return listFolderTreeOnVault(getContext(), path, vault.id);
@@ -619,17 +647,27 @@ async function syncItemCover(itemId: string): Promise<void> {
 }
 
 export async function resolveItemThumbnailPath(item: ItemFile): Promise<string | null> {
-  if (!item.thumbnail) {
-    return null;
+  if (isDevMock()) {
+    return devMockCollector.resolveItemThumbnailPath(item);
   }
 
   const { path } = await resolveActiveVault();
-  const absolute = resolveItemThumbnailAbsolutePath(path, item.id, item.thumbnail);
-  if (!absolute || !(await fs.exists(absolute))) {
-    return null;
+  const ctx = getContext();
+
+  if (item.thumbnail) {
+    const absolute = resolveItemThumbnailAbsolutePath(path, item.id, item.thumbnail);
+    if (absolute && (await fs.exists(absolute))) {
+      return absolute;
+    }
   }
 
-  return absolute;
+  const media = await listItemMediaWithPaths(ctx, path, item.id);
+  const image = media.find((file) => file.media_type === "image");
+  if (image && (await fs.exists(image.absolute_path))) {
+    return image.absolute_path;
+  }
+
+  return null;
 }
 
 export async function setItemCoverFromMedia(

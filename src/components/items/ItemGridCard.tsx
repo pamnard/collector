@@ -21,6 +21,13 @@ interface ItemGridCardProps {
   onUpdated: () => void;
 }
 
+function toCoverDisplaySrc(pathOrUrl: string): string {
+  if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
+    return pathOrUrl;
+  }
+  return convertFileSrc(pathOrUrl);
+}
+
 function iconForContentType(type: string) {
   switch (type) {
     case "image":
@@ -68,7 +75,7 @@ export function ItemGridCard({
       }
 
       if (thumbnailPath) {
-        setCoverSrc(convertFileSrc(thumbnailPath));
+        setCoverSrc(toCoverDisplaySrc(thumbnailPath));
         return;
       }
 

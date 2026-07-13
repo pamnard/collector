@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { Archive, Inbox, Settings, Star, Tag, X } from "lucide-react";
+import { Settings, X } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { TagWithCount } from "@collector/core";
 import { listTags } from "../../services/collector-service";
 import type { NavFilter } from "../../types/ui";
 import { navFilterKey } from "../../types/ui";
-import { FolderTree } from "../folders/FolderTree";
 import { Logo } from "./Logo";
+import { SidebarCollections } from "./SidebarCollections";
 import { SidebarMenu } from "./SidebarMenu";
 
 interface SidebarProps {
@@ -16,16 +16,6 @@ interface SidebarProps {
   onFilterSelect: (filter: NavFilter) => void;
   vaultRevision: number;
 }
-
-const navItems: Array<{
-  id: "all" | "favorite" | "archived";
-  label: string;
-  icon: typeof Inbox;
-}> = [
-  { id: "all", label: "Все", icon: Inbox },
-  { id: "favorite", label: "Избранное", icon: Star },
-  { id: "archived", label: "Архив", icon: Archive },
-];
 
 export function Sidebar({
   isOpen,
@@ -38,14 +28,13 @@ export function Sidebar({
   const { pathname } = useLocation();
   const isSettings = pathname === "/settings";
   const [tags, setTags] = useState<TagWithCount[]>([]);
+  const activeKey = navFilterKey(activeFilter);
 
   useEffect(() => {
     listTags()
       .then(setTags)
       .catch(() => setTags([]));
   }, [vaultRevision]);
-
-  const activeKey = navFilterKey(activeFilter);
 
   const goToDashboard = (filter: NavFilter) => {
     onFilterSelect(filter);
@@ -93,29 +82,18 @@ export function Sidebar({
         </div>
 
         <nav className="flex-1 px-4 overflow-y-auto custom-scrollbar">
-          <SidebarMenu title="Обзор">
-            <div className="space-y-1">
-              {navItems.map(({ id, label, icon: Icon }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => goToDashboard(id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                    !isSettings && activeKey === id
-                      ? "bg-indigo-50 dark:bg-indigo-600/10 text-indigo-600 dark:text-indigo-400"
-                      : "text-secondary hover:bg-input hover:text-primary"
-                  }`}
-                >
-                  <Icon size={18} />
-                  <span>{label}</span>
-                </button>
-              ))}
-            </div>
+          <SidebarMenu title="Коллекции">
+            <SidebarCollections
+              activeFilter={activeFilter}
+              isSettings={isSettings}
+              onSelect={goToDashboard}
+              vaultRevision={vaultRevision}
+            />
           </SidebarMenu>
 
           {tags.length > 0 && (
             <SidebarMenu title="Теги">
-              <div className="space-y-1">
+              <div className="flex flex-wrap gap-x-3 gap-y-2 px-1">
                 {tags.map((tag) => {
                   const filter: NavFilter = { type: "tag", tagId: tag.id };
                   const selected =
@@ -125,33 +103,19 @@ export function Sidebar({
                       key={tag.id}
                       type="button"
                       onClick={() => goToDashboard(filter)}
-                      className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg transition-colors ${
+                      className={`text-sm transition-colors ${
                         selected
-                          ? "bg-indigo-50 dark:bg-indigo-600/10 text-indigo-600 dark:text-indigo-400"
-                          : "text-secondary hover:bg-input hover:text-primary"
+                          ? "text-primary"
+                          : "text-secondary hover:text-primary"
                       }`}
                     >
-                      <span className="inline-flex items-center gap-2 min-w-0">
-                        <Tag size={16} className="shrink-0" />
-                        <span className="truncate">{tag.name}</span>
-                      </span>
-                      <span className="text-xs text-muted">{tag.item_count}</span>
+                      # {tag.name}
                     </button>
                   );
                 })}
               </div>
             </SidebarMenu>
           )}
-
-          <SidebarMenu title="Папки">
-            <FolderTree
-              activeFilter={activeFilter}
-              onFilterSelect={onFilterSelect}
-              vaultRevision={vaultRevision}
-              isSettings={isSettings}
-              onNavigate={onClose}
-            />
-          </SidebarMenu>
         </nav>
 
         <div className="p-4 border-t border-border">
