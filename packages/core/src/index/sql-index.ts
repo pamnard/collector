@@ -63,8 +63,8 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
       `INSERT INTO items (
         id, vault_id, title, description, url, content_type, source_type, source_id,
         metadata_json, thumbnail_path, is_archived, is_favorite, has_content_file,
-        folder_path, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        folder_path, created_at, updated_at, file_mtime_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         vault_id = excluded.vault_id,
         title = excluded.title,
@@ -79,7 +79,8 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
         is_favorite = excluded.is_favorite,
         has_content_file = excluded.has_content_file,
         folder_path = excluded.folder_path,
-        updated_at = excluded.updated_at`,
+        updated_at = excluded.updated_at,
+        file_mtime_ms = excluded.file_mtime_ms`,
       [
         item.id,
         vaultId,
@@ -97,6 +98,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
         item.folder_path ?? "",
         item.created_at,
         item.updated_at,
+        record.fileMtimeMs ?? 0,
       ],
     );
 
@@ -234,7 +236,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     );
   }
 
-  async listVaultItemTimestamps(_vaultId: string): Promise<Array<{ id: string; updated_at: string }>> {
+  async listVaultItemTimestamps(_vaultId: string): Promise<Array<{ id: string; file_mtime_ms: number }>> {
     throw new Error(
       "listVaultItemTimestamps requires select(); use SqlVaultIndexStore instead",
     );
@@ -275,9 +277,9 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
 
   override async listVaultItemTimestamps(
     vaultId: string,
-  ): Promise<Array<{ id: string; updated_at: string }>> {
-    const rows = await this.selector.select<{ id: string; updated_at: string }>(
-      "SELECT id, updated_at FROM items WHERE vault_id = ?",
+  ): Promise<Array<{ id: string; file_mtime_ms: number }>> {
+    const rows = await this.selector.select<{ id: string; file_mtime_ms: number }>(
+      "SELECT id, file_mtime_ms FROM items WHERE vault_id = ?",
       [vaultId],
     );
     return rows;

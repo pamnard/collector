@@ -29,4 +29,5 @@ export const ITEMS_COLUMNS = [
   "folder_path",
   "created_at",
   "updated_at",
+  "file_mtime_ms",
 ] as const;

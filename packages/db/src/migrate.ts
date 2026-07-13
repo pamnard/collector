@@ -1,11 +1,15 @@
 import { MIGRATION_001 } from "./migrations/001_initial.js";
+import { MIGRATION_002 } from "./migrations/002_add_mtime.js";
 
 export interface Migration {
   version: number;
   sql: string;
 }
 
-export const MIGRATIONS: Migration[] = [{ version: 1, sql: MIGRATION_001 }];
+export const MIGRATIONS: Migration[] = [
+  { version: 1, sql: MIGRATION_001 },
+  { version: 2, sql: MIGRATION_002 }
+];
 
 export const CURRENT_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1]!.version;
 

@@ -1,4 +1,4 @@
-import { access, constants, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { access, constants, mkdir, readFile, readdir, rm, writeFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { FileSystemAdapter } from "./types.js";
 
@@ -39,6 +39,15 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
 
   async readDir(path: string): Promise<string[]> {
     return readdir(path);
+  }
+
+  async stat(path: string): Promise<{ mtimeMs: number | null }> {
+    try {
+      const stats = await stat(path);
+      return { mtimeMs: stats.mtimeMs };
+    } catch {
+      return { mtimeMs: null };
+    }
   }
 
   async remove(path: string, options?: { recursive?: boolean }): Promise<void> {

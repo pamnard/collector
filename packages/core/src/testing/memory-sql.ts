@@ -111,11 +111,11 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       return rows.map((row) => ({ id: row.id })) as T[];
     }
 
-    if (normalized.startsWith("SELECT id, updated_at FROM items WHERE vault_id = ?")) {
+    if (normalized.startsWith("SELECT id, file_mtime_ms FROM items WHERE vault_id = ?")) {
       const vaultId = bindValues[0];
       const table = this.tables.get("items") ?? new Map();
       const rows = [...table.values()].filter((row) => row.vault_id === vaultId);
-      return rows.map((row) => ({ id: row.id, updated_at: row.updated_at })) as T[];
+      return rows.map((row) => ({ id: row.id, file_mtime_ms: row.file_mtime_ms ?? 0 })) as T[];
     }
 
     if (
@@ -189,6 +189,7 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       folder_path: bindValues[13],
       created_at: bindValues[14],
       updated_at: bindValues[15],
+      file_mtime_ms: bindValues[16],
     });
     return 1;
   }

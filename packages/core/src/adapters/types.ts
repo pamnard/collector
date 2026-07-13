@@ -9,6 +9,7 @@ export interface FileSystemAdapter {
   writeBinary(path: string, content: Uint8Array): Promise<void>;
   mkdir(path: string): Promise<void>;
   readDir(path: string): Promise<string[]>;
+  stat(path: string): Promise<{ mtimeMs: number | null }>;
   remove(path: string, options?: { recursive?: boolean }): Promise<void>;
   join(...parts: string[]): string;
 }
@@ -17,6 +18,7 @@ export interface IndexedItem {
   item: ItemFile;
   content: string | null;
   sourceRef: SourceRef | null;
+  fileMtimeMs?: number;
 }
 
 export interface VaultIndexAdapter {
@@ -39,7 +41,7 @@ export interface VaultIndexAdapter {
     vaultId: string,
   ): Promise<Array<{ folder_path: string; item_count: number }>>;
   listVaultItemIds(vaultId: string): Promise<string[]>;
-  listVaultItemTimestamps(vaultId: string): Promise<Array<{ id: string; updated_at: string }>>;
+  listVaultItemTimestamps(vaultId: string): Promise<Array<{ id: string; file_mtime_ms: number }>>;
   searchItemIds(
     vaultId: string,
     ftsQuery: string,

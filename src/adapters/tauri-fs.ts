@@ -47,6 +47,19 @@ export class TauriFileSystemAdapter implements FileSystemAdapter {
     return entries.map((entry) => entry.name);
   }
 
+  async stat(path: string): Promise<{ mtimeMs: number | null }> {
+    try {
+      const fileInfo = await import("@tauri-apps/plugin-fs").then((m) =>
+        m.stat(path)
+      );
+      return {
+        mtimeMs: fileInfo.mtime ? fileInfo.mtime.getTime() : null,
+      };
+    } catch {
+      return { mtimeMs: null };
+    }
+  }
+
   async remove(path: string, options?: { recursive?: boolean }): Promise<void> {
     await remove(path, { recursive: options?.recursive ?? false });
   }

@@ -23,14 +23,14 @@ describe("runMigrations", () => {
     }
   });
 
-  it("applies the single schema migration on a fresh database", async () => {
+  it("applies schema migrations on a fresh database", async () => {
     tempDir = mkdtempSync(join(tmpdir(), "collector-db-"));
     dbPath = join(tempDir, "collector.db");
     const db = BetterSqliteMigrator.open(dbPath);
 
     const applied = await runMigrations(db);
-    expect(applied).toEqual([1]);
-    expect(CURRENT_SCHEMA_VERSION).toBe(1);
+    expect(applied).toEqual([1, 2]);
+    expect(CURRENT_SCHEMA_VERSION).toBe(2);
 
     const columns = await db.select<{ name: string }>("PRAGMA table_info(items)");
     for (const column of ITEMS_COLUMNS) {
