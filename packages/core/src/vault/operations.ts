@@ -18,6 +18,7 @@ import {
 } from "./item-io.js";
 import { writeTagsFile } from "./tag-io.js";
 import { writeFoldersFile } from "./folder-io.js";
+import { DISK_ITEM_READ_CONCURRENCY } from "../util/concurrency.js";
 import {
   itemMediaRoot,
   itemRoot,
@@ -164,20 +165,90 @@ export async function listItemsOnDisk(
   return items;
 }
 
+export interface StreamedItemRead {
+  index: number;
+  itemId: string;
+  item: ItemFile | null;
+}
+
+export interface StreamItemsByIdsOptions {
+  concurrency?: number;
+  onItem: (result: StreamedItemRead) => void;
+  signal?: AbortSignal;
+}
+
+async function readItemFromDisk(
+  ctx: VaultContext,
+  vaultPath: string,
+  itemId: string,
+): Promise<ItemFile | null> {
+  const itemPath = itemRoot(vaultPath, itemId);
+  if (!(await ctx.fs.exists(itemPath))) {
+    return null;
+  }
+  return readItemFile(ctx.fs, itemPath);
+}
+
+/** Read item.json files in parallel; invokes onItem as each read finishes. */
+export async function streamItemsByIds(
+  ctx: VaultContext,
+  vaultPath: string,
+  itemIds: string[],
+  options: StreamItemsByIdsOptions,
+): Promise<void> {
+  if (!itemIds.length) {
+    return;
+  }
+
+  const { concurrency, onItem, signal } = options;
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    while (true) {
+      if (signal?.aborted) {
+        return;
+      }
+
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= itemIds.length) {
+        return;
+      }
+
+      const itemId = itemIds[index]!;
+      const item = await readItemFromDisk(ctx, vaultPath, itemId);
+      if (signal?.aborted) {
+        return;
+      }
+
+      onItem({ index, itemId, item });
+    }
+  }
+
+  const workerCount = Math.min(
+    concurrency ?? DISK_ITEM_READ_CONCURRENCY,
+    itemIds.length,
+  );
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+}
+
 export async function listItemsByIds(
   ctx: VaultContext,
   vaultPath: string,
   itemIds: string[],
 ): Promise<ItemFile[]> {
+  const slots: Array<ItemFile | null> = new Array(itemIds.length);
+  await streamItemsByIds(ctx, vaultPath, itemIds, {
+    onItem: ({ index, item }) => {
+      slots[index] = item;
+    },
+  });
+
   const items: ItemFile[] = [];
-
-  for (const itemId of itemIds) {
-    const itemPath = itemRoot(vaultPath, itemId);
-    if (!(await ctx.fs.exists(itemPath))) {
-      continue;
+  for (const item of slots) {
+    if (item) {
+      items.push(item);
     }
-    items.push(await readItemFile(ctx.fs, itemPath));
   }
-
   return items;
 }

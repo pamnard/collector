@@ -68,6 +68,31 @@ export async function listDashboardItemIds(
     .map((item) => item.id);
 }
 
+export async function streamDashboardItems(
+  itemIds: string[],
+  offset: number,
+  limit: number,
+  onItem: (item: ItemFile) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  ensureWarmedUp();
+  if (!itemIds.length || offset >= itemIds.length || limit <= 0) {
+    return;
+  }
+
+  const batchIds = itemIds.slice(offset, offset + limit);
+  const byId = new Map(mockStore.getItems().map((item) => [item.id, item]));
+  for (const id of batchIds) {
+    if (signal?.aborted) {
+      return;
+    }
+    const item = byId.get(id);
+    if (item) {
+      onItem(item);
+    }
+  }
+}
+
 export async function loadDashboardItems(
   itemIds: string[],
   offset: number,

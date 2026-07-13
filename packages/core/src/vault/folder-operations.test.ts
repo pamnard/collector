@@ -1,0 +1,101 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
+import { createId } from "../util/ids.js";
+import { SqlVaultIndexStore } from "../index/sql-index.js";
+import { createVault, upsertItem } from "../vault/operations.js";
+import {
+  createFolder,
+  listFolderTreeFromIndex,
+  reconcileFolderTreeFromDisk,
+} from "../vault/folder-operations.js";
+import { MemorySqlAdapter } from "../testing/memory-sql.js";
+
+describe("folder operations", () => {
+  let dataDir = "";
+  const fs = new NodeFileSystemAdapter();
+
+  afterEach(async () => {
+    if (dataDir) {
+      await rm(dataDir, { recursive: true, force: true });
+      dataDir = "";
+    }
+  });
+
+  it("listFolderTreeFromIndex skips item disk scan", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-folder-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    await createFolder(ctx, path, "Work/Articles");
+    const itemId = createId();
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        is_archived: false,
+        is_favorite: false,
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "Work/Articles",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    });
+
+    const indexTree = await listFolderTreeFromIndex(ctx, path, meta.id);
+    expect(indexTree).toHaveLength(1);
+    expect(indexTree[0]?.path).toBe("Work");
+    expect(indexTree[0]?.item_count).toBe(1);
+
+    const mergedTree = await reconcileFolderTreeFromDisk(ctx, path, meta.id);
+    expect(mergedTree[0]?.path).toBe("Work");
+    expect(mergedTree[0]?.item_count).toBe(1);
+  });
+
+  it("reconcileFolderTreeFromDisk includes folder paths only on disk", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-folder-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    const itemId = createId();
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Dropped",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        is_archived: false,
+        is_favorite: false,
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "Imports/Drop",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    });
+    await ctx.index.deleteItem(itemId);
+
+    const indexTree = await listFolderTreeFromIndex(ctx, path, meta.id);
+    expect(indexTree).toHaveLength(0);
+
+    const mergedTree = await reconcileFolderTreeFromDisk(ctx, path, meta.id);
+    expect(mergedTree).toHaveLength(1);
+    expect(mergedTree[0]?.path).toBe("Imports");
+    expect(
+      mergedTree[0]?.children.some((child) => child.path === "Imports/Drop"),
+    ).toBe(true);
+  });
+});

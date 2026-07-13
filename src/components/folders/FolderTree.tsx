@@ -5,6 +5,7 @@ import {
   createFolder,
   listFolderTree,
 } from "../../services/collector-service";
+import { useFolderTree } from "../../hooks/useFolderTree";
 import type { NavFilter } from "../../types/ui";
 import { navFilterKey } from "../../types/ui";
 
@@ -89,16 +90,15 @@ export function FolderTree({
   isSettings,
   onNavigate,
 }: FolderTreeProps) {
+  const indexTree = useFolderTree(vaultRevision);
   const [tree, setTree] = useState<FolderTreeNode[]>([]);
   const [newFolder, setNewFolder] = useState("");
   const [error, setError] = useState<string | null>(null);
   const activeKey = navFilterKey(activeFilter);
 
   useEffect(() => {
-    listFolderTree()
-      .then(setTree)
-      .catch(() => setTree([]));
-  }, [vaultRevision]);
+    setTree(indexTree);
+  }, [indexTree]);
 
   const handleSelect = (filter: NavFilter) => {
     onFilterSelect(filter);

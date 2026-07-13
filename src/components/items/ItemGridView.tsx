@@ -5,6 +5,7 @@ import type { TagWithCount } from "@collector/core";
 import { ItemGridCard } from "./ItemGridCard";
 import { MASONRY_BREAKPOINTS } from "./masonry-breakpoints";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
+import { useShell } from "../layout/AppLayout";
 import { listTags } from "../../services/collector-service";
 import type { useDashboardItems } from "../../hooks/useDashboardItems";
 
@@ -15,6 +16,7 @@ interface ItemGridViewProps {
 
 export function ItemGridView({ dashboard, onUpdated }: ItemGridViewProps) {
   const navigate = useNavigate();
+  const { vaultRevision } = useShell();
   const [tags, setTags] = useState<TagWithCount[]>([]);
   const sentinelRef = useInfiniteScroll({
     enabled: true,
@@ -25,14 +27,14 @@ export function ItemGridView({ dashboard, onUpdated }: ItemGridViewProps) {
 
   useEffect(() => {
     void listTags().then(setTags);
-  }, [dashboard.totalCount]);
+  }, [vaultRevision]);
 
   const tagsById = useMemo(
     () => new Map(tags.map((tag) => [tag.id, tag])),
     [tags],
   );
 
-  if (dashboard.isLoading && dashboard.items.length === 0) {
+  if (dashboard.isLoading) {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-indigo-500" />

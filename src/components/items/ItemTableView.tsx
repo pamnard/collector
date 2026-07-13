@@ -4,6 +4,7 @@ import type { TagWithCount } from "@collector/core";
 import { ItemRowActions } from "./ItemRowActions";
 import { ItemTagBadges } from "./ItemTagBadges";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
+import { useShell } from "../layout/AppLayout";
 import { listTags } from "../../services/collector-service";
 import type { useDashboardItems } from "../../hooks/useDashboardItems";
 import { formatItemDate } from "../../utils/formatItemDate";
@@ -15,6 +16,7 @@ interface ItemTableViewProps {
 
 export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
   const navigate = useNavigate();
+  const { vaultRevision } = useShell();
   const [tags, setTags] = useState<TagWithCount[]>([]);
   const sentinelRef = useInfiniteScroll({
     enabled: true,
@@ -25,7 +27,7 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
 
   useEffect(() => {
     void listTags().then(setTags);
-  }, [dashboard.totalCount]);
+  }, [vaultRevision]);
 
   const tagsById = useMemo(
     () => new Map(tags.map((tag) => [tag.id, tag])),

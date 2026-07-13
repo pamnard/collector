@@ -111,6 +111,27 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       return rows.map((row) => ({ id: row.id })) as T[];
     }
 
+    if (
+      normalized.startsWith(
+        "SELECT folder_path, COUNT(*) AS item_count FROM items WHERE vault_id = ?",
+      )
+    ) {
+      const vaultId = bindValues[0];
+      const table = this.tables.get("items") ?? new Map();
+      const counts = new Map<string, number>();
+      for (const row of table.values()) {
+        if (row.vault_id !== vaultId || row.is_archived === 1) {
+          continue;
+        }
+        const folderPath = String(row.folder_path ?? "");
+        counts.set(folderPath, (counts.get(folderPath) ?? 0) + 1);
+      }
+      return [...counts.entries()].map(([folder_path, item_count]) => ({
+        folder_path,
+        item_count,
+      })) as T[];
+    }
+
     throw new Error(`Unsupported select in MemorySqlAdapter: ${normalized.slice(0, 80)}`);
   }
 
@@ -158,8 +179,9 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       is_archived: bindValues[10],
       is_favorite: bindValues[11],
       has_content_file: bindValues[12],
-      created_at: bindValues[13],
-      updated_at: bindValues[14],
+      folder_path: bindValues[13],
+      created_at: bindValues[14],
+      updated_at: bindValues[15],
     });
     return 1;
   }

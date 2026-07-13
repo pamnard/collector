@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { listFolderTree } from "../../services/collector-service";
+import { useMemo } from "react";
+import { useShell } from "../layout/AppLayout";
+import { useFolderTree } from "../../hooks/useFolderTree";
 
 interface FolderPickerProps {
   value: string;
@@ -7,23 +8,19 @@ interface FolderPickerProps {
 }
 
 export function FolderPicker({ value, onChange }: FolderPickerProps) {
-  const [paths, setPaths] = useState<string[]>([]);
-
-  useEffect(() => {
-    listFolderTree()
-      .then((tree) => {
-        const collected: string[] = [];
-        const walk = (nodes: typeof tree) => {
-          for (const node of nodes) {
-            collected.push(node.path);
-            walk(node.children);
-          }
-        };
-        walk(tree);
-        setPaths(collected.sort((a, b) => a.localeCompare(b)));
-      })
-      .catch(() => setPaths([]));
-  }, []);
+  const { vaultRevision } = useShell();
+  const tree = useFolderTree(vaultRevision);
+  const paths = useMemo(() => {
+    const collected: string[] = [];
+    const walk = (nodes: typeof tree) => {
+      for (const node of nodes) {
+        collected.push(node.path);
+        walk(node.children);
+      }
+    };
+    walk(tree);
+    return collected.sort((a, b) => a.localeCompare(b));
+  }, [tree]);
 
   return (
     <label className="block">

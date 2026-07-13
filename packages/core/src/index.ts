@@ -39,9 +39,13 @@ export {
   deleteItem,
   listItemsByIds,
   listItemsOnDisk,
+  streamItemsByIds,
   syncIndexFromFilesystem,
   upsertItem,
 } from "./vault/operations.js";
+export type { StreamedItemRead, StreamItemsByIdsOptions } from "./vault/operations.js";
+
+export { DISK_ITEM_READ_CONCURRENCY } from "./util/concurrency.js";
 
 export { syncVaultIndexFromFilesystem } from "./vault/index-sync.js";
 export type { VaultIndexSyncReport } from "./vault/index-sync.js";
@@ -54,6 +58,13 @@ export {
   createFolder,
   deleteFolder,
   listFolderTree,
+  listFolderTreeFromIndex,
+  reconcileFolderTreeFromDisk,
+  buildFolderTreeFromSources,
+  collectItemFolderPaths,
+  mergeFolderCountRows,
+  publishFolderTreeFromLayers,
+  readVaultFolderPaths,
   moveItemToFolder,
   renameFolder,
 } from "./vault/folder-operations.js";

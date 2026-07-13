@@ -7,12 +7,14 @@ import {
   buildFtsMatchQuery,
   createVault,
   deleteItem as deleteItemOnDisk,
+  DISK_ITEM_READ_CONCURRENCY,
   itemRoot,
   listItemsByIds,
   listItemsOnDisk,
   migrateVaultSchema,
   readItemContent,
   readItemFile,
+  streamItemsByIds,
   syncVaultIndexFromFilesystem,
   upsertItem,
   vaultMetaPath,
@@ -25,7 +27,10 @@ import {
   updateTag as updateTagOnVault,
   createFolder as createFolderOnVault,
   deleteFolder as deleteFolderOnVault,
-  listFolderTree as listFolderTreeOnVault,
+  collectItemFolderPaths,
+  publishFolderTreeFromLayers,
+  readVaultFolderPaths,
+  itemsRoot,
   moveItemToFolder,
   renameFolder as renameFolderOnVault,
   attachMediaFile,
@@ -57,6 +62,7 @@ let dataDir = "";
 let sql: TauriSqlAdapter | null = null;
 let activeVault: { meta: VaultMeta; path: string } | null = null;
 const syncedVaultIds = new Set<string>();
+const vaultSyncPromises = new Map<string, Promise<void>>();
 const fs = new TauriFileSystemAdapter();
 
 type VaultEntry = { meta: VaultMeta; path: string };
@@ -109,6 +115,7 @@ async function rebuildIndexDatabase(): Promise<void> {
 
   sql = null;
   syncedVaultIds.clear();
+  vaultSyncPromises.clear();
   activeVault = null;
 
   await removeIndexDatabaseFiles();
@@ -192,21 +199,37 @@ function getContext() {
   return { fs, index: getIndex() };
 }
 
+function startVaultIndexSync(vaultId: string, vaultPath: string): Promise<void> {
+  if (syncedVaultIds.has(vaultId)) {
+    return Promise.resolve();
+  }
+
+  const inflight = vaultSyncPromises.get(vaultId);
+  if (inflight) {
+    return inflight;
+  }
+
+  const promise = (async () => {
+    const report = await syncVaultIndexFromFilesystem(getContext(), vaultPath);
+    if (report.vaultId !== vaultId) {
+      throw new Error(
+        `Vault id mismatch during index sync: expected ${vaultId}, got ${report.vaultId}`,
+      );
+    }
+    syncedVaultIds.add(vaultId);
+  })().finally(() => {
+    vaultSyncPromises.delete(vaultId);
+  });
+
+  vaultSyncPromises.set(vaultId, promise);
+  return promise;
+}
+
 async function ensureVaultIndexSynced(
   vaultId: string,
   vaultPath: string,
 ): Promise<void> {
-  if (syncedVaultIds.has(vaultId)) {
-    return;
-  }
-
-  const report = await syncVaultIndexFromFilesystem(getContext(), vaultPath);
-  if (report.vaultId !== vaultId) {
-    throw new Error(
-      `Vault id mismatch during index sync: expected ${vaultId}, got ${report.vaultId}`,
-    );
-  }
-  syncedVaultIds.add(vaultId);
+  await startVaultIndexSync(vaultId, vaultPath);
 }
 
 function pickVaultEntry(
@@ -337,42 +360,190 @@ export async function searchItems(
   return listItemsByIds(getContext(), path, itemIds);
 }
 
-export const DASHBOARD_BATCH_SIZE = 60;
+export const DASHBOARD_PREFETCH_SIZE = 60;
+/** @deprecated Use DASHBOARD_PREFETCH_SIZE — window size, not a concurrency limit. */
+export const DASHBOARD_BATCH_SIZE = DASHBOARD_PREFETCH_SIZE;
 const DASHBOARD_SEARCH_LIMIT = 10_000;
 
-export async function listDashboardItemIds(
-  filter: NavFilter,
-  query = "",
-): Promise<string[]> {
-  if (isDevMock()) {
-    return devMockCollector.listDashboardItemIds(filter, query);
-  }
+export interface DashboardItemIdsResult {
+  itemIds: string[];
+  indexSync: Promise<void>;
+}
 
+function matchesDiskSearch(item: ItemFile, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+  return (
+    item.title.toLowerCase().includes(needle) ||
+    item.description.toLowerCase().includes(needle)
+  );
+}
+
+async function queryDashboardItemIds(
+  vaultId: string,
+  filter: NavFilter,
+  query: string,
+): Promise<string[]> {
   const trimmedSearch = query.trim();
-  const { vault, path } = await resolveActiveVault();
-  await ensureVaultIndexSynced(vault.id, path);
 
   if (!trimmedSearch) {
-    return getIndex().listItemIdsByNavFilter(vault.id, filter);
+    return getIndex().listItemIdsByNavFilter(vaultId, filter);
   }
 
   const ftsQuery = buildFtsMatchQuery(trimmedSearch);
   if (!ftsQuery) {
-    return getIndex().listItemIdsByNavFilter(vault.id, filter);
+    return getIndex().listItemIdsByNavFilter(vaultId, filter);
   }
 
   return getIndex().searchItemIds(
-    vault.id,
+    vaultId,
     ftsQuery,
     filter,
     DASHBOARD_SEARCH_LIMIT,
   );
 }
 
+export async function listDashboardItemIds(
+  filter: NavFilter,
+  query = "",
+): Promise<DashboardItemIdsResult> {
+  if (isDevMock()) {
+    const itemIds = await devMockCollector.listDashboardItemIds(filter, query);
+    return { itemIds, indexSync: Promise.resolve() };
+  }
+
+  const { vault, path } = await resolveActiveVault();
+  const indexSync = startVaultIndexSync(vault.id, path);
+  const itemIds = await queryDashboardItemIds(vault.id, filter, query);
+  return { itemIds, indexSync };
+}
+
+export function subscribeDashboardLoad(
+  filter: NavFilter,
+  query: string,
+  handlers: {
+    onIndexIds: (itemIds: string[]) => void;
+    onDiskItem: (item: ItemFile) => void;
+    onDiskComplete?: () => void;
+    onError?: (scope: string, error: unknown) => void;
+  },
+  signal?: AbortSignal,
+): void {
+  if (isDevMock()) {
+    void devMockCollector
+      .listDashboardItemIds(filter, query)
+      .then((itemIds) => {
+        handlers.onIndexIds(itemIds);
+        return devMockCollector.streamDashboardItems(
+          itemIds,
+          0,
+          itemIds.length,
+          handlers.onDiskItem,
+          signal,
+        );
+      })
+      .then(() => {
+        handlers.onDiskComplete?.();
+      })
+      .catch((error: unknown) => {
+        handlers.onError?.("dashboard load", error);
+      });
+    return;
+  }
+
+  void (async () => {
+    const { vault, path } = await resolveActiveVault();
+    if (signal?.aborted) {
+      return;
+    }
+
+    void startVaultIndexSync(vault.id, path);
+
+    void queryDashboardItemIds(vault.id, filter, query)
+      .then((itemIds) => {
+        if (signal?.aborted) {
+          return;
+        }
+        handlers.onIndexIds(itemIds);
+      })
+      .catch((error: unknown) => {
+        handlers.onError?.("dashboard index ids", error);
+        if (!signal?.aborted) {
+          handlers.onIndexIds([]);
+        }
+      });
+
+    const itemsDir = itemsRoot(path);
+    if (!(await fs.exists(itemsDir))) {
+      handlers.onDiskComplete?.();
+      return;
+    }
+
+    const allIds = await fs.readDir(itemsDir);
+    await streamItemsByIds(getContext(), path, allIds, {
+      concurrency: DISK_ITEM_READ_CONCURRENCY,
+      signal,
+      onItem: ({ item }) => {
+        if (!item) {
+          return;
+        }
+        if (!matchesNavFilter(item, filter)) {
+          return;
+        }
+        if (!matchesDiskSearch(item, query)) {
+          return;
+        }
+        handlers.onDiskItem(item);
+      },
+    });
+    handlers.onDiskComplete?.();
+  })().catch((error: unknown) => {
+    handlers.onError?.("dashboard disk load", error);
+  });
+}
+
+export async function streamDashboardItems(
+  itemIds: string[],
+  offset: number,
+  limit: number,
+  onItem: (item: ItemFile) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (isDevMock()) {
+    await devMockCollector.streamDashboardItems(
+      itemIds,
+      offset,
+      limit,
+      onItem,
+      signal,
+    );
+    return;
+  }
+
+  if (!itemIds.length || offset >= itemIds.length || limit <= 0) {
+    return;
+  }
+
+  const { path } = await resolveActiveVault();
+  const batchIds = itemIds.slice(offset, offset + limit);
+
+  await streamItemsByIds(getContext(), path, batchIds, {
+    concurrency: DISK_ITEM_READ_CONCURRENCY,
+    signal,
+    onItem: ({ item }) => {
+      if (item) {
+        onItem(item);
+      }
+    },
+  });
+}
+
 export async function loadDashboardItems(
   itemIds: string[],
   offset: number,
-  limit = DASHBOARD_BATCH_SIZE,
+  limit = DASHBOARD_PREFETCH_SIZE,
 ): Promise<ItemFile[]> {
   if (isDevMock()) {
     return devMockCollector.loadDashboardItems(itemIds, offset, limit);
@@ -382,9 +553,11 @@ export async function loadDashboardItems(
     return [];
   }
 
-  const { path } = await resolveActiveVault();
-  const batchIds = itemIds.slice(offset, offset + limit);
-  return listItemsByIds(getContext(), path, batchIds);
+  const items: ItemFile[] = [];
+  await streamDashboardItems(itemIds, offset, limit, (item) => {
+    items.push(item);
+  });
+  return items;
 }
 
 function matchesNavFilter(item: ItemFile, filter: NavFilter): boolean {
@@ -574,14 +747,112 @@ export async function deleteTag(tagId: string): Promise<void> {
   await deleteTagOnVault(getContext(), path, vault.id, tagId);
 }
 
+export function subscribeFolderTree(
+  onUpdate: (tree: FolderTreeNode[]) => void,
+  handlers?: {
+    onError?: (scope: string, error: unknown) => void;
+  },
+  signal?: AbortSignal,
+): void {
+  if (isDevMock()) {
+    void devMockCollector
+      .listFolderTree()
+      .then(onUpdate)
+      .catch((error: unknown) => {
+        handlers?.onError?.("folder tree", error);
+        onUpdate([]);
+      });
+    return;
+  }
+
+  void (async () => {
+    const { vault, path } = await resolveActiveVault();
+    if (signal?.aborted) {
+      return;
+    }
+
+    void startVaultIndexSync(vault.id, path);
+    const ctx = getContext();
+    const foldersFilePaths = await readVaultFolderPaths(ctx, path);
+
+    const layers = {
+      indexCountRows: null as Array<{
+        folder_path: string;
+        item_count: number;
+      }> | null,
+      diskFolderPaths: null as string[] | null,
+    };
+
+    const publish = () => {
+      if (signal?.aborted) {
+        return;
+      }
+      onUpdate(
+        publishFolderTreeFromLayers(
+          foldersFilePaths,
+          layers.indexCountRows,
+          layers.diskFolderPaths,
+        ),
+      );
+    };
+
+    void ctx.index
+      .listFolderItemCounts(vault.id)
+      .then((rows) => {
+        layers.indexCountRows = rows;
+        publish();
+      })
+      .catch((error: unknown) => {
+        handlers?.onError?.("folder tree index", error);
+        layers.indexCountRows = [];
+        publish();
+      });
+
+    void collectItemFolderPaths(ctx, path)
+      .then((paths) => {
+        layers.diskFolderPaths = paths;
+        publish();
+      })
+      .catch((error: unknown) => {
+        handlers?.onError?.("folder tree disk", error);
+        layers.diskFolderPaths = [];
+        publish();
+      });
+  })().catch((error: unknown) => {
+    handlers?.onError?.("folder tree", error);
+    if (!signal?.aborted) {
+      onUpdate([]);
+    }
+  });
+}
+
+export async function loadFolderTree(): Promise<FolderTreeNode[]> {
+  return listFolderTree();
+}
+
 export async function listFolderTree(): Promise<FolderTreeNode[]> {
   if (isDevMock()) {
     return devMockCollector.listFolderTree();
   }
 
   const { vault, path } = await resolveActiveVault();
-  await ensureVaultIndexSynced(vault.id, path);
-  return listFolderTreeOnVault(getContext(), path, vault.id);
+  const ctx = getContext();
+  const foldersFilePaths = await readVaultFolderPaths(ctx, path);
+  const [indexResult, diskResult] = await Promise.allSettled([
+    ctx.index.listFolderItemCounts(vault.id),
+    collectItemFolderPaths(ctx, path),
+  ]);
+
+  const indexCountRows =
+    indexResult.status === "fulfilled" ? indexResult.value : [];
+  const diskFolderPaths =
+    diskResult.status === "fulfilled" ? diskResult.value : [];
+
+  return publishFolderTreeFromLayers(
+    foldersFilePaths,
+    indexCountRows,
+    diskFolderPaths,
+  );
 }
 
 export async function createFolder(folderPath: string): Promise<string> {

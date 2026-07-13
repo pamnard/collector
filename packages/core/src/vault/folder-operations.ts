@@ -11,6 +11,7 @@ import {
 import { readFoldersFile, writeFoldersFile } from "./folder-io.js";
 import { itemRoot, itemsRoot } from "./paths.js";
 import { readItemContent, readItemFile, writeItemFile } from "./item-io.js";
+import { streamItemsByIds } from "./operations.js";
 
 function assertFolderPath(path: string): string {
   const normalized = normalizeFolderPath(path);
@@ -20,7 +21,8 @@ function assertFolderPath(path: string): string {
   return normalized;
 }
 
-async function collectItemFolderPaths(
+/** Folder paths from item.json on disk (parallel source for tree merge). */
+export async function collectItemFolderPaths(
   ctx: VaultContext,
   vaultPath: string,
 ): Promise<string[]> {
@@ -29,17 +31,103 @@ async function collectItemFolderPaths(
     return [];
   }
 
+  const itemIds = await ctx.fs.readDir(itemsDir);
   const paths: string[] = [];
-  for (const itemId of await ctx.fs.readDir(itemsDir)) {
-    const item = await readItemFile(ctx.fs, itemRoot(vaultPath, itemId));
-    if (item.folder_path) {
-      paths.push(item.folder_path);
-    }
-  }
+  await streamItemsByIds(ctx, vaultPath, itemIds, {
+    onItem: ({ item }) => {
+      if (item?.folder_path) {
+        paths.push(item.folder_path);
+      }
+    },
+  });
   return paths;
 }
 
-export async function listFolderTree(
+export function mergeFolderCountRows(
+  indexRows: Array<{ folder_path: string; item_count: number }> | null,
+  diskFolderPaths: string[] | null,
+): Array<{ folder_path: string; item_count: number }> {
+  const counts = new Map<string, number>();
+
+  if (indexRows) {
+    for (const row of indexRows) {
+      counts.set(row.folder_path, row.item_count);
+    }
+  }
+
+  if (diskFolderPaths) {
+    const diskCounts = new Map<string, number>();
+    for (const path of diskFolderPaths) {
+      diskCounts.set(path, (diskCounts.get(path) ?? 0) + 1);
+    }
+    if (!indexRows) {
+      return [...diskCounts.entries()].map(([folder_path, item_count]) => ({
+        folder_path,
+        item_count,
+      }));
+    }
+    for (const [path, count] of diskCounts) {
+      if (!counts.has(path)) {
+        counts.set(path, count);
+      }
+    }
+  }
+
+  return [...counts.entries()].map(([folder_path, item_count]) => ({
+    folder_path,
+    item_count,
+  }));
+}
+
+export function buildFolderTreeFromSources(
+  foldersFilePaths: string[],
+  countRows: Array<{ folder_path: string; item_count: number }>,
+  diskItemFolderPaths: string[] = [],
+): FolderTreeNode[] {
+  const counts = new Map(
+    countRows.map((row) => [row.folder_path, row.item_count]),
+  );
+  const allPaths = [
+    ...foldersFilePaths,
+    ...countRows.map((row) => row.folder_path),
+    ...diskItemFolderPaths,
+  ];
+  return buildFolderTree(allPaths, counts);
+}
+
+export async function readVaultFolderPaths(
+  ctx: VaultContext,
+  vaultPath: string,
+): Promise<string[]> {
+  const file = await readFoldersFile(ctx.fs, vaultPath);
+  return file.paths;
+}
+
+export function publishFolderTreeFromLayers(
+  foldersFilePaths: string[],
+  indexCountRows: Array<{ folder_path: string; item_count: number }> | null,
+  diskFolderPaths: string[] | null,
+): FolderTreeNode[] {
+  return buildFolderTreeFromSources(
+    foldersFilePaths,
+    mergeFolderCountRows(indexCountRows, diskFolderPaths),
+    diskFolderPaths ?? [],
+  );
+}
+
+/** SQLite counts + folders.json (no item disk scan). */
+export async function listFolderTreeFromIndex(
+  ctx: VaultContext,
+  vaultPath: string,
+  vaultId: string,
+): Promise<FolderTreeNode[]> {
+  const file = await readFoldersFile(ctx.fs, vaultPath);
+  const countRows = await ctx.index.listFolderItemCounts(vaultId);
+  return buildFolderTreeFromSources(file.paths, countRows);
+}
+
+/** Authoritative merge: union folder paths from disk item.json files. */
+export async function reconcileFolderTreeFromDisk(
   ctx: VaultContext,
   vaultPath: string,
   vaultId: string,
@@ -47,11 +135,15 @@ export async function listFolderTree(
   const file = await readFoldersFile(ctx.fs, vaultPath);
   const itemPaths = await collectItemFolderPaths(ctx, vaultPath);
   const countRows = await ctx.index.listFolderItemCounts(vaultId);
-  const counts = new Map(
-    countRows.map((row) => [row.folder_path, row.item_count]),
-  );
-  const allPaths = [...file.paths, ...itemPaths, ...countRows.map((row) => row.folder_path)];
-  return buildFolderTree(allPaths, counts);
+  return buildFolderTreeFromSources(file.paths, countRows, itemPaths);
+}
+
+export async function listFolderTree(
+  ctx: VaultContext,
+  vaultPath: string,
+  vaultId: string,
+): Promise<FolderTreeNode[]> {
+  return reconcileFolderTreeFromDisk(ctx, vaultPath, vaultId);
 }
 
 export async function createFolder(

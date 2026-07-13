@@ -8,7 +8,9 @@ import { SqlVaultIndexStore } from "../index/sql-index.js";
 import {
   createVault,
   deleteItem,
+  listItemsByIds,
   listItemsOnDisk,
+  streamItemsByIds,
   syncIndexFromFilesystem,
   upsertItem,
 } from "../vault/operations.js";
@@ -73,6 +75,97 @@ describe("vault operations", () => {
 
     await deleteItem(ctx, path, itemId);
     expect(await listItemsOnDisk(ctx, path)).toHaveLength(0);
+  });
+
+  it("listItemsByIds preserves order and skips missing items", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, {
+      name: "Vault",
+    });
+
+    const itemIds = [createId(), createId(), createId()];
+    const titles = ["Third", "First", "Second"];
+    for (const [index, itemId] of itemIds.entries()) {
+      await upsertItem(ctx, path, meta.id, {
+        item: {
+          id: itemId,
+          vault_id: meta.id,
+          title: titles[index]!,
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          is_archived: false,
+          is_favorite: false,
+          tag_ids: [],
+          collection_ids: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      });
+    }
+
+    const missingId = createId();
+    const loaded = await listItemsByIds(ctx, path, [
+      itemIds[2]!,
+      missingId,
+      itemIds[0]!,
+      itemIds[1]!,
+    ]);
+
+    expect(loaded.map((item) => item.id)).toEqual([
+      itemIds[2]!,
+      itemIds[0]!,
+      itemIds[1]!,
+    ]);
+    expect(loaded.map((item) => item.title)).toEqual([
+      titles[2]!,
+      titles[0]!,
+      titles[1]!,
+    ]);
+  });
+
+  it("streamItemsByIds invokes onItem for each id", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, {
+      name: "Vault",
+    });
+
+    const itemIds = [createId(), createId()];
+    for (const itemId of itemIds) {
+      await upsertItem(ctx, path, meta.id, {
+        item: {
+          id: itemId,
+          vault_id: meta.id,
+          title: `Item ${itemId.slice(0, 4)}`,
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          is_archived: false,
+          is_favorite: false,
+          tag_ids: [],
+          collection_ids: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      });
+    }
+
+    const seen = new Map<string, ItemFile>();
+    await streamItemsByIds(ctx, path, itemIds, {
+      onItem: ({ itemId, item }) => {
+        if (item) {
+          seen.set(itemId, item);
+        }
+      },
+    });
+
+    expect([...seen.keys()].sort()).toEqual([...itemIds].sort());
   });
 
   it("rebuilds index from filesystem", async () => {
