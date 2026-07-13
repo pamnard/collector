@@ -1,7 +1,7 @@
 {
   "name": "collector",
   "private": true,
-  "version": "0.1.8",
+  "version": "0.1.9",
   "type": "module",
   "workspaces": [
     "packages/*"
@@ -33,6 +33,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",
+    "react-masonry-css": "^1.0.16",
     "react-router-dom": "^7.18.1",
     "remark-gfm": "^4.0.1"
   },

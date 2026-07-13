@@ -22,7 +22,7 @@ export function DashboardPage() {
   }, [vaultRevision]);
 
   return (
-    <div className="p-4 md:p-8 max-w-5xl">
+    <div className="p-4 pb-20 md:p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold">{vaultName || "Vault"}</h1>
         <p className="text-secondary text-sm mt-1">

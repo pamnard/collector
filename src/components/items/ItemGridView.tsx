@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import Masonry from "react-masonry-css";
 import type { TagWithCount } from "@collector/core";
 import { ItemGridCard } from "./ItemGridCard";
+import { MASONRY_BREAKPOINTS } from "./masonry-breakpoints";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
 import { listTags } from "../../services/collector-service";
 import type { useDashboardItems } from "../../hooks/useDashboardItems";
@@ -30,23 +32,35 @@ export function ItemGridView({ dashboard, onUpdated }: ItemGridViewProps) {
     [tags],
   );
 
+  if (dashboard.isLoading && dashboard.items.length === 0) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-indigo-500" />
+      </div>
+    );
+  }
+
   return (
     <>
-      <ul className="grid gap-3 sm:grid-cols-2">
+      <Masonry
+        breakpointCols={MASONRY_BREAKPOINTS}
+        className="my-masonry-grid"
+        columnClassName="my-masonry-grid_column"
+      >
         {dashboard.items.map((item) => (
-          <li key={item.id}>
+          <div key={item.id}>
             <ItemGridCard
               item={item}
               tagsById={tagsById}
               onOpen={(itemId) => navigate(`/item/${itemId}`)}
               onUpdated={onUpdated}
             />
-          </li>
+          </div>
         ))}
-      </ul>
+      </Masonry>
 
       {dashboard.hasMore && (
-        <div ref={sentinelRef} className="py-6 text-center text-secondary text-sm">
+        <div ref={sentinelRef} className="py-8 text-center text-secondary text-sm">
           {dashboard.isLoadingMore ? "Загрузка…" : "Прокрутите для следующих элементов"}
         </div>
       )}
