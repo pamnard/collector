@@ -67,14 +67,16 @@ export function useDashboardItems(
       }
     }
 
-    for (const id of diskItemIds) {
-      if (seen.has(id)) {
-        continue;
-      }
-      const item = itemsById.get(id);
-      if (item) {
-        ordered.push(item);
-        seen.add(id);
+    if (streamEndOffset === 0 && diskItemIds.length > 0) {
+      for (const id of diskItemIds) {
+        if (seen.has(id)) {
+          continue;
+        }
+        const item = itemsById.get(id);
+        if (item) {
+          ordered.push(item);
+          seen.add(id);
+        }
       }
     }
 

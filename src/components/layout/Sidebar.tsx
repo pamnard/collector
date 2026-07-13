@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Hash, Settings, X } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { TagWithCount } from "@collector/core";
-import { listTags } from "../../services/collector-service";
+import { subscribeTags } from "../../services/collector-service";
 import type { NavFilter } from "../../types/ui";
 import { navFilterKey } from "../../types/ui";
 import { Logo } from "./Logo";
@@ -31,9 +31,11 @@ export function Sidebar({
   const activeKey = navFilterKey(activeFilter);
 
   useEffect(() => {
-    listTags()
-      .then(setTags)
-      .catch(() => setTags([]));
+    const controller = new AbortController();
+    subscribeTags(setTags, undefined, controller.signal);
+    return () => {
+      controller.abort();
+    };
   }, [vaultRevision]);
 
   const goToDashboard = (filter: NavFilter) => {

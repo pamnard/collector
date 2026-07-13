@@ -481,23 +481,33 @@ export function subscribeDashboardLoad(
       return;
     }
 
-    const allIds = await fs.readDir(itemsDir);
-    await streamItemsByIds(getContext(), path, allIds, {
-      concurrency: DISK_ITEM_READ_CONCURRENCY,
-      signal,
-      onItem: ({ item }) => {
-        if (!item) {
-          return;
-        }
-        if (!matchesNavFilter(item, filter)) {
-          return;
-        }
-        if (!matchesDiskSearch(item, query)) {
-          return;
-        }
-        handlers.onDiskItem(item);
-      },
-    });
+    const [allDiskIds, allDbIds] = await Promise.all([
+      fs.readDir(itemsDir),
+      getContext().index.listVaultItemIds(vault.id),
+    ]);
+
+    const dbIdSet = new Set(allDbIds);
+    const unindexedIds = allDiskIds.filter((id) => !dbIdSet.has(id));
+
+    if (unindexedIds.length > 0) {
+      await streamItemsByIds(getContext(), path, unindexedIds, {
+        concurrency: DISK_ITEM_READ_CONCURRENCY,
+        signal,
+        onItem: ({ item }) => {
+          if (!item) {
+            return;
+          }
+          if (!matchesNavFilter(item, filter)) {
+            return;
+          }
+          if (!matchesDiskSearch(item, query)) {
+            return;
+          }
+          handlers.onDiskItem(item);
+        },
+      });
+    }
+
     handlers.onDiskComplete?.();
   })().catch((error: unknown) => {
     handlers.onError?.("dashboard disk load", error);
@@ -711,6 +721,60 @@ export async function setDefaultVault(vaultId: string): Promise<void> {
       activeVault = { meta: updated, path: entry.path };
     }
   }
+}
+
+export function subscribeTags(
+  onUpdate: (tags: TagWithCount[]) => void,
+  handlers?: {
+    onError?: (scope: string, error: unknown) => void;
+  },
+  signal?: AbortSignal,
+): void {
+  if (isDevMock()) {
+    void devMockCollector
+      .listTags()
+      .then(onUpdate)
+      .catch((error: unknown) => {
+        handlers?.onError?.("tags", error);
+        onUpdate([]);
+      });
+    return;
+  }
+
+  void (async () => {
+    const { vault, path } = await resolveActiveVault();
+    if (signal?.aborted) {
+      return;
+    }
+
+    const syncPromise = startVaultIndexSync(vault.id, path);
+
+    const publish = async () => {
+      try {
+        const tags = await listTagsWithCounts(getContext(), vault.id, path);
+        if (!signal?.aborted) {
+          onUpdate(tags);
+        }
+      } catch (error) {
+        handlers?.onError?.("tags publish", error);
+      }
+    };
+
+    // Опубликовать сразу из базы
+    await publish();
+
+    // Дождаться окончания возможной синхронизации и опубликовать еще раз,
+    // если появились новые теги извне
+    await syncPromise;
+    if (!signal?.aborted) {
+      await publish();
+    }
+  })().catch((error: unknown) => {
+    handlers?.onError?.("tags subscribe", error);
+    if (!signal?.aborted) {
+      onUpdate([]);
+    }
+  });
 }
 
 export async function listTags(): Promise<TagWithCount[]> {

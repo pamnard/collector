@@ -8,6 +8,8 @@ import {
   useStartupUpdateCheck,
 } from "../../hooks/useUpdaterSettings";
 import { useViewMode } from "../../hooks/useViewMode";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { useDashboardItems } from "../../hooks/useDashboardItems";
 import type { NavFilter, ViewMode } from "../../types/ui";
 import { Header } from "./Header";
 import { MainScrollArea } from "./MainScrollArea";
@@ -19,6 +21,7 @@ interface ShellContextValue {
   activeFilter: NavFilter;
   vaultRevision: number;
   refreshVault: () => void;
+  dashboardCache: ReturnType<typeof useDashboardItems>;
 }
 
 const ShellContext = createContext<ShellContextValue | null>(null);
@@ -55,6 +58,14 @@ export function AppLayout() {
 
   useStartupUpdateCheck(checkUpdatesOnStart, handleStartupUpdateFound);
 
+  // Cache dashboard items across navigation to prevent flashing empty grid
+  const debouncedSearch = useDebouncedValue(searchQuery, 300);
+  const dashboardCache = useDashboardItems(
+    activeFilter,
+    debouncedSearch,
+    vaultRevision,
+  );
+
   return (
     <ShellContext.Provider
       value={{
@@ -63,6 +74,7 @@ export function AppLayout() {
         activeFilter,
         vaultRevision,
         refreshVault: () => setVaultRevision((value) => value + 1),
+        dashboardCache,
       }}
     >
       <div className="flex h-screen overflow-hidden bg-main font-sans text-primary transition-colors duration-200">
