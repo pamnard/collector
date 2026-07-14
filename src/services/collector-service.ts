@@ -58,6 +58,7 @@ import * as devMockCollector from "../dev/mock-collector";
 
 let initialized = false;
 let initPromise: Promise<void> | null = null;
+let fatalInitError: Error | null = null;
 let dataDir = "";
 let sql: TauriSqlAdapter | null = null;
 let activeVault: { meta: VaultMeta; path: string } | null = null;
@@ -152,6 +153,10 @@ async function ensureInitialized(): Promise<void> {
     return;
   }
 
+  if (fatalInitError) {
+    throw fatalInitError;
+  }
+
   if (!initPromise) {
     initPromise = initializeCollector().finally(() => {
       initPromise = null;
@@ -166,12 +171,28 @@ async function initializeCollector(): Promise<void> {
     return;
   }
 
-  dataDir = await join(await appDataDir(), "collector");
-  await fs.mkdir(dataDir);
-  await removeLegacyIndexDatabaseFiles();
-  sql = await TauriSqlAdapter.open();
-  await ensureHealthyDatabase();
-  initialized = true;
+  if (fatalInitError) {
+    throw fatalInitError;
+  }
+
+  let opened: TauriSqlAdapter | null = null;
+
+  try {
+    dataDir = await join(await appDataDir(), "collector");
+    await fs.mkdir(dataDir);
+    await removeLegacyIndexDatabaseFiles();
+    opened = await TauriSqlAdapter.open();
+    sql = opened;
+    await ensureHealthyDatabase();
+    initialized = true;
+  } catch (err) {
+    if (opened) {
+      await opened.close().catch(() => {});
+      sql = null;
+    }
+    fatalInitError = err instanceof Error ? err : new Error(String(err));
+    throw fatalInitError;
+  }
 }
 
 function getIndex(): SqlVaultIndexStore {

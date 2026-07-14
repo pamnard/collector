@@ -15,9 +15,15 @@ import {
   updateAppSettings,
 } from "../services/app-settings-service";
 import { warmupCollector } from "../services/collector-service";
+import { StartupErrorScreen } from "../components/startup/StartupErrorScreen";
 import type { NavFilter, ViewMode } from "../types/ui";
 import { navFilterToSetting } from "../types/ui";
 import type { Theme } from "../hooks/useTheme";
+
+type StartupState =
+  | { status: "loading" }
+  | { status: "ready"; settings: AppSettings }
+  | { status: "error"; message: string };
 
 interface AppSettingsContextValue {
   ready: boolean;
@@ -33,8 +39,10 @@ interface AppSettingsContextValue {
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null);
 
 export function AppSettingsProvider({ children }: { children: ReactNode }) {
+  const [startupState, setStartupState] = useState<StartupState>({
+    status: "loading",
+  });
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS);
-  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,13 +51,16 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       .then(([loaded]) => {
         if (!cancelled) {
           setSettings(loaded);
-          setReady(true);
+          setStartupState({ status: "ready", settings: loaded });
         }
       })
       .catch((err) => {
         console.error("[collector] startup failed:", err);
         if (!cancelled) {
-          setReady(true);
+          setStartupState({
+            status: "error",
+            message: err instanceof Error ? err.message : String(err),
+          });
         }
       });
 
@@ -67,7 +78,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppSettingsContextValue>(
     () => ({
-      ready,
+      ready: true,
       settings,
       setTheme: (theme) => patch({ theme }),
       setViewMode: (view_mode) => patch({ view_mode }),
@@ -77,11 +88,15 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         patch({ check_updates_on_start }),
       setActiveVaultId: (active_vault_id) => patch({ active_vault_id }),
     }),
-    [patch, ready, settings],
+    [patch, settings],
   );
 
-  if (!ready) {
+  if (startupState.status === "loading") {
     return null;
+  }
+
+  if (startupState.status === "error") {
+    return <StartupErrorScreen message={startupState.message} />;
   }
 
   return (
