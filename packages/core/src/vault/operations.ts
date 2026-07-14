@@ -2,6 +2,8 @@ import type { ItemFile, VaultMeta } from "@collector/shared";
 import { SCHEMA_VERSION } from "@collector/shared";
 import type {
   CreateVaultInput,
+  IndexSyncOptions,
+  IndexSyncProgress,
   SyncReport,
   UpsertItemInput,
   VaultContext,
@@ -21,7 +23,8 @@ import { writeFoldersFile } from "./folder-io.js";
 import {
   DISK_ITEM_READ_CONCURRENCY,
   INDEX_SYNC_WRITE_BATCH,
-  runWithConcurrency,
+  INDEX_SYNC_YIELD_MS,
+  runWithConcurrencyYielding,
   yieldToEventLoop,
 } from "../util/concurrency.js";
 import { classifyItemSyncAction } from "./sync-classifier.js";
@@ -130,15 +133,43 @@ interface ReindexWork {
   item?: ItemFile;
 }
 
+function toSyncProgress(
+  report: SyncReport,
+  processed: number,
+  total: number,
+): IndexSyncProgress {
+  return {
+    processed,
+    total,
+    skipped: report.skipped,
+    patched: report.patched,
+    indexed: report.indexed,
+    removed: report.removed,
+  };
+}
+
 export async function syncIndexFromFilesystem(
   ctx: VaultContext,
   vaultPath: string,
   vaultId: string,
+  options: IndexSyncOptions = {},
 ): Promise<SyncReport> {
   const report = createEmptySyncReport();
   const itemsDir = itemsRoot(vaultPath);
+  const { onProgress, onBatch } = options;
+
+  const emitProgress = (processed: number, total: number) => {
+    onProgress?.(toSyncProgress(report, processed, total));
+  };
+
+  const emitBatch = (processed: number, total: number) => {
+    const progress = toSyncProgress(report, processed, total);
+    onProgress?.(progress);
+    onBatch?.(progress);
+  };
 
   if (!(await ctx.fs.exists(itemsDir))) {
+    emitProgress(0, 0);
     return report;
   }
 
@@ -147,24 +178,33 @@ export async function syncIndexFromFilesystem(
   const indexMeta = new Map(indexedItems.map((item) => [item.id, item]));
   const indexedIds = new Set(indexedItems.map((item) => item.id));
   const diskIds = [...diskItemIds];
+  const total = diskIds.length;
 
-  const stats = await runWithConcurrency(diskIds.length, DISK_ITEM_READ_CONCURRENCY, async (index) => {
-    const itemId = diskIds[index]!;
-    const itemPath = itemRoot(vaultPath, itemId);
-    try {
-      const fileStat = await ctx.fs.stat(itemMetaPath(itemPath));
-      return {
-        itemId,
-        diskMtimeMs: fileStat.mtimeMs ?? 0,
-        error: null as unknown,
-      };
-    } catch (error) {
-      return { itemId, diskMtimeMs: 0, error };
-    }
-  });
+  emitProgress(0, total);
+
+  const stats = await runWithConcurrencyYielding(
+    diskIds.length,
+    DISK_ITEM_READ_CONCURRENCY,
+    async (index) => {
+      const itemId = diskIds[index]!;
+      const itemPath = itemRoot(vaultPath, itemId);
+      try {
+        const fileStat = await ctx.fs.stat(itemMetaPath(itemPath));
+        return {
+          itemId,
+          diskMtimeMs: fileStat.mtimeMs ?? 0,
+          error: null as unknown,
+        };
+      } catch (error) {
+        return { itemId, diskMtimeMs: 0, error };
+      }
+    },
+    { yieldEvery: INDEX_SYNC_WRITE_BATCH, yieldMs: INDEX_SYNC_YIELD_MS },
+  );
 
   const metadataReadQueue: Array<{ itemId: string; diskMtimeMs: number }> = [];
   const reindexQueue: ReindexWork[] = [];
+  let classified = 0;
 
   for (const stat of stats) {
     if (stat.error) {
@@ -173,17 +213,20 @@ export async function syncIndexFromFilesystem(
         message:
           stat.error instanceof Error ? stat.error.message : String(stat.error),
       });
+      classified += 1;
       continue;
     }
 
     const meta = indexMeta.get(stat.itemId);
     if (!meta) {
       reindexQueue.push({ itemId: stat.itemId, diskMtimeMs: stat.diskMtimeMs });
+      classified += 1;
       continue;
     }
 
     if (meta.file_mtime_ms !== null && meta.file_mtime_ms === stat.diskMtimeMs) {
       report.skipped += 1;
+      classified += 1;
       continue;
     }
 
@@ -191,7 +234,7 @@ export async function syncIndexFromFilesystem(
   }
 
   if (metadataReadQueue.length > 0) {
-    const metadataReads = await runWithConcurrency(
+    const metadataReads = await runWithConcurrencyYielding(
       metadataReadQueue.length,
       DISK_ITEM_READ_CONCURRENCY,
       async (index) => {
@@ -204,9 +247,11 @@ export async function syncIndexFromFilesystem(
           return { ...work, item: null, error };
         }
       },
+      { yieldEvery: INDEX_SYNC_WRITE_BATCH, yieldMs: INDEX_SYNC_YIELD_MS },
     );
 
     for (const read of metadataReads) {
+      classified += 1;
       if (read.error || !read.item) {
         report.errors.push({
           itemId: read.itemId,
@@ -252,6 +297,10 @@ export async function syncIndexFromFilesystem(
     }
   }
 
+  // Skipped/errored/queued counts already in classified; pending work = reindexQueue.
+  const processedBeforeReindex = classified - reindexQueue.length;
+  emitProgress(processedBeforeReindex, total);
+
   for (let i = 0; i < reindexQueue.length; i += 1) {
     const work = reindexQueue[i]!;
     const itemPath = itemRoot(vaultPath, work.itemId);
@@ -271,8 +320,12 @@ export async function syncIndexFromFilesystem(
       });
     }
 
-    if ((i + 1) % INDEX_SYNC_WRITE_BATCH === 0) {
-      await yieldToEventLoop();
+    const processed = processedBeforeReindex + i + 1;
+    if ((i + 1) % INDEX_SYNC_WRITE_BATCH === 0 || i + 1 === reindexQueue.length) {
+      emitBatch(processed, total);
+      if (i + 1 < reindexQueue.length) {
+        await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
+      }
     }
   }
 
@@ -281,6 +334,11 @@ export async function syncIndexFromFilesystem(
       await ctx.index.deleteItem(indexedId);
       report.removed += 1;
     }
+  }
+
+  emitProgress(total, total);
+  if (reindexQueue.length === 0) {
+    onBatch?.(toSyncProgress(report, total, total));
   }
 
   return report;

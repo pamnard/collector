@@ -15,6 +15,7 @@
     "test": "npm run test --workspace @collector/db && npm run test --workspace @collector/core",
     "test:startup": "npm run build:packages && node scripts/startup-index-smoke.mjs",
     "test:vault-index": "npm run build:packages && node scripts/vault-index-rebuild-smoke.mjs",
+    "test:large-empty-index": "npm run build:packages && node scripts/large-vault-empty-index-smoke.mjs",
     "verify:release": "bash scripts/verify-release.sh",
     "tauri": "tauri",
     "tauri:dev": "bash scripts/tauri-dev.sh"
