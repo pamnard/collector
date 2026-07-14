@@ -2,9 +2,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { runMigrations } from "@collector/db";
+import { BetterSqliteMigrator } from "../../../db/src/testing/better-sqlite.js";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { createId } from "../util/ids.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
+import { buildFtsMatchQuery } from "../search/fts-query.js";
 import {
   createVault,
   deleteItem,
@@ -368,6 +371,7 @@ describe("vault operations", () => {
     });
 
     expect(report.indexed).toBe(itemCount);
+    expect(report.contentIndexed).toBe(itemCount);
     expect(report.errors).toHaveLength(0);
     expect(batches.length).toBeGreaterThanOrEqual(2);
     expect(batches[0]?.total).toBe(itemCount);
@@ -375,6 +379,89 @@ describe("vault operations", () => {
     expect(await emptyCtx.index.listVaultItemIds(meta.id)).toHaveLength(
       itemCount,
     );
+  });
+
+  it("fills list from metadata phase before content/FTS completes", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-phased-"));
+    const diskCtx = {
+      fs,
+      index: new SqlVaultIndexStore(new MemorySqlAdapter()),
+    };
+    const { meta, path } = await createVault(diskCtx, dataDir, { name: "Vault" });
+
+    const titleToken = "PhaseTitleUnique";
+    const contentToken = "PhaseBodyUniqueZz9";
+    const itemId = createId();
+    await upsertItem(diskCtx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: `${titleToken} note`,
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        is_archived: false,
+        is_favorite: false,
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "Imports",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      content: `hello ${contentToken} world`,
+    });
+
+    const dbPath = join(dataDir, "collector.db");
+    const db = BetterSqliteMigrator.open(dbPath);
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    await index.upsertVault(meta, path);
+
+    let metadataSnapshot: {
+      ids: string[];
+      contentIndexed: number;
+      titleHits: string[];
+      contentHits: string[];
+    } | null = null;
+
+    const report = await syncIndexFromFilesystem({ fs, index }, path, meta.id, {
+      onMetadataComplete: async (progress) => {
+        const titleQuery = buildFtsMatchQuery(titleToken);
+        const contentQuery = buildFtsMatchQuery(contentToken);
+        metadataSnapshot = {
+          ids: await index.listVaultItemIds(meta.id),
+          contentIndexed: progress.contentIndexed,
+          titleHits: titleQuery
+            ? await index.searchItemIds(meta.id, titleQuery, "all")
+            : [],
+          contentHits: contentQuery
+            ? await index.searchItemIds(meta.id, contentQuery, "all")
+            : [],
+        };
+      },
+    });
+
+    expect(metadataSnapshot).not.toBeNull();
+    expect(metadataSnapshot!.contentIndexed).toBe(0);
+    expect(metadataSnapshot!.ids).toEqual([itemId]);
+    expect(metadataSnapshot!.titleHits).toEqual([itemId]);
+    expect(metadataSnapshot!.contentHits).toEqual([]);
+
+    expect(report.indexed).toBe(1);
+    expect(report.contentIndexed).toBe(1);
+    expect(report.errors).toHaveLength(0);
+
+    const contentQuery = buildFtsMatchQuery(contentToken);
+    expect(contentQuery).not.toBeNull();
+    expect(await index.searchItemIds(meta.id, contentQuery!, "all")).toEqual([
+      itemId,
+    ]);
+    expect(await index.listItemIdsByFolderPrefix(meta.id, "Imports")).toEqual([
+      itemId,
+    ]);
+
+    db.close();
   });
 
   it("indexes only new disk items when index is partially populated", async () => {

@@ -83,6 +83,9 @@ export function AppLayout() {
     if (!progress || progress.total <= 0) {
       return "Индексация хранилища…";
     }
+    if (progress.phase === "content") {
+      return `Индексация поиска… ${progress.processed}/${progress.total}`;
+    }
     return `Индексация… ${progress.processed}/${progress.total}`;
   })();
 

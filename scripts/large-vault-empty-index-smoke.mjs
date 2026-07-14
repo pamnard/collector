@@ -31,6 +31,8 @@ try {
     upsertVault: async () => {},
     deleteVault: async () => {},
     upsertItem: async () => {},
+    upsertItemMetadata: async () => {},
+    upsertItemContent: async () => {},
     deleteItem: async () => {},
     upsertMedia: async () => {},
     deleteMedia: async () => {},
@@ -89,16 +91,43 @@ try {
   }
 
   const batches = [];
+  let metadataComplete = null;
   const started = Date.now();
   const report = await syncIndexFromFilesystem({ fs, index }, path, meta.id, {
     onBatch: (progress) => {
       batches.push(progress.processed);
     },
+    onMetadataComplete: (progress) => {
+      metadataComplete = {
+        indexed: progress.indexed,
+        contentIndexed: progress.contentIndexed,
+        phase: progress.phase,
+      };
+    },
   });
   const elapsedMs = Date.now() - started;
 
+  if (!metadataComplete) {
+    fail("expected onMetadataComplete before sync resolve");
+  }
+  if (metadataComplete.indexed !== ITEM_COUNT) {
+    fail(
+      `expected metadataComplete.indexed=${ITEM_COUNT}, got ${metadataComplete.indexed}`,
+    );
+  }
+  if (metadataComplete.contentIndexed !== 0) {
+    fail(
+      `expected metadataComplete.contentIndexed=0, got ${metadataComplete.contentIndexed}`,
+    );
+  }
+  if (metadataComplete.phase !== "metadata") {
+    fail(`expected metadataComplete.phase=metadata, got ${metadataComplete.phase}`);
+  }
   if (report.indexed !== ITEM_COUNT) {
     fail(`expected indexed=${ITEM_COUNT}, got ${report.indexed}`);
+  }
+  if (report.contentIndexed !== ITEM_COUNT) {
+    fail(`expected contentIndexed=${ITEM_COUNT}, got ${report.contentIndexed}`);
   }
   if (report.errors.length > 0) {
     fail(`unexpected sync errors: ${report.errors[0]?.message}`);
