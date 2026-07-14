@@ -34,10 +34,27 @@ export interface IndexedItem {
   fileMtimeMs?: number | null;
 }
 
+/** List/filter fields only — no content read, FTS without body (#71 Phase A). */
+export interface IndexedItemMetadata {
+  item: ItemFile;
+  fileMtimeMs?: number | null;
+}
+
+/** Content + source_ref + FTS body after metadata is already in the index (#71 Phase B). */
+export interface ItemContentUpsert {
+  itemId: string;
+  title: string;
+  description: string;
+  content: string | null;
+  sourceRef: SourceRef | null;
+}
+
 export interface VaultIndexAdapter {
   upsertVault(meta: VaultMeta, vaultPath: string): Promise<void>;
   deleteVault(vaultId: string): Promise<void>;
   upsertItem(record: IndexedItem, vaultId: string): Promise<void>;
+  upsertItemMetadata(record: IndexedItemMetadata, vaultId: string): Promise<void>;
+  upsertItemContent(input: ItemContentUpsert): Promise<void>;
   deleteItem(itemId: string): Promise<void>;
   upsertMedia(media: MediaFileMeta): Promise<void>;
   deleteMedia(mediaId: string): Promise<void>;
@@ -85,22 +102,33 @@ export interface UpsertItemInput {
 export interface SyncReport {
   skipped: number;
   patched: number;
+  /** Metadata rows written (list-visible). */
   indexed: number;
+  /** Content/FTS body writes completed (Phase B). */
+  contentIndexed: number;
   removed: number;
   errors: Array<{ itemId: string; message: string }>;
 }
 
+export type IndexSyncPhase = "metadata" | "content";
+
 export interface IndexSyncProgress {
+  phase: IndexSyncPhase;
   processed: number;
   total: number;
   skipped: number;
   patched: number;
   indexed: number;
+  contentIndexed: number;
   removed: number;
 }
 
 export interface IndexSyncOptions {
   onProgress?: (progress: IndexSyncProgress) => void;
   onBatch?: (progress: IndexSyncProgress) => void;
+  /** Fired after Phase A (metadata) completes and before Phase B (content/FTS). */
+  onMetadataComplete?: (
+    progress: IndexSyncProgress,
+  ) => void | Promise<void>;
 }
 

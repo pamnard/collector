@@ -19,6 +19,10 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       return this.patchItemSyncMeta(bindValues);
     }
 
+    if (normalized.startsWith("UPDATE items SET has_content_file = ?")) {
+      return this.patchItemHasContentFile(bindValues);
+    }
+
     if (normalized.startsWith("INSERT INTO items_fts")) {
       return this.insertFts(bindValues);
     }
@@ -279,6 +283,21 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       file_mtime_ms: fileMtimeMs,
       updated_at: updatedAt,
       content_revision: contentRevision,
+    });
+    return 1;
+  }
+
+  private patchItemHasContentFile(bindValues: unknown[]): number {
+    const table = this.getTable("items");
+    const hasContentFile = bindValues[0];
+    const itemId = String(bindValues[1]);
+    const row = table.get(itemId);
+    if (!row) {
+      return 0;
+    }
+    table.set(itemId, {
+      ...row,
+      has_content_file: hasContentFile,
     });
     return 1;
   }

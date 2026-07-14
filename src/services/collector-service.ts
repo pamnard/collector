@@ -74,6 +74,10 @@ export interface VaultIndexSyncStatus {
   vaultId: string | null;
   status: "idle" | "running" | "done";
   progress: IndexSyncProgress | null;
+  /** True after Phase A (metadata) completes, or when sync finishes with nothing to reindex. */
+  metadataReady: boolean;
+  /** True after Phase B (content/FTS) completes / sync done. */
+  ftsReady: boolean;
 }
 
 type VaultSyncListener = {
@@ -88,6 +92,8 @@ let vaultIndexSyncStatus: VaultIndexSyncStatus = {
   vaultId: null,
   status: "idle",
   progress: null,
+  metadataReady: true,
+  ftsReady: true,
 };
 
 function setVaultIndexSyncStatus(next: VaultIndexSyncStatus): void {
@@ -247,6 +253,8 @@ async function rebuildIndexDatabase(): Promise<void> {
     vaultId: null,
     status: "idle",
     progress: null,
+    metadataReady: false,
+    ftsReady: false,
   });
 
   await resetIndexSchema(sql);
@@ -358,25 +366,34 @@ function startVaultIndexSync(vaultId: string, vaultPath: string): Promise<void> 
     return inflight;
   }
 
+  let metadataReady = false;
+  let ftsReady = false;
+
   setVaultIndexSyncStatus({
     vaultId,
     status: "running",
     progress: {
+      phase: "metadata",
       processed: 0,
       total: 0,
       skipped: 0,
       patched: 0,
       indexed: 0,
+      contentIndexed: 0,
       removed: 0,
     },
+    metadataReady,
+    ftsReady,
   });
 
   let latestProgress: IndexSyncProgress = {
+    phase: "metadata",
     processed: 0,
     total: 0,
     skipped: 0,
     patched: 0,
     indexed: 0,
+    contentIndexed: 0,
     removed: 0,
   };
 
@@ -385,6 +402,8 @@ function startVaultIndexSync(vaultId: string, vaultPath: string): Promise<void> 
       vaultId,
       status: "running",
       progress: latestProgress,
+      metadataReady,
+      ftsReady,
     });
   }, SYNC_STATUS_THROTTLE_MS);
 
@@ -401,6 +420,12 @@ function startVaultIndexSync(vaultId: string, vaultPath: string): Promise<void> 
           publishRunningStatus.schedule();
           emitVaultSyncEvent(vaultId, "batch", progress);
         },
+        onMetadataComplete: (progress) => {
+          latestProgress = progress;
+          metadataReady = true;
+          publishRunningStatus.flush();
+          emitVaultSyncEvent(vaultId, "batch", progress);
+        },
       });
       if (report.vaultId !== vaultId) {
         throw new Error(
@@ -408,12 +433,16 @@ function startVaultIndexSync(vaultId: string, vaultPath: string): Promise<void> 
         );
       }
       syncedVaultIds.add(vaultId);
+      metadataReady = true;
+      ftsReady = true;
       const finalProgress: IndexSyncProgress = {
+        phase: "content",
         processed: report.indexed + report.patched + report.skipped,
         total: report.indexed + report.patched + report.skipped,
         skipped: report.skipped,
         patched: report.patched,
         indexed: report.indexed,
+        contentIndexed: report.contentIndexed,
         removed: report.removed,
       };
       publishRunningStatus.cancel();
@@ -421,6 +450,8 @@ function startVaultIndexSync(vaultId: string, vaultPath: string): Promise<void> 
         vaultId,
         status: "done",
         progress: finalProgress,
+        metadataReady,
+        ftsReady,
       });
       emitVaultSyncEvent(vaultId, "complete");
     } catch (error) {
@@ -429,6 +460,8 @@ function startVaultIndexSync(vaultId: string, vaultPath: string): Promise<void> 
         vaultId,
         status: "idle",
         progress: null,
+        metadataReady: false,
+        ftsReady: false,
       });
       throw error;
     }

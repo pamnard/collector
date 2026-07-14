@@ -183,3 +183,81 @@ describe("listItemFilesByIds", () => {
     expect(readTextCalls.filter((p) => p.endsWith("item.json"))).toEqual([]);
   });
 });
+
+describe("upsertItemMetadata / upsertItemContent", () => {
+  let dataDir = "";
+  const fs = new NodeFileSystemAdapter();
+  let db: BetterSqliteMigrator | null = null;
+
+  afterEach(async () => {
+    db?.close();
+    db = null;
+    if (dataDir) {
+      await rm(dataDir, { recursive: true, force: true });
+      dataDir = "";
+    }
+  });
+
+  it("writes list fields in metadata phase and FTS body in content phase", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-phased-upsert-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    const ctx = { fs, index };
+    const { meta } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    const itemId = createId();
+    const timestamp = new Date().toISOString();
+    const item = {
+      id: itemId,
+      vault_id: meta.id,
+      title: "MetaTitle",
+      description: "MetaDesc",
+      content_type: "note" as const,
+      source_type: "manual" as const,
+      metadata: {},
+      is_archived: false,
+      is_favorite: false,
+      tag_ids: [] as string[],
+      collection_ids: [] as string[],
+      folder_path: "",
+      content_revision: 1,
+      created_at: timestamp,
+      updated_at: timestamp,
+    };
+
+    await index.upsertItemMetadata({ item, fileMtimeMs: 42 }, meta.id);
+
+    const afterMeta = await db.select<{ has_content_file: number }>(
+      "SELECT has_content_file FROM items WHERE id = ?",
+      [itemId],
+    );
+    expect(afterMeta[0]?.has_content_file).toBe(0);
+
+    const ftsMeta = await db.select<{ content: string }>(
+      "SELECT content FROM items_fts WHERE item_id = ?",
+      [itemId],
+    );
+    expect(ftsMeta[0]?.content).toBe("");
+
+    await index.upsertItemContent({
+      itemId,
+      title: item.title,
+      description: item.description,
+      content: "full body text",
+      sourceRef: null,
+    });
+
+    const afterContent = await db.select<{ has_content_file: number }>(
+      "SELECT has_content_file FROM items WHERE id = ?",
+      [itemId],
+    );
+    expect(afterContent[0]?.has_content_file).toBe(1);
+
+    const ftsContent = await db.select<{ content: string }>(
+      "SELECT content FROM items_fts WHERE item_id = ?",
+      [itemId],
+    );
+    expect(ftsContent[0]?.content).toBe("full body text");
+  });
+});

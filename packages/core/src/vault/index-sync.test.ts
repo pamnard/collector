@@ -18,6 +18,8 @@ function createNoopVaultIndex(): VaultIndexAdapter {
     upsertVault: noop,
     deleteVault: noop,
     upsertItem: noop,
+    upsertItemMetadata: noop,
+    upsertItemContent: noop,
     deleteItem: noop,
     upsertMedia: noop,
     deleteMedia: noop,

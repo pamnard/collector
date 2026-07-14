@@ -3,6 +3,7 @@ import { SCHEMA_VERSION } from "@collector/shared";
 import type {
   CreateVaultInput,
   IndexSyncOptions,
+  IndexSyncPhase,
   IndexSyncProgress,
   SyncReport,
   UpsertItemInput,
@@ -124,7 +125,14 @@ export async function deleteItem(
 }
 
 function createEmptySyncReport(): SyncReport {
-  return { skipped: 0, patched: 0, indexed: 0, removed: 0, errors: [] };
+  return {
+    skipped: 0,
+    patched: 0,
+    indexed: 0,
+    contentIndexed: 0,
+    removed: 0,
+    errors: [],
+  };
 }
 
 interface ReindexWork {
@@ -137,13 +145,16 @@ function toSyncProgress(
   report: SyncReport,
   processed: number,
   total: number,
+  phase: IndexSyncPhase = "metadata",
 ): IndexSyncProgress {
   return {
+    phase,
     processed,
     total,
     skipped: report.skipped,
     patched: report.patched,
     indexed: report.indexed,
+    contentIndexed: report.contentIndexed,
     removed: report.removed,
   };
 }
@@ -156,14 +167,15 @@ export async function syncIndexFromFilesystem(
 ): Promise<SyncReport> {
   const report = createEmptySyncReport();
   const itemsDir = itemsRoot(vaultPath);
-  const { onProgress, onBatch } = options;
+  const { onProgress, onBatch, onMetadataComplete } = options;
+  let phase: IndexSyncPhase = "metadata";
 
   const emitProgress = (processed: number, total: number) => {
-    onProgress?.(toSyncProgress(report, processed, total));
+    onProgress?.(toSyncProgress(report, processed, total, phase));
   };
 
   const emitBatch = (processed: number, total: number) => {
-    const progress = toSyncProgress(report, processed, total);
+    const progress = toSyncProgress(report, processed, total, phase);
     onProgress?.(progress);
     onBatch?.(progress);
   };
@@ -299,19 +311,20 @@ export async function syncIndexFromFilesystem(
 
   // Skipped/errored/queued counts already in classified; pending work = reindexQueue.
   const processedBeforeReindex = classified - reindexQueue.length;
+  phase = "metadata";
   emitProgress(processedBeforeReindex, total);
 
+  // Phase A: metadata → list/filters queryable; FTS title/description only.
   for (let i = 0; i < reindexQueue.length; i += 1) {
     const work = reindexQueue[i]!;
     const itemPath = itemRoot(vaultPath, work.itemId);
     try {
       const item = work.item ?? (await readItemFile(ctx.fs, itemPath));
-      const content = await readItemContent(ctx.fs, itemPath);
-      const sourceRef = await readItemSourceRef(ctx.fs, itemPath);
-      await ctx.index.upsertItem(
-        { item, content, sourceRef, fileMtimeMs: work.diskMtimeMs },
+      await ctx.index.upsertItemMetadata(
+        { item, fileMtimeMs: work.diskMtimeMs },
         vaultId,
       );
+      work.item = item;
       report.indexed += 1;
     } catch (error) {
       report.errors.push({
@@ -329,6 +342,51 @@ export async function syncIndexFromFilesystem(
     }
   }
 
+  const metadataCompleteProgress = toSyncProgress(
+    report,
+    processedBeforeReindex + reindexQueue.length,
+    total,
+    "metadata",
+  );
+  await onMetadataComplete?.(metadataCompleteProgress);
+  if (reindexQueue.length > 0) {
+    onBatch?.(metadataCompleteProgress);
+  }
+
+  // Phase B: content + source_ref + FTS body (same queue; reuse item from Phase A).
+  phase = "content";
+  for (let i = 0; i < reindexQueue.length; i += 1) {
+    const work = reindexQueue[i]!;
+    if (!work.item) {
+      continue;
+    }
+    const itemPath = itemRoot(vaultPath, work.itemId);
+    try {
+      const content = await readItemContent(ctx.fs, itemPath);
+      const sourceRef = await readItemSourceRef(ctx.fs, itemPath);
+      await ctx.index.upsertItemContent({
+        itemId: work.item.id,
+        title: work.item.title,
+        description: work.item.description,
+        content,
+        sourceRef,
+      });
+      report.contentIndexed += 1;
+    } catch (error) {
+      report.errors.push({
+        itemId: work.itemId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    if ((i + 1) % INDEX_SYNC_WRITE_BATCH === 0 || i + 1 === reindexQueue.length) {
+      emitBatch(i + 1, reindexQueue.length);
+      if (i + 1 < reindexQueue.length) {
+        await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
+      }
+    }
+  }
+
   for (const indexedId of indexedIds) {
     if (!diskItemIds.has(indexedId)) {
       await ctx.index.deleteItem(indexedId);
@@ -336,9 +394,12 @@ export async function syncIndexFromFilesystem(
     }
   }
 
-  emitProgress(total, total);
+  emitProgress(
+    reindexQueue.length > 0 ? reindexQueue.length : total,
+    reindexQueue.length > 0 ? reindexQueue.length : total,
+  );
   if (reindexQueue.length === 0) {
-    onBatch?.(toSyncProgress(report, total, total));
+    onBatch?.(toSyncProgress(report, total, total, phase));
   }
 
   return report;

@@ -7,7 +7,12 @@ import type {
   VaultMeta,
 } from "@collector/shared";
 import type { SqlExecutor } from "@collector/db";
-import type { IndexedItem, VaultIndexAdapter } from "../adapters/types.js";
+import type {
+  IndexedItem,
+  IndexedItemMetadata,
+  ItemContentUpsert,
+  VaultIndexAdapter,
+} from "../adapters/types.js";
 import type { NavSearchFilter } from "../search/nav-filter.js";
 import { isFolderFilter, isTagFilter } from "../search/nav-filter.js";
 
@@ -126,7 +131,24 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
   }
 
   async upsertItem(record: IndexedItem, vaultId: string): Promise<void> {
-    const { item, content, sourceRef } = record;
+    await this.upsertItemMetadata(
+      { item: record.item, fileMtimeMs: record.fileMtimeMs },
+      vaultId,
+    );
+    await this.upsertItemContent({
+      itemId: record.item.id,
+      title: record.item.title,
+      description: record.item.description,
+      content: record.content,
+      sourceRef: record.sourceRef,
+    });
+  }
+
+  async upsertItemMetadata(
+    record: IndexedItemMetadata,
+    vaultId: string,
+  ): Promise<void> {
+    const { item } = record;
 
     // No multi-IPC BEGIN/COMMIT: sqlx pool uses a new connection per execute (#49/#77).
     await this.db.execute(
@@ -147,7 +169,6 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
         thumbnail_path = excluded.thumbnail_path,
         is_archived = excluded.is_archived,
         is_favorite = excluded.is_favorite,
-        has_content_file = excluded.has_content_file,
         folder_path = excluded.folder_path,
         updated_at = excluded.updated_at,
         file_mtime_ms = excluded.file_mtime_ms,
@@ -165,7 +186,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
         item.thumbnail ?? null,
         item.is_archived ? 1 : 0,
         item.is_favorite ? 1 : 0,
-        content ? 1 : 0,
+        0,
         item.folder_path ?? "",
         item.created_at,
         item.updated_at,
@@ -209,12 +230,27 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     await this.db.execute("DELETE FROM items_fts WHERE item_id = ?", [item.id]);
     await this.db.execute(
       "INSERT INTO items_fts (item_id, title, description, content) VALUES (?, ?, ?, ?)",
-      [item.id, item.title, item.description, content ?? ""],
+      [item.id, item.title, item.description, ""],
+    );
+  }
+
+  async upsertItemContent(input: ItemContentUpsert): Promise<void> {
+    const { itemId, title, description, content, sourceRef } = input;
+
+    await this.db.execute(
+      "UPDATE items SET has_content_file = ? WHERE id = ?",
+      [content ? 1 : 0, itemId],
+    );
+
+    await this.db.execute("DELETE FROM items_fts WHERE item_id = ?", [itemId]);
+    await this.db.execute(
+      "INSERT INTO items_fts (item_id, title, description, content) VALUES (?, ?, ?, ?)",
+      [itemId, title, description, content ?? ""],
     );
 
     if (sourceRef) {
       await this.db.execute("DELETE FROM source_refs WHERE item_id = ?", [
-        item.id,
+        itemId,
       ]);
       await this.db.execute(
         "DELETE FROM source_refs WHERE plugin_id = ? AND external_id = ?",
@@ -226,7 +262,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
         ) VALUES (?, ?, ?, ?, ?, ?)`,
         [
           crypto.randomUUID(),
-          item.id,
+          itemId,
           sourceRef.plugin_id,
           sourceRef.external_id,
           sourceRef.synced_at ?? null,
