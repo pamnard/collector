@@ -47,7 +47,10 @@ export {
 } from "./vault/operations.js";
 export type { StreamedItemRead, StreamItemsByIdsOptions } from "./vault/operations.js";
 
-export { DISK_ITEM_READ_CONCURRENCY } from "./util/concurrency.js";
+export {
+  createSingleFlight,
+  DISK_ITEM_READ_CONCURRENCY,
+} from "./util/concurrency.js";
 
 export { syncVaultIndexFromFilesystem } from "./vault/index-sync.js";
 export type { VaultIndexSyncReport } from "./vault/index-sync.js";

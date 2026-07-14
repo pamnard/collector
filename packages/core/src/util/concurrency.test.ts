@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  createSingleFlight,
   INDEX_SYNC_YIELD_MS,
   runWithConcurrencyYielding,
   yieldToEventLoop,
@@ -47,5 +48,28 @@ describe("concurrency backpressure", () => {
     const results = await running;
     expect(results).toEqual([0, 1, 2, 3, 4]);
     vi.useRealTimers();
+  });
+
+  it("createSingleFlight shares one in-flight promise across concurrent callers", async () => {
+    let runs = 0;
+    let release!: (value: string) => void;
+    const barrier = new Promise<string>((resolve) => {
+      release = resolve;
+    });
+    const shared = createSingleFlight(async () => {
+      runs += 1;
+      return barrier;
+    });
+
+    const first = shared();
+    const second = shared();
+    expect(runs).toBe(1);
+
+    release("ok");
+    await expect(Promise.all([first, second])).resolves.toEqual(["ok", "ok"]);
+    expect(runs).toBe(1);
+
+    await expect(shared()).resolves.toBe("ok");
+    expect(runs).toBe(2);
   });
 });

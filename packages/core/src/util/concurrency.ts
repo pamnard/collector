@@ -74,3 +74,16 @@ export async function runWithConcurrencyYielding<T>(
 
   return results;
 }
+
+/** Coalesce concurrent callers onto one in-flight promise (dedupe bootstrap/sync). */
+export function createSingleFlight<T>(run: () => Promise<T>): () => Promise<T> {
+  let inflight: Promise<T> | null = null;
+  return () => {
+    if (!inflight) {
+      inflight = run().finally(() => {
+        inflight = null;
+      });
+    }
+    return inflight;
+  };
+}

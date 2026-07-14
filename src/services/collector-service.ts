@@ -5,6 +5,7 @@ import type { MediaFileMeta } from "@collector/shared";
 import {
   SqlVaultIndexStore,
   buildFtsMatchQuery,
+  createSingleFlight,
   createVault,
   deleteItem as deleteItemOnDisk,
   DISK_ITEM_READ_CONCURRENCY,
@@ -57,6 +58,7 @@ import {
 } from "./app-settings-service";
 import { generateCoverFromMedia } from "./thumbnail-service";
 import { getLegacyIndexDatabasePaths } from "./index-db-path";
+import { reportServiceError } from "./runtime-error";
 import { isDevMock } from "../dev/is-dev-mock";
 import * as devMockCollector from "../dev/mock-collector";
 
@@ -441,7 +443,9 @@ function startVaultIndexSync(vaultId: string, vaultPath: string): Promise<void> 
 }
 
 function kickoffVaultIndexSync(vaultId: string, vaultPath: string): void {
-  void startVaultIndexSync(vaultId, vaultPath);
+  void startVaultIndexSync(vaultId, vaultPath).catch((error: unknown) => {
+    reportServiceError("index sync", error);
+  });
 }
 
 function pickVaultEntry(
@@ -463,9 +467,7 @@ function pickVaultEntry(
   return entries[0] ?? null;
 }
 
-async function resolveActiveVault(): Promise<{ vault: VaultMeta; path: string }> {
-  await ensureInitialized();
-
+const resolveActiveVaultShared = createSingleFlight(async () => {
   if (activeVault) {
     return { vault: activeVault.meta, path: activeVault.path };
   }
@@ -514,6 +516,16 @@ async function resolveActiveVault(): Promise<{ vault: VaultMeta; path: string }>
 
   activeVault = { meta, path: vaultPath };
   return { vault: meta, path: vaultPath };
+});
+
+async function resolveActiveVault(): Promise<{ vault: VaultMeta; path: string }> {
+  await ensureInitialized();
+
+  if (activeVault) {
+    return { vault: activeVault.meta, path: activeVault.path };
+  }
+
+  return resolveActiveVaultShared();
 }
 
 /** @deprecated use ensureActiveVault */
