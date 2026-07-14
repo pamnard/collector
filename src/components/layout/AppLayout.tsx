@@ -10,6 +10,7 @@ import {
 import { useViewMode } from "../../hooks/useViewMode";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useDashboardItems } from "../../hooks/useDashboardItems";
+import { useVaultIndexSyncStatus } from "../../hooks/useVaultIndexSyncStatus";
 import type { NavFilter, ViewMode } from "../../types/ui";
 import { Header } from "./Header";
 import { MainScrollArea } from "./MainScrollArea";
@@ -51,6 +52,8 @@ export function AppLayout() {
   const [startupUpdateVersion, setStartupUpdateVersion] = useState<string | null>(
     null,
   );
+  const indexSync = useVaultIndexSyncStatus();
+  const isIndexing = indexSync.status === "running";
 
   const handleStartupUpdateFound = useCallback((version: string) => {
     setStartupUpdateVersion(version);
@@ -65,6 +68,23 @@ export function AppLayout() {
     debouncedSearch,
     vaultRevision,
   );
+
+  const topBannerCount =
+    (startupUpdateVersion ? 1 : 0) + (isIndexing ? 1 : 0);
+  const contentInsetClass =
+    topBannerCount === 0 ? "pt-16" : topBannerCount === 1 ? "pt-24" : "pt-32";
+  const gutterCoverClass =
+    topBannerCount === 0 ? "h-16" : topBannerCount === 1 ? "h-24" : "h-32";
+  const gutterInsetClass =
+    topBannerCount === 0 ? "top-16" : topBannerCount === 1 ? "top-24" : "top-32";
+
+  const indexingLabel = (() => {
+    const progress = indexSync.progress;
+    if (!progress || progress.total <= 0) {
+      return "Индексация хранилища…";
+    }
+    return `Индексация… ${progress.processed}/${progress.total}`;
+  })();
 
   return (
     <ShellContext.Provider
@@ -88,12 +108,22 @@ export function AppLayout() {
 
         <main className="relative flex min-h-0 flex-1 overflow-hidden bg-main transition-colors duration-200">
           <MainScrollArea
-            contentInsetClass={startupUpdateVersion ? "pt-24" : "pt-16"}
-            gutterCoverClass={startupUpdateVersion ? "h-24" : "h-16"}
-            gutterInsetClass={startupUpdateVersion ? "top-24" : "top-16"}
+            contentInsetClass={contentInsetClass}
+            gutterCoverClass={gutterCoverClass}
+            gutterInsetClass={gutterInsetClass}
           >
             <Outlet />
           </MainScrollArea>
+
+          {isIndexing && (
+            <div
+              className={`pointer-events-none absolute left-0 right-[14px] z-30 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm ${
+                startupUpdateVersion ? "top-24" : "top-16"
+              }`}
+            >
+              <span>{indexingLabel}</span>
+            </div>
+          )}
 
           {startupUpdateVersion && (
             <div className="pointer-events-none absolute top-16 left-0 right-[14px] z-30 flex items-center justify-between gap-3 border-b border-indigo-500/30 bg-indigo-500/10 px-4 py-2 text-sm">

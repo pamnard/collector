@@ -81,6 +81,9 @@ npm test
 step "startup index smoke"
 npm run test:startup
 
+step "large empty-index smoke"
+npm run test:large-empty-index
+
 step "frontend + packages build"
 npm run build
 

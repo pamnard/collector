@@ -20,18 +20,6 @@ interface UseDashboardItemsResult {
   loadMore: () => void;
 }
 
-function mergeItemIds(indexIds: string[], diskIds: Iterable<string>): string[] {
-  const merged = [...indexIds];
-  const seen = new Set(indexIds);
-  for (const id of diskIds) {
-    if (!seen.has(id)) {
-      seen.add(id);
-      merged.push(id);
-    }
-  }
-  return merged;
-}
-
 export function useDashboardItems(
   filter: NavFilter,
   searchQuery: string,
@@ -41,7 +29,6 @@ export function useDashboardItems(
   const [itemsById, setItemsById] = useState<Map<string, ItemFile>>(
     () => new Map(),
   );
-  const [diskItemIds, setDiskItemIds] = useState<string[]>([]);
   const [streamEndOffset, setStreamEndOffset] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -50,38 +37,17 @@ export function useDashboardItems(
   const requestVersionRef = useRef(0);
   const streamEndOffsetRef = useRef(0);
   const streamAbortRef = useRef<AbortController | null>(null);
-  const indexIdsRef = useRef<string[] | null>(null);
-  const diskItemIdsRef = useRef<string[]>([]);
 
   const items = useMemo(() => {
     const ordered: ItemFile[] = [];
-    const seen = new Set<string>();
-
-    if (itemIds.length > 0) {
-      for (const id of itemIds.slice(0, streamEndOffset)) {
-        const item = itemsById.get(id);
-        if (item) {
-          ordered.push(item);
-          seen.add(id);
-        }
+    for (const id of itemIds.slice(0, streamEndOffset)) {
+      const item = itemsById.get(id);
+      if (item) {
+        ordered.push(item);
       }
     }
-
-    if (streamEndOffset === 0 && diskItemIds.length > 0) {
-      for (const id of diskItemIds) {
-        if (seen.has(id)) {
-          continue;
-        }
-        const item = itemsById.get(id);
-        if (item) {
-          ordered.push(item);
-          seen.add(id);
-        }
-      }
-    }
-
     return ordered;
-  }, [diskItemIds, itemIds, itemsById, streamEndOffset]);
+  }, [itemIds, itemsById, streamEndOffset]);
 
   const streamSlice = useCallback(
     async (
@@ -123,36 +89,29 @@ export function useDashboardItems(
     setStreamEndOffset(end);
   }, []);
 
-  const publishMergedIds = useCallback(
-    (indexIds: string[] | null, diskIds: string[]) => {
-      const merged = mergeItemIds(indexIds ?? [], diskIds);
-      setItemIds(merged);
-      setTotalCount(merged.length);
-      return merged;
-    },
-    [],
-  );
-
   const applyIndexIds = useCallback(
     (indexIds: string[], requestVersion: number) => {
-      indexIdsRef.current = indexIds;
-      const merged = publishMergedIds(indexIds, diskItemIdsRef.current);
+      setItemIds(indexIds);
+      setTotalCount(indexIds.length);
 
-      if (!merged.length) {
+      if (!indexIds.length) {
+        setStreamWindowEnd(0);
         return;
       }
 
       const windowEnd = Math.min(
         Math.max(streamEndOffsetRef.current, DASHBOARD_PREFETCH_SIZE),
-        merged.length,
+        indexIds.length,
       );
       if (streamEndOffsetRef.current === 0) {
         setStreamWindowEnd(windowEnd);
+      } else if (streamEndOffsetRef.current > indexIds.length) {
+        setStreamWindowEnd(indexIds.length);
       }
 
-      void streamSlice(merged, 0, windowEnd, requestVersion);
+      void streamSlice(indexIds, 0, windowEnd, requestVersion);
     },
-    [publishMergedIds, setStreamWindowEnd, streamSlice],
+    [setStreamWindowEnd, streamSlice],
   );
 
   useEffect(() => {
@@ -161,38 +120,12 @@ export function useDashboardItems(
     setIsLoading(true);
     setError(null);
     setItemsById(new Map());
-    setDiskItemIds([]);
-    diskItemIdsRef.current = [];
     setItemIds([]);
     setTotalCount(0);
-    indexIdsRef.current = null;
     setStreamWindowEnd(0);
     streamAbortRef.current?.abort();
 
     const controller = new AbortController();
-    let hasVisibleData = false;
-    let indexSettled = false;
-    let diskSettled = false;
-
-    const markVisible = () => {
-      if (!hasVisibleData) {
-        hasVisibleData = true;
-        if (requestVersionRef.current === requestVersion) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    const maybeFinishLoading = () => {
-      if (
-        indexSettled &&
-        diskSettled &&
-        !hasVisibleData &&
-        requestVersionRef.current === requestVersion
-      ) {
-        setIsLoading(false);
-      }
-    };
 
     subscribeDashboardLoad(
       filter,
@@ -202,39 +135,12 @@ export function useDashboardItems(
           if (requestVersionRef.current !== requestVersion) {
             return;
           }
-          indexSettled = true;
-          if (indexIds.length > 0) {
-            markVisible();
-          }
           applyIndexIds(indexIds, requestVersion);
-          maybeFinishLoading();
         },
-        onDiskItem: (item) => {
-          if (requestVersionRef.current !== requestVersion) {
-            return;
+        onLoadComplete: () => {
+          if (requestVersionRef.current === requestVersion) {
+            setIsLoading(false);
           }
-          markVisible();
-          setItemsById((current) => {
-            const next = new Map(current);
-            next.set(item.id, item);
-            return next;
-          });
-          setDiskItemIds((current) => {
-            if (current.includes(item.id)) {
-              return current;
-            }
-            const next = [...current, item.id];
-            diskItemIdsRef.current = next;
-            publishMergedIds(indexIdsRef.current, next);
-            return next;
-          });
-        },
-        onDiskComplete: () => {
-          if (requestVersionRef.current !== requestVersion) {
-            return;
-          }
-          diskSettled = true;
-          maybeFinishLoading();
         },
         onError: (scope, err) => {
           if (requestVersionRef.current !== requestVersion) {
@@ -242,6 +148,7 @@ export function useDashboardItems(
           }
           reportServiceError(scope, err);
           setError(err instanceof Error ? err.message : String(err));
+          setIsLoading(false);
         },
       },
       controller.signal,
@@ -251,7 +158,7 @@ export function useDashboardItems(
       controller.abort();
       streamAbortRef.current?.abort();
     };
-  }, [applyIndexIds, filter, publishMergedIds, searchQuery, setStreamWindowEnd, vaultRevision]);
+  }, [applyIndexIds, filter, searchQuery, setStreamWindowEnd, vaultRevision]);
 
   const loadMore = useCallback(() => {
     if (isLoading || isLoadingMore || streamEndOffset >= itemIds.length) {

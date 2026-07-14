@@ -16,6 +16,7 @@ import {
 } from "../services/app-settings-service";
 import { warmupCollector } from "../services/collector-service";
 import { StartupErrorScreen } from "../components/startup/StartupErrorScreen";
+import { StartupLoadingScreen } from "../components/startup/StartupLoadingScreen";
 import type { NavFilter, ViewMode } from "../types/ui";
 import { navFilterToSetting } from "../types/ui";
 import type { Theme } from "../hooks/useTheme";
@@ -92,7 +93,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   );
 
   if (startupState.status === "loading") {
-    return null;
+    return <StartupLoadingScreen />;
   }
 
   if (startupState.status === "error") {

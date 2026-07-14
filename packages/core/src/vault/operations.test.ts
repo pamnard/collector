@@ -317,4 +317,206 @@ describe("vault operations", () => {
     expect(report.indexed).toBe(1);
     expect(report.patched).toBe(0);
   });
+
+  it("reports progress and batch callbacks while indexing an empty index", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-"));
+    const diskCtx = {
+      fs,
+      index: new SqlVaultIndexStore(new MemorySqlAdapter()),
+    };
+    const { meta, path } = await createVault(diskCtx, dataDir, { name: "Vault" });
+
+    const itemCount = 40;
+    for (let i = 0; i < itemCount; i += 1) {
+      await upsertItem(diskCtx, path, meta.id, {
+        item: {
+          id: createId(),
+          vault_id: meta.id,
+          title: `Note ${i}`,
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          is_archived: false,
+          is_favorite: false,
+          tag_ids: [],
+          collection_ids: [],
+          folder_path: i % 5 === 0 ? "Imports" : "",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        content: `body ${i}`,
+      });
+    }
+
+    const emptyCtx = {
+      fs,
+      index: new SqlVaultIndexStore(new MemorySqlAdapter()),
+    };
+    await emptyCtx.index.upsertVault(meta, path);
+
+    const batches: Array<{ processed: number; total: number; indexed: number }> =
+      [];
+    const report = await syncIndexFromFilesystem(emptyCtx, path, meta.id, {
+      onBatch: (progress) => {
+        batches.push({
+          processed: progress.processed,
+          total: progress.total,
+          indexed: progress.indexed,
+        });
+      },
+    });
+
+    expect(report.indexed).toBe(itemCount);
+    expect(report.errors).toHaveLength(0);
+    expect(batches.length).toBeGreaterThanOrEqual(2);
+    expect(batches[0]?.total).toBe(itemCount);
+    expect(batches.at(-1)?.indexed).toBe(itemCount);
+    expect(await emptyCtx.index.listVaultItemIds(meta.id)).toHaveLength(
+      itemCount,
+    );
+  });
+
+  it("indexes only new disk items when index is partially populated", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-"));
+    const ctx = { fs, index: new SqlVaultIndexStore(new MemorySqlAdapter()) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const timestamp = new Date().toISOString();
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: createId(),
+        vault_id: meta.id,
+        title: "Existing",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        is_archived: false,
+        is_favorite: false,
+        tag_ids: [],
+        collection_ids: [],
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      content: "old",
+    });
+
+    const newId = createId();
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: newId,
+        vault_id: meta.id,
+        title: "New on disk",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        is_archived: false,
+        is_favorite: false,
+        tag_ids: [],
+        collection_ids: [],
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      content: "new",
+    });
+    await ctx.index.deleteItem(newId);
+
+    const report = await syncIndexFromFilesystem(ctx, path, meta.id);
+    expect(report.skipped).toBe(1);
+    expect(report.indexed).toBe(1);
+    expect(await ctx.index.listVaultItemIds(meta.id)).toContain(newId);
+  });
+
+  it("removes index rows for items deleted from disk offline", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-"));
+    const ctx = { fs, index: new SqlVaultIndexStore(new MemorySqlAdapter()) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemId = createId();
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Gone",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        is_archived: false,
+        is_favorite: false,
+        tag_ids: [],
+        collection_ids: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    });
+
+    await fs.remove(itemRoot(path, itemId), { recursive: true });
+
+    const report = await syncIndexFromFilesystem(ctx, path, meta.id);
+    expect(report.removed).toBe(1);
+    expect(await ctx.index.listVaultItemIds(meta.id)).toHaveLength(0);
+  });
+
+  it("reindexes folder_path changes made offline", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-"));
+    const ctx = { fs, index: new SqlVaultIndexStore(new MemorySqlAdapter()) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemId = createId();
+    const timestamp = new Date().toISOString();
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Moved",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        is_archived: false,
+        is_favorite: false,
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "Old",
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      content: "x",
+    });
+
+    const itemPath = itemRoot(path, itemId);
+    const onDisk = await readItemFile(fs, itemPath);
+    await writeItemFile(fs, itemPath, {
+      ...onDisk,
+      folder_path: "New/Branch",
+      content_revision: onDisk.content_revision + 1,
+    });
+
+    const report = await syncIndexFromFilesystem(ctx, path, meta.id);
+    expect(report.indexed).toBe(1);
+
+    const counts = await ctx.index.listFolderItemCounts(meta.id);
+    expect(counts.find((row) => row.folder_path === "New/Branch")?.item_count).toBe(
+      1,
+    );
+    expect(counts.find((row) => row.folder_path === "Old")).toBeUndefined();
+  });
+
+  it("handles empty vault sync without errors", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-"));
+    const ctx = { fs, index: new SqlVaultIndexStore(new MemorySqlAdapter()) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Empty" });
+
+    const progress: Array<{ processed: number; total: number }> = [];
+    const report = await syncIndexFromFilesystem(ctx, path, meta.id, {
+      onProgress: (p) => progress.push({ processed: p.processed, total: p.total }),
+    });
+
+    expect(report.indexed).toBe(0);
+    expect(report.errors).toHaveLength(0);
+    expect(progress.at(-1)).toEqual({ processed: 0, total: 0 });
+  });
 });
