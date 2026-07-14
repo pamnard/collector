@@ -29,10 +29,32 @@ M1 app shell + M2 release pipeline (CI, updater). See [Roadmap](docs/ROADMAP.md)
 
 ```bash
 npm install
-npm run tauri dev
+npm run tauri:dev
 ```
 
-`tauri dev` uses bundle identifier `com.collector.app.dev` — a **separate data directory** from the installed release (`com.collector.app`). Dev and production vaults cannot collide unless you manually point at the same path.
+`tauri:dev` uses bundle identifier `com.collector.app.dev` — a **separate data directory** from the installed release (`com.collector.app`). Dev and production vaults cannot collide unless you manually point at the same path.
+
+### Linux dev quirks
+
+`npm run tauri:dev` runs `scripts/tauri-dev.sh`, which frees stale Vite on port **1420** and raises the soft `ulimit -n` to **4096** when it is lower (avoids Tauri CLI panics from file watchers in this monorepo).
+
+If `tauri dev` still fails with `Too many open files`, raise the limit in your shell or session:
+
+```bash
+ulimit -n 4096
+```
+
+**Headless / SSH** — Collector is a GUI app; it needs a display server (X11/Wayland) or a virtual framebuffer:
+
+```bash
+# headless dev (unusual)
+xvfb-run -a npm run tauri:dev
+
+# release binary smoke (maintainers)
+npm run verify:release   # requires xvfb-run on Linux: apt install xvfb
+```
+
+Release smoke already launches the built binary via `xvfb-run`; there is no supported headless mode for everyday `tauri dev` without a display.
 
 ### Data locations
 

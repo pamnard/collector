@@ -17,7 +17,7 @@
     "test:vault-index": "npm run build:packages && node scripts/vault-index-rebuild-smoke.mjs",
     "verify:release": "bash scripts/verify-release.sh",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev --config src-tauri/tauri.conf.dev.json"
+    "tauri:dev": "bash scripts/tauri-dev.sh"
   },
   "dependencies": {
     "@collector/core": "*",
