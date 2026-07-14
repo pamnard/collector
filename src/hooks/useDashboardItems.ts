@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ItemFile } from "@collector/shared";
-import type { NavFilter } from "../types/ui";
+import { navFilterKey, type NavFilter } from "../types/ui";
 import {
   DASHBOARD_PREFETCH_SIZE,
   streamDashboardItems,
@@ -114,6 +114,10 @@ export function useDashboardItems(
     [setStreamWindowEnd, streamSlice],
   );
 
+  // Object folder/tag filters are new each render from navFilterFromSetting;
+  // depend on a content key so load does not restart in a loop (#82).
+  const filterKey = navFilterKey(filter);
+
   useEffect(() => {
     const requestVersion = requestVersionRef.current + 1;
     requestVersionRef.current = requestVersion;
@@ -158,7 +162,7 @@ export function useDashboardItems(
       controller.abort();
       streamAbortRef.current?.abort();
     };
-  }, [applyIndexIds, filter, searchQuery, setStreamWindowEnd, vaultRevision]);
+  }, [applyIndexIds, filterKey, searchQuery, setStreamWindowEnd, vaultRevision]);
 
   const loadMore = useCallback(() => {
     if (isLoading || isLoadingMore || streamEndOffset >= itemIds.length) {
