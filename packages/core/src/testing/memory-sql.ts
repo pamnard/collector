@@ -62,10 +62,32 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       });
     }
 
+    if (normalized.startsWith("INSERT INTO collections")) {
+      return this.insertRow("collections", {
+        id: bindValues[0],
+        vault_id: bindValues[1],
+        parent_id: null,
+        name: bindValues[2],
+        description: "",
+        created_at: bindValues[3],
+        updated_at: bindValues[4],
+      });
+    }
+
     if (normalized.startsWith("INSERT INTO item_collections")) {
       return this.insertRow("item_collections", {
         item_id: bindValues[0],
         collection_id: bindValues[1],
+      });
+    }
+
+    if (normalized.startsWith("INSERT INTO tags")) {
+      return this.insertRow("tags", {
+        id: bindValues[0],
+        vault_id: bindValues[1],
+        name: bindValues[2],
+        color: bindValues[3],
+        created_at: bindValues[4],
       });
     }
 
@@ -158,6 +180,58 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
         folder_path,
         item_count,
       })) as T[];
+    }
+
+    if (
+      normalized.startsWith("SELECT id, vault_id, title, description, url,") &&
+      normalized.includes("FROM items WHERE vault_id = ? AND id IN")
+    ) {
+      const vaultId = bindValues[0];
+      const ids = new Set(bindValues.slice(1).map(String));
+      const table = this.tables.get("items") ?? new Map();
+      return [...table.values()]
+        .filter((row) => row.vault_id === vaultId && ids.has(String(row.id)))
+        .map((row) => ({
+          id: row.id,
+          vault_id: row.vault_id,
+          title: row.title,
+          description: row.description,
+          url: row.url,
+          content_type: row.content_type,
+          source_type: row.source_type,
+          source_id: row.source_id,
+          metadata_json: row.metadata_json,
+          thumbnail_path: row.thumbnail_path,
+          is_archived: row.is_archived,
+          is_favorite: row.is_favorite,
+          folder_path: row.folder_path,
+          content_revision: row.content_revision,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+        })) as T[];
+    }
+
+    if (normalized.startsWith("SELECT item_id, tag_id FROM item_tags WHERE item_id IN")) {
+      const ids = new Set(bindValues.map(String));
+      const table = this.tables.get("item_tags") ?? new Map();
+      return [...table.values()]
+        .filter((row) => ids.has(String(row.item_id)))
+        .map((row) => ({ item_id: row.item_id, tag_id: row.tag_id })) as T[];
+    }
+
+    if (
+      normalized.startsWith(
+        "SELECT item_id, collection_id FROM item_collections WHERE item_id IN",
+      )
+    ) {
+      const ids = new Set(bindValues.map(String));
+      const table = this.tables.get("item_collections") ?? new Map();
+      return [...table.values()]
+        .filter((row) => ids.has(String(row.item_id)))
+        .map((row) => ({
+          item_id: row.item_id,
+          collection_id: row.collection_id,
+        })) as T[];
     }
 
     throw new Error(`Unsupported select in MemorySqlAdapter: ${normalized.slice(0, 80)}`);

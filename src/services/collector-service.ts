@@ -8,14 +8,12 @@ import {
   createSingleFlight,
   createVault,
   deleteItem as deleteItemOnDisk,
-  DISK_ITEM_READ_CONCURRENCY,
   itemRoot,
   listItemsByIds,
   listItemsOnDisk,
   migrateVaultSchema,
   readItemContent,
   readItemFile,
-  streamItemsByIds,
   syncVaultIndexFromFilesystem,
   upsertItem,
   vaultMetaPath,
@@ -727,18 +725,24 @@ export async function streamDashboardItems(
     return;
   }
 
-  const { path } = await resolveActiveVault();
-  const batchIds = itemIds.slice(offset, offset + limit);
+  if (signal?.aborted) {
+    return;
+  }
 
-  await streamItemsByIds(getContext(), path, batchIds, {
-    concurrency: DISK_ITEM_READ_CONCURRENCY,
-    signal,
-    onItem: ({ item }) => {
-      if (item) {
-        onItem(item);
-      }
-    },
-  });
+  const { vault } = await resolveActiveVault();
+  if (signal?.aborted) {
+    return;
+  }
+
+  const batchIds = itemIds.slice(offset, offset + limit);
+  const items = await getIndex().listItemFilesByIds(vault.id, batchIds);
+
+  for (const item of items) {
+    if (signal?.aborted) {
+      return;
+    }
+    onItem(item);
+  }
 }
 
 export async function loadDashboardItems(
