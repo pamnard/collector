@@ -27,9 +27,10 @@ import {
   updateTag as updateTagOnVault,
   createFolder as createFolderOnVault,
   deleteFolder as deleteFolderOnVault,
+  collectItemFolderPaths,
   publishFolderTreeFromLayers,
   readVaultFolderPaths,
-  listFolderTreeFromIndex,
+  itemsRoot,
   moveItemToFolder,
   renameFolder as renameFolderOnVault,
   attachMediaFile,
@@ -39,12 +40,7 @@ import {
   clearItemCover,
   resolveItemThumbnailAbsolutePath,
 } from "@collector/core";
-import type {
-  FolderTreeNode,
-  IndexSyncProgress,
-  MediaWithPath,
-  TagWithCount,
-} from "@collector/core";
+import type { FolderTreeNode, MediaWithPath, TagWithCount } from "@collector/core";
 import type { Tag } from "@collector/shared";
 import type { CreateItemInput, UpdateItemInput } from "../types/item";
 import type { NavFilter } from "../types/ui";
@@ -69,139 +65,6 @@ let activeVault: { meta: VaultMeta; path: string } | null = null;
 const syncedVaultIds = new Set<string>();
 const vaultSyncPromises = new Map<string, Promise<void>>();
 const fs = new TauriFileSystemAdapter();
-
-export interface VaultIndexSyncStatus {
-  vaultId: string | null;
-  status: "idle" | "running" | "done";
-  progress: IndexSyncProgress | null;
-}
-
-type VaultSyncListener = {
-  onProgress?: (progress: IndexSyncProgress) => void;
-  onBatch?: (progress: IndexSyncProgress) => void;
-  onComplete?: () => void;
-};
-
-const vaultSyncListeners = new Map<string, Set<VaultSyncListener>>();
-const syncStatusListeners = new Set<(status: VaultIndexSyncStatus) => void>();
-let vaultIndexSyncStatus: VaultIndexSyncStatus = {
-  vaultId: null,
-  status: "idle",
-  progress: null,
-};
-
-function setVaultIndexSyncStatus(next: VaultIndexSyncStatus): void {
-  vaultIndexSyncStatus = next;
-  for (const listener of syncStatusListeners) {
-    listener(next);
-  }
-}
-
-const SYNC_STATUS_THROTTLE_MS = 200;
-const SYNC_REPUBLISH_THROTTLE_MS = 500;
-
-/** Schedule `fn` at most once per `intervalMs`; `flush` runs immediately and cancels pending. */
-function createThrottledPublisher(
-  fn: () => void,
-  intervalMs: number,
-): { schedule: () => void; flush: () => void; cancel: () => void } {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  let lastRun = 0;
-
-  const run = () => {
-    lastRun = Date.now();
-    fn();
-  };
-
-  return {
-    schedule() {
-      const elapsed = Date.now() - lastRun;
-      if (elapsed >= intervalMs) {
-        if (timer) {
-          clearTimeout(timer);
-          timer = null;
-        }
-        run();
-        return;
-      }
-      if (timer) {
-        return;
-      }
-      timer = setTimeout(() => {
-        timer = null;
-        run();
-      }, intervalMs - elapsed);
-    },
-    flush() {
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
-      run();
-    },
-    cancel() {
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
-    },
-  };
-}
-
-function emitVaultSyncEvent(
-  vaultId: string,
-  event: "progress" | "batch" | "complete",
-  progress?: IndexSyncProgress,
-): void {
-  const listeners = vaultSyncListeners.get(vaultId);
-  if (!listeners) {
-    return;
-  }
-  for (const listener of listeners) {
-    if (event === "progress" && progress) {
-      listener.onProgress?.(progress);
-    }
-    if (event === "batch" && progress) {
-      listener.onBatch?.(progress);
-    }
-    if (event === "complete") {
-      listener.onComplete?.();
-    }
-  }
-}
-
-function addVaultSyncListener(
-  vaultId: string,
-  listener: VaultSyncListener,
-): () => void {
-  let listeners = vaultSyncListeners.get(vaultId);
-  if (!listeners) {
-    listeners = new Set();
-    vaultSyncListeners.set(vaultId, listeners);
-  }
-  listeners.add(listener);
-  return () => {
-    listeners!.delete(listener);
-    if (listeners!.size === 0) {
-      vaultSyncListeners.delete(vaultId);
-    }
-  };
-}
-
-/** Subscribe to global vault index sync progress (banner). */
-export function subscribeVaultIndexSyncStatus(
-  onUpdate: (status: VaultIndexSyncStatus) => void,
-): () => void {
-  onUpdate(vaultIndexSyncStatus);
-  syncStatusListeners.add(onUpdate);
-  return () => {
-    syncStatusListeners.delete(onUpdate);
-  };
-}
-
-export function getVaultIndexSyncStatus(): VaultIndexSyncStatus {
-  return vaultIndexSyncStatus;
-}
 
 type VaultEntry = { meta: VaultMeta; path: string };
 
@@ -243,11 +106,6 @@ async function rebuildIndexDatabase(): Promise<void> {
   syncedVaultIds.clear();
   vaultSyncPromises.clear();
   activeVault = null;
-  setVaultIndexSyncStatus({
-    vaultId: null,
-    status: "idle",
-    progress: null,
-  });
 
   await resetIndexSchema(sql);
   await runMigrations(sql);
@@ -358,80 +216,14 @@ function startVaultIndexSync(vaultId: string, vaultPath: string): Promise<void> 
     return inflight;
   }
 
-  setVaultIndexSyncStatus({
-    vaultId,
-    status: "running",
-    progress: {
-      processed: 0,
-      total: 0,
-      skipped: 0,
-      patched: 0,
-      indexed: 0,
-      removed: 0,
-    },
-  });
-
-  let latestProgress: IndexSyncProgress = {
-    processed: 0,
-    total: 0,
-    skipped: 0,
-    patched: 0,
-    indexed: 0,
-    removed: 0,
-  };
-
-  const publishRunningStatus = createThrottledPublisher(() => {
-    setVaultIndexSyncStatus({
-      vaultId,
-      status: "running",
-      progress: latestProgress,
-    });
-  }, SYNC_STATUS_THROTTLE_MS);
-
   const promise = (async () => {
-    try {
-      const report = await syncVaultIndexFromFilesystem(getContext(), vaultPath, {
-        onProgress: (progress) => {
-          latestProgress = progress;
-          publishRunningStatus.schedule();
-          emitVaultSyncEvent(vaultId, "progress", progress);
-        },
-        onBatch: (progress) => {
-          latestProgress = progress;
-          publishRunningStatus.schedule();
-          emitVaultSyncEvent(vaultId, "batch", progress);
-        },
-      });
-      if (report.vaultId !== vaultId) {
-        throw new Error(
-          `Vault id mismatch during index sync: expected ${vaultId}, got ${report.vaultId}`,
-        );
-      }
-      syncedVaultIds.add(vaultId);
-      const finalProgress: IndexSyncProgress = {
-        processed: report.indexed + report.patched + report.skipped,
-        total: report.indexed + report.patched + report.skipped,
-        skipped: report.skipped,
-        patched: report.patched,
-        indexed: report.indexed,
-        removed: report.removed,
-      };
-      publishRunningStatus.cancel();
-      emitVaultSyncEvent(vaultId, "complete");
-      setVaultIndexSyncStatus({
-        vaultId,
-        status: "done",
-        progress: finalProgress,
-      });
-    } catch (error) {
-      publishRunningStatus.cancel();
-      setVaultIndexSyncStatus({
-        vaultId,
-        status: "idle",
-        progress: null,
-      });
-      throw error;
+    const report = await syncVaultIndexFromFilesystem(getContext(), vaultPath);
+    if (report.vaultId !== vaultId) {
+      throw new Error(
+        `Vault id mismatch during index sync: expected ${vaultId}, got ${report.vaultId}`,
+      );
     }
+    syncedVaultIds.add(vaultId);
   })().finally(() => {
     vaultSyncPromises.delete(vaultId);
   });
@@ -582,6 +374,17 @@ export interface DashboardItemIdsResult {
   indexSync: Promise<void>;
 }
 
+function matchesDiskSearch(item: ItemFile, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+  return (
+    item.title.toLowerCase().includes(needle) ||
+    item.description.toLowerCase().includes(needle)
+  );
+}
+
 async function queryDashboardItemIds(
   vaultId: string,
   filter: NavFilter,
@@ -626,7 +429,8 @@ export function subscribeDashboardLoad(
   query: string,
   handlers: {
     onIndexIds: (itemIds: string[]) => void;
-    onLoadComplete?: () => void;
+    onDiskItem: (item: ItemFile) => void;
+    onDiskComplete?: () => void;
     onError?: (scope: string, error: unknown) => void;
   },
   signal?: AbortSignal,
@@ -636,7 +440,16 @@ export function subscribeDashboardLoad(
       .listDashboardItemIds(filter, query)
       .then((itemIds) => {
         handlers.onIndexIds(itemIds);
-        handlers.onLoadComplete?.();
+        return devMockCollector.streamDashboardItems(
+          itemIds,
+          0,
+          itemIds.length,
+          handlers.onDiskItem,
+          signal,
+        );
+      })
+      .then(() => {
+        handlers.onDiskComplete?.();
       })
       .catch((error: unknown) => {
         handlers.onError?.("dashboard load", error);
@@ -650,46 +463,58 @@ export function subscribeDashboardLoad(
       return;
     }
 
-    const publishIds = async () => {
-      try {
-        const itemIds = await queryDashboardItemIds(vault.id, filter, query);
-        if (!signal?.aborted) {
-          handlers.onIndexIds(itemIds);
+    void startVaultIndexSync(vault.id, path);
+
+    void queryDashboardItemIds(vault.id, filter, query)
+      .then((itemIds) => {
+        if (signal?.aborted) {
+          return;
         }
-      } catch (error: unknown) {
+        handlers.onIndexIds(itemIds);
+      })
+      .catch((error: unknown) => {
         handlers.onError?.("dashboard index ids", error);
         if (!signal?.aborted) {
           handlers.onIndexIds([]);
         }
-      }
-    };
+      });
 
-    const republish = createThrottledPublisher(() => {
-      void publishIds();
-    }, SYNC_REPUBLISH_THROTTLE_MS);
-
-    const unsub = addVaultSyncListener(vault.id, {
-      onBatch: () => {
-        republish.schedule();
-      },
-      onComplete: () => {
-        republish.flush();
-      },
-    });
-
-    const onAbort = () => {
-      republish.cancel();
-      unsub();
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-
-    await publishIds();
-    if (!signal?.aborted) {
-      handlers.onLoadComplete?.();
+    const itemsDir = itemsRoot(path);
+    if (!(await fs.exists(itemsDir))) {
+      handlers.onDiskComplete?.();
+      return;
     }
-    kickoffVaultIndexSync(vault.id, path);
+
+    const [allDiskIds, allDbIds] = await Promise.all([
+      fs.readDir(itemsDir),
+      getContext().index.listVaultItemIds(vault.id),
+    ]);
+
+    const dbIdSet = new Set(allDbIds);
+    const unindexedIds = allDiskIds.filter((id) => !dbIdSet.has(id));
+
+    if (unindexedIds.length > 0) {
+      await streamItemsByIds(getContext(), path, unindexedIds, {
+        concurrency: DISK_ITEM_READ_CONCURRENCY,
+        signal,
+        onItem: ({ item }) => {
+          if (!item) {
+            return;
+          }
+          if (!matchesNavFilter(item, filter)) {
+            return;
+          }
+          if (!matchesDiskSearch(item, query)) {
+            return;
+          }
+          handlers.onDiskItem(item);
+        },
+      });
+    }
+
+    handlers.onDiskComplete?.();
   })().catch((error: unknown) => {
-    handlers.onError?.("dashboard load", error);
+    handlers.onError?.("dashboard disk load", error);
   });
 }
 
@@ -926,6 +751,8 @@ export function subscribeTags(
       return;
     }
 
+    const syncPromise = startVaultIndexSync(vault.id, path);
+
     const publish = async () => {
       try {
         const tags = await listTagsWithCounts(getContext(), vault.id, path);
@@ -937,27 +764,13 @@ export function subscribeTags(
       }
     };
 
-    const republish = createThrottledPublisher(() => {
-      void publish();
-    }, SYNC_REPUBLISH_THROTTLE_MS);
-
-    const unsub = addVaultSyncListener(vault.id, {
-      onBatch: () => {
-        republish.schedule();
-      },
-      onComplete: () => {
-        republish.flush();
-      },
-    });
-
-    const onAbort = () => {
-      republish.cancel();
-      unsub();
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-
     await publish();
-    kickoffVaultIndexSync(vault.id, path);
+
+    void syncPromise.then(() => {
+      if (!signal?.aborted) {
+        void publish();
+      }
+    });
   })().catch((error: unknown) => {
     handlers?.onError?.("tags subscribe", error);
     if (!signal?.aborted) {
@@ -1024,47 +837,53 @@ export function subscribeFolderTree(
       return;
     }
 
+    void startVaultIndexSync(vault.id, path);
     const ctx = getContext();
     const foldersFilePaths = await readVaultFolderPaths(ctx, path);
 
-    const publish = async () => {
+    const layers = {
+      indexCountRows: null as Array<{
+        folder_path: string;
+        item_count: number;
+      }> | null,
+      diskFolderPaths: null as string[] | null,
+    };
+
+    const publish = () => {
       if (signal?.aborted) {
         return;
       }
-      try {
-        const indexCountRows = await ctx.index.listFolderItemCounts(vault.id);
-        onUpdate(
-          publishFolderTreeFromLayers(foldersFilePaths, indexCountRows, null),
-        );
-      } catch (error: unknown) {
+      onUpdate(
+        publishFolderTreeFromLayers(
+          foldersFilePaths,
+          layers.indexCountRows,
+          layers.diskFolderPaths,
+        ),
+      );
+    };
+
+    void ctx.index
+      .listFolderItemCounts(vault.id)
+      .then((rows) => {
+        layers.indexCountRows = rows;
+        publish();
+      })
+      .catch((error: unknown) => {
         handlers?.onError?.("folder tree index", error);
-        if (!signal?.aborted) {
-          onUpdate(publishFolderTreeFromLayers(foldersFilePaths, [], null));
-        }
-      }
-    };
+        layers.indexCountRows = [];
+        publish();
+      });
 
-    const republish = createThrottledPublisher(() => {
-      void publish();
-    }, SYNC_REPUBLISH_THROTTLE_MS);
-
-    const unsub = addVaultSyncListener(vault.id, {
-      onBatch: () => {
-        republish.schedule();
-      },
-      onComplete: () => {
-        republish.flush();
-      },
-    });
-
-    const onAbort = () => {
-      republish.cancel();
-      unsub();
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-
-    await publish();
-    kickoffVaultIndexSync(vault.id, path);
+    void collectItemFolderPaths(ctx, path)
+      .then((paths) => {
+        layers.diskFolderPaths = paths;
+        publish();
+      })
+      .catch((error: unknown) => {
+        handlers?.onError?.("folder tree disk", error);
+        layers.diskFolderPaths = [];
+        publish();
+      });
   })().catch((error: unknown) => {
     handlers?.onError?.("folder tree", error);
     if (!signal?.aborted) {
@@ -1083,8 +902,23 @@ export async function listFolderTree(): Promise<FolderTreeNode[]> {
   }
 
   const { vault, path } = await resolveActiveVault();
-  kickoffVaultIndexSync(vault.id, path);
-  return listFolderTreeFromIndex(getContext(), path, vault.id);
+  const ctx = getContext();
+  const foldersFilePaths = await readVaultFolderPaths(ctx, path);
+  const [indexResult, diskResult] = await Promise.allSettled([
+    ctx.index.listFolderItemCounts(vault.id),
+    collectItemFolderPaths(ctx, path),
+  ]);
+
+  const indexCountRows =
+    indexResult.status === "fulfilled" ? indexResult.value : [];
+  const diskFolderPaths =
+    diskResult.status === "fulfilled" ? diskResult.value : [];
+
+  return publishFolderTreeFromLayers(
+    foldersFilePaths,
+    indexCountRows,
+    diskFolderPaths,
+  );
 }
 
 export async function createFolder(folderPath: string): Promise<string> {

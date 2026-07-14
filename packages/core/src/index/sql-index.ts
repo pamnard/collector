@@ -59,110 +59,94 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
   async upsertItem(record: IndexedItem, vaultId: string): Promise<void> {
     const { item, content, sourceRef } = record;
 
-    await this.db.execute("BEGIN");
-    try {
+    await this.db.execute(
+      `INSERT INTO items (
+        id, vault_id, title, description, url, content_type, source_type, source_id,
+        metadata_json, thumbnail_path, is_archived, is_favorite, has_content_file,
+        folder_path, created_at, updated_at, file_mtime_ms, content_revision
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        vault_id = excluded.vault_id,
+        title = excluded.title,
+        description = excluded.description,
+        url = excluded.url,
+        content_type = excluded.content_type,
+        source_type = excluded.source_type,
+        source_id = excluded.source_id,
+        metadata_json = excluded.metadata_json,
+        thumbnail_path = excluded.thumbnail_path,
+        is_archived = excluded.is_archived,
+        is_favorite = excluded.is_favorite,
+        has_content_file = excluded.has_content_file,
+        folder_path = excluded.folder_path,
+        updated_at = excluded.updated_at,
+        file_mtime_ms = excluded.file_mtime_ms,
+        content_revision = excluded.content_revision`,
+      [
+        item.id,
+        vaultId,
+        item.title,
+        item.description,
+        item.url ?? null,
+        item.content_type,
+        item.source_type,
+        item.source_id ?? null,
+        serializeMetadata(item.metadata),
+        item.thumbnail ?? null,
+        item.is_archived ? 1 : 0,
+        item.is_favorite ? 1 : 0,
+        content ? 1 : 0,
+        item.folder_path ?? "",
+        item.created_at,
+        item.updated_at,
+        record.fileMtimeMs ?? null,
+        item.content_revision,
+      ],
+    );
+
+    await this.db.execute("DELETE FROM item_tags WHERE item_id = ?", [item.id]);
+    for (const tagId of item.tag_ids) {
       await this.db.execute(
-        `INSERT INTO items (
-          id, vault_id, title, description, url, content_type, source_type, source_id,
-          metadata_json, thumbnail_path, is_archived, is_favorite, has_content_file,
-          folder_path, created_at, updated_at, file_mtime_ms, content_revision
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-          vault_id = excluded.vault_id,
-          title = excluded.title,
-          description = excluded.description,
-          url = excluded.url,
-          content_type = excluded.content_type,
-          source_type = excluded.source_type,
-          source_id = excluded.source_id,
-          metadata_json = excluded.metadata_json,
-          thumbnail_path = excluded.thumbnail_path,
-          is_archived = excluded.is_archived,
-          is_favorite = excluded.is_favorite,
-          has_content_file = excluded.has_content_file,
-          folder_path = excluded.folder_path,
-          updated_at = excluded.updated_at,
-          file_mtime_ms = excluded.file_mtime_ms,
-          content_revision = excluded.content_revision`,
+        "INSERT INTO item_tags (item_id, tag_id) VALUES (?, ?)",
+        [item.id, tagId],
+      );
+    }
+
+    await this.db.execute("DELETE FROM item_collections WHERE item_id = ?", [item.id]);
+    for (const collectionId of item.collection_ids) {
+      await this.db.execute(
+        `INSERT INTO item_collections (item_id, collection_id)
+         SELECT ?, ?
+         WHERE EXISTS (SELECT 1 FROM collections WHERE id = ?)`,
+        [item.id, collectionId, collectionId],
+      );
+    }
+
+    await this.db.execute("DELETE FROM items_fts WHERE item_id = ?", [item.id]);
+    await this.db.execute(
+      "INSERT INTO items_fts (item_id, title, description, content) VALUES (?, ?, ?, ?)",
+      [item.id, item.title, item.description, content ?? ""],
+    );
+
+    if (sourceRef) {
+      await this.db.execute("DELETE FROM source_refs WHERE item_id = ?", [item.id]);
+      await this.db.execute(
+        "DELETE FROM source_refs WHERE plugin_id = ? AND external_id = ?",
+        [sourceRef.plugin_id, sourceRef.external_id],
+      );
+      await this.db.execute(
+        `INSERT INTO source_refs (
+          id, item_id, plugin_id, external_id, synced_at, metadata_json
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
         [
+          crypto.randomUUID(),
           item.id,
-          vaultId,
-          item.title,
-          item.description,
-          item.url ?? null,
-          item.content_type,
-          item.source_type,
-          item.source_id ?? null,
-          serializeMetadata(item.metadata),
-          item.thumbnail ?? null,
-          item.is_archived ? 1 : 0,
-          item.is_favorite ? 1 : 0,
-          content ? 1 : 0,
-          item.folder_path ?? "",
-          item.created_at,
-          item.updated_at,
-          record.fileMtimeMs ?? null,
-          item.content_revision,
+          sourceRef.plugin_id,
+          sourceRef.external_id,
+          sourceRef.synced_at ?? null,
+          serializeMetadata(sourceRef.metadata ?? {}),
         ],
       );
-
-      await this.db.execute("DELETE FROM item_tags WHERE item_id = ?", [item.id]);
-      for (const tagId of item.tag_ids) {
-        await this.db.execute(
-          "INSERT INTO item_tags (item_id, tag_id) VALUES (?, ?)",
-          [item.id, tagId],
-        );
-      }
-
-      await this.db.execute("DELETE FROM item_collections WHERE item_id = ?", [
-        item.id,
-      ]);
-      for (const collectionId of item.collection_ids) {
-        await this.db.execute(
-          `INSERT INTO item_collections (item_id, collection_id)
-           SELECT ?, ?
-           WHERE EXISTS (SELECT 1 FROM collections WHERE id = ?)`,
-          [item.id, collectionId, collectionId],
-        );
-      }
-
-      await this.db.execute("DELETE FROM items_fts WHERE item_id = ?", [item.id]);
-      await this.db.execute(
-        "INSERT INTO items_fts (item_id, title, description, content) VALUES (?, ?, ?, ?)",
-        [item.id, item.title, item.description, content ?? ""],
-      );
-
-      if (sourceRef) {
-        await this.db.execute("DELETE FROM source_refs WHERE item_id = ?", [
-          item.id,
-        ]);
-        await this.db.execute(
-          "DELETE FROM source_refs WHERE plugin_id = ? AND external_id = ?",
-          [sourceRef.plugin_id, sourceRef.external_id],
-        );
-        await this.db.execute(
-          `INSERT INTO source_refs (
-            id, item_id, plugin_id, external_id, synced_at, metadata_json
-          ) VALUES (?, ?, ?, ?, ?, ?)`,
-          [
-            crypto.randomUUID(),
-            item.id,
-            sourceRef.plugin_id,
-            sourceRef.external_id,
-            sourceRef.synced_at ?? null,
-            serializeMetadata(sourceRef.metadata ?? {}),
-          ],
-        );
-      }
-
-      await this.db.execute("COMMIT");
-    } catch (error) {
-      try {
-        await this.db.execute("ROLLBACK");
-      } catch {
-        // ignore rollback failure after a failed upsert
-      }
-      throw error;
     }
   }
 

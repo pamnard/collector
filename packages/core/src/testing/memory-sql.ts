@@ -7,14 +7,6 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
   async execute(query: string, bindValues: unknown[] = []): Promise<number> {
     const normalized = query.trim().replace(/\s+/g, " ");
 
-    if (
-      normalized === "BEGIN" ||
-      normalized === "COMMIT" ||
-      normalized === "ROLLBACK"
-    ) {
-      return 0;
-    }
-
     if (normalized.startsWith("UPDATE items SET file_mtime_ms = ?")) {
       return this.patchItemSyncMeta(bindValues);
     }

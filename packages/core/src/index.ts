@@ -2,8 +2,6 @@ export type {
   CreateVaultInput,
   FileSystemAdapter,
   IndexedItem,
-  IndexSyncOptions,
-  IndexSyncProgress,
   SyncReport,
   UpsertItemInput,
   VaultContext,

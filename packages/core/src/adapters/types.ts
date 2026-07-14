@@ -88,18 +88,3 @@ export interface SyncReport {
   removed: number;
   errors: Array<{ itemId: string; message: string }>;
 }
-
-export interface IndexSyncProgress {
-  processed: number;
-  total: number;
-  skipped: number;
-  patched: number;
-  indexed: number;
-  removed: number;
-}
-
-export interface IndexSyncOptions {
-  onProgress?: (progress: IndexSyncProgress) => void;
-  onBatch?: (progress: IndexSyncProgress) => void;
-}
-
