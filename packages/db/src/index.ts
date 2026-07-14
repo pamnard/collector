@@ -14,3 +14,4 @@ export {
   validateIndexSchema,
 } from "./validate.js";
 export type { IndexValidationResult } from "./validate.js";
+export { resetIndexSchema } from "./reset.js";

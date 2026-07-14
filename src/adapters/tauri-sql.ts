@@ -23,6 +23,6 @@ export class TauriSqlAdapter implements SqlExecutor, SqlSelector {
   }
 
   async close(): Promise<void> {
-    await this.db.close();
+    await this.db.close(this.db.path);
   }
 }

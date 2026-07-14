@@ -1,5 +1,5 @@
 import { appDataDir, join } from "@tauri-apps/api/path";
-import { ensureHealthyIndex, runMigrations } from "@collector/db";
+import { ensureHealthyIndex, runMigrations, resetIndexSchema } from "@collector/db";
 import type { ItemFile, VaultMeta } from "@collector/shared";
 import type { MediaFileMeta } from "@collector/shared";
 import {
@@ -52,7 +52,7 @@ import {
   updateAppSettings,
 } from "./app-settings-service";
 import { generateCoverFromMedia } from "./thumbnail-service";
-import { listIndexDatabasePaths, getLegacyIndexDatabasePaths } from "./index-db-path";
+import { getLegacyIndexDatabasePaths } from "./index-db-path";
 import { isDevMock } from "../dev/is-dev-mock";
 import * as devMockCollector from "../dev/mock-collector";
 
@@ -97,30 +97,16 @@ async function removeLegacyIndexDatabaseFiles(): Promise<void> {
   }
 }
 
-async function removeIndexDatabaseFiles(): Promise<void> {
-  for (const dbPath of await listIndexDatabasePaths()) {
-    for (const suffix of ["", "-wal", "-shm"]) {
-      const path = `${dbPath}${suffix}`;
-      if (await fs.exists(path)) {
-        await fs.remove(path);
-      }
-    }
-  }
-}
-
 async function rebuildIndexDatabase(): Promise<void> {
-  if (sql) {
-    await sql.close();
+  if (!sql) {
+    throw new Error("Collector database is not initialized");
   }
 
-  sql = null;
   syncedVaultIds.clear();
   vaultSyncPromises.clear();
   activeVault = null;
 
-  await removeIndexDatabaseFiles();
-
-  sql = await TauriSqlAdapter.open();
+  await resetIndexSchema(sql);
   await runMigrations(sql);
 }
 

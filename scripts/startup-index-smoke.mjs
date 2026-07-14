@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runMigrations } from "../packages/db/dist/migrate.js";
+import { resetIndexSchema } from "../packages/db/dist/reset.js";
 import {
   ensureHealthyIndex,
   validateIndexSchema,
@@ -56,20 +57,14 @@ async function simulateRebuildFromBrokenDb(dbPath) {
     throw new Error("expected broken DB to fail startup checks");
   }
 
-  broken.close();
-  rmSync(dbPath, { force: true });
-  for (const suffix of ["-wal", "-shm"]) {
-    rmSync(`${dbPath}${suffix}`, { force: true });
-  }
-
-  const fresh = openDb(dbPath);
-  await runMigrations(fresh);
-  const after = await ensureHealthyIndex(fresh);
+  await resetIndexSchema(broken);
+  await runMigrations(broken);
+  const after = await ensureHealthyIndex(broken);
   if (!after.ok) {
-    fresh.close();
+    broken.close();
     throw new Error(`rebuilt DB still unhealthy: ${after.errors.join("; ")}`);
   }
-  fresh.close();
+  broken.close();
 }
 
 const dir = mkdtempSync(join(tmpdir(), "collector-startup-smoke-"));
