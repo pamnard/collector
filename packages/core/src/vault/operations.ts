@@ -23,7 +23,8 @@ import { writeFoldersFile } from "./folder-io.js";
 import {
   DISK_ITEM_READ_CONCURRENCY,
   INDEX_SYNC_WRITE_BATCH,
-  runWithConcurrency,
+  INDEX_SYNC_YIELD_MS,
+  runWithConcurrencyYielding,
   yieldToEventLoop,
 } from "../util/concurrency.js";
 import { classifyItemSyncAction } from "./sync-classifier.js";
@@ -181,7 +182,7 @@ export async function syncIndexFromFilesystem(
 
   emitProgress(0, total);
 
-  const stats = await runWithConcurrency(
+  const stats = await runWithConcurrencyYielding(
     diskIds.length,
     DISK_ITEM_READ_CONCURRENCY,
     async (index) => {
@@ -198,6 +199,7 @@ export async function syncIndexFromFilesystem(
         return { itemId, diskMtimeMs: 0, error };
       }
     },
+    { yieldEvery: INDEX_SYNC_WRITE_BATCH, yieldMs: INDEX_SYNC_YIELD_MS },
   );
 
   const metadataReadQueue: Array<{ itemId: string; diskMtimeMs: number }> = [];
@@ -232,7 +234,7 @@ export async function syncIndexFromFilesystem(
   }
 
   if (metadataReadQueue.length > 0) {
-    const metadataReads = await runWithConcurrency(
+    const metadataReads = await runWithConcurrencyYielding(
       metadataReadQueue.length,
       DISK_ITEM_READ_CONCURRENCY,
       async (index) => {
@@ -245,7 +247,8 @@ export async function syncIndexFromFilesystem(
           return { ...work, item: null, error };
         }
       },
-      );
+      { yieldEvery: INDEX_SYNC_WRITE_BATCH, yieldMs: INDEX_SYNC_YIELD_MS },
+    );
 
     for (const read of metadataReads) {
       classified += 1;
@@ -321,7 +324,7 @@ export async function syncIndexFromFilesystem(
     if ((i + 1) % INDEX_SYNC_WRITE_BATCH === 0 || i + 1 === reindexQueue.length) {
       emitBatch(processed, total);
       if (i + 1 < reindexQueue.length) {
-        await yieldToEventLoop();
+        await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
       }
     }
   }

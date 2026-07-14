@@ -97,6 +97,57 @@ function setVaultIndexSyncStatus(next: VaultIndexSyncStatus): void {
   }
 }
 
+const SYNC_STATUS_THROTTLE_MS = 200;
+const SYNC_REPUBLISH_THROTTLE_MS = 500;
+
+/** Schedule `fn` at most once per `intervalMs`; `flush` runs immediately and cancels pending. */
+function createThrottledPublisher(
+  fn: () => void,
+  intervalMs: number,
+): { schedule: () => void; flush: () => void; cancel: () => void } {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let lastRun = 0;
+
+  const run = () => {
+    lastRun = Date.now();
+    fn();
+  };
+
+  return {
+    schedule() {
+      const elapsed = Date.now() - lastRun;
+      if (elapsed >= intervalMs) {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        run();
+        return;
+      }
+      if (timer) {
+        return;
+      }
+      timer = setTimeout(() => {
+        timer = null;
+        run();
+      }, intervalMs - elapsed);
+    },
+    flush() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      run();
+    },
+    cancel() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    },
+  };
+}
+
 function emitVaultSyncEvent(
   vaultId: string,
   event: "progress" | "batch" | "complete",
@@ -320,23 +371,34 @@ function startVaultIndexSync(vaultId: string, vaultPath: string): Promise<void> 
     },
   });
 
+  let latestProgress: IndexSyncProgress = {
+    processed: 0,
+    total: 0,
+    skipped: 0,
+    patched: 0,
+    indexed: 0,
+    removed: 0,
+  };
+
+  const publishRunningStatus = createThrottledPublisher(() => {
+    setVaultIndexSyncStatus({
+      vaultId,
+      status: "running",
+      progress: latestProgress,
+    });
+  }, SYNC_STATUS_THROTTLE_MS);
+
   const promise = (async () => {
     try {
       const report = await syncVaultIndexFromFilesystem(getContext(), vaultPath, {
         onProgress: (progress) => {
-          setVaultIndexSyncStatus({
-            vaultId,
-            status: "running",
-            progress,
-          });
+          latestProgress = progress;
+          publishRunningStatus.schedule();
           emitVaultSyncEvent(vaultId, "progress", progress);
         },
         onBatch: (progress) => {
-          setVaultIndexSyncStatus({
-            vaultId,
-            status: "running",
-            progress,
-          });
+          latestProgress = progress;
+          publishRunningStatus.schedule();
           emitVaultSyncEvent(vaultId, "batch", progress);
         },
       });
@@ -354,6 +416,7 @@ function startVaultIndexSync(vaultId: string, vaultPath: string): Promise<void> 
         indexed: report.indexed,
         removed: report.removed,
       };
+      publishRunningStatus.cancel();
       setVaultIndexSyncStatus({
         vaultId,
         status: "done",
@@ -361,6 +424,7 @@ function startVaultIndexSync(vaultId: string, vaultPath: string): Promise<void> 
       });
       emitVaultSyncEvent(vaultId, "complete");
     } catch (error) {
+      publishRunningStatus.cancel();
       setVaultIndexSyncStatus({
         vaultId,
         status: "idle",
@@ -600,16 +664,21 @@ export function subscribeDashboardLoad(
       }
     };
 
+    const republish = createThrottledPublisher(() => {
+      void publishIds();
+    }, SYNC_REPUBLISH_THROTTLE_MS);
+
     const unsub = addVaultSyncListener(vault.id, {
       onBatch: () => {
-        void publishIds();
+        republish.schedule();
       },
       onComplete: () => {
-        void publishIds();
+        republish.flush();
       },
     });
 
     const onAbort = () => {
+      republish.cancel();
       unsub();
     };
     signal?.addEventListener("abort", onAbort, { once: true });
@@ -868,16 +937,21 @@ export function subscribeTags(
       }
     };
 
+    const republish = createThrottledPublisher(() => {
+      void publish();
+    }, SYNC_REPUBLISH_THROTTLE_MS);
+
     const unsub = addVaultSyncListener(vault.id, {
       onBatch: () => {
-        void publish();
+        republish.schedule();
       },
       onComplete: () => {
-        void publish();
+        republish.flush();
       },
     });
 
     const onAbort = () => {
+      republish.cancel();
       unsub();
     };
     signal?.addEventListener("abort", onAbort, { once: true });
@@ -970,16 +1044,21 @@ export function subscribeFolderTree(
       }
     };
 
+    const republish = createThrottledPublisher(() => {
+      void publish();
+    }, SYNC_REPUBLISH_THROTTLE_MS);
+
     const unsub = addVaultSyncListener(vault.id, {
       onBatch: () => {
-        void publish();
+        republish.schedule();
       },
       onComplete: () => {
-        void publish();
+        republish.flush();
       },
     });
 
     const onAbort = () => {
+      republish.cancel();
       unsub();
     };
     signal?.addEventListener("abort", onAbort, { once: true });
