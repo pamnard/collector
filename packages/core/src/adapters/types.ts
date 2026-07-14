@@ -54,6 +54,7 @@ export interface VaultIndexAdapter {
     vaultId: string,
   ): Promise<Array<{ folder_path: string; item_count: number }>>;
   listVaultItemIds(vaultId: string): Promise<string[]>;
+  listItemFilesByIds(vaultId: string, itemIds: string[]): Promise<ItemFile[]>;
   listVaultItemSyncMeta(vaultId: string): Promise<ItemSyncMeta[]>;
   patchItemSyncMeta(itemId: string, meta: ItemSyncMetaPatch): Promise<void>;
   searchItemIds(

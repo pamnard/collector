@@ -2,9 +2,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { runMigrations } from "@collector/db";
+import { BetterSqliteMigrator } from "../../../db/src/testing/better-sqlite.js";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
 import { createVault, upsertItem } from "../vault/operations.js";
+import { createTag } from "../vault/tag-operations.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import { createId } from "../util/ids.js";
 
@@ -67,5 +70,116 @@ describe("listItemIdsByNavFilter", () => {
     expect(await index.listItemIdsByNavFilter(meta.id, "archived")).toEqual([
       archivedId,
     ]);
+  });
+});
+
+describe("listItemFilesByIds", () => {
+  let dataDir = "";
+  const fs = new NodeFileSystemAdapter();
+  let db: BetterSqliteMigrator | null = null;
+
+  afterEach(async () => {
+    db?.close();
+    db = null;
+    if (dataDir) {
+      await rm(dataDir, { recursive: true, force: true });
+      dataDir = "";
+    }
+  });
+
+  it("returns ItemFile DTOs with tag_ids and collection_ids from SQL", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-list-item-files-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    const ctx = { fs, index };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    const tag = await createTag(ctx, path, meta.id, { name: "inbox" });
+    const collectionId = createId();
+    const firstId = createId();
+    const secondId = createId();
+    const missingId = createId();
+    const timestamp = new Date().toISOString();
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: firstId,
+        vault_id: meta.id,
+        title: "First",
+        description: "desc",
+        url: "https://example.com/a",
+        content_type: "bookmark",
+        source_type: "manual",
+        metadata: { k: 1 },
+        thumbnail: "media/cover.webp",
+        is_archived: false,
+        is_favorite: true,
+        tag_ids: [tag.id],
+        collection_ids: [collectionId],
+        folder_path: "work",
+        content_revision: 2,
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+    });
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: secondId,
+        vault_id: meta.id,
+        title: "Second",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        is_archived: false,
+        is_favorite: false,
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+    });
+
+    const loaded = await index.listItemFilesByIds(meta.id, [
+      secondId,
+      missingId,
+      firstId,
+    ]);
+
+    expect(loaded.map((item) => item.id)).toEqual([secondId, firstId]);
+
+    const first = loaded.find((item) => item.id === firstId)!;
+    expect(first.title).toBe("First");
+    expect(first.description).toBe("desc");
+    expect(first.url).toBe("https://example.com/a");
+    expect(first.content_type).toBe("bookmark");
+    expect(first.thumbnail).toBe("media/cover.webp");
+    expect(first.is_favorite).toBe(true);
+    expect(first.folder_path).toBe("work");
+    expect(first.metadata).toEqual({ k: 1 });
+    expect(first.tag_ids).toEqual([tag.id]);
+    expect(first.collection_ids).toEqual([collectionId]);
+    expect(first.content_revision).toBe(2);
+
+    const second = loaded.find((item) => item.id === secondId)!;
+    expect(second.tag_ids).toEqual([]);
+    expect(second.collection_ids).toEqual([]);
+
+    const readTextCalls: string[] = [];
+    const originalReadText = fs.readText.bind(fs);
+    fs.readText = async (filePath: string) => {
+      readTextCalls.push(filePath);
+      return originalReadText(filePath);
+    };
+    try {
+      await index.listItemFilesByIds(meta.id, [firstId, secondId]);
+    } finally {
+      fs.readText = originalReadText;
+    }
+    expect(readTextCalls.filter((p) => p.endsWith("item.json"))).toEqual([]);
   });
 });

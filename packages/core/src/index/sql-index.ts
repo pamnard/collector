@@ -1,4 +1,11 @@
-import type { MediaFileMeta, Tag, VaultMeta } from "@collector/shared";
+import type {
+  ContentType,
+  ItemFile,
+  MediaFileMeta,
+  SourceType,
+  Tag,
+  VaultMeta,
+} from "@collector/shared";
 import type { SqlExecutor } from "@collector/db";
 import type { IndexedItem, VaultIndexAdapter } from "../adapters/types.js";
 import type { NavSearchFilter } from "../search/nav-filter.js";
@@ -6,8 +13,70 @@ import { isFolderFilter, isTagFilter } from "../search/nav-filter.js";
 
 type TagWithCount = Tag & { item_count: number };
 
+interface ItemRow {
+  id: string;
+  vault_id: string;
+  title: string;
+  description: string;
+  url: string | null;
+  content_type: string;
+  source_type: string;
+  source_id: string | null;
+  metadata_json: string;
+  thumbnail_path: string | null;
+  is_archived: number;
+  is_favorite: number;
+  folder_path: string;
+  content_revision: number;
+  created_at: string;
+  updated_at: string;
+}
+
 function serializeMetadata(metadata: Record<string, unknown>): string {
   return JSON.stringify(metadata);
+}
+
+function parseMetadata(raw: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // fall through
+  }
+  return {};
+}
+
+function itemRowToFile(
+  row: ItemRow,
+  tagIds: string[],
+  collectionIds: string[],
+): ItemFile {
+  return {
+    id: row.id,
+    vault_id: row.vault_id,
+    title: row.title,
+    description: row.description,
+    url: row.url ?? undefined,
+    content_type: row.content_type as ContentType,
+    source_type: row.source_type as SourceType,
+    source_id: row.source_id ?? undefined,
+    metadata: parseMetadata(row.metadata_json),
+    thumbnail: row.thumbnail_path ?? undefined,
+    is_archived: row.is_archived === 1,
+    is_favorite: row.is_favorite === 1,
+    tag_ids: tagIds,
+    collection_ids: collectionIds,
+    folder_path: row.folder_path ?? "",
+    content_revision: row.content_revision,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+function sqlInPlaceholders(count: number): string {
+  return Array.from({ length: count }, () => "?").join(", ");
 }
 
 function navFilterClause(filter: NavSearchFilter): string {
@@ -117,11 +186,23 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
       item.id,
     ]);
     for (const collectionId of item.collection_ids) {
+      // Stub parent so FK on item_collections succeeds without collections sync.
       await this.db.execute(
-        `INSERT INTO item_collections (item_id, collection_id)
-         SELECT ?, ?
-         WHERE EXISTS (SELECT 1 FROM collections WHERE id = ?)`,
-        [item.id, collectionId, collectionId],
+        `INSERT INTO collections (
+          id, vault_id, parent_id, name, description, created_at, updated_at
+        ) VALUES (?, ?, NULL, ?, '', ?, ?)
+        ON CONFLICT(id) DO NOTHING`,
+        [
+          collectionId,
+          vaultId,
+          collectionId,
+          item.created_at,
+          item.updated_at,
+        ],
+      );
+      await this.db.execute(
+        "INSERT INTO item_collections (item_id, collection_id) VALUES (?, ?)",
+        [item.id, collectionId],
       );
     }
 
@@ -243,6 +324,15 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     );
   }
 
+  async listItemFilesByIds(
+    _vaultId: string,
+    _itemIds: string[],
+  ): Promise<ItemFile[]> {
+    throw new Error(
+      "listItemFilesByIds requires select(); use SqlVaultIndexStore instead",
+    );
+  }
+
   async patchItemSyncMeta(
     itemId: string,
     meta: { fileMtimeMs: number; updatedAt: string; contentRevision: number },
@@ -299,6 +389,80 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
       [vaultId],
     );
     return rows.map((row) => row.id);
+  }
+
+  override async listItemFilesByIds(
+    vaultId: string,
+    itemIds: string[],
+  ): Promise<ItemFile[]> {
+    if (itemIds.length === 0) {
+      return [];
+    }
+
+    const placeholders = sqlInPlaceholders(itemIds.length);
+    const rows = await this.selector.select<ItemRow>(
+      `SELECT
+         id, vault_id, title, description, url, content_type, source_type,
+         source_id, metadata_json, thumbnail_path, is_archived, is_favorite,
+         folder_path, content_revision, created_at, updated_at
+       FROM items
+       WHERE vault_id = ? AND id IN (${placeholders})`,
+      [vaultId, ...itemIds],
+    );
+
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const foundIds = itemIds.filter((id) => byId.has(id));
+    if (foundIds.length === 0) {
+      return [];
+    }
+
+    const foundPlaceholders = sqlInPlaceholders(foundIds.length);
+    const tagRows = await this.selector.select<{
+      item_id: string;
+      tag_id: string;
+    }>(
+      `SELECT item_id, tag_id FROM item_tags WHERE item_id IN (${foundPlaceholders})`,
+      foundIds,
+    );
+    const collectionRows = await this.selector.select<{
+      item_id: string;
+      collection_id: string;
+    }>(
+      `SELECT item_id, collection_id
+       FROM item_collections
+       WHERE item_id IN (${foundPlaceholders})`,
+      foundIds,
+    );
+
+    const tagsByItem = new Map<string, string[]>();
+    for (const row of tagRows) {
+      const list = tagsByItem.get(row.item_id) ?? [];
+      list.push(row.tag_id);
+      tagsByItem.set(row.item_id, list);
+    }
+
+    const collectionsByItem = new Map<string, string[]>();
+    for (const row of collectionRows) {
+      const list = collectionsByItem.get(row.item_id) ?? [];
+      list.push(row.collection_id);
+      collectionsByItem.set(row.item_id, list);
+    }
+
+    const result: ItemFile[] = [];
+    for (const id of itemIds) {
+      const row = byId.get(id);
+      if (!row) {
+        continue;
+      }
+      result.push(
+        itemRowToFile(
+          row,
+          tagsByItem.get(id) ?? [],
+          collectionsByItem.get(id) ?? [],
+        ),
+      );
+    }
+    return result;
   }
 
   override async listVaultItemSyncMeta(vaultId: string): Promise<

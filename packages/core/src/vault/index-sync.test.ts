@@ -30,6 +30,7 @@ function createNoopVaultIndex(): VaultIndexAdapter {
     listItemIdsByNavFilter: async () => [],
     listFolderItemCounts: async () => [],
     listVaultItemIds: async () => [],
+    listItemFilesByIds: async () => [],
     listVaultItemSyncMeta: async () => [],
     patchItemSyncMeta: noop,
     searchItemIds: async () => [],
