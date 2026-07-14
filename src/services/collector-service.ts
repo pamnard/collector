@@ -211,11 +211,8 @@ function startVaultIndexSync(vaultId: string, vaultPath: string): Promise<void> 
   return promise;
 }
 
-async function ensureVaultIndexSynced(
-  vaultId: string,
-  vaultPath: string,
-): Promise<void> {
-  await startVaultIndexSync(vaultId, vaultPath);
+function kickoffVaultIndexSync(vaultId: string, vaultPath: string): void {
+  void startVaultIndexSync(vaultId, vaultPath);
 }
 
 function pickVaultEntry(
@@ -313,7 +310,7 @@ export async function ensureActiveVault(): Promise<{
 
 export async function listItems(): Promise<ItemFile[]> {
   const { vault, path } = await resolveActiveVault();
-  await ensureVaultIndexSynced(vault.id, path);
+  kickoffVaultIndexSync(vault.id, path);
   return listItemsOnDisk(getContext(), path);
 }
 
@@ -323,7 +320,7 @@ export async function searchItems(
 ): Promise<ItemFile[]> {
   const ftsQuery = buildFtsMatchQuery(query);
   const { vault, path } = await resolveActiveVault();
-  await ensureVaultIndexSynced(vault.id, path);
+  kickoffVaultIndexSync(vault.id, path);
 
   if (!ftsQuery) {
     if (isTagFilter(filter)) {
@@ -746,15 +743,13 @@ export function subscribeTags(
       }
     };
 
-    // Опубликовать сразу из базы
     await publish();
 
-    // Дождаться окончания возможной синхронизации и опубликовать еще раз,
-    // если появились новые теги извне
-    await syncPromise;
-    if (!signal?.aborted) {
-      await publish();
-    }
+    void syncPromise.then(() => {
+      if (!signal?.aborted) {
+        void publish();
+      }
+    });
   })().catch((error: unknown) => {
     handlers?.onError?.("tags subscribe", error);
     if (!signal?.aborted) {
@@ -769,7 +764,7 @@ export async function listTags(): Promise<TagWithCount[]> {
   }
 
   const { vault, path } = await resolveActiveVault();
-  await ensureVaultIndexSynced(vault.id, path);
+  kickoffVaultIndexSync(vault.id, path);
   return listTagsWithCounts(getContext(), vault.id, path);
 }
 
@@ -778,7 +773,7 @@ export async function createTag(input: {
   color?: string | null;
 }): Promise<Tag> {
   const { vault, path } = await resolveActiveVault();
-  await ensureVaultIndexSynced(vault.id, path);
+  kickoffVaultIndexSync(vault.id, path);
   return createTagOnVault(getContext(), path, vault.id, input);
 }
 
@@ -787,13 +782,13 @@ export async function updateTagRecord(
   input: { name?: string; color?: string | null },
 ): Promise<Tag> {
   const { vault, path } = await resolveActiveVault();
-  await ensureVaultIndexSynced(vault.id, path);
+  kickoffVaultIndexSync(vault.id, path);
   return updateTagOnVault(getContext(), path, vault.id, tagId, input);
 }
 
 export async function deleteTag(tagId: string): Promise<void> {
   const { vault, path } = await resolveActiveVault();
-  await ensureVaultIndexSynced(vault.id, path);
+  kickoffVaultIndexSync(vault.id, path);
   await deleteTagOnVault(getContext(), path, vault.id, tagId);
 }
 
@@ -907,7 +902,7 @@ export async function listFolderTree(): Promise<FolderTreeNode[]> {
 
 export async function createFolder(folderPath: string): Promise<string> {
   const { vault, path } = await resolveActiveVault();
-  await ensureVaultIndexSynced(vault.id, path);
+  kickoffVaultIndexSync(vault.id, path);
   return createFolderOnVault(getContext(), path, folderPath);
 }
 
@@ -916,13 +911,13 @@ export async function renameFolder(
   newPath: string,
 ): Promise<string> {
   const { vault, path } = await resolveActiveVault();
-  await ensureVaultIndexSynced(vault.id, path);
+  kickoffVaultIndexSync(vault.id, path);
   return renameFolderOnVault(getContext(), path, vault.id, oldPath, newPath);
 }
 
 export async function deleteFolder(folderPath: string): Promise<void> {
   const { vault, path } = await resolveActiveVault();
-  await ensureVaultIndexSynced(vault.id, path);
+  kickoffVaultIndexSync(vault.id, path);
   await deleteFolderOnVault(getContext(), path, vault.id, folderPath);
 }
 
@@ -931,7 +926,7 @@ export async function moveItemToFolderPath(
   folderPath: string,
 ): Promise<ItemFile> {
   const { vault, path } = await resolveActiveVault();
-  await ensureVaultIndexSynced(vault.id, path);
+  kickoffVaultIndexSync(vault.id, path);
   return moveItemToFolder(getContext(), path, vault.id, itemId, folderPath);
 }
 

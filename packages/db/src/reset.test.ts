@@ -77,9 +77,9 @@ describe("resetIndexSchema", () => {
     dbPath = join(tempDir, "collector.db");
     const db = BetterSqliteMigrator.open(dbPath);
 
-    expect(await runMigrations(db)).toEqual([1, 2]);
+    expect(await runMigrations(db)).toEqual([1]);
     await resetIndexSchema(db);
-    expect(await runMigrations(db)).toEqual([1, 2]);
+    expect(await runMigrations(db)).toEqual([1]);
 
     const health = await ensureHealthyIndex(db);
     expect(health.ok).toBe(true);

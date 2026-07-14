@@ -7,6 +7,10 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
   async execute(query: string, bindValues: unknown[] = []): Promise<number> {
     const normalized = query.trim().replace(/\s+/g, " ");
 
+    if (normalized.startsWith("UPDATE items SET file_mtime_ms = ?")) {
+      return this.patchItemSyncMeta(bindValues);
+    }
+
     if (normalized.startsWith("INSERT INTO items_fts")) {
       return this.insertFts(bindValues);
     }
@@ -111,11 +115,20 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       return rows.map((row) => ({ id: row.id })) as T[];
     }
 
-    if (normalized.startsWith("SELECT id, file_mtime_ms FROM items WHERE vault_id = ?")) {
+    if (
+      normalized.startsWith(
+        "SELECT id, file_mtime_ms, updated_at, content_revision FROM items WHERE vault_id = ?",
+      )
+    ) {
       const vaultId = bindValues[0];
       const table = this.tables.get("items") ?? new Map();
       const rows = [...table.values()].filter((row) => row.vault_id === vaultId);
-      return rows.map((row) => ({ id: row.id, file_mtime_ms: row.file_mtime_ms ?? 0 })) as T[];
+      return rows.map((row) => ({
+        id: row.id,
+        file_mtime_ms: row.file_mtime_ms ?? null,
+        updated_at: row.updated_at,
+        content_revision: row.content_revision ?? 1,
+      })) as T[];
     }
 
     if (
@@ -169,6 +182,25 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
     return 1;
   }
 
+  private patchItemSyncMeta(bindValues: unknown[]): number {
+    const table = this.getTable("items");
+    const fileMtimeMs = bindValues[0];
+    const updatedAt = bindValues[1];
+    const contentRevision = bindValues[2];
+    const itemId = String(bindValues[3]);
+    const row = table.get(itemId);
+    if (!row) {
+      return 0;
+    }
+    table.set(itemId, {
+      ...row,
+      file_mtime_ms: fileMtimeMs,
+      updated_at: updatedAt,
+      content_revision: contentRevision,
+    });
+    return 1;
+  }
+
   private upsertItem(bindValues: unknown[]): number {
     const table = this.getTable("items");
     const id = String(bindValues[0]);
@@ -190,6 +222,7 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       created_at: bindValues[14],
       updated_at: bindValues[15],
       file_mtime_ms: bindValues[16],
+      content_revision: bindValues[17],
     });
     return 1;
   }

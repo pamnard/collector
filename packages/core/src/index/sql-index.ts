@@ -63,8 +63,8 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
       `INSERT INTO items (
         id, vault_id, title, description, url, content_type, source_type, source_id,
         metadata_json, thumbnail_path, is_archived, is_favorite, has_content_file,
-        folder_path, created_at, updated_at, file_mtime_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        folder_path, created_at, updated_at, file_mtime_ms, content_revision
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         vault_id = excluded.vault_id,
         title = excluded.title,
@@ -80,7 +80,8 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
         has_content_file = excluded.has_content_file,
         folder_path = excluded.folder_path,
         updated_at = excluded.updated_at,
-        file_mtime_ms = excluded.file_mtime_ms`,
+        file_mtime_ms = excluded.file_mtime_ms,
+        content_revision = excluded.content_revision`,
       [
         item.id,
         vaultId,
@@ -98,7 +99,8 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
         item.folder_path ?? "",
         item.created_at,
         item.updated_at,
-        record.fileMtimeMs ?? 0,
+        record.fileMtimeMs ?? null,
+        item.content_revision,
       ],
     );
 
@@ -236,9 +238,28 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     );
   }
 
-  async listVaultItemTimestamps(_vaultId: string): Promise<Array<{ id: string; file_mtime_ms: number }>> {
+  async patchItemSyncMeta(
+    itemId: string,
+    meta: { fileMtimeMs: number; updatedAt: string; contentRevision: number },
+  ): Promise<void> {
+    await this.db.execute(
+      `UPDATE items
+       SET file_mtime_ms = ?, updated_at = ?, content_revision = ?
+       WHERE id = ?`,
+      [meta.fileMtimeMs, meta.updatedAt, meta.contentRevision, itemId],
+    );
+  }
+
+  async listVaultItemSyncMeta(_vaultId: string): Promise<
+    Array<{
+      id: string;
+      file_mtime_ms: number | null;
+      updated_at: string;
+      content_revision: number;
+    }>
+  > {
     throw new Error(
-      "listVaultItemTimestamps requires select(); use SqlVaultIndexStore instead",
+      "listVaultItemSyncMeta requires select(); use SqlVaultIndexStore instead",
     );
   }
 
@@ -275,11 +296,22 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     return rows.map((row) => row.id);
   }
 
-  override async listVaultItemTimestamps(
-    vaultId: string,
-  ): Promise<Array<{ id: string; file_mtime_ms: number }>> {
-    const rows = await this.selector.select<{ id: string; file_mtime_ms: number }>(
-      "SELECT id, file_mtime_ms FROM items WHERE vault_id = ?",
+  override async listVaultItemSyncMeta(vaultId: string): Promise<
+    Array<{
+      id: string;
+      file_mtime_ms: number | null;
+      updated_at: string;
+      content_revision: number;
+    }>
+  > {
+    const rows = await this.selector.select<{
+      id: string;
+      file_mtime_ms: number | null;
+      updated_at: string;
+      content_revision: number;
+    }>(
+      `SELECT id, file_mtime_ms, updated_at, content_revision
+       FROM items WHERE vault_id = ?`,
       [vaultId],
     );
     return rows;

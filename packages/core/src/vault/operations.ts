@@ -18,9 +18,16 @@ import {
 } from "./item-io.js";
 import { writeTagsFile } from "./tag-io.js";
 import { writeFoldersFile } from "./folder-io.js";
-import { DISK_ITEM_READ_CONCURRENCY } from "../util/concurrency.js";
+import {
+  DISK_ITEM_READ_CONCURRENCY,
+  INDEX_SYNC_WRITE_BATCH,
+  runWithConcurrency,
+  yieldToEventLoop,
+} from "../util/concurrency.js";
+import { classifyItemSyncAction } from "./sync-classifier.js";
 import {
   itemMediaRoot,
+  itemMetaPath,
   itemRoot,
   itemsRoot,
   vaultRoot,
@@ -87,8 +94,17 @@ export async function upsertItem(
 
   const content = input.content ?? (await readItemContent(ctx.fs, itemPath));
   const sourceRef = input.sourceRef ?? (await readItemSourceRef(ctx.fs, itemPath));
+  const fileStat = await ctx.fs.stat(itemMetaPath(itemPath));
 
-  await ctx.index.upsertItem({ item, content, sourceRef }, vaultId);
+  await ctx.index.upsertItem(
+    {
+      item,
+      content,
+      sourceRef,
+      fileMtimeMs: fileStat.mtimeMs,
+    },
+    vaultId,
+  );
   return item;
 }
 
@@ -104,12 +120,22 @@ export async function deleteItem(
   await ctx.index.deleteItem(itemId);
 }
 
+function createEmptySyncReport(): SyncReport {
+  return { skipped: 0, patched: 0, indexed: 0, removed: 0, errors: [] };
+}
+
+interface ReindexWork {
+  itemId: string;
+  diskMtimeMs: number;
+  item?: ItemFile;
+}
+
 export async function syncIndexFromFilesystem(
   ctx: VaultContext,
   vaultPath: string,
   vaultId: string,
 ): Promise<SyncReport> {
-  const report: SyncReport = { indexed: 0, removed: 0, errors: [] };
+  const report = createEmptySyncReport();
   const itemsDir = itemsRoot(vaultPath);
 
   if (!(await ctx.fs.exists(itemsDir))) {
@@ -117,38 +143,136 @@ export async function syncIndexFromFilesystem(
   }
 
   const diskItemIds = new Set(await ctx.fs.readDir(itemsDir));
-  const indexedItems = await ctx.index.listVaultItemTimestamps(vaultId);
-  const indexTimestamps = new Map<string, number>();
-  const indexedIds = new Set<string>();
+  const indexedItems = await ctx.index.listVaultItemSyncMeta(vaultId);
+  const indexMeta = new Map(indexedItems.map((item) => [item.id, item]));
+  const indexedIds = new Set(indexedItems.map((item) => item.id));
+  const diskIds = [...diskItemIds];
 
-  for (const item of indexedItems) {
-    indexTimestamps.set(item.id, item.file_mtime_ms);
-    indexedIds.add(item.id);
+  const stats = await runWithConcurrency(diskIds.length, DISK_ITEM_READ_CONCURRENCY, async (index) => {
+    const itemId = diskIds[index]!;
+    const itemPath = itemRoot(vaultPath, itemId);
+    try {
+      const fileStat = await ctx.fs.stat(itemMetaPath(itemPath));
+      return {
+        itemId,
+        diskMtimeMs: fileStat.mtimeMs ?? 0,
+        error: null as unknown,
+      };
+    } catch (error) {
+      return { itemId, diskMtimeMs: 0, error };
+    }
+  });
+
+  const metadataReadQueue: Array<{ itemId: string; diskMtimeMs: number }> = [];
+  const reindexQueue: ReindexWork[] = [];
+
+  for (const stat of stats) {
+    if (stat.error) {
+      report.errors.push({
+        itemId: stat.itemId,
+        message:
+          stat.error instanceof Error ? stat.error.message : String(stat.error),
+      });
+      continue;
+    }
+
+    const meta = indexMeta.get(stat.itemId);
+    if (!meta) {
+      reindexQueue.push({ itemId: stat.itemId, diskMtimeMs: stat.diskMtimeMs });
+      continue;
+    }
+
+    if (meta.file_mtime_ms !== null && meta.file_mtime_ms === stat.diskMtimeMs) {
+      report.skipped += 1;
+      continue;
+    }
+
+    metadataReadQueue.push({ itemId: stat.itemId, diskMtimeMs: stat.diskMtimeMs });
   }
 
-  // Считываем и обновляем файлы по одному (но только если изменились или новые!)
-    for (const itemId of diskItemIds) {
-      const itemPath = itemRoot(vaultPath, itemId);
-      try {
-        const fileStat = await ctx.fs.stat(itemPath);
-        const diskMtimeMs = fileStat.mtimeMs ?? 0;
-        const dbUpdatedAt = indexTimestamps.get(itemId);
-  
-        // Если дата изменения в базе совпадает с датой изменения файла на диске — пропускаем
-        if (dbUpdatedAt === diskMtimeMs) {
-          continue;
+  if (metadataReadQueue.length > 0) {
+    const metadataReads = await runWithConcurrency(
+      metadataReadQueue.length,
+      DISK_ITEM_READ_CONCURRENCY,
+      async (index) => {
+        const work = metadataReadQueue[index]!;
+        const itemPath = itemRoot(vaultPath, work.itemId);
+        try {
+          const item = await readItemFile(ctx.fs, itemPath);
+          return { ...work, item, error: null as unknown };
+        } catch (error) {
+          return { ...work, item: null, error };
         }
-  
-        const item = await readItemFile(ctx.fs, itemPath);
-        const content = await readItemContent(ctx.fs, itemPath);
-        const sourceRef = await readItemSourceRef(ctx.fs, itemPath);
-        await ctx.index.upsertItem({ item, content, sourceRef, fileMtimeMs: diskMtimeMs }, vaultId);
-        report.indexed += 1;
-      } catch (error) {
+      },
+    );
+
+    for (const read of metadataReads) {
+      if (read.error || !read.item) {
+        report.errors.push({
+          itemId: read.itemId,
+          message:
+            read.error instanceof Error ? read.error.message : String(read.error),
+        });
+        continue;
+      }
+
+      const meta = indexMeta.get(read.itemId);
+      const action = classifyItemSyncAction({
+        indexed: !!meta,
+        dbMtimeMs: meta?.file_mtime_ms ?? null,
+        diskMtimeMs: read.diskMtimeMs,
+        dbUpdatedAt: meta?.updated_at,
+        dbContentRevision: meta?.content_revision,
+        diskUpdatedAt: read.item.updated_at,
+        diskContentRevision: read.item.content_revision,
+      });
+
+      if (action === "patch") {
+        try {
+          await ctx.index.patchItemSyncMeta(read.itemId, {
+            fileMtimeMs: read.diskMtimeMs,
+            updatedAt: read.item.updated_at,
+            contentRevision: read.item.content_revision,
+          });
+          report.patched += 1;
+        } catch (error) {
+          report.errors.push({
+            itemId: read.itemId,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        continue;
+      }
+
+      reindexQueue.push({
+        itemId: read.itemId,
+        diskMtimeMs: read.diskMtimeMs,
+        item: read.item,
+      });
+    }
+  }
+
+  for (let i = 0; i < reindexQueue.length; i += 1) {
+    const work = reindexQueue[i]!;
+    const itemPath = itemRoot(vaultPath, work.itemId);
+    try {
+      const item = work.item ?? (await readItemFile(ctx.fs, itemPath));
+      const content = await readItemContent(ctx.fs, itemPath);
+      const sourceRef = await readItemSourceRef(ctx.fs, itemPath);
+      await ctx.index.upsertItem(
+        { item, content, sourceRef, fileMtimeMs: work.diskMtimeMs },
+        vaultId,
+      );
+      report.indexed += 1;
+    } catch (error) {
       report.errors.push({
-        itemId,
+        itemId: work.itemId,
         message: error instanceof Error ? error.message : String(error),
       });
+    }
+
+    if ((i + 1) % INDEX_SYNC_WRITE_BATCH === 0) {
+      await yieldToEventLoop();
     }
   }
 

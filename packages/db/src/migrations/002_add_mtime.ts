@@ -1,3 +1,0 @@
-export const MIGRATION_002 = `
-ALTER TABLE items ADD COLUMN file_mtime_ms INTEGER NOT NULL DEFAULT 0;
-`;

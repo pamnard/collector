@@ -14,6 +14,8 @@ import {
   syncIndexFromFilesystem,
   upsertItem,
 } from "../vault/operations.js";
+import { readItemFile, writeItemFile } from "../vault/item-io.js";
+import { itemRoot } from "../vault/paths.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 
 describe("vault operations", () => {
@@ -201,6 +203,118 @@ describe("vault operations", () => {
 
     const report = await syncIndexFromFilesystem(ctx, path, meta.id);
     expect(report.indexed).toBe(1);
+    expect(report.skipped).toBe(0);
     expect(report.errors).toHaveLength(0);
+  });
+
+  it("skips sync when directory mtime matches the index", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemId = createId();
+    const timestamp = new Date().toISOString();
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        is_archived: false,
+        is_favorite: false,
+        tag_ids: [],
+        collection_ids: [],
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      content: "hello",
+    });
+
+    const report = await syncIndexFromFilesystem(ctx, path, meta.id);
+    expect(report.skipped).toBe(1);
+    expect(report.indexed).toBe(0);
+    expect(report.patched).toBe(0);
+  });
+
+  it("patches mtime when metadata matches but mtime drifted", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemId = createId();
+    const timestamp = new Date().toISOString();
+
+    const item = await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        is_archived: false,
+        is_favorite: false,
+        tag_ids: [],
+        collection_ids: [],
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      content: "hello",
+    });
+
+    await ctx.index.patchItemSyncMeta(itemId, {
+      fileMtimeMs: 1,
+      updatedAt: item.updated_at,
+      contentRevision: item.content_revision,
+    });
+
+    const report = await syncIndexFromFilesystem(ctx, path, meta.id);
+    expect(report.patched).toBe(1);
+    expect(report.indexed).toBe(0);
+    expect(report.skipped).toBe(0);
+  });
+
+  it("reindexes when content revision changes on disk", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemId = createId();
+    const timestamp = new Date().toISOString();
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        is_archived: false,
+        is_favorite: false,
+        tag_ids: [],
+        collection_ids: [],
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      content: "hello",
+    });
+
+    const itemPath = itemRoot(path, itemId);
+    const onDisk = await readItemFile(fs, itemPath);
+    await writeItemFile(fs, itemPath, {
+      ...onDisk,
+      content_revision: onDisk.content_revision + 1,
+    });
+
+    const report = await syncIndexFromFilesystem(ctx, path, meta.id);
+    expect(report.indexed).toBe(1);
+    expect(report.patched).toBe(0);
   });
 });

@@ -30,6 +30,8 @@ function createNoopVaultIndex(): VaultIndexAdapter {
     listItemIdsByNavFilter: async () => [],
     listFolderItemCounts: async () => [],
     listVaultItemIds: async () => [],
+    listVaultItemSyncMeta: async () => [],
+    patchItemSyncMeta: noop,
     searchItemIds: async () => [],
   };
 }
@@ -83,6 +85,8 @@ describe("syncVaultIndexFromFilesystem", () => {
     const report = await syncVaultIndexFromFilesystem({ fs, index }, path);
     expect(report.vaultId).toBe(meta.id);
     expect(report.indexed).toBe(1);
+    expect(report.skipped).toBe(0);
+    expect(report.patched).toBe(0);
     expect(report.errors).toHaveLength(0);
 
     const vaultRows = await db.select<{ id: string }>(

@@ -29,8 +29,8 @@ describe("runMigrations", () => {
     const db = BetterSqliteMigrator.open(dbPath);
 
     const applied = await runMigrations(db);
-    expect(applied).toEqual([1, 2]);
-    expect(CURRENT_SCHEMA_VERSION).toBe(2);
+    expect(applied).toEqual([1]);
+    expect(CURRENT_SCHEMA_VERSION).toBe(1);
 
     const columns = await db.select<{ name: string }>("PRAGMA table_info(items)");
     for (const column of ITEMS_COLUMNS) {

@@ -14,11 +14,24 @@ export interface FileSystemAdapter {
   join(...parts: string[]): string;
 }
 
+export interface ItemSyncMeta {
+  id: string;
+  file_mtime_ms: number | null;
+  updated_at: string;
+  content_revision: number;
+}
+
+export interface ItemSyncMetaPatch {
+  fileMtimeMs: number;
+  updatedAt: string;
+  contentRevision: number;
+}
+
 export interface IndexedItem {
   item: ItemFile;
   content: string | null;
   sourceRef: SourceRef | null;
-  fileMtimeMs?: number;
+  fileMtimeMs?: number | null;
 }
 
 export interface VaultIndexAdapter {
@@ -41,7 +54,8 @@ export interface VaultIndexAdapter {
     vaultId: string,
   ): Promise<Array<{ folder_path: string; item_count: number }>>;
   listVaultItemIds(vaultId: string): Promise<string[]>;
-  listVaultItemTimestamps(vaultId: string): Promise<Array<{ id: string; file_mtime_ms: number }>>;
+  listVaultItemSyncMeta(vaultId: string): Promise<ItemSyncMeta[]>;
+  patchItemSyncMeta(itemId: string, meta: ItemSyncMetaPatch): Promise<void>;
   searchItemIds(
     vaultId: string,
     ftsQuery: string,
@@ -68,6 +82,8 @@ export interface UpsertItemInput {
 }
 
 export interface SyncReport {
+  skipped: number;
+  patched: number;
   indexed: number;
   removed: number;
   errors: Array<{ itemId: string; message: string }>;

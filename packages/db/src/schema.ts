@@ -30,4 +30,5 @@ export const ITEMS_COLUMNS = [
   "created_at",
   "updated_at",
   "file_mtime_ms",
+  "content_revision",
 ] as const;

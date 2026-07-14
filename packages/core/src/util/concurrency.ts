@@ -1,6 +1,15 @@
 /** Limits parallel async work; independent of caller batch/window size. */
 export const DISK_ITEM_READ_CONCURRENCY = 16;
 
+/** SQLite write batch size during background index sync; yields between batches. */
+export const INDEX_SYNC_WRITE_BATCH = 32;
+
+export function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
 export async function runWithConcurrency<T>(
   count: number,
   concurrency: number,
