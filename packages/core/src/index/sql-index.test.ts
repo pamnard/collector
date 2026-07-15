@@ -260,4 +260,115 @@ describe("upsertItemMetadata / upsertItemContent", () => {
     );
     expect(ftsContent[0]?.content).toBe("full body text");
   });
+
+  it("batch-inserts tags and collections in O(1) SQL round-trips per relation", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-batch-upsert-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    const ctx = { fs, index };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    const tagCount = 5;
+    const collectionCount = 4;
+    const tags = await Promise.all(
+      Array.from({ length: tagCount }, (_, i) =>
+        createTag(ctx, path, meta.id, { name: `tag-${i}` }),
+      ),
+    );
+    const collectionIds = Array.from({ length: collectionCount }, () => createId());
+    const itemId = createId();
+    const timestamp = new Date().toISOString();
+
+    let executeCalls = 0;
+    const underlying = db.execute.bind(db);
+    db.execute = async (query: string, bindValues?: unknown[]) => {
+      executeCalls += 1;
+      return underlying(query, bindValues);
+    };
+
+    await index.upsertItemMetadata(
+      {
+        item: {
+          id: itemId,
+          vault_id: meta.id,
+          title: "Batch",
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          is_archived: false,
+          is_favorite: false,
+          tag_ids: tags.map((tag) => tag.id),
+          collection_ids: collectionIds,
+          folder_path: "",
+          content_revision: 1,
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+        fileMtimeMs: 1,
+      },
+      meta.id,
+    );
+
+    // items upsert + delete tags + batch insert tags + delete collections +
+    // batch stub collections + batch item_collections + delete fts + insert fts
+    expect(executeCalls).toBe(8);
+
+    const tagRows = await db.select<{ tag_id: string }>(
+      "SELECT tag_id FROM item_tags WHERE item_id = ? ORDER BY tag_id",
+      [itemId],
+    );
+    expect(tagRows.map((row) => row.tag_id).sort()).toEqual(
+      tags.map((tag) => tag.id).sort(),
+    );
+
+    const collectionRows = await db.select<{ collection_id: string }>(
+      "SELECT collection_id FROM item_collections WHERE item_id = ? ORDER BY collection_id",
+      [itemId],
+    );
+    expect(collectionRows.map((row) => row.collection_id).sort()).toEqual(
+      [...collectionIds].sort(),
+    );
+
+    executeCalls = 0;
+    await index.upsertItemMetadata(
+      {
+        item: {
+          id: itemId,
+          vault_id: meta.id,
+          title: "Batch",
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          is_archived: false,
+          is_favorite: false,
+          tag_ids: [tags[0]!.id],
+          collection_ids: [],
+          folder_path: "",
+          content_revision: 1,
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+        fileMtimeMs: 1,
+      },
+      meta.id,
+    );
+
+    // empty collection_ids skips batch collection inserts
+    expect(executeCalls).toBe(6);
+
+    const replacedTags = await db.select<{ tag_id: string }>(
+      "SELECT tag_id FROM item_tags WHERE item_id = ?",
+      [itemId],
+    );
+    expect(replacedTags).toEqual([{ tag_id: tags[0]!.id }]);
+
+    const clearedCollections = await db.select<{ collection_id: string }>(
+      "SELECT collection_id FROM item_collections WHERE item_id = ?",
+      [itemId],
+    );
+    expect(clearedCollections).toEqual([]);
+  });
 });

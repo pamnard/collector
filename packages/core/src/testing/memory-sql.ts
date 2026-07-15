@@ -72,29 +72,49 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
     }
 
     if (normalized.startsWith("INSERT INTO item_tags")) {
-      return this.insertRow("item_tags", {
-        item_id: bindValues[0],
-        tag_id: bindValues[1],
-      });
+      let inserted = 0;
+      for (let i = 0; i < bindValues.length; i += 2) {
+        this.insertRow("item_tags", {
+          item_id: bindValues[i],
+          tag_id: bindValues[i + 1],
+        });
+        inserted += 1;
+      }
+      return inserted;
     }
 
     if (normalized.startsWith("INSERT INTO collections")) {
-      return this.insertRow("collections", {
-        id: bindValues[0],
-        vault_id: bindValues[1],
-        parent_id: null,
-        name: bindValues[2],
-        description: "",
-        created_at: bindValues[3],
-        updated_at: bindValues[4],
-      });
+      const table = this.getTable("collections");
+      let inserted = 0;
+      for (let i = 0; i < bindValues.length; i += 5) {
+        const id = String(bindValues[i]);
+        if (table.has(id)) {
+          continue;
+        }
+        table.set(id, {
+          id,
+          vault_id: bindValues[i + 1],
+          parent_id: null,
+          name: bindValues[i + 2],
+          description: "",
+          created_at: bindValues[i + 3],
+          updated_at: bindValues[i + 4],
+        });
+        inserted += 1;
+      }
+      return inserted;
     }
 
     if (normalized.startsWith("INSERT INTO item_collections")) {
-      return this.insertRow("item_collections", {
-        item_id: bindValues[0],
-        collection_id: bindValues[1],
-      });
+      let inserted = 0;
+      for (let i = 0; i < bindValues.length; i += 2) {
+        this.insertRow("item_collections", {
+          item_id: bindValues[i],
+          collection_id: bindValues[i + 1],
+        });
+        inserted += 1;
+      }
+      return inserted;
     }
 
     if (normalized.startsWith("INSERT INTO tags")) {
