@@ -46,7 +46,6 @@ import type {
 import type { Tag } from "@collector/shared";
 import type { CreateItemInput, UpdateItemInput } from "../types/item";
 import type { NavFilter } from "../types/ui";
-import { isFolderFilter, isTagFilter } from "../types/ui";
 import { TauriFileSystemAdapter } from "../adapters/tauri-fs";
 import { TauriSqlAdapter } from "../adapters/tauri-sql";
 import {
@@ -607,20 +606,8 @@ export async function searchItems(
   kickoffVaultIndexSync(vault.id, path);
 
   if (!ftsQuery) {
-    if (isTagFilter(filter)) {
-      const itemIds = await getIndex().listItemIdsByTag(vault.id, filter.tagId);
-      return listItemsByIds(getContext(), path, itemIds);
-    }
-    if (isFolderFilter(filter)) {
-      const itemIds = await getIndex().listItemIdsByFolderPrefix(
-        vault.id,
-        filter.folderPath,
-      );
-      return listItemsByIds(getContext(), path, itemIds);
-    }
-
-    const items = await listItemsOnDisk(getContext(), path);
-    return items.filter((item) => matchesNavFilter(item, filter));
+    const itemIds = await getIndex().listItemIdsByNavFilter(vault.id, filter);
+    return listItemsByIds(getContext(), path, itemIds);
   }
 
   const itemIds = await getIndex().searchItemIds(vault.id, ftsQuery, filter);
@@ -808,29 +795,6 @@ export async function loadDashboardItems(
     items.push(item);
   });
   return items;
-}
-
-function matchesNavFilter(item: ItemFile, filter: NavFilter): boolean {
-  if (isTagFilter(filter)) {
-    return !item.is_archived && item.tag_ids.includes(filter.tagId);
-  }
-  if (isFolderFilter(filter)) {
-    if (item.is_archived) {
-      return false;
-    }
-    const path = filter.folderPath;
-    return (
-      item.folder_path === path ||
-      item.folder_path.startsWith(`${path}/`)
-    );
-  }
-  if (filter === "all") {
-    return !item.is_archived;
-  }
-  if (filter === "favorite") {
-    return item.is_favorite;
-  }
-  return item.is_archived;
 }
 
 export async function getItemById(
