@@ -18,6 +18,7 @@ import {
   ensureCollectorDatabaseHealthy,
   openCollectorDatabase,
 } from "../services/collector-service";
+import { ensureDashboardSnapshot } from "../services/dashboard-snapshot-service";
 import { StartupErrorScreen } from "../components/startup/StartupErrorScreen";
 import { StartupLoadingScreen } from "../components/startup/StartupLoadingScreen";
 import type { NavFilter, ViewMode } from "../types/ui";
@@ -51,7 +52,11 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([ensureAppSettings(), openCollectorDatabase()])
+    Promise.all([
+      ensureAppSettings(),
+      openCollectorDatabase(),
+      ensureDashboardSnapshot(),
+    ])
       .then(([loaded]) => {
         if (cancelled) {
           return;

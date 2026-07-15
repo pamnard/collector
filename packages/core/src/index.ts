@@ -127,6 +127,13 @@ export {
 } from "./settings/app-settings-io.js";
 
 export {
+  clearDashboardSnapshot,
+  dashboardSnapshotPath,
+  readDashboardSnapshot,
+  writeDashboardSnapshot,
+} from "./settings/dashboard-snapshot-io.js";
+
+export {
   migrateItemSchema,
   migrateVaultSchema,
 } from "./vault/schema-migrate.js";
