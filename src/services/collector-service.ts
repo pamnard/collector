@@ -630,57 +630,91 @@ export async function searchItems(
 export const DASHBOARD_PREFETCH_SIZE = 60;
 /** @deprecated Use DASHBOARD_PREFETCH_SIZE — window size, not a concurrency limit. */
 export const DASHBOARD_BATCH_SIZE = DASHBOARD_PREFETCH_SIZE;
-const DASHBOARD_SEARCH_LIMIT = 10_000;
+
+export interface DashboardIndexPage {
+  itemIds: string[];
+  totalCount: number;
+  offset: number;
+}
 
 export interface DashboardItemIdsResult {
   itemIds: string[];
+  totalCount: number;
   indexSync: Promise<void>;
 }
 
-async function queryDashboardItemIds(
+async function queryDashboardIndexPage(
   vaultId: string,
   filter: NavFilter,
   query: string,
-): Promise<string[]> {
+  page: { limit: number; offset: number },
+): Promise<DashboardIndexPage> {
   const trimmedSearch = query.trim();
 
   if (!trimmedSearch) {
-    return getIndex().listItemIdsByNavFilter(vaultId, filter);
+    const [itemIds, totalCount] = await Promise.all([
+      getIndex().listItemIdsByNavFilter(vaultId, filter, page),
+      getIndex().countItemIdsByNavFilter(vaultId, filter),
+    ]);
+    return { itemIds, totalCount, offset: page.offset };
   }
 
   const ftsQuery = buildFtsMatchQuery(trimmedSearch);
   if (!ftsQuery) {
-    return getIndex().listItemIdsByNavFilter(vaultId, filter);
+    const [itemIds, totalCount] = await Promise.all([
+      getIndex().listItemIdsByNavFilter(vaultId, filter, page),
+      getIndex().countItemIdsByNavFilter(vaultId, filter),
+    ]);
+    return { itemIds, totalCount, offset: page.offset };
   }
 
-  return getIndex().searchItemIds(
-    vaultId,
-    ftsQuery,
-    filter,
-    DASHBOARD_SEARCH_LIMIT,
-  );
+  const [itemIds, totalCount] = await Promise.all([
+    getIndex().searchItemIds(vaultId, ftsQuery, filter, page),
+    getIndex().countSearchItemIds(vaultId, ftsQuery, filter),
+  ]);
+  return { itemIds, totalCount, offset: page.offset };
+}
+
+export async function fetchDashboardIndexPage(
+  filter: NavFilter,
+  query = "",
+  page: { limit: number; offset: number },
+): Promise<DashboardIndexPage> {
+  if (isDevMock()) {
+    return devMockCollector.fetchDashboardIndexPage(filter, query, page);
+  }
+
+  const { vault } = await resolveActiveVault();
+  return queryDashboardIndexPage(vault.id, filter, query, page);
 }
 
 export async function listDashboardItemIds(
   filter: NavFilter,
   query = "",
 ): Promise<DashboardItemIdsResult> {
+  const page = await fetchDashboardIndexPage(filter, query, {
+    limit: DASHBOARD_PREFETCH_SIZE,
+    offset: 0,
+  });
   if (isDevMock()) {
-    const itemIds = await devMockCollector.listDashboardItemIds(filter, query);
-    return { itemIds, indexSync: Promise.resolve() };
+    return {
+      itemIds: page.itemIds,
+      totalCount: page.totalCount,
+      indexSync: Promise.resolve(),
+    };
   }
 
   const { vault, path } = await resolveActiveVault();
   const indexSync = startVaultIndexSync(vault.id, path);
-  const itemIds = await queryDashboardItemIds(vault.id, filter, query);
-  return { itemIds, indexSync };
+  return { itemIds: page.itemIds, totalCount: page.totalCount, indexSync };
 }
 
 export function subscribeDashboardLoad(
   filter: NavFilter,
   query: string,
   handlers: {
-    onIndexIds: (itemIds: string[]) => void;
+    onIndexPage: (page: DashboardIndexPage) => void;
+    getLoadedIdCount?: () => number;
     onLoadComplete?: () => void;
     onError?: (scope: string, error: unknown) => void;
   },
@@ -688,9 +722,12 @@ export function subscribeDashboardLoad(
 ): void {
   if (isDevMock()) {
     void devMockCollector
-      .listDashboardItemIds(filter, query)
-      .then((itemIds) => {
-        handlers.onIndexIds(itemIds);
+      .fetchDashboardIndexPage(filter, query, {
+        limit: DASHBOARD_PREFETCH_SIZE,
+        offset: 0,
+      })
+      .then((page) => {
+        handlers.onIndexPage(page);
         handlers.onLoadComplete?.();
       })
       .catch((error: unknown) => {
@@ -705,22 +742,31 @@ export function subscribeDashboardLoad(
       return;
     }
 
-    const publishIds = async () => {
+    const publishPage = async (pageRequest: { limit: number; offset: number }) => {
       try {
-        const itemIds = await queryDashboardItemIds(vault.id, filter, query);
+        const page = await queryDashboardIndexPage(
+          vault.id,
+          filter,
+          query,
+          pageRequest,
+        );
         if (!signal?.aborted) {
-          handlers.onIndexIds(itemIds);
+          handlers.onIndexPage(page);
         }
       } catch (error: unknown) {
-        handlers.onError?.("dashboard index ids", error);
+        handlers.onError?.("dashboard index page", error);
         if (!signal?.aborted) {
-          handlers.onIndexIds([]);
+          handlers.onIndexPage({ itemIds: [], totalCount: 0, offset: 0 });
         }
       }
     };
 
     const republish = createThrottledPublisher(() => {
-      void publishIds();
+      const loaded = handlers.getLoadedIdCount?.() ?? DASHBOARD_PREFETCH_SIZE;
+      void publishPage({
+        offset: 0,
+        limit: Math.max(loaded, DASHBOARD_PREFETCH_SIZE),
+      });
     }, SYNC_REPUBLISH_THROTTLE_MS);
 
     const unsub = addVaultSyncListener(vault.id, {
@@ -738,7 +784,7 @@ export function subscribeDashboardLoad(
     };
     signal?.addEventListener("abort", onAbort, { once: true });
 
-    await publishIds();
+    await publishPage({ offset: 0, limit: DASHBOARD_PREFETCH_SIZE });
     if (!signal?.aborted) {
       handlers.onLoadComplete?.();
     }

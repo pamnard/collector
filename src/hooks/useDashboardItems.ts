@@ -3,6 +3,7 @@ import type { ItemFile } from "@collector/shared";
 import { navFilterKey, type NavFilter } from "../types/ui";
 import {
   DASHBOARD_PREFETCH_SIZE,
+  fetchDashboardIndexPage,
   streamDashboardItems,
   subscribeDashboardLoad,
 } from "../services/collector-service";
@@ -36,6 +37,7 @@ export function useDashboardItems(
   const [error, setError] = useState<string | null>(null);
   const requestVersionRef = useRef(0);
   const streamEndOffsetRef = useRef(0);
+  const itemIdsRef = useRef<string[]>([]);
   const streamAbortRef = useRef<AbortController | null>(null);
 
   const items = useMemo(() => {
@@ -89,33 +91,36 @@ export function useDashboardItems(
     setStreamEndOffset(end);
   }, []);
 
-  const applyIndexIds = useCallback(
-    (indexIds: string[], requestVersion: number) => {
-      setItemIds(indexIds);
-      setTotalCount(indexIds.length);
+  const setLoadedItemIds = useCallback((nextIds: string[]) => {
+    itemIdsRef.current = nextIds;
+    setItemIds(nextIds);
+  }, []);
 
-      if (!indexIds.length) {
-        setStreamWindowEnd(0);
-        return;
+  const applyIndexPage = useCallback(
+    (
+      page: { itemIds: string[]; totalCount: number; offset: number },
+      requestVersion: number,
+    ) => {
+      setTotalCount(page.totalCount);
+
+      if (page.offset === 0) {
+        setLoadedItemIds(page.itemIds);
+        if (!page.itemIds.length) {
+          setStreamWindowEnd(0);
+          return;
+        }
+
+        const preservedEnd =
+          streamEndOffsetRef.current > 0
+            ? Math.min(streamEndOffsetRef.current, page.itemIds.length)
+            : Math.min(DASHBOARD_PREFETCH_SIZE, page.itemIds.length);
+        setStreamWindowEnd(preservedEnd);
+        void streamSlice(page.itemIds, 0, preservedEnd, requestVersion);
       }
-
-      const windowEnd = Math.min(
-        Math.max(streamEndOffsetRef.current, DASHBOARD_PREFETCH_SIZE),
-        indexIds.length,
-      );
-      if (streamEndOffsetRef.current === 0) {
-        setStreamWindowEnd(windowEnd);
-      } else if (streamEndOffsetRef.current > indexIds.length) {
-        setStreamWindowEnd(indexIds.length);
-      }
-
-      void streamSlice(indexIds, 0, windowEnd, requestVersion);
     },
-    [setStreamWindowEnd, streamSlice],
+    [setLoadedItemIds, setStreamWindowEnd, streamSlice],
   );
 
-  // Object folder/tag filters are new each render from navFilterFromSetting;
-  // depend on a content key so load does not restart in a loop (#82).
   const filterKey = navFilterKey(filter);
 
   useEffect(() => {
@@ -124,7 +129,7 @@ export function useDashboardItems(
     setIsLoading(true);
     setError(null);
     setItemsById(new Map());
-    setItemIds([]);
+    setLoadedItemIds([]);
     setTotalCount(0);
     setStreamWindowEnd(0);
     streamAbortRef.current?.abort();
@@ -135,12 +140,13 @@ export function useDashboardItems(
       filter,
       searchQuery,
       {
-        onIndexIds: (indexIds) => {
+        onIndexPage: (page) => {
           if (requestVersionRef.current !== requestVersion) {
             return;
           }
-          applyIndexIds(indexIds, requestVersion);
+          applyIndexPage(page, requestVersion);
         },
+        getLoadedIdCount: () => itemIdsRef.current.length,
         onLoadComplete: () => {
           if (requestVersionRef.current === requestVersion) {
             setIsLoading(false);
@@ -162,44 +168,89 @@ export function useDashboardItems(
       controller.abort();
       streamAbortRef.current?.abort();
     };
-  }, [applyIndexIds, filterKey, searchQuery, setStreamWindowEnd, vaultRevision]);
+  }, [
+    applyIndexPage,
+    filterKey,
+    searchQuery,
+    setLoadedItemIds,
+    setStreamWindowEnd,
+    vaultRevision,
+  ]);
 
   const loadMore = useCallback(() => {
-    if (isLoading || isLoadingMore || streamEndOffset >= itemIds.length) {
+    if (isLoading || isLoadingMore) {
       return;
     }
 
     const requestVersion = requestVersionRef.current;
-    const offset = streamEndOffset;
-    const limit = Math.min(
-      DASHBOARD_PREFETCH_SIZE,
-      itemIds.length - streamEndOffset,
-    );
-    const nextEnd = offset + limit;
+    const loadedCount = itemIds.length;
+    const needsMoreIds = streamEndOffset + DASHBOARD_PREFETCH_SIZE > loadedCount;
+    const hasUnloadedIds = loadedCount < totalCount;
+
+    if (streamEndOffset >= loadedCount && !hasUnloadedIds) {
+      return;
+    }
 
     setIsLoadingMore(true);
-    setStreamWindowEnd(nextEnd);
 
-    void streamSlice(itemIds, offset, limit, requestVersion)
-      .catch((err: unknown) => {
-        if (requestVersionRef.current !== requestVersion) {
-          return;
-        }
-        reportServiceError("dashboard load more", err);
-        setError(err instanceof Error ? err.message : String(err));
+    const streamNextWindow = (ids: string[]) => {
+      const offset = streamEndOffsetRef.current;
+      const limit = Math.min(DASHBOARD_PREFETCH_SIZE, ids.length - offset);
+      const nextEnd = offset + limit;
+      setStreamWindowEnd(nextEnd);
+
+      void streamSlice(ids, offset, limit, requestVersion)
+        .catch((err: unknown) => {
+          if (requestVersionRef.current !== requestVersion) {
+            return;
+          }
+          reportServiceError("dashboard load more", err);
+          setError(err instanceof Error ? err.message : String(err));
+        })
+        .finally(() => {
+          if (requestVersionRef.current === requestVersion) {
+            setIsLoadingMore(false);
+          }
+        });
+    };
+
+    if (needsMoreIds && hasUnloadedIds) {
+      void fetchDashboardIndexPage(filter, searchQuery, {
+        offset: loadedCount,
+        limit: DASHBOARD_PREFETCH_SIZE,
       })
-      .finally(() => {
-        if (requestVersionRef.current === requestVersion) {
+        .then((page) => {
+          if (requestVersionRef.current !== requestVersion) {
+            return;
+          }
+          setTotalCount(page.totalCount);
+          const mergedIds = [...itemIdsRef.current, ...page.itemIds];
+          setLoadedItemIds(mergedIds);
+          streamNextWindow(mergedIds);
+        })
+        .catch((err: unknown) => {
+          if (requestVersionRef.current !== requestVersion) {
+            return;
+          }
+          reportServiceError("dashboard load more ids", err);
+          setError(err instanceof Error ? err.message : String(err));
           setIsLoadingMore(false);
-        }
-      });
+        });
+      return;
+    }
+
+    streamNextWindow(itemIds);
   }, [
+    filter,
     isLoading,
     isLoadingMore,
     itemIds,
+    searchQuery,
+    setLoadedItemIds,
     setStreamWindowEnd,
     streamEndOffset,
     streamSlice,
+    totalCount,
   ]);
 
   return {
@@ -207,7 +258,7 @@ export function useDashboardItems(
     totalCount,
     isLoading,
     isLoadingMore,
-    hasMore: streamEndOffset < itemIds.length,
+    hasMore: streamEndOffset < totalCount,
     error,
     loadMore,
   };

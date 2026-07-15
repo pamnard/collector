@@ -56,16 +56,35 @@ export async function ensureActiveVault(): Promise<{
   return { vault: mockStore.getVault(), path: "/dev-mock/vault" };
 }
 
-export async function listDashboardItemIds(
-  filter: NavFilter,
-  query = "",
-): Promise<string[]> {
-  ensureWarmedUp();
+function listFilteredDashboardIds(filter: NavFilter, query = ""): string[] {
   return mockStore
     .getItems()
     .filter((item) => matchesNavFilter(item, filter))
     .filter((item) => matchesSearch(item, query))
     .map((item) => item.id);
+}
+
+export async function fetchDashboardIndexPage(
+  filter: NavFilter,
+  query = "",
+  page: { limit: number; offset: number },
+): Promise<{ itemIds: string[]; totalCount: number; offset: number }> {
+  ensureWarmedUp();
+  const allIds = listFilteredDashboardIds(filter, query);
+  const itemIds = allIds.slice(page.offset, page.offset + page.limit);
+  return {
+    itemIds,
+    totalCount: allIds.length,
+    offset: page.offset,
+  };
+}
+
+export async function listDashboardItemIds(
+  filter: NavFilter,
+  query = "",
+): Promise<string[]> {
+  ensureWarmedUp();
+  return listFilteredDashboardIds(filter, query);
 }
 
 export async function streamDashboardItems(

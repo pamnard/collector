@@ -90,14 +90,22 @@ export interface VaultIndexAdapter {
   listItemIdsByTag(
     vaultId: string,
     tagId: string,
-    options?: { includeArchived?: boolean },
+    options?: ItemIdListOptions,
   ): Promise<string[]>;
   listItemIdsByFolderPrefix(
     vaultId: string,
     folderPath: string,
-    options?: { includeArchived?: boolean },
+    options?: ItemIdListOptions,
   ): Promise<string[]>;
-  listItemIdsByNavFilter(vaultId: string, filter: NavSearchFilter): Promise<string[]>;
+  listItemIdsByNavFilter(
+    vaultId: string,
+    filter: NavSearchFilter,
+    options?: ItemIdPageOptions,
+  ): Promise<string[]>;
+  countItemIdsByNavFilter(
+    vaultId: string,
+    filter: NavSearchFilter,
+  ): Promise<number>;
   listFolderItemCounts(
     vaultId: string,
   ): Promise<Array<{ folder_path: string; item_count: number }>>;
@@ -114,8 +122,22 @@ export interface VaultIndexAdapter {
     vaultId: string,
     ftsQuery: string,
     filter: NavSearchFilter,
-    limit?: number,
+    options?: ItemIdPageOptions,
   ): Promise<string[]>;
+  countSearchItemIds(
+    vaultId: string,
+    ftsQuery: string,
+    filter: NavSearchFilter,
+  ): Promise<number>;
+}
+
+export interface ItemIdPageOptions {
+  limit?: number;
+  offset?: number;
+}
+
+export interface ItemIdListOptions extends ItemIdPageOptions {
+  includeArchived?: boolean;
 }
 
 export interface VaultContext {
