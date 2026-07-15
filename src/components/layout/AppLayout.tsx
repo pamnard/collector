@@ -11,6 +11,7 @@ import { useViewMode } from "../../hooks/useViewMode";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useDashboardItems } from "../../hooks/useDashboardItems";
 import { useVaultIndexSyncStatus } from "../../hooks/useVaultIndexSyncStatus";
+import { formatIndexingBannerLabel } from "@collector/core";
 import type { NavFilter, ViewMode } from "../../types/ui";
 import { Header } from "./Header";
 import { MainScrollArea } from "./MainScrollArea";
@@ -53,7 +54,8 @@ export function AppLayout() {
     null,
   );
   const indexSync = useVaultIndexSyncStatus();
-  const isIndexing = indexSync.status === "running";
+  const isIndexing =
+    indexSync.status === "running" || indexSync.status === "rebuilding";
 
   const handleStartupUpdateFound = useCallback((version: string) => {
     setStartupUpdateVersion(version);
@@ -78,16 +80,7 @@ export function AppLayout() {
   const gutterInsetClass =
     topBannerCount === 0 ? "top-16" : topBannerCount === 1 ? "top-24" : "top-32";
 
-  const indexingLabel = (() => {
-    const progress = indexSync.progress;
-    if (!progress || progress.total <= 0) {
-      return "Индексация хранилища…";
-    }
-    if (progress.phase === "content") {
-      return `Индексация поиска… ${progress.processed}/${progress.total}`;
-    }
-    return `Индексация… ${progress.processed}/${progress.total}`;
-  })();
+  const indexingLabel = formatIndexingBannerLabel(indexSync);
 
   return (
     <ShellContext.Provider

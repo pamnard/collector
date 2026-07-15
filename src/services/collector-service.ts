@@ -6,6 +6,7 @@ import {
   SqlVaultIndexStore,
   buildFtsMatchQuery,
   createSingleFlight,
+  createTwoPhaseBootGate,
   createVault,
   deleteItem as deleteItemOnDisk,
   itemRoot,
@@ -60,9 +61,6 @@ import { reportServiceError } from "./runtime-error";
 import { isDevMock } from "../dev/is-dev-mock";
 import * as devMockCollector from "../dev/mock-collector";
 
-let initialized = false;
-let initPromise: Promise<void> | null = null;
-let fatalInitError: Error | null = null;
 let dataDir = "";
 let sql: TauriSqlAdapter | null = null;
 let activeVault: { meta: VaultMeta; path: string } | null = null;
@@ -72,7 +70,7 @@ const fs = new TauriFileSystemAdapter();
 
 export interface VaultIndexSyncStatus {
   vaultId: string | null;
-  status: "idle" | "running" | "done";
+  status: "idle" | "rebuilding" | "running" | "done";
   progress: IndexSyncProgress | null;
   /** True after Phase A (metadata) completes, or when sync finishes with nothing to reindex. */
   metadataReady: boolean;
@@ -249,24 +247,15 @@ async function rebuildIndexDatabase(): Promise<void> {
   syncedVaultIds.clear();
   vaultSyncPromises.clear();
   activeVault = null;
-  setVaultIndexSyncStatus({
-    vaultId: null,
-    status: "idle",
-    progress: null,
-    metadataReady: false,
-    ftsReady: false,
-  });
-
   await resetIndexSchema(sql);
   await runMigrations(sql);
 }
 
-async function ensureHealthyDatabase(): Promise<void> {
+async function runIndexHealthChecks(): Promise<void> {
   if (!sql) {
     throw new Error("Collector database is not initialized");
   }
 
-  await runMigrations(sql);
   let health = await ensureHealthyIndex(sql);
   if (health.ok) {
     return;
@@ -276,55 +265,41 @@ async function ensureHealthyDatabase(): Promise<void> {
     "[collector] SQLite index unhealthy, rebuilding from vault files:",
     health.errors,
   );
-  await rebuildIndexDatabase();
+  setVaultIndexSyncStatus({
+    vaultId: null,
+    status: "rebuilding",
+    progress: null,
+    metadataReady: false,
+    ftsReady: false,
+  });
 
-  if (!sql) {
-    throw new Error("Collector database rebuild failed to reopen");
-  }
+  try {
+    await rebuildIndexDatabase();
 
-  health = await ensureHealthyIndex(sql);
-  if (!health.ok) {
-    throw new Error(
-      `Index database failed startup checks: ${health.errors.join("; ")}`,
-    );
+    if (!sql) {
+      throw new Error("Collector database rebuild failed to reopen");
+    }
+
+    health = await ensureHealthyIndex(sql);
+    if (!health.ok) {
+      throw new Error(
+        `Index database failed startup checks: ${health.errors.join("; ")}`,
+      );
+    }
+  } finally {
+    if (vaultIndexSyncStatus.status === "rebuilding") {
+      setVaultIndexSyncStatus({
+        vaultId: null,
+        status: "idle",
+        progress: null,
+        metadataReady: false,
+        ftsReady: false,
+      });
+    }
   }
 }
 
-/** Open SQLite index and repair legacy schema before any UI queries. */
-export async function warmupCollector(): Promise<void> {
-  if (isDevMock()) {
-    return devMockCollector.warmupCollector();
-  }
-  await ensureInitialized();
-}
-
-async function ensureInitialized(): Promise<void> {
-  if (initialized) {
-    return;
-  }
-
-  if (fatalInitError) {
-    throw fatalInitError;
-  }
-
-  if (!initPromise) {
-    initPromise = initializeCollector().finally(() => {
-      initPromise = null;
-    });
-  }
-
-  await initPromise;
-}
-
-async function initializeCollector(): Promise<void> {
-  if (initialized) {
-    return;
-  }
-
-  if (fatalInitError) {
-    throw fatalInitError;
-  }
-
+async function openCollectorDatabaseInternal(): Promise<void> {
   let opened: TauriSqlAdapter | null = null;
 
   try {
@@ -333,20 +308,59 @@ async function initializeCollector(): Promise<void> {
     await removeLegacyIndexDatabaseFiles();
     opened = await TauriSqlAdapter.open();
     sql = opened;
-    await ensureHealthyDatabase();
-    initialized = true;
+    await runMigrations(sql);
   } catch (err) {
     if (opened) {
       await opened.close().catch(() => {});
       sql = null;
     }
-    fatalInitError = err instanceof Error ? err : new Error(String(err));
-    throw fatalInitError;
+    throw err instanceof Error ? err : new Error(String(err));
   }
 }
 
+const bootGate = createTwoPhaseBootGate({
+  open: openCollectorDatabaseInternal,
+  health: runIndexHealthChecks,
+});
+
+/**
+ * Open SQLite and run migrations so the app shell can mount.
+ * Does not wait for health probes / schema rebuild — use
+ * {@link ensureCollectorDatabaseHealthy} for that.
+ */
+export async function openCollectorDatabase(): Promise<void> {
+  if (isDevMock()) {
+    return devMockCollector.warmupCollector();
+  }
+  await bootGate.open();
+}
+
+/**
+ * Finish index health checks (and schema rebuild if needed).
+ * All UI SQL queries go through {@link ensureInitialized}, which awaits this.
+ */
+export async function ensureCollectorDatabaseHealthy(): Promise<void> {
+  if (isDevMock()) {
+    return;
+  }
+  await bootGate.ensureHealthy();
+}
+
+/** @deprecated Prefer {@link openCollectorDatabase} for boot; kept for mock callers. */
+export async function warmupCollector(): Promise<void> {
+  await openCollectorDatabase();
+}
+
+async function ensureInitialized(): Promise<void> {
+  if (isDevMock()) {
+    await devMockCollector.warmupCollector();
+    return;
+  }
+  await bootGate.ensureHealthy();
+}
+
 function getIndex(): SqlVaultIndexStore {
-  if (!sql) {
+  if (!sql || !bootGate.isHealthy()) {
     throw new Error("Collector database is not initialized");
   }
   return new SqlVaultIndexStore(sql);
