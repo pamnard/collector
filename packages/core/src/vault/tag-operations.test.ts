@@ -2,20 +2,25 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { runMigrations } from "@collector/db";
+import { BetterSqliteMigrator } from "../../../db/src/testing/better-sqlite.js";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
-import { createId } from "../util/ids.js";
+import { createId, nowIso } from "../util/ids.js";
 import { readItemFile } from "./item-io.js";
 import { itemRoot } from "./paths.js";
 import { createVault, upsertItem } from "./operations.js";
-import { createTag, deleteTag } from "./tag-operations.js";
+import { createTag, deleteTag, listTagsWithCounts } from "./tag-operations.js";
 
 describe("tag operations", () => {
   let dataDir = "";
   const fs = new NodeFileSystemAdapter();
+  let db: BetterSqliteMigrator | null = null;
 
   afterEach(async () => {
+    db?.close();
+    db = null;
     if (dataDir) {
       await rm(dataDir, { recursive: true, force: true });
       dataDir = "";
@@ -78,5 +83,50 @@ describe("tag operations", () => {
     }
 
     expect(await ctx.index.listItemIdsByTag(meta.id, tag.id)).toEqual([]);
+  });
+
+  it("listTagsWithCounts reads counts from index without tags.json", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-tags-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const ctx = { fs, index: new SqlVaultIndexStore(db) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    const tagId = createId();
+    await ctx.index.upsertTag(
+      {
+        id: tagId,
+        name: "Research",
+        color: null,
+        created_at: nowIso(),
+      },
+      meta.id,
+    );
+
+    const itemId = createId();
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        is_archived: false,
+        is_favorite: false,
+        tag_ids: [tagId],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        created_at: nowIso(),
+        updated_at: nowIso(),
+      },
+    });
+
+    const tags = await listTagsWithCounts(ctx, meta.id);
+    expect(tags).toHaveLength(1);
+    expect(tags[0]?.name).toBe("Research");
+    expect(tags[0]?.item_count).toBe(1);
   });
 });

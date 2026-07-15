@@ -123,11 +123,10 @@ export async function deleteTag(
   }
 }
 
+/** Tag list + counts from SQLite only (sidebar / navigation). */
 export async function listTagsWithCounts(
   ctx: VaultContext,
   vaultId: string,
-  vaultPath: string,
 ): Promise<TagWithCount[]> {
-  await syncTagsToIndex(ctx, vaultPath, vaultId);
   return ctx.index.listTagsWithCounts(vaultId);
 }
