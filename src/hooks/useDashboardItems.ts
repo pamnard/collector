@@ -8,6 +8,7 @@ import {
   subscribeDashboardLoad,
 } from "../services/collector-service";
 import { reportServiceError } from "../services/runtime-error";
+import { useVaultIndexSyncStatus } from "./useVaultIndexSyncStatus";
 
 export { DASHBOARD_PREFETCH_SIZE, DASHBOARD_BATCH_SIZE } from "../services/collector-service";
 
@@ -35,10 +36,16 @@ export function useDashboardItems(
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const indexSync = useVaultIndexSyncStatus();
   const requestVersionRef = useRef(0);
   const streamEndOffsetRef = useRef(0);
   const itemIdsRef = useRef<string[]>([]);
   const streamAbortRef = useRef<AbortController | null>(null);
+
+  const isIndexingEmptyGrid =
+    (indexSync.status === "running" || indexSync.status === "rebuilding") &&
+    totalCount === 0 &&
+    itemIds.length === 0;
 
   const items = useMemo(() => {
     const ordered: ItemFile[] = [];
@@ -256,7 +263,7 @@ export function useDashboardItems(
   return {
     items,
     totalCount,
-    isLoading,
+    isLoading: isLoading || isIndexingEmptyGrid,
     isLoadingMore,
     hasMore: streamEndOffset < totalCount,
     error,

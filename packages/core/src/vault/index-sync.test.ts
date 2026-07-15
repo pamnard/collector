@@ -122,4 +122,61 @@ describe("syncVaultIndexFromFilesystem", () => {
 
     db.close();
   });
+
+  it("exposes paginated SQL ids before sync completes on an empty index", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-index-sync-page-"));
+    const diskCtx = { fs, index: createNoopVaultIndex() };
+    const { meta, path } = await createVault(diskCtx, dataDir, {
+      name: "Paged Vault",
+      isDefault: true,
+    });
+
+    const itemCount = 25;
+    for (let i = 0; i < itemCount; i += 1) {
+      await upsertItem(diskCtx, path, meta.id, {
+        item: {
+          id: createId(),
+          vault_id: meta.id,
+          title: `Item ${i}`,
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          is_archived: false,
+          is_favorite: false,
+          tag_ids: [],
+          collection_ids: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        content: `body ${i}`,
+      });
+    }
+
+    const dbPath = join(dataDir, "collector.db");
+    const db = BetterSqliteMigrator.open(dbPath);
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    await index.upsertVault(meta, path);
+
+    expect(await index.listItemIdsByNavFilter(meta.id, "all", { limit: 60, offset: 0 })).toEqual([]);
+    expect(await index.countItemIdsByNavFilter(meta.id, "all")).toBe(0);
+
+    let metadataComplete = false;
+    await syncVaultIndexFromFilesystem({ fs, index }, path, {
+      onMetadataComplete: () => {
+        metadataComplete = true;
+      },
+    });
+
+    expect(metadataComplete).toBe(true);
+    const page = await index.listItemIdsByNavFilter(meta.id, "all", {
+      limit: 60,
+      offset: 0,
+    });
+    expect(page.length).toBe(itemCount);
+    expect(await index.countItemIdsByNavFilter(meta.id, "all")).toBe(itemCount);
+
+    db.close();
+  });
 });
