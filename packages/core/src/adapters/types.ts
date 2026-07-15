@@ -1,6 +1,16 @@
 import type { ItemFile, MediaFileMeta, SourceRef, Tag, VaultMeta } from "@collector/shared";
 import type { NavSearchFilter } from "../search/nav-filter.js";
 
+export interface VaultItemStatMeta {
+  id: string;
+  mtimeMs: number | null;
+}
+
+export interface VaultItemMetaRead {
+  id: string;
+  itemJson: string;
+}
+
 export interface FileSystemAdapter {
   exists(path: string): Promise<boolean>;
   readText(path: string): Promise<string>;
@@ -13,6 +23,13 @@ export interface FileSystemAdapter {
   touch(path: string): Promise<void>;
   remove(path: string, options?: { recursive?: boolean }): Promise<void>;
   join(...parts: string[]): string;
+  /** One IPC: stat item.json mtimes for every item dir under vault. */
+  statVaultItemsMeta?(vaultPath: string): Promise<VaultItemStatMeta[]>;
+  /** One IPC per chunk: read item.json for the given ids. */
+  readVaultItemsMeta?(
+    vaultPath: string,
+    itemIds: string[],
+  ): Promise<VaultItemMetaRead[]>;
 }
 
 export interface ItemSyncMeta {
