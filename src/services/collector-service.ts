@@ -70,6 +70,8 @@ let sql: TauriSqlAdapter | null = null;
 let activeVault: { meta: VaultMeta; path: string } | null = null;
 const syncedVaultIds = new Set<string>();
 const vaultSyncPromises = new Map<string, Promise<void>>();
+/** Watcher start/runtime failure: fall back to reconcile once, do not loop start→fail→resync. */
+const watcherDisabledVaultIds = new Set<string>();
 const fs = new TauriFileSystemAdapter();
 
 configureVaultFilesystemWatcher({
@@ -79,7 +81,7 @@ configureVaultFilesystemWatcher({
     emitVaultSyncEvent(vaultId, "complete");
   },
   forceVaultIndexResync: (vaultId, vaultPath) => {
-    forceVaultIndexResync(vaultId, vaultPath);
+    forceVaultIndexResync(vaultId, vaultPath, { restartWatcher: false });
   },
 });
 
@@ -283,6 +285,7 @@ async function rebuildIndexDatabase(): Promise<void> {
 
   syncedVaultIds.clear();
   vaultSyncPromises.clear();
+  watcherDisabledVaultIds.clear();
   activeVault = null;
   await stopVaultFilesystemWatcher();
   await resetIndexSchema(sql);
@@ -507,9 +510,13 @@ function startVaultIndexSync(vaultId: string, vaultPath: string): Promise<void> 
         ftsReady,
       });
       emitVaultSyncEvent(vaultId, "complete");
-      void startVaultFilesystemWatcher(vaultId, vaultPath).catch((error: unknown) => {
-        reportServiceError("start vault filesystem watcher", error);
-      });
+      if (!watcherDisabledVaultIds.has(vaultId)) {
+        void startVaultFilesystemWatcher(vaultId, vaultPath).catch(
+          (error: unknown) => {
+            reportServiceError("start vault filesystem watcher", error);
+          },
+        );
+      }
     } catch (error) {
       publishRunningStatus.cancel();
       setVaultIndexSyncStatus({
@@ -535,7 +542,14 @@ function kickoffVaultIndexSync(vaultId: string, vaultPath: string): void {
   });
 }
 
-function forceVaultIndexResync(vaultId: string, vaultPath: string): void {
+function forceVaultIndexResync(
+  vaultId: string,
+  vaultPath: string,
+  options: { restartWatcher?: boolean } = {},
+): void {
+  if (options.restartWatcher === false) {
+    watcherDisabledVaultIds.add(vaultId);
+  }
   syncedVaultIds.delete(vaultId);
   kickoffVaultIndexSync(vaultId, vaultPath);
 }
@@ -993,6 +1007,7 @@ export async function switchVault(vaultId: string): Promise<VaultMeta> {
   }
 
   activeVault = selected;
+  watcherDisabledVaultIds.delete(vaultId);
   await stopVaultFilesystemWatcher();
   await clearDashboardSnapshot();
   await updateAppSettings({ active_vault_id: vaultId });
