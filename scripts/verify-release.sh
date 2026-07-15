@@ -15,9 +15,9 @@
 #   @tauri-apps/cli creates one inotify instance while rewriting Cargo.toml.
 #   Leftover Collector app processes hold inotify instances; this script stops
 #   them before tauri build (dev release hygiene — not an end-user path).
-#   Then raises fs.inotify.max_user_instances by a small fixed headroom (+10 over
-#   the common 128 default → 138) if still below that floor — not a large sysctl bump.
-#   If inotify_init1 still fails after that, FAIL clearly (problem is bigger than leftover apps).
+#   Then probe-create one inotify instance. If that fails, FAIL clearly.
+#   Do NOT raise fs.inotify.* / call sudo sysctl from this script — machine
+#   limits are a one-time host setup, not a recurring release-gate side effect.
 #   Plain `cargo build --release` in src-tauri does not need that watcher.
 set -euo pipefail
 
@@ -34,8 +34,6 @@ unset CARGO_TARGET_DIR
 
 # One free slot is enough for tauri-cli's temporary Cargo.toml watcher.
 INOTIFY_INSTANCES_NEEDED=1
-# Common distro default is 128; allow a tiny release-gate headroom only.
-INOTIFY_MAX_USER_INSTANCES_FLOOR=138
 
 # Stop leftover Collector app binaries so they release inotify instances before
 # tauri-cli's Cargo.toml watcher. Does not touch IDEs/browsers.
@@ -86,33 +84,6 @@ stop_running_collector_binaries() {
     kill -KILL "${still[@]}" 2>/dev/null || true
     sleep 0.5
   fi
-}
-
-# Tiny headroom only: if below FLOOR (128+10), raise to FLOOR. Never ratchet upward
-# on every run if the value is already higher.
-# Note: unprivileged `sysctl -w` may exit 0 while ignoring the write — always re-read.
-bump_linux_inotify_max_user_instances_floor() {
-  [[ "$(uname -s)" == "Linux" ]] || return 0
-  local max
-  max="$(cat /proc/sys/fs/inotify/max_user_instances)"
-  if (( max >= INOTIFY_MAX_USER_INSTANCES_FLOOR )); then
-    echo "inotify max_user_instances already ${max} (>= ${INOTIFY_MAX_USER_INSTANCES_FLOOR})"
-    return 0
-  fi
-  echo "raising fs.inotify.max_user_instances ${max} -> ${INOTIFY_MAX_USER_INSTANCES_FLOOR}"
-  if [[ -w /proc/sys/fs/inotify/max_user_instances ]]; then
-    echo "${INOTIFY_MAX_USER_INSTANCES_FLOOR}" > /proc/sys/fs/inotify/max_user_instances
-  elif command -v sudo >/dev/null 2>&1; then
-    # Local release is interactive; passwordless sudo is optional.
-    sudo sysctl -w "fs.inotify.max_user_instances=${INOTIFY_MAX_USER_INSTANCES_FLOOR}"
-  else
-    fail "cannot raise fs.inotify.max_user_instances (no write access and no sudo). See #104."
-  fi
-  max="$(cat /proc/sys/fs/inotify/max_user_instances)"
-  if (( max < INOTIFY_MAX_USER_INSTANCES_FLOOR )); then
-    fail "cannot raise fs.inotify.max_user_instances (still ${max}, need ${INOTIFY_MAX_USER_INSTANCES_FLOOR}). See #104."
-  fi
-  echo "inotify max_user_instances is now ${max}"
 }
 
 default_tauri_bundle_args() {
@@ -263,7 +234,7 @@ PY
 fail_inotify_instances_exhausted() {
   local max="$1"
   local used="$2"
-  fail "inotify_init1 probe failed (EMFILE) after stopping collectors and ensuring max_user_instances>=${INOTIFY_MAX_USER_INSTANCES_FLOOR}. Estimated unique instances: ${used}/${max}. Remaining pressure is too high for this tiny headroom — do not keep raising sysctl; investigate leftover IDE/browser watchers or upstream tauri-cli. See #104."
+  fail "inotify_init1 probe failed (EMFILE) after stopping leftover collector binaries. Estimated unique inotify instances: ${used}/${max}. Free other watchers (IDE/browser) or raise the host limit once outside this script — do not add sudo/sysctl here. See #104 / #111."
 }
 
 tauri_log_looks_like_inotify_emfile() {
@@ -316,7 +287,6 @@ if [[ "${SKIP_TAURI_BUILD:-}" == "1" ]]; then
 else
   step "tauri release build"
   stop_running_collector_binaries
-  bump_linux_inotify_max_user_instances_floor
   ensure_linux_inotify_headroom_for_tauri
   default_tauri_bundle_args
   # shellcheck disable=SC2206
