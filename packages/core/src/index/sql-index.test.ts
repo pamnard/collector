@@ -73,6 +73,114 @@ describe("listItemIdsByNavFilter", () => {
   });
 });
 
+describe("dashboard item id pagination", () => {
+  let dataDir = "";
+  const fs = new NodeFileSystemAdapter();
+
+  afterEach(async () => {
+    if (dataDir) {
+      await rm(dataDir, { recursive: true, force: true });
+      dataDir = "";
+    }
+  });
+
+  it("paginates nav filter ids and returns total count", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-nav-page-"));
+    const navDb = BetterSqliteMigrator.open(join(dataDir, "collector-nav-page.db"));
+    await runMigrations(navDb);
+    const index = new SqlVaultIndexStore(navDb);
+    const ctx = { fs, index };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const timestamp = new Date().toISOString();
+    const ids: string[] = [];
+
+    for (let i = 0; i < 5; i += 1) {
+      const id = createId();
+      ids.push(id);
+      await upsertItem(ctx, path, meta.id, {
+        item: {
+          id,
+          vault_id: meta.id,
+          title: `Item ${i}`,
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          is_archived: false,
+          is_favorite: false,
+          tag_ids: [],
+          collection_ids: [],
+          folder_path: "",
+          content_revision: 1,
+          created_at: new Date(Date.now() + i).toISOString(),
+          updated_at: timestamp,
+        },
+      });
+    }
+
+    expect(await index.countItemIdsByNavFilter(meta.id, "all")).toBe(5);
+    expect(
+      await index.listItemIdsByNavFilter(meta.id, "all", { limit: 2, offset: 0 }),
+    ).toHaveLength(2);
+    expect(
+      await index.listItemIdsByNavFilter(meta.id, "all", { limit: 2, offset: 2 }),
+    ).toHaveLength(2);
+    expect(
+      await index.listItemIdsByNavFilter(meta.id, "all", { limit: 2, offset: 4 }),
+    ).toHaveLength(1);
+    navDb.close();
+  });
+
+  it("paginates FTS search ids and returns total count", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-search-page-"));
+    const searchDb = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(searchDb);
+    const index = new SqlVaultIndexStore(searchDb);
+    const ctx = { fs, index };
+    const { meta } = await createVault(ctx, dataDir, { name: "Vault" });
+    const timestamp = new Date().toISOString();
+
+    for (const title of ["alpha one", "alpha two", "beta three"]) {
+      const id = createId();
+      const item = {
+        id,
+        vault_id: meta.id,
+        title,
+        description: "",
+        content_type: "note" as const,
+        source_type: "manual" as const,
+        metadata: {},
+        is_archived: false,
+        is_favorite: false,
+        tag_ids: [] as string[],
+        collection_ids: [] as string[],
+        folder_path: "",
+        content_revision: 1,
+        created_at: timestamp,
+        updated_at: timestamp,
+      };
+      await index.upsertItemMetadata({ item, fileMtimeMs: 1 }, meta.id);
+      await index.upsertItemContent({
+        itemId: id,
+        title,
+        description: "",
+        content: title,
+        sourceRef: null,
+      });
+    }
+
+    const ftsQuery = "alpha";
+    expect(await index.countSearchItemIds(meta.id, ftsQuery, "all")).toBe(2);
+    expect(
+      await index.searchItemIds(meta.id, ftsQuery, "all", { limit: 1, offset: 0 }),
+    ).toHaveLength(1);
+    expect(
+      await index.searchItemIds(meta.id, ftsQuery, "all", { limit: 1, offset: 1 }),
+    ).toHaveLength(1);
+    searchDb.close();
+  });
+});
+
 describe("listItemFilesByIds", () => {
   let dataDir = "";
   const fs = new NodeFileSystemAdapter();

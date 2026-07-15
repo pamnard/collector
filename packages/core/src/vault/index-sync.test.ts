@@ -30,6 +30,7 @@ function createNoopVaultIndex(): VaultIndexAdapter {
     listItemIdsByTag: async () => [],
     listItemIdsByFolderPrefix: async () => [],
     listItemIdsByNavFilter: async () => [],
+    countItemIdsByNavFilter: async () => 0,
     listFolderItemCounts: async () => [],
     listVaultItemIds: async () => [],
     listItemFilesByIds: async () => [],
@@ -38,6 +39,7 @@ function createNoopVaultIndex(): VaultIndexAdapter {
     getReconcileFingerprint: async () => null,
     setReconcileFingerprint: noop,
     searchItemIds: async () => [],
+    countSearchItemIds: async () => 0,
   };
 }
 
