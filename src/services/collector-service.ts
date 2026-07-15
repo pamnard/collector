@@ -794,11 +794,14 @@ export function subscribeDashboardLoad(
     };
     signal?.addEventListener("abort", onAbort, { once: true });
 
+    // Start the single in-flight reindex before the first SQL page query so the
+    // dashboard never falls back to a parallel full-vault disk metadata stream (#74).
+    kickoffVaultIndexSync(vault.id, path);
+
     await publishPage({ offset: 0, limit: DASHBOARD_PREFETCH_SIZE });
     if (!signal?.aborted) {
       handlers.onLoadComplete?.();
     }
-    kickoffVaultIndexSync(vault.id, path);
   })().catch((error: unknown) => {
     handlers.onError?.("dashboard load", error);
   });

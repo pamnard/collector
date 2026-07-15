@@ -1,6 +1,12 @@
 /**
  * Empty-but-valid SQLite index + synthetic large vault → full reindex succeeds
  * without dual UI disk-stream (core sync path only).
+ *
+ * UI acceptance (#74, manual / WebView):
+ * - Dashboard subscribe uses SQL LIMIT/OFFSET pages only (no streamItemsByIds).
+ * - Grid stays in loading state while index sync runs with zero SQL rows.
+ * - Item IDs and totalCount grow from onBatch republish as metadata lands.
+ * - Indexing banner visible; no full-vault disk metadata stream on critical path.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -92,6 +98,17 @@ try {
     fail(`expected empty index, got ${idsBefore.length} rows`);
   }
 
+  const pageBefore = await index.listItemIdsByNavFilter(meta.id, "all", {
+    limit: 60,
+    offset: 0,
+  });
+  const countBefore = await index.countItemIdsByNavFilter(meta.id, "all");
+  if (pageBefore.length !== 0 || countBefore !== 0) {
+    fail(
+      `expected empty SQL dashboard page before sync, got ids=${pageBefore.length} count=${countBefore}`,
+    );
+  }
+
   const batches = [];
   let metadataComplete = null;
   const started = Date.now();
@@ -125,6 +142,21 @@ try {
   if (metadataComplete.phase !== "metadata") {
     fail(`expected metadataComplete.phase=metadata, got ${metadataComplete.phase}`);
   }
+
+  const pageAfterMetadata = await index.listItemIdsByNavFilter(meta.id, "all", {
+    limit: 60,
+    offset: 0,
+  });
+  const countAfterMetadata = await index.countItemIdsByNavFilter(meta.id, "all");
+  if (pageAfterMetadata.length === 0 || countAfterMetadata !== ITEM_COUNT) {
+    fail(
+      `expected progressive SQL page after metadata phase, got ids=${pageAfterMetadata.length} count=${countAfterMetadata}`,
+    );
+  }
+  if (pageAfterMetadata.length > 60) {
+    fail(`dashboard page must be capped, got ${pageAfterMetadata.length} ids`);
+  }
+
   if (report.indexed !== ITEM_COUNT) {
     fail(`expected indexed=${ITEM_COUNT}, got ${report.indexed}`);
   }
