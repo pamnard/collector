@@ -30,10 +30,15 @@ import {
 } from "../util/concurrency.js";
 import { classifyItemSyncAction } from "./sync-classifier.js";
 import {
+  canTakeReconcileFastPath,
+  readVaultReconcileFingerprint,
+} from "./reconcile-fingerprint.js";
+import {
   itemMediaRoot,
   itemMetaPath,
   itemRoot,
   itemsRoot,
+  filterDiskItemIds,
   vaultRoot,
   vaultsRoot,
 } from "./paths.js";
@@ -185,12 +190,30 @@ export async function syncIndexFromFilesystem(
     return report;
   }
 
-  const diskItemIds = new Set(await ctx.fs.readDir(itemsDir));
+  const diskItemIds = new Set(filterDiskItemIds(await ctx.fs.readDir(itemsDir)));
+  const currentFingerprint = await readVaultReconcileFingerprint(ctx.fs, itemsDir);
   const indexedItems = await ctx.index.listVaultItemSyncMeta(vaultId);
+  const storedFingerprint = await ctx.index.getReconcileFingerprint(vaultId);
   const indexMeta = new Map(indexedItems.map((item) => [item.id, item]));
   const indexedIds = new Set(indexedItems.map((item) => item.id));
   const diskIds = [...diskItemIds];
   const total = diskIds.length;
+
+  if (
+    canTakeReconcileFastPath({
+      storedFingerprint,
+      currentFingerprint,
+      indexedItemCount: indexedItems.length,
+      diskItemCount: diskItemIds.size,
+      indexedIds,
+      diskItemIds,
+    })
+  ) {
+    report.skipped = total;
+    emitProgress(total, total);
+    onBatch?.(toSyncProgress(report, total, total, phase));
+    return report;
+  }
 
   emitProgress(0, total);
 
@@ -400,6 +423,10 @@ export async function syncIndexFromFilesystem(
   );
   if (reindexQueue.length === 0) {
     onBatch?.(toSyncProgress(report, total, total, phase));
+  }
+
+  if (report.errors.length === 0) {
+    await ctx.index.setReconcileFingerprint(vaultId, currentFingerprint);
   }
 
   return report;

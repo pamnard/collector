@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runMigrations } from "@collector/db";
 import { BetterSqliteMigrator } from "../../../db/src/testing/better-sqlite.js";
+import type { FileSystemAdapter } from "../adapters/types.js";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { createId } from "../util/ids.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
@@ -20,6 +21,57 @@ import {
 import { readItemFile, writeItemFile } from "../vault/item-io.js";
 import { itemRoot } from "../vault/paths.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
+
+class CountingFileSystemAdapter implements FileSystemAdapter {
+  statCount = 0;
+
+  constructor(private readonly inner: FileSystemAdapter) {}
+
+  join(...parts: string[]): string {
+    return this.inner.join(...parts);
+  }
+
+  exists(path: string): Promise<boolean> {
+    return this.inner.exists(path);
+  }
+
+  readText(path: string): Promise<string> {
+    return this.inner.readText(path);
+  }
+
+  writeText(path: string, content: string): Promise<void> {
+    return this.inner.writeText(path, content);
+  }
+
+  readBinary(path: string): Promise<Uint8Array> {
+    return this.inner.readBinary(path);
+  }
+
+  writeBinary(path: string, content: Uint8Array): Promise<void> {
+    return this.inner.writeBinary(path, content);
+  }
+
+  mkdir(path: string): Promise<void> {
+    return this.inner.mkdir(path);
+  }
+
+  readDir(path: string): Promise<string[]> {
+    return this.inner.readDir(path);
+  }
+
+  async stat(path: string): Promise<{ mtimeMs: number | null }> {
+    this.statCount += 1;
+    return this.inner.stat(path);
+  }
+
+  touch(path: string): Promise<void> {
+    return this.inner.touch(path);
+  }
+
+  remove(path: string, options?: { recursive?: boolean }): Promise<void> {
+    return this.inner.remove(path, options);
+  }
+}
 
 describe("vault operations", () => {
   let dataDir = "";
@@ -605,5 +657,129 @@ describe("vault operations", () => {
     expect(report.indexed).toBe(0);
     expect(report.errors).toHaveLength(0);
     expect(progress.at(-1)).toEqual({ processed: 0, total: 0 });
+  });
+
+  it("skips per-item stat on fingerprint hit for unchanged vault", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-fp-hit-"));
+    const countingFs = new CountingFileSystemAdapter(fs);
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs: countingFs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemCount = 8;
+
+    for (let i = 0; i < itemCount; i += 1) {
+      await upsertItem(ctx, path, meta.id, {
+        item: {
+          id: createId(),
+          vault_id: meta.id,
+          title: `Note ${i}`,
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          is_archived: false,
+          is_favorite: false,
+          tag_ids: [],
+          collection_ids: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        content: `body ${i}`,
+      });
+    }
+
+    const warmup = await syncIndexFromFilesystem(ctx, path, meta.id);
+    expect(warmup.skipped).toBe(itemCount);
+    expect(warmup.errors).toHaveLength(0);
+    expect(await ctx.index.getReconcileFingerprint(meta.id)).not.toBeNull();
+
+    countingFs.statCount = 0;
+    const report = await syncIndexFromFilesystem(ctx, path, meta.id);
+    expect(report.skipped).toBe(itemCount);
+    expect(report.indexed).toBe(0);
+    expect(report.patched).toBe(0);
+    expect(report.errors).toHaveLength(0);
+    expect(countingFs.statCount).toBe(1);
+  });
+
+  it("runs slow reconcile on fingerprint mismatch", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-fp-miss-"));
+    const countingFs = new CountingFileSystemAdapter(fs);
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs: countingFs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemId = createId();
+    const timestamp = new Date().toISOString();
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        is_archived: false,
+        is_favorite: false,
+        tag_ids: [],
+        collection_ids: [],
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      content: "hello",
+    });
+
+    const warmup = await syncIndexFromFilesystem(ctx, path, meta.id);
+    expect(warmup.skipped).toBe(1);
+    expect(warmup.errors).toHaveLength(0);
+
+    await ctx.index.setReconcileFingerprint(meta.id, {
+      itemsDirMtimeMs: 0,
+      itemCount: 0,
+    });
+
+    countingFs.statCount = 0;
+    const report = await syncIndexFromFilesystem(ctx, path, meta.id);
+    expect(report.skipped).toBe(1);
+    expect(report.indexed).toBe(0);
+    expect(report.errors).toHaveLength(0);
+    expect(countingFs.statCount).toBeGreaterThan(1);
+  });
+
+  it("runs full reconcile when index is empty but vault has items", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-fp-empty-index-"));
+    const diskCtx = { fs, index: new SqlVaultIndexStore(new MemorySqlAdapter()) };
+    const { meta, path } = await createVault(diskCtx, dataDir, { name: "Vault" });
+
+    await upsertItem(diskCtx, path, meta.id, {
+      item: {
+        id: createId(),
+        vault_id: meta.id,
+        title: "On disk",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        is_archived: false,
+        is_favorite: false,
+        tag_ids: [],
+        collection_ids: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      content: "body",
+    });
+
+    const emptyCtx = {
+      fs,
+      index: new SqlVaultIndexStore(new MemorySqlAdapter()),
+    };
+    await emptyCtx.index.upsertVault(meta, path);
+
+    const report = await syncIndexFromFilesystem(emptyCtx, path, meta.id);
+    expect(report.indexed).toBe(1);
+    expect(report.skipped).toBe(0);
+    expect(await emptyCtx.index.getReconcileFingerprint(meta.id)).not.toBeNull();
   });
 });

@@ -48,6 +48,8 @@ try {
     listItemFilesByIds: async () => [],
     listVaultItemSyncMeta: async () => [],
     patchItemSyncMeta: async () => {},
+    getReconcileFingerprint: async () => null,
+    setReconcileFingerprint: async () => {},
     searchItemIds: async () => [],
   };
 
