@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { createId } from "../util/ids.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
@@ -10,7 +10,10 @@ import {
   createFolder,
   listFolderTreeFromIndex,
   reconcileFolderTreeFromDisk,
+  renameFolder,
 } from "../vault/folder-operations.js";
+import { readItemFile } from "../vault/item-io.js";
+import { itemRoot } from "../vault/paths.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 
 describe("folder operations", () => {
@@ -97,5 +100,100 @@ describe("folder operations", () => {
     expect(
       mergedTree[0]?.children.some((child) => child.path === "Imports/Drop"),
     ).toBe(true);
+  });
+
+  it("renameFolder updates only items under the folder prefix from index", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-folder-rename-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const timestamp = new Date().toISOString();
+
+    await createFolder(ctx, path, "Work/Articles");
+
+    const workRootId = createId();
+    const workNestedId = createId();
+    const otherId = createId();
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: workRootId,
+        vault_id: meta.id,
+        title: "Work root",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        is_archived: false,
+        is_favorite: false,
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "Work",
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+    });
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: workNestedId,
+        vault_id: meta.id,
+        title: "Work nested",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        is_archived: true,
+        is_favorite: false,
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "Work/Articles",
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+    });
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: otherId,
+        vault_id: meta.id,
+        title: "Other",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        is_archived: false,
+        is_favorite: false,
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "Other",
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+    });
+
+    const readDirSpy = vi.spyOn(fs, "readDir");
+    await renameFolder(ctx, path, meta.id, "Work", "Projects");
+    expect(readDirSpy).not.toHaveBeenCalled();
+    readDirSpy.mockRestore();
+
+    expect(
+      (await readItemFile(fs, itemRoot(path, workRootId))).folder_path,
+    ).toBe("Projects");
+    expect(
+      (await readItemFile(fs, itemRoot(path, workNestedId))).folder_path,
+    ).toBe("Projects/Articles");
+    expect((await readItemFile(fs, itemRoot(path, otherId))).folder_path).toBe(
+      "Other",
+    );
+
+    expect(
+      await ctx.index.listItemIdsByFolderPrefix(meta.id, "Projects", {
+        includeArchived: true,
+      }),
+    ).toEqual(expect.arrayContaining([workRootId, workNestedId]));
+    expect(await ctx.index.listItemIdsByFolderPrefix(meta.id, "Work")).toEqual(
+      [],
+    );
   });
 });
