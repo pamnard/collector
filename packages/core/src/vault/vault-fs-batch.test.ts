@@ -16,6 +16,7 @@ import {
   VAULT_ITEM_READ_META_BATCH,
 } from "./vault-fs-batch.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
+import * as concurrency from "../util/concurrency.js";
 
 describe("vault-fs-batch", () => {
   let dataDir = "";
@@ -92,8 +93,45 @@ describe("vault-fs-batch", () => {
     const readSpy = vi.spyOn(fs, "readVaultItemsMeta");
     const reads = await readVaultItemMetaBatch(fs, path, itemIds);
     expect(reads).toHaveLength(itemIds.length);
-    expect(readSpy).toHaveBeenCalledTimes(2);
+    expect(readSpy).toHaveBeenCalledTimes(
+      Math.ceil(itemIds.length / VAULT_ITEM_READ_META_BATCH),
+    );
     readSpy.mockRestore();
+  });
+
+  it("readVaultItemMetaBatch yields between IPC chunks", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-batch-read-yield-"));
+    const ctx = { fs, index: new SqlVaultIndexStore(new MemorySqlAdapter()) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    const itemIds = Array.from(
+      { length: VAULT_ITEM_READ_META_BATCH * 2 + 1 },
+      () => createId(),
+    );
+    for (const itemId of itemIds) {
+      await upsertItem(ctx, path, meta.id, {
+        item: {
+          id: itemId,
+          vault_id: meta.id,
+          title: itemId,
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          is_archived: false,
+          is_favorite: false,
+          tag_ids: [],
+          collection_ids: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      });
+    }
+
+    const yieldSpy = vi.spyOn(concurrency, "yieldToEventLoop");
+    await readVaultItemMetaBatch(fs, path, itemIds);
+    expect(yieldSpy).toHaveBeenCalled();
+    yieldSpy.mockRestore();
   });
 
   it("sync uses one stat batch and batched meta reads", async () => {
@@ -130,7 +168,9 @@ describe("vault-fs-batch", () => {
     const report = await syncIndexFromFilesystem(ctx, path, meta.id);
     expect(report.indexed).toBe(itemCount);
     expect(statSpy).toHaveBeenCalledTimes(1);
-    expect(readSpy).toHaveBeenCalledTimes(1);
+    expect(readSpy).toHaveBeenCalledTimes(
+      Math.ceil(itemCount / VAULT_ITEM_READ_META_BATCH),
+    );
 
     statSpy.mockRestore();
     readSpy.mockRestore();

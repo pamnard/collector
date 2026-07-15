@@ -23,6 +23,7 @@ import { writeTagsFile } from "./tag-io.js";
 import { writeFoldersFile } from "./folder-io.js";
 import {
   DISK_ITEM_READ_CONCURRENCY,
+  INDEX_SYNC_CONTENT_YIELD_MS,
   INDEX_SYNC_WRITE_BATCH,
   INDEX_SYNC_YIELD_MS,
   yieldToEventLoop,
@@ -220,6 +221,9 @@ export async function syncIndexFromFilesystem(
   emitProgress(0, total);
 
   const diskStats = await statAllVaultItemMeta(ctx.fs, vaultPath);
+  if (diskStats.length > 0) {
+    await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
+  }
   const stats = diskStats
     .filter((entry) => diskItemIds.has(entry.id))
     .map((entry) => ({
@@ -345,6 +349,9 @@ export async function syncIndexFromFilesystem(
             contentRevision: read.item.content_revision,
           });
           report.patched += 1;
+          if (report.patched % INDEX_SYNC_WRITE_BATCH === 0) {
+            await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
+          }
         } catch (error) {
           report.errors.push({
             itemId: read.itemId,
@@ -460,15 +467,20 @@ export async function syncIndexFromFilesystem(
     if ((i + 1) % INDEX_SYNC_WRITE_BATCH === 0 || i + 1 === reindexQueue.length) {
       emitBatch(i + 1, reindexQueue.length);
       if (i + 1 < reindexQueue.length) {
-        await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
+        await yieldToEventLoop(INDEX_SYNC_CONTENT_YIELD_MS);
       }
     }
   }
 
+  let removedBatch = 0;
   for (const indexedId of indexedIds) {
     if (!diskItemIds.has(indexedId)) {
       await ctx.index.deleteItem(indexedId);
       report.removed += 1;
+      removedBatch += 1;
+      if (removedBatch % INDEX_SYNC_WRITE_BATCH === 0) {
+        await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
+      }
     }
   }
 
