@@ -5,7 +5,7 @@ import { SCHEMA_VERSION } from "@collector/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { migrateVaultSchema } from "../vault/schema-migrate.js";
-import { itemRoot, itemsRoot } from "../vault/paths.js";
+import { itemRoot, itemsRoot, RECONCILE_TOUCH_FILE } from "../vault/paths.js";
 
 describe("migrateVaultSchema", () => {
   let vaultPath = "";
@@ -84,5 +84,64 @@ describe("migrateVaultSchema", () => {
     expect(migratedVault.settings).toEqual({});
 
     expect(await fs.exists(itemsRoot(vaultPath))).toBe(true);
+  });
+
+  it("ignores leftover .collector-touch stamp under items/", async () => {
+    const fs = new NodeFileSystemAdapter();
+    const root = await mkdtemp(join(tmpdir(), "collector-vault-touch-"));
+    vaultPath = root;
+    const itemId = "11111111-1111-4111-8111-111111111111";
+    const timestamp = "2026-01-01T00:00:00.000Z";
+    const vaultId = "22222222-2222-4222-8222-222222222222";
+
+    await writeFile(
+      join(vaultPath, "vault.meta.json"),
+      JSON.stringify(
+        {
+          id: vaultId,
+          name: "Touch Stamp Vault",
+          description: "",
+          is_default: true,
+          schema_version: SCHEMA_VERSION,
+          settings: {},
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+        null,
+        2,
+      ),
+    );
+
+    const itemDir = itemRoot(vaultPath, itemId);
+    await mkdir(itemDir, { recursive: true });
+    await writeFile(
+      join(itemDir, "item.json"),
+      JSON.stringify(
+        {
+          id: itemId,
+          vault_id: vaultId,
+          title: "Note",
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          tag_ids: [],
+          collection_ids: [],
+          folder_path: "",
+          content_revision: 1,
+          is_archived: false,
+          is_favorite: false,
+          schema_version: SCHEMA_VERSION,
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+        null,
+        2,
+      ),
+    );
+    await writeFile(join(itemsRoot(vaultPath), RECONCILE_TOUCH_FILE), "1");
+
+    const meta = await migrateVaultSchema(fs, vaultPath);
+    expect(meta.schema_version).toBe(SCHEMA_VERSION);
   });
 });

@@ -508,7 +508,7 @@ export async function listItemsOnDisk(
     return [];
   }
 
-  const itemIds = await ctx.fs.readDir(itemsDir);
+  const itemIds = filterDiskItemIds(await ctx.fs.readDir(itemsDir));
   return listItemsByIds(ctx, vaultPath, itemIds);
 }
 

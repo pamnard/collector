@@ -8,7 +8,7 @@ import {
   INDEX_SYNC_YIELD_MS,
   yieldToEventLoop,
 } from "../util/concurrency.js";
-import { itemMetaPath, itemRoot, itemsRoot } from "./paths.js";
+import { filterDiskItemIds, itemMetaPath, itemRoot, itemsRoot } from "./paths.js";
 
 /** Max item ids per batched read-meta IPC call; aligned with write batch for yield cadence. */
 export const VAULT_ITEM_READ_META_BATCH = INDEX_SYNC_WRITE_BATCH;
@@ -33,7 +33,7 @@ export async function statAllVaultItemMeta(
     return [];
   }
 
-  const itemIds = await fs.readDir(itemsDir);
+  const itemIds = filterDiskItemIds(await fs.readDir(itemsDir));
   const results: VaultItemStatMeta[] = [];
   for (const itemId of itemIds) {
     const fileStat = await fs.stat(itemMetaPath(itemRoot(vaultPath, itemId)));

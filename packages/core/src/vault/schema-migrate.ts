@@ -7,7 +7,13 @@ import {
 } from "@collector/shared";
 import type { FileSystemAdapter } from "../adapters/types.js";
 import { writeItemFile, writeVaultMeta } from "./item-io.js";
-import { itemMetaPath, itemRoot, itemsRoot, vaultMetaPath } from "./paths.js";
+import {
+  filterDiskItemIds,
+  itemMetaPath,
+  itemRoot,
+  itemsRoot,
+  vaultMetaPath,
+} from "./paths.js";
 
 type RawRecord = Record<string, unknown>;
 
@@ -50,7 +56,7 @@ export async function migrateVaultSchema(
 
   const itemsDir = itemsRoot(vaultPath);
   if (await fs.exists(itemsDir)) {
-    for (const itemId of await fs.readDir(itemsDir)) {
+    for (const itemId of filterDiskItemIds(await fs.readDir(itemsDir))) {
       await migrateItemSchema(fs, itemRoot(vaultPath, itemId));
     }
   }

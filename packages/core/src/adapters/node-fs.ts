@@ -5,7 +5,12 @@ import type {
   VaultItemMetaRead,
   VaultItemStatMeta,
 } from "./types.js";
-import { itemMetaPath, itemRoot, itemsRoot } from "../vault/paths.js";
+import {
+  filterDiskItemIds,
+  itemMetaPath,
+  itemRoot,
+  itemsRoot,
+} from "../vault/paths.js";
 
 export class NodeFileSystemAdapter implements FileSystemAdapter {
   join(...parts: string[]): string {
@@ -70,7 +75,7 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
       return [];
     }
 
-    const itemIds = await this.readDir(itemsDir);
+    const itemIds = filterDiskItemIds(await this.readDir(itemsDir));
     const results: VaultItemStatMeta[] = [];
     for (const itemId of itemIds) {
       const fileStat = await this.stat(itemMetaPath(itemRoot(vaultPath, itemId)));

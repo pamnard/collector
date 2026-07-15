@@ -1,3 +1,4 @@
+use filetime::{set_file_mtime, FileTime};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -232,4 +233,55 @@ pub fn resolve_item_thumbnail_paths(
         .iter()
         .map(|item| resolve_one_thumbnail(&vault_path, item))
         .collect())
+}
+
+/// Bump atime/mtime of an existing path (file or directory). Used by reconcile
+/// fingerprint invalidation — must match Node `utimes`, not a stamp file.
+#[tauri::command]
+pub fn fs_touch(path: String) -> Result<(), String> {
+    touch_path(&path)
+}
+
+fn touch_path(path: &str) -> Result<(), String> {
+    let target = Path::new(path);
+    if !target.exists() {
+        return Err(format!("path does not exist: {path}"));
+    }
+    set_file_mtime(target, FileTime::now()).map_err(|error| {
+        format!("failed to touch {path}: {error}")
+    })
+}
+
+#[cfg(test)]
+mod touch_tests {
+    use super::touch_path;
+    use std::fs;
+    use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    fn touch_path_updates_directory_mtime() {
+        let dir = tempfile_dir();
+        let before = fs::metadata(&dir).unwrap().modified().unwrap();
+        thread::sleep(Duration::from_millis(20));
+        touch_path(&dir).unwrap();
+        let after = fs::metadata(&dir).unwrap().modified().unwrap();
+        assert!(after >= before);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn touch_path_rejects_missing() {
+        let err = touch_path("/tmp/collector-fs-touch-missing-path-should-not-exist").unwrap_err();
+        assert!(err.contains("does not exist"));
+    }
+
+    fn tempfile_dir() -> String {
+        let path = std::env::temp_dir().join(format!(
+            "collector-fs-touch-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&path).unwrap();
+        path.to_string_lossy().into_owned()
+    }
 }

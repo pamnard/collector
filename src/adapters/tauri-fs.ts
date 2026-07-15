@@ -14,7 +14,6 @@ import {
   writeFile,
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
-import { RECONCILE_TOUCH_FILE } from "@collector/core";
 
 export class TauriFileSystemAdapter implements FileSystemAdapter {
   join(...parts: string[]): string {
@@ -67,8 +66,7 @@ export class TauriFileSystemAdapter implements FileSystemAdapter {
   }
 
   async touch(path: string): Promise<void> {
-    const stampPath = this.join(path, RECONCILE_TOUCH_FILE);
-    await writeTextFile(stampPath, String(Date.now()));
+    await invoke("fs_touch", { path });
   }
 
   async remove(path: string, options?: { recursive?: boolean }): Promise<void> {

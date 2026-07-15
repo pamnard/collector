@@ -9,7 +9,7 @@ import {
   type FolderTreeNode,
 } from "./folder-tree.js";
 import { readFoldersFile, writeFoldersFile } from "./folder-io.js";
-import { itemRoot, itemsRoot } from "./paths.js";
+import { filterDiskItemIds, itemRoot, itemsRoot } from "./paths.js";
 import { readItemContent, readItemFile, writeItemFile } from "./item-io.js";
 import { streamItemsByIds } from "./operations.js";
 
@@ -31,7 +31,7 @@ export async function collectItemFolderPaths(
     return [];
   }
 
-  const itemIds = await ctx.fs.readDir(itemsDir);
+  const itemIds = filterDiskItemIds(await ctx.fs.readDir(itemsDir));
   const paths: string[] = [];
   await streamItemsByIds(ctx, vaultPath, itemIds, {
     onItem: ({ item }) => {

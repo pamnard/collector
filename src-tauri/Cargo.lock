@@ -580,6 +580,7 @@ dependencies = [
 name = "collector"
 version = "0.1.16"
 dependencies = [
+ "filetime",
  "notify",
  "serde",
  "serde_json",
