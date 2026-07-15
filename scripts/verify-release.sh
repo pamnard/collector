@@ -10,6 +10,12 @@
 #   TAURI_BUNDLE_ARGS            — passed to `tauri build` (default: platform smoke bundle, deb on Linux)
 #   SKIP_TAURI_BUILD=1           — skip full tauri build (faster; not for final release sign-off)
 #   SKIP_RELEASE_SMOKE=1         — skip headless binary smoke (e.g. no xvfb on minimal CI image)
+#
+# Linux precondition for `tauri build`:
+#   @tauri-apps/cli creates one inotify instance while rewriting Cargo.toml.
+#   If fs.inotify.max_user_instances is exhausted, the CLI panics (EMFILE).
+#   This script fails with a clear message — do not raise sysctl as a "fix".
+#   Plain `cargo build --release` in src-tauri does not need that watcher.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -22,6 +28,9 @@ export RUSTUP_HOME="${USER_HOME}/.rustup"
 export CARGO_HOME="${USER_HOME}/.cargo"
 export PATH="${CARGO_HOME}/bin:${PATH}"
 unset CARGO_TARGET_DIR
+
+# One free slot is enough for tauri-cli's temporary Cargo.toml watcher.
+INOTIFY_INSTANCES_NEEDED=1
 
 default_tauri_bundle_args() {
   if [[ -n "${TAURI_BUNDLE_ARGS:-}" ]]; then
@@ -72,6 +81,135 @@ fail() {
   exit 1
 }
 
+# Same resource tauri-cli needs: can we create one more inotify instance?
+probe_inotify_instance_available() {
+  python3 - <<'PY'
+import ctypes
+import errno
+import os
+import sys
+
+libc = ctypes.CDLL(None, use_errno=True)
+# linux/uapi: IN_CLOEXEC for inotify_init1
+IN_CLOEXEC_INOTIFY = 0x80000
+fd = libc.inotify_init1(IN_CLOEXEC_INOTIFY)
+if fd < 0:
+    err = ctypes.get_errno()
+    sys.stderr.write(
+        f"inotify_init1 failed errno={err} ({errno.errorcode.get(err, 'UNKNOWN')})\n"
+    )
+    sys.exit(1)
+os.close(fd)
+sys.exit(0)
+PY
+}
+
+# Diagnostics only (anon inodes share st_ino; fork shares inflate raw fd counts).
+count_user_inotify_instances() {
+  python3 - <<'PY'
+import ctypes
+import os
+import platform
+import sys
+
+uid = os.getuid()
+fds = []
+for name in os.listdir("/proc"):
+    if not name.isdigit():
+        continue
+    try:
+        with open(f"/proc/{name}/status", encoding="utf-8") as status:
+            owner = None
+            for line in status:
+                if line.startswith("Uid:"):
+                    owner = int(line.split()[1])
+                    break
+        if owner != uid:
+            continue
+    except OSError:
+        continue
+    pid = int(name)
+    try:
+        entries = os.listdir(f"/proc/{pid}/fd")
+    except OSError:
+        continue
+    for entry in entries:
+        path = f"/proc/{pid}/fd/{entry}"
+        try:
+            if os.readlink(path) != "anon_inode:inotify":
+                continue
+            fds.append((pid, int(entry)))
+        except OSError:
+            continue
+
+sys_kcmp = {
+    "x86_64": 312,
+    "aarch64": 272,
+}.get(platform.machine())
+if sys_kcmp is None or not fds:
+    print(len(fds))
+    sys.exit(0)
+
+libc = ctypes.CDLL(None, use_errno=True)
+syscall = libc.syscall
+syscall.restype = ctypes.c_long
+KCMP_FILE = 0
+reps = []
+for pid, fd in fds:
+    shared = False
+    for rpid, rfd in reps:
+        if (
+            syscall(
+                ctypes.c_long(sys_kcmp),
+                ctypes.c_int(pid),
+                ctypes.c_int(rpid),
+                ctypes.c_int(KCMP_FILE),
+                ctypes.c_ulong(fd),
+                ctypes.c_ulong(rfd),
+            )
+            == 0
+        ):
+            shared = True
+            break
+    if not shared:
+        reps.append((pid, fd))
+print(len(reps))
+PY
+}
+
+fail_inotify_instances_exhausted() {
+  local max="$1"
+  local used="$2"
+  fail "inotify_init1 probe failed (EMFILE) — tauri-cli cannot create its Cargo.toml watcher. Estimated unique inotify instances: ${used}/${max}. This is fs.inotify.max_user_instances (or occasionally RLIMIT_NOFILE), not a Rust compile failure. Free leftover long-lived app/IDE watchers — do not raise sysctl as the release fix. Plain \`cargo build --release\` in src-tauri can still succeed without the CLI watcher. See #104."
+}
+
+tauri_log_looks_like_inotify_emfile() {
+  [[ -f "$TAURI_LOG" ]] || return 1
+  grep -qE 'inotify_init|Too many open files|max_user_instances|interface/rust\.rs' "$TAURI_LOG"
+}
+
+ensure_linux_inotify_headroom_for_tauri() {
+  [[ "$(uname -s)" == "Linux" ]] || return 0
+  local max used
+  max="$(cat /proc/sys/fs/inotify/max_user_instances)"
+  used="$(count_user_inotify_instances)"
+  echo "inotify instances: used ${used}/${max} (probe need >= ${INOTIFY_INSTANCES_NEEDED} free for tauri build)"
+  if ! probe_inotify_instance_available; then
+    fail_inotify_instances_exhausted "$max" "$used"
+  fi
+}
+
+maybe_fail_tauri_log_inotify_emfile() {
+  tauri_log_looks_like_inotify_emfile || return 0
+  if [[ "$(uname -s)" == "Linux" ]]; then
+    local max used
+    max="$(cat /proc/sys/fs/inotify/max_user_instances)"
+    used="$(count_user_inotify_instances)"
+    fail_inotify_instances_exhausted "$max" "$used"
+  fi
+  fail "tauri build hit inotify/EMFILE-class failure (see $TAURI_LOG). See #104."
+}
+
 step "typecheck"
 npm run typecheck
 
@@ -94,6 +232,7 @@ if [[ "${SKIP_TAURI_BUILD:-}" == "1" ]]; then
   echo "SKIP: tauri build (SKIP_TAURI_BUILD=1)"
 else
   step "tauri release build"
+  ensure_linux_inotify_headroom_for_tauri
   default_tauri_bundle_args
   # shellcheck disable=SC2206
   bundle_args=( ${TAURI_BUNDLE_ARGS} )
@@ -104,8 +243,12 @@ else
   set -e
 
   if [[ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
-    [[ "$tauri_exit" -eq 0 ]] || fail "tauri build exited $tauri_exit (signing key is set — must pass)"
+    if [[ "$tauri_exit" -ne 0 ]]; then
+      maybe_fail_tauri_log_inotify_emfile
+      fail "tauri build exited $tauri_exit (signing key is set — must pass)"
+    fi
   elif [[ "$tauri_exit" -ne 0 ]]; then
+    maybe_fail_tauri_log_inotify_emfile
     if grep -q "no private key" "$TAURI_LOG"; then
       echo "WARN: tauri build exit $tauri_exit — missing TAURI_SIGNING_PRIVATE_KEY (binary may still exist)"
     elif grep -q "Built application at:" "$TAURI_LOG"; then
