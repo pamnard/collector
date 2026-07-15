@@ -1,4 +1,5 @@
 import { appDataDir, join } from "@tauri-apps/api/path";
+import { invoke } from "@tauri-apps/api/core";
 import { ensureHealthyIndex, runMigrations, resetIndexSchema } from "@collector/db";
 import type { ItemFile, VaultMeta } from "@collector/shared";
 import type { MediaFileMeta } from "@collector/shared";
@@ -35,7 +36,6 @@ import {
   listItemMediaWithPaths,
   applyItemCover,
   clearItemCover,
-  resolveItemThumbnailAbsolutePath,
 } from "@collector/core";
 import type {
   FolderTreeNode,
@@ -1207,27 +1207,86 @@ async function syncItemCover(itemId: string): Promise<void> {
 }
 
 export async function resolveItemThumbnailPath(item: ItemFile): Promise<string | null> {
+  const paths = await resolveItemThumbnailPaths([item]);
+  return paths.get(item.id) ?? null;
+}
+
+const itemThumbnailPathCache = new Map<
+  string,
+  { cacheKey: string; path: string | null }
+>();
+
+function itemThumbnailCacheKey(item: ItemFile): string {
+  return `${item.thumbnail ?? ""}:${item.updated_at}`;
+}
+
+async function resolveItemThumbnailPathsUncached(
+  items: ItemFile[],
+): Promise<Map<string, string | null>> {
+  if (!items.length) {
+    return new Map();
+  }
+
   if (isDevMock()) {
-    return devMockCollector.resolveItemThumbnailPath(item);
+    const resolved = new Map<string, string | null>();
+    for (const item of items) {
+      resolved.set(item.id, await devMockCollector.resolveItemThumbnailPath(item));
+    }
+    return resolved;
   }
 
   const { path } = await resolveActiveVault();
-  const ctx = getContext();
+  const rows = await invoke<Array<{ id: string; path: string | null }>>(
+    "resolve_item_thumbnail_paths",
+    {
+      vaultPath: path,
+      items: items.map((item) => ({
+        id: item.id,
+        thumbnail: item.thumbnail ?? null,
+      })),
+    },
+  );
 
-  if (item.thumbnail) {
-    const absolute = resolveItemThumbnailAbsolutePath(path, item.id, item.thumbnail);
-    if (absolute && (await fs.exists(absolute))) {
-      return absolute;
+  const resolved = new Map<string, string | null>();
+  for (const row of rows) {
+    resolved.set(row.id, row.path);
+  }
+  return resolved;
+}
+
+export async function resolveItemThumbnailPaths(
+  items: ItemFile[],
+): Promise<Map<string, string | null>> {
+  if (!items.length) {
+    return new Map();
+  }
+
+  const uncached: ItemFile[] = [];
+  const resolved = new Map<string, string | null>();
+
+  for (const item of items) {
+    const cacheKey = itemThumbnailCacheKey(item);
+    const cached = itemThumbnailPathCache.get(item.id);
+    if (cached && cached.cacheKey === cacheKey) {
+      resolved.set(item.id, cached.path);
+      continue;
+    }
+    uncached.push(item);
+  }
+
+  if (uncached.length) {
+    const fresh = await resolveItemThumbnailPathsUncached(uncached);
+    for (const item of uncached) {
+      const path = fresh.get(item.id) ?? null;
+      itemThumbnailPathCache.set(item.id, {
+        cacheKey: itemThumbnailCacheKey(item),
+        path,
+      });
+      resolved.set(item.id, path);
     }
   }
 
-  const media = await listItemMediaWithPaths(ctx, path, item.id);
-  const image = media.find((file) => file.media_type === "image");
-  if (image && (await fs.exists(image.absolute_path))) {
-    return image.absolute_path;
-  }
-
-  return null;
+  return resolved;
 }
 
 export async function setItemCoverFromMedia(
