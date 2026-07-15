@@ -13,6 +13,9 @@ dist-ssr
 *.local
 packages/core/tmp
 
+# Agent/git worktrees (local isolation only)
+.worktrees/
+
 # Editor directories and files
 docs/
 .cursor/
