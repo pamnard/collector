@@ -12,6 +12,7 @@ interface HeaderProps {
   onAddClick: () => void;
   theme: Theme;
   onToggleTheme: () => void;
+  searchIndexBuilding?: boolean;
 }
 
 export function Header({
@@ -23,6 +24,7 @@ export function Header({
   onAddClick,
   theme,
   onToggleTheme,
+  searchIndexBuilding,
 }: HeaderProps) {
   return (
     <header className="pointer-events-none absolute top-0 left-0 right-[14px] z-40 h-16 border-b border-border bg-header/60 backdrop-blur-md transition-colors duration-200">
@@ -42,6 +44,7 @@ export function Header({
           <SearchBar
             searchQuery={searchQuery}
             onSearchChange={onSearchChange}
+            searchIndexBuilding={searchIndexBuilding}
           />
 
           <button

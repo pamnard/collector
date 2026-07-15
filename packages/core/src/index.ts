@@ -70,7 +70,10 @@ export type {
 export { syncVaultIndexFromFilesystem } from "./vault/index-sync.js";
 export type { VaultIndexSyncReport } from "./vault/index-sync.js";
 
-export { buildFtsMatchQuery } from "./search/fts-query.js";
+export {
+  buildFtsMatchQuery,
+  buildMetadataFtsMatchQuery,
+} from "./search/fts-query.js";
 export type { NavSearchFilter } from "./search/nav-filter.js";
 export { navFilterFromSetting, navFilterToSetting, isFolderFilter, isTagFilter } from "./search/nav-filter.js";
 

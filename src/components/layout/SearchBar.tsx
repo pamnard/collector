@@ -4,9 +4,15 @@ import { Search, X } from "lucide-react";
 interface SearchBarProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
+  /** True while Phase B (content FTS) is still building for the active vault. */
+  searchIndexBuilding?: boolean;
 }
 
-export function SearchBar({ searchQuery, onSearchChange }: SearchBarProps) {
+export function SearchBar({
+  searchQuery,
+  onSearchChange,
+  searchIndexBuilding = false,
+}: SearchBarProps) {
   const [isOpen, setIsOpen] = useState(Boolean(searchQuery));
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -39,6 +45,9 @@ export function SearchBar({ searchQuery, onSearchChange }: SearchBarProps) {
   }, [searchQuery]);
 
   const expanded = isOpen || Boolean(searchQuery);
+  const placeholder = searchIndexBuilding
+    ? "Поиск по названию… (индекс строится)"
+    : "Поиск...";
 
   return (
     <div
@@ -50,7 +59,12 @@ export function SearchBar({ searchQuery, onSearchChange }: SearchBarProps) {
       <input
         ref={inputRef}
         type="text"
-        placeholder="Поиск..."
+        placeholder={placeholder}
+        title={
+          searchIndexBuilding
+            ? "Полнотекстовый поиск по содержимому ещё строится — ищем только по названию и описанию"
+            : undefined
+        }
         value={searchQuery}
         onChange={(event) => onSearchChange(event.target.value)}
         onKeyDown={(event) => {

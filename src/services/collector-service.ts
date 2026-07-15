@@ -6,6 +6,7 @@ import type { MediaFileMeta } from "@collector/shared";
 import {
   SqlVaultIndexStore,
   buildFtsMatchQuery,
+  buildMetadataFtsMatchQuery,
   createSingleFlight,
   createTwoPhaseBootGate,
   createVault,
@@ -202,6 +203,28 @@ export function subscribeVaultIndexSyncStatus(
 
 export function getVaultIndexSyncStatus(): VaultIndexSyncStatus {
   return vaultIndexSyncStatus;
+}
+
+function isVaultFtsReady(vaultId: string): boolean {
+  if (syncedVaultIds.has(vaultId)) {
+    return true;
+  }
+  const status = getVaultIndexSyncStatus();
+  if (status.vaultId !== vaultId) {
+    return true;
+  }
+  return status.ftsReady;
+}
+
+function buildSearchFtsQuery(userQuery: string, vaultId: string): string | null {
+  const trimmed = userQuery.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (isVaultFtsReady(vaultId)) {
+    return buildFtsMatchQuery(trimmed);
+  }
+  return buildMetadataFtsMatchQuery(trimmed);
 }
 
 type VaultEntry = { meta: VaultMeta; path: string };
@@ -601,10 +624,10 @@ export async function searchItems(
   query: string,
   filter: NavFilter,
 ): Promise<ItemFile[]> {
-  const ftsQuery = buildFtsMatchQuery(query);
   const { vault, path } = await resolveActiveVault();
   kickoffVaultIndexSync(vault.id, path);
 
+  const ftsQuery = buildSearchFtsQuery(query, vault.id);
   if (!ftsQuery) {
     const itemIds = await getIndex().listItemIdsByNavFilter(vault.id, filter);
     return listItemsByIds(getContext(), path, itemIds);
@@ -646,7 +669,7 @@ async function queryDashboardIndexPage(
     return { itemIds, totalCount, offset: page.offset };
   }
 
-  const ftsQuery = buildFtsMatchQuery(trimmedSearch);
+  const ftsQuery = buildSearchFtsQuery(trimmedSearch, vaultId);
   if (!ftsQuery) {
     const [itemIds, totalCount] = await Promise.all([
       getIndex().listItemIdsByNavFilter(vaultId, filter, page),
