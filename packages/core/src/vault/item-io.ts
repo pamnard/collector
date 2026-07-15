@@ -14,6 +14,16 @@ import {
   vaultMetaPath,
 } from "./paths.js";
 
+function parentDir(path: string): string {
+  const segments = path.replace(/\\/g, "/").split("/").filter(Boolean);
+  if (segments.length <= 1) {
+    return path.startsWith("/") ? "/" : "";
+  }
+  segments.pop();
+  const joined = segments.join("/");
+  return path.startsWith("/") ? `/${joined}` : joined;
+}
+
 export async function readVaultMeta(
   fs: FileSystemAdapter,
   vaultRootPath: string,
@@ -46,6 +56,7 @@ export async function writeItemFile(
 ): Promise<void> {
   const parsed = itemFileSchema.parse(item);
   await fs.writeText(itemMetaPath(itemRootPath), JSON.stringify(parsed, null, 2));
+  await fs.touch(parentDir(itemRootPath));
 }
 
 export async function readItemContent(

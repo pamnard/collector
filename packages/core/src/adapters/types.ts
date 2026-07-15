@@ -10,6 +10,7 @@ export interface FileSystemAdapter {
   mkdir(path: string): Promise<void>;
   readDir(path: string): Promise<string[]>;
   stat(path: string): Promise<{ mtimeMs: number | null }>;
+  touch(path: string): Promise<void>;
   remove(path: string, options?: { recursive?: boolean }): Promise<void>;
   join(...parts: string[]): string;
 }
@@ -25,6 +26,11 @@ export interface ItemSyncMetaPatch {
   fileMtimeMs: number;
   updatedAt: string;
   contentRevision: number;
+}
+
+export interface ReconcileFingerprint {
+  itemsDirMtimeMs: number;
+  itemCount: number;
 }
 
 export interface IndexedItem {
@@ -74,6 +80,11 @@ export interface VaultIndexAdapter {
   listItemFilesByIds(vaultId: string, itemIds: string[]): Promise<ItemFile[]>;
   listVaultItemSyncMeta(vaultId: string): Promise<ItemSyncMeta[]>;
   patchItemSyncMeta(itemId: string, meta: ItemSyncMetaPatch): Promise<void>;
+  getReconcileFingerprint(vaultId: string): Promise<ReconcileFingerprint | null>;
+  setReconcileFingerprint(
+    vaultId: string,
+    fingerprint: ReconcileFingerprint,
+  ): Promise<void>;
   searchItemIds(
     vaultId: string,
     ftsQuery: string,

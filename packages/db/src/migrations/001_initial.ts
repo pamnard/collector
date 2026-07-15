@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS vaults (
   description TEXT NOT NULL DEFAULT '',
   is_default INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  reconcile_fingerprint_json TEXT
 );
 
 CREATE TABLE IF NOT EXISTS items (

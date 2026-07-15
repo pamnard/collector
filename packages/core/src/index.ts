@@ -23,6 +23,7 @@ export {
   itemSourcePath,
   itemsRoot,
   joinSegments,
+  RECONCILE_TOUCH_FILE,
   vaultMetaPath,
   vaultsRoot,
   vaultRoot,

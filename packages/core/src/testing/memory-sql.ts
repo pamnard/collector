@@ -19,6 +19,10 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       return this.patchItemSyncMeta(bindValues);
     }
 
+    if (normalized.startsWith("UPDATE vaults SET reconcile_fingerprint_json = ?")) {
+      return this.setReconcileFingerprint(bindValues);
+    }
+
     if (normalized.startsWith("UPDATE items SET has_content_file = ?")) {
       return this.patchItemHasContentFile(bindValues);
     }
@@ -167,6 +171,20 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
 
     if (
       normalized.startsWith(
+        "SELECT reconcile_fingerprint_json FROM vaults WHERE id = ?",
+      )
+    ) {
+      const vaultId = String(bindValues[0]);
+      const table = this.tables.get("vaults") ?? new Map();
+      const row = table.get(vaultId);
+      if (!row) {
+        return [] as T[];
+      }
+      return [{ reconcile_fingerprint_json: row.reconcile_fingerprint_json ?? null }] as T[];
+    }
+
+    if (
+      normalized.startsWith(
         "SELECT folder_path, COUNT(*) AS item_count FROM items WHERE vault_id = ?",
       )
     ) {
@@ -256,6 +274,7 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
   private upsertVault(bindValues: unknown[]): number {
     const table = this.getTable("vaults");
     const id = String(bindValues[0]);
+    const existing = table.get(id);
     table.set(id, {
       id,
       path: bindValues[1],
@@ -264,6 +283,22 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       is_default: bindValues[4],
       created_at: bindValues[5],
       updated_at: bindValues[6],
+      reconcile_fingerprint_json: existing?.reconcile_fingerprint_json ?? null,
+    });
+    return 1;
+  }
+
+  private setReconcileFingerprint(bindValues: unknown[]): number {
+    const table = this.getTable("vaults");
+    const fingerprintJson = bindValues[0];
+    const vaultId = String(bindValues[1]);
+    const row = table.get(vaultId);
+    if (!row) {
+      return 0;
+    }
+    table.set(vaultId, {
+      ...row,
+      reconcile_fingerprint_json: fingerprintJson,
     });
     return 1;
   }

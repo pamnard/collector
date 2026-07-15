@@ -35,6 +35,8 @@ function createNoopVaultIndex(): VaultIndexAdapter {
     listItemFilesByIds: async () => [],
     listVaultItemSyncMeta: async () => [],
     patchItemSyncMeta: noop,
+    getReconcileFingerprint: async () => null,
+    setReconcileFingerprint: noop,
     searchItemIds: async () => [],
   };
 }

@@ -11,10 +11,15 @@ import type {
   IndexedItem,
   IndexedItemMetadata,
   ItemContentUpsert,
+  ReconcileFingerprint,
   VaultIndexAdapter,
 } from "../adapters/types.js";
 import type { NavSearchFilter } from "../search/nav-filter.js";
 import { isFolderFilter, isTagFilter } from "../search/nav-filter.js";
+import {
+  parseStoredReconcileFingerprint,
+  serializeReconcileFingerprint,
+} from "../vault/reconcile-fingerprint.js";
 
 type TagWithCount = Tag & { item_count: number };
 
@@ -381,6 +386,24 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     );
   }
 
+  async getReconcileFingerprint(
+    _vaultId: string,
+  ): Promise<ReconcileFingerprint | null> {
+    throw new Error(
+      "getReconcileFingerprint requires select(); use SqlVaultIndexStore instead",
+    );
+  }
+
+  async setReconcileFingerprint(
+    vaultId: string,
+    fingerprint: ReconcileFingerprint,
+  ): Promise<void> {
+    await this.db.execute(
+      `UPDATE vaults SET reconcile_fingerprint_json = ? WHERE id = ?`,
+      [serializeReconcileFingerprint(fingerprint), vaultId],
+    );
+  }
+
   async listVaultItemSyncMeta(_vaultId: string): Promise<
     Array<{
       id: string;
@@ -520,6 +543,21 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
       [vaultId],
     );
     return rows;
+  }
+
+  override async getReconcileFingerprint(
+    vaultId: string,
+  ): Promise<ReconcileFingerprint | null> {
+    const rows = await this.selector.select<{
+      reconcile_fingerprint_json: string | null;
+    }>(
+      `SELECT reconcile_fingerprint_json FROM vaults WHERE id = ?`,
+      [vaultId],
+    );
+    if (rows.length === 0) {
+      return null;
+    }
+    return parseStoredReconcileFingerprint(rows[0]!.reconcile_fingerprint_json);
   }
 
   override async searchItemIds(

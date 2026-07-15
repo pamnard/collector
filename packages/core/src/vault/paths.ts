@@ -1,5 +1,13 @@
 import { ITEM_FILES, VAULT_DIRS, VAULT_FILES } from "@collector/shared";
 
+export const RECONCILE_TOUCH_FILE = ".collector-touch";
+
+const IGNORED_ITEMS_DIR_ENTRIES = new Set([RECONCILE_TOUCH_FILE]);
+
+export function filterDiskItemIds(itemIds: string[]): string[] {
+  return itemIds.filter((id) => !IGNORED_ITEMS_DIR_ENTRIES.has(id));
+}
+
 export function vaultsRoot(dataDir: string): string {
   return joinSegments(dataDir, "vaults");
 }
