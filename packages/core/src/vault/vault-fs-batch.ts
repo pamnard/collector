@@ -3,10 +3,15 @@ import type {
   VaultItemMetaRead,
   VaultItemStatMeta,
 } from "../adapters/types.js";
+import {
+  INDEX_SYNC_WRITE_BATCH,
+  INDEX_SYNC_YIELD_MS,
+  yieldToEventLoop,
+} from "../util/concurrency.js";
 import { itemMetaPath, itemRoot, itemsRoot } from "./paths.js";
 
-/** Max item ids per batched read-meta IPC call. */
-export const VAULT_ITEM_READ_META_BATCH = 256;
+/** Max item ids per batched read-meta IPC call; aligned with write batch for yield cadence. */
+export const VAULT_ITEM_READ_META_BATCH = INDEX_SYNC_WRITE_BATCH;
 
 export function hasVaultFsBatch(fs: FileSystemAdapter): boolean {
   return (
@@ -52,12 +57,16 @@ export async function readVaultItemMetaBatch(
       const chunk = itemIds.slice(offset, offset + VAULT_ITEM_READ_META_BATCH);
       const chunkResults = await fs.readVaultItemsMeta(vaultPath, chunk);
       results.push(...chunkResults);
+      if (offset + chunk.length < itemIds.length) {
+        await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
+      }
     }
     return results;
   }
 
   const results: VaultItemMetaRead[] = [];
-  for (const itemId of itemIds) {
+  for (let i = 0; i < itemIds.length; i += 1) {
+    const itemId = itemIds[i]!;
     const itemPath = itemRoot(vaultPath, itemId);
     const metaPath = itemMetaPath(itemPath);
     if (!(await fs.exists(metaPath))) {
@@ -65,6 +74,9 @@ export async function readVaultItemMetaBatch(
     }
     const itemJson = await fs.readText(metaPath);
     results.push({ id: itemId, itemJson });
+    if ((i + 1) % VAULT_ITEM_READ_META_BATCH === 0 && i + 1 < itemIds.length) {
+      await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
+    }
   }
   return results;
 }

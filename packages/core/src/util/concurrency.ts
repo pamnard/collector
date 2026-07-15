@@ -7,6 +7,9 @@ export const INDEX_SYNC_WRITE_BATCH = 32;
 /** Sleep between sync batches so WebView / compositor keep air under plugin IPC. */
 export const INDEX_SYNC_YIELD_MS = 16;
 
+/** Longer yield before content/FTS phase — lower priority than metadata/list UI. */
+export const INDEX_SYNC_CONTENT_YIELD_MS = 32;
+
 /** Yield the event loop; pass ms > 0 for a real sleep (IPC backpressure). */
 export function yieldToEventLoop(ms = 0): Promise<void> {
   return new Promise((resolve) => {
