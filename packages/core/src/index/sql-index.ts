@@ -89,6 +89,84 @@ function sqlInPlaceholders(count: number): string {
   return Array.from({ length: count }, () => "?").join(", ");
 }
 
+/** SQLite bind limit is 999; keep multi-row inserts well under that. */
+const SQL_INSERT_CHUNK = 100;
+
+function sqlRowPlaceholders(rowCount: number, columnsPerRow: number): string {
+  const oneRow = `(${sqlInPlaceholders(columnsPerRow)})`;
+  return Array.from({ length: rowCount }, () => oneRow).join(", ");
+}
+
+function sqlCollectionStubPlaceholders(rowCount: number): string {
+  const oneRow = "(?, ?, NULL, ?, '', ?, ?)";
+  return Array.from({ length: rowCount }, () => oneRow).join(", ");
+}
+
+async function replaceItemTags(
+  db: SqlExecutor,
+  itemId: string,
+  tagIds: string[],
+): Promise<void> {
+  await db.execute("DELETE FROM item_tags WHERE item_id = ?", [itemId]);
+  if (tagIds.length === 0) {
+    return;
+  }
+  for (let offset = 0; offset < tagIds.length; offset += SQL_INSERT_CHUNK) {
+    const chunk = tagIds.slice(offset, offset + SQL_INSERT_CHUNK);
+    const binds: unknown[] = [];
+    for (const tagId of chunk) {
+      binds.push(itemId, tagId);
+    }
+    await db.execute(
+      `INSERT INTO item_tags (item_id, tag_id) VALUES ${sqlRowPlaceholders(chunk.length, 2)}`,
+      binds,
+    );
+  }
+}
+
+async function replaceItemCollections(
+  db: SqlExecutor,
+  itemId: string,
+  vaultId: string,
+  collectionIds: string[],
+  createdAt: string,
+  updatedAt: string,
+): Promise<void> {
+  await db.execute("DELETE FROM item_collections WHERE item_id = ?", [itemId]);
+  if (collectionIds.length === 0) {
+    return;
+  }
+  for (let offset = 0; offset < collectionIds.length; offset += SQL_INSERT_CHUNK) {
+    const chunk = collectionIds.slice(offset, offset + SQL_INSERT_CHUNK);
+    const stubBinds: unknown[] = [];
+    for (const collectionId of chunk) {
+      stubBinds.push(
+        collectionId,
+        vaultId,
+        collectionId,
+        createdAt,
+        updatedAt,
+      );
+    }
+    // Stub parents so FK on item_collections succeeds without collections sync.
+    await db.execute(
+      `INSERT INTO collections (
+        id, vault_id, parent_id, name, description, created_at, updated_at
+      ) VALUES ${sqlCollectionStubPlaceholders(chunk.length)}
+      ON CONFLICT(id) DO NOTHING`,
+      stubBinds,
+    );
+    const linkBinds: unknown[] = [];
+    for (const collectionId of chunk) {
+      linkBinds.push(itemId, collectionId);
+    }
+    await db.execute(
+      `INSERT INTO item_collections (item_id, collection_id) VALUES ${sqlRowPlaceholders(chunk.length, 2)}`,
+      linkBinds,
+    );
+  }
+}
+
 function navFilterClause(filter: NavSearchFilter): string {
   if (isTagFilter(filter) || isFolderFilter(filter)) {
     return "AND i.is_archived = 0";
@@ -200,37 +278,15 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
       ],
     );
 
-    await this.db.execute("DELETE FROM item_tags WHERE item_id = ?", [item.id]);
-    for (const tagId of item.tag_ids) {
-      await this.db.execute(
-        "INSERT INTO item_tags (item_id, tag_id) VALUES (?, ?)",
-        [item.id, tagId],
-      );
-    }
-
-    await this.db.execute("DELETE FROM item_collections WHERE item_id = ?", [
+    await replaceItemTags(this.db, item.id, item.tag_ids);
+    await replaceItemCollections(
+      this.db,
       item.id,
-    ]);
-    for (const collectionId of item.collection_ids) {
-      // Stub parent so FK on item_collections succeeds without collections sync.
-      await this.db.execute(
-        `INSERT INTO collections (
-          id, vault_id, parent_id, name, description, created_at, updated_at
-        ) VALUES (?, ?, NULL, ?, '', ?, ?)
-        ON CONFLICT(id) DO NOTHING`,
-        [
-          collectionId,
-          vaultId,
-          collectionId,
-          item.created_at,
-          item.updated_at,
-        ],
-      );
-      await this.db.execute(
-        "INSERT INTO item_collections (item_id, collection_id) VALUES (?, ?)",
-        [item.id, collectionId],
-      );
-    }
+      vaultId,
+      item.collection_ids,
+      item.created_at,
+      item.updated_at,
+    );
 
     await this.db.execute("DELETE FROM items_fts WHERE item_id = ?", [item.id]);
     await this.db.execute(
