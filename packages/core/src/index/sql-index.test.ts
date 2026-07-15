@@ -10,6 +10,10 @@ import { createVault, upsertItem } from "../vault/operations.js";
 import { createTag } from "../vault/tag-operations.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import { createId } from "../util/ids.js";
+import {
+  buildFtsMatchQuery,
+  buildMetadataFtsMatchQuery,
+} from "../search/fts-query.js";
 
 describe("listItemIdsByNavFilter", () => {
   let dataDir = "";
@@ -367,6 +371,63 @@ describe("upsertItemMetadata / upsertItemContent", () => {
       [itemId],
     );
     expect(ftsContent[0]?.content).toBe("full body text");
+  });
+
+  it("metadata FTS query matches title but not content-only tokens", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-metadata-fts-search-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    const ctx = { fs, index };
+    const { meta } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemId = createId();
+    const timestamp = new Date().toISOString();
+    const item = {
+      id: itemId,
+      vault_id: meta.id,
+      title: "VisibleTitle",
+      description: "VisibleDesc",
+      content_type: "note" as const,
+      source_type: "manual" as const,
+      metadata: {},
+      is_archived: false,
+      is_favorite: false,
+      tag_ids: [] as string[],
+      collection_ids: [] as string[],
+      folder_path: "",
+      content_revision: 1,
+      created_at: timestamp,
+      updated_at: timestamp,
+    };
+
+    await index.upsertItemMetadata({ item, fileMtimeMs: 1 }, meta.id);
+
+    const titleQuery = buildMetadataFtsMatchQuery("VisibleTitle");
+    const contentToken = "SecretBody";
+    const contentQuery = buildMetadataFtsMatchQuery(contentToken);
+    expect(titleQuery).not.toBeNull();
+    expect(contentQuery).not.toBeNull();
+    expect(await index.searchItemIds(meta.id, titleQuery!, "all")).toEqual([
+      itemId,
+    ]);
+    expect(await index.searchItemIds(meta.id, contentQuery!, "all")).toEqual(
+      [],
+    );
+
+    await index.upsertItemContent({
+      itemId,
+      title: item.title,
+      description: item.description,
+      content: `note ${contentToken} text`,
+      sourceRef: null,
+    });
+
+    const fullContentQuery = buildFtsMatchQuery(contentToken);
+    expect(fullContentQuery).not.toBeNull();
+    expect(await index.searchItemIds(meta.id, fullContentQuery!, "all")).toEqual(
+      [itemId],
+    );
+    expect(await index.searchItemIds(meta.id, contentQuery!, "all")).toEqual([]);
   });
 
   it("batch-inserts tags and collections in O(1) SQL round-trips per relation", async () => {

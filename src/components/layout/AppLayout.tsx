@@ -54,8 +54,12 @@ export function AppLayout() {
     null,
   );
   const indexSync = useVaultIndexSyncStatus();
-  const isIndexing =
-    indexSync.status === "running" || indexSync.status === "rebuilding";
+  const isMetadataIndexing =
+    indexSync.status === "rebuilding" ||
+    (indexSync.status === "running" && !indexSync.metadataReady);
+  const searchIndexBuilding =
+    !indexSync.ftsReady &&
+    (indexSync.status === "running" || indexSync.status === "rebuilding");
 
   const handleStartupUpdateFound = useCallback((version: string) => {
     setStartupUpdateVersion(version);
@@ -72,7 +76,7 @@ export function AppLayout() {
   );
 
   const topBannerCount =
-    (startupUpdateVersion ? 1 : 0) + (isIndexing ? 1 : 0);
+    (startupUpdateVersion ? 1 : 0) + (isMetadataIndexing ? 1 : 0);
   const contentInsetClass =
     topBannerCount === 0 ? "pt-16" : topBannerCount === 1 ? "pt-24" : "pt-32";
   const gutterCoverClass =
@@ -111,7 +115,7 @@ export function AppLayout() {
             <Outlet />
           </MainScrollArea>
 
-          {isIndexing && (
+          {isMetadataIndexing && (
             <div
               className={`pointer-events-none absolute left-0 right-[14px] z-30 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm ${
                 startupUpdateVersion ? "top-24" : "top-16"
@@ -153,6 +157,7 @@ export function AppLayout() {
             onAddClick={() => setIsCreateOpen(true)}
             theme={theme}
             onToggleTheme={toggleTheme}
+            searchIndexBuilding={searchIndexBuilding}
           />
         </main>
       </div>
