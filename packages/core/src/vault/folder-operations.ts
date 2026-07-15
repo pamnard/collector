@@ -188,25 +188,30 @@ export async function renameFolder(
   }
   await writeFoldersFile(ctx.fs, vaultPath, file);
 
-  const itemsDir = itemsRoot(vaultPath);
-  if (await ctx.fs.exists(itemsDir)) {
-    for (const itemId of await ctx.fs.readDir(itemsDir)) {
-      const itemPath = itemRoot(vaultPath, itemId);
-      const item = await readItemFile(ctx.fs, itemPath);
-      const nextPath = renameFolderPath(item.folder_path, from, to);
-      if (nextPath === item.folder_path) {
-        continue;
-      }
+  const itemIds = await ctx.index.listItemIdsByFolderPrefix(vaultId, from, {
+    includeArchived: true,
+  });
 
-      const updated: ItemFile = {
-        ...item,
-        folder_path: nextPath,
-        updated_at: nowIso(),
-      };
-      await writeItemFile(ctx.fs, itemPath, updated);
-      const content = await readItemContent(ctx.fs, itemPath);
-      await ctx.index.upsertItem({ item: updated, content, sourceRef: null }, vaultId);
+  for (const itemId of itemIds) {
+    const itemPath = itemRoot(vaultPath, itemId);
+    if (!(await ctx.fs.exists(itemPath))) {
+      continue;
     }
+
+    const item = await readItemFile(ctx.fs, itemPath);
+    const nextPath = renameFolderPath(item.folder_path, from, to);
+    if (nextPath === item.folder_path) {
+      continue;
+    }
+
+    const updated: ItemFile = {
+      ...item,
+      folder_path: nextPath,
+      updated_at: nowIso(),
+    };
+    await writeItemFile(ctx.fs, itemPath, updated);
+    const content = await readItemContent(ctx.fs, itemPath);
+    await ctx.index.upsertItem({ item: updated, content, sourceRef: null }, vaultId);
   }
 
   return to;

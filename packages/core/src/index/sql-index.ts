@@ -322,7 +322,11 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     );
   }
 
-  async listItemIdsByTag(_vaultId: string, _tagId: string): Promise<string[]> {
+  async listItemIdsByTag(
+    _vaultId: string,
+    _tagId: string,
+    _options?: { includeArchived?: boolean },
+  ): Promise<string[]> {
     throw new Error(
       "listItemIdsByTag requires select(); use SqlVaultIndexStore instead",
     );
@@ -331,6 +335,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
   async listItemIdsByFolderPrefix(
     _vaultId: string,
     _folderPath: string,
+    _options?: { includeArchived?: boolean },
   ): Promise<string[]> {
     throw new Error(
       "listItemIdsByFolderPrefix requires select(); use SqlVaultIndexStore instead",
@@ -585,14 +590,20 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     }));
   }
 
-  override async listItemIdsByTag(vaultId: string, tagId: string): Promise<string[]> {
+  override async listItemIdsByTag(
+    vaultId: string,
+    tagId: string,
+    options?: { includeArchived?: boolean },
+  ): Promise<string[]> {
+    const archivedClause =
+      options?.includeArchived === true ? "" : "AND i.is_archived = 0";
     const rows = await this.selector.select<SqlSelectRow>(
       `SELECT i.id
        FROM items i
        INNER JOIN item_tags it ON it.item_id = i.id
        WHERE i.vault_id = ?
          AND it.tag_id = ?
-         AND i.is_archived = 0
+         ${archivedClause}
        ORDER BY i.created_at DESC`,
       [vaultId, tagId],
     );
@@ -602,12 +613,15 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
   override async listItemIdsByFolderPrefix(
     vaultId: string,
     folderPath: string,
+    options?: { includeArchived?: boolean },
   ): Promise<string[]> {
+    const archivedClause =
+      options?.includeArchived === true ? "" : "AND i.is_archived = 0";
     const rows = await this.selector.select<SqlSelectRow>(
       `SELECT i.id
        FROM items i
        WHERE i.vault_id = ?
-         AND i.is_archived = 0
+         ${archivedClause}
          AND (i.folder_path = ? OR i.folder_path LIKE ?)
        ORDER BY i.created_at DESC`,
       [vaultId, folderPath, `${folderPath}/%`],

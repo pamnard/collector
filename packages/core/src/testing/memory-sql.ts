@@ -31,6 +31,10 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       return this.deleteByField("items_fts", "item_id", bindValues[0]);
     }
 
+    if (normalized.startsWith("DELETE FROM item_tags WHERE tag_id = ?")) {
+      return this.deleteByField("item_tags", "tag_id", bindValues[0]);
+    }
+
     if (normalized.startsWith("DELETE FROM item_tags")) {
       return this.deleteByField("item_tags", "item_id", bindValues[0]);
     }
@@ -53,6 +57,10 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
 
     if (normalized.startsWith("DELETE FROM items")) {
       return this.deleteByField("items", "id", bindValues[0]);
+    }
+
+    if (normalized.startsWith("DELETE FROM tags WHERE id = ?")) {
+      return this.deleteByField("tags", "id", bindValues[0]);
     }
 
     if (normalized.startsWith("DELETE FROM vaults")) {
@@ -131,8 +139,58 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
     const normalized = query.trim().replace(/\s+/g, " ");
 
     if (
+      normalized.startsWith(
+        "SELECT i.id FROM items i INNER JOIN item_tags it ON it.item_id = i.id",
+      )
+    ) {
+      const vaultId = bindValues[0];
+      const tagId = bindValues[1];
+      const items = this.tables.get("items") ?? new Map();
+      const itemTags = this.tables.get("item_tags") ?? new Map();
+      const taggedItemIds = new Set(
+        [...itemTags.values()]
+          .filter((row) => row.tag_id === tagId)
+          .map((row) => String(row.item_id)),
+      );
+
+      let rows = [...items.values()].filter(
+        (row) => row.vault_id === vaultId && taggedItemIds.has(String(row.id)),
+      );
+      if (normalized.includes("is_archived = 0")) {
+        rows = rows.filter((row) => row.is_archived === 0);
+      }
+
+      return rows.map((row) => ({ id: row.id })) as T[];
+    }
+
+    if (
+      normalized.startsWith("SELECT i.id FROM items i WHERE i.vault_id = ?") &&
+      normalized.includes("folder_path = ? OR i.folder_path LIKE ?")
+    ) {
+      const vaultId = bindValues[0];
+      const folderPath = String(bindValues[1]);
+      const folderPrefix = `${folderPath}/`;
+      const items = this.tables.get("items") ?? new Map();
+
+      let rows = [...items.values()].filter((row) => {
+        if (row.vault_id !== vaultId) {
+          return false;
+        }
+        const path = String(row.folder_path ?? "");
+        return path === folderPath || path.startsWith(folderPrefix);
+      });
+      if (normalized.includes("is_archived = 0")) {
+        rows = rows.filter((row) => row.is_archived === 0);
+      }
+
+      return rows.map((row) => ({ id: row.id })) as T[];
+    }
+
+    if (
       normalized.startsWith("SELECT id FROM items WHERE vault_id = ?") ||
-      normalized.startsWith("SELECT i.id FROM items i WHERE i.vault_id = ?")
+      (normalized.startsWith("SELECT i.id FROM items i WHERE i.vault_id = ?") &&
+        !normalized.includes("INNER JOIN item_tags") &&
+        !normalized.includes("folder_path = ?"))
     ) {
       const vaultId = bindValues[0];
       const table = this.tables.get("items") ?? new Map();
@@ -224,8 +282,7 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
     }
 
     if (
-      normalized.startsWith(
-        "SELECT item_id, collection_id FROM item_collections WHERE item_id IN",
+      normalized.startsWith("SELECT item_id, collection_id FROM item_collections WHERE item_id IN",
       )
     ) {
       const ids = new Set(bindValues.map(String));

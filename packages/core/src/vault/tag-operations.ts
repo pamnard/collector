@@ -1,7 +1,7 @@
 import type { ItemFile, Tag } from "@collector/shared";
 import type { VaultContext } from "../adapters/types.js";
 import { createId, nowIso } from "../util/ids.js";
-import { itemRoot, itemsRoot } from "./paths.js";
+import { itemRoot } from "./paths.js";
 import { readItemContent, readItemFile, writeItemFile } from "./item-io.js";
 import { listTagsOnDisk, readTagsFile, writeTagsFile } from "./tag-io.js";
 
@@ -94,16 +94,19 @@ export async function deleteTag(
     throw new Error(`Tag not found: ${tagId}`);
   }
 
+  const itemIds = await ctx.index.listItemIdsByTag(vaultId, tagId, {
+    includeArchived: true,
+  });
+
   await writeTagsFile(ctx.fs, vaultPath, { tags: nextTags });
   await ctx.index.deleteTag(tagId);
 
-  const itemsDir = itemsRoot(vaultPath);
-  if (!(await ctx.fs.exists(itemsDir))) {
-    return;
-  }
-
-  for (const itemId of await ctx.fs.readDir(itemsDir)) {
+  for (const itemId of itemIds) {
     const itemPath = itemRoot(vaultPath, itemId);
+    if (!(await ctx.fs.exists(itemPath))) {
+      continue;
+    }
+
     const item = await readItemFile(ctx.fs, itemPath);
     if (!item.tag_ids.includes(tagId)) {
       continue;
