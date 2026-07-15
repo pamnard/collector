@@ -14,7 +14,10 @@ import {
   subscribeAppSettings,
   updateAppSettings,
 } from "../services/app-settings-service";
-import { warmupCollector } from "../services/collector-service";
+import {
+  ensureCollectorDatabaseHealthy,
+  openCollectorDatabase,
+} from "../services/collector-service";
 import { StartupErrorScreen } from "../components/startup/StartupErrorScreen";
 import { StartupLoadingScreen } from "../components/startup/StartupLoadingScreen";
 import type { NavFilter, ViewMode } from "../types/ui";
@@ -48,12 +51,23 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([ensureAppSettings(), warmupCollector()])
+    Promise.all([ensureAppSettings(), openCollectorDatabase()])
       .then(([loaded]) => {
-        if (!cancelled) {
-          setSettings(loaded);
-          setStartupState({ status: "ready", settings: loaded });
+        if (cancelled) {
+          return;
         }
+        setSettings(loaded);
+        setStartupState({ status: "ready", settings: loaded });
+
+        void ensureCollectorDatabaseHealthy().catch((err) => {
+          console.error("[collector] index health check failed:", err);
+          if (!cancelled) {
+            setStartupState({
+              status: "error",
+              message: err instanceof Error ? err.message : String(err),
+            });
+          }
+        });
       })
       .catch((err) => {
         console.error("[collector] startup failed:", err);

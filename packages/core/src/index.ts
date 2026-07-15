@@ -55,6 +55,15 @@ export {
   DISK_ITEM_READ_CONCURRENCY,
 } from "./util/concurrency.js";
 
+export { createTwoPhaseBootGate } from "./util/boot-gate.js";
+export type { TwoPhaseBootGate } from "./util/boot-gate.js";
+
+export { formatIndexingBannerLabel } from "./util/indexing-banner.js";
+export type {
+  IndexBannerInput,
+  IndexBannerStatus,
+} from "./util/indexing-banner.js";
+
 export { syncVaultIndexFromFilesystem } from "./vault/index-sync.js";
 export type { VaultIndexSyncReport } from "./vault/index-sync.js";
 
