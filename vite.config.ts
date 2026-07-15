@@ -7,6 +7,10 @@ const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig(async () => ({
   plugins: [react()],
+  resolve: {
+    // Match TypeScript customConditions — typecheck/dev resolve package source, not stale dist.
+    conditions: ["@collector/source"],
+  },
   define: {
     __APP_VERSION__: JSON.stringify(packageJson.version),
   },

@@ -11,7 +11,7 @@
     "build:packages": "npm run build --workspace @collector/shared && npm run build --workspace @collector/db && npm run build --workspace @collector/core",
     "build": "npm run build:packages && tsc && vite build",
     "preview": "vite preview",
-    "typecheck": "npm run build:packages && npm run typecheck --workspace @collector/shared && npm run typecheck --workspace @collector/db && npm run typecheck --workspace @collector/core && tsc --noEmit",
+    "typecheck": "npm run typecheck --workspace @collector/shared && npm run typecheck --workspace @collector/db && npm run typecheck --workspace @collector/core && tsc --noEmit",
     "test": "npm run test --workspace @collector/db && npm run test --workspace @collector/core",
     "test:startup": "npm run build:packages && node scripts/startup-index-smoke.mjs",
     "test:vault-index": "npm run build:packages && node scripts/vault-index-rebuild-smoke.mjs",
