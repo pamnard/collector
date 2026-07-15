@@ -27,8 +27,6 @@ import {
   updateTag as updateTagOnVault,
   createFolder as createFolderOnVault,
   deleteFolder as deleteFolderOnVault,
-  publishFolderTreeFromLayers,
-  readVaultFolderPaths,
   listFolderTreeFromIndex,
   moveItemToFolder,
   renameFolder as renameFolderOnVault,
@@ -991,7 +989,7 @@ export function subscribeTags(
 
     const publish = async () => {
       try {
-        const tags = await listTagsWithCounts(getContext(), vault.id, path);
+        const tags = await listTagsWithCounts(getContext(), vault.id);
         if (!signal?.aborted) {
           onUpdate(tags);
         }
@@ -1036,7 +1034,7 @@ export async function listTags(): Promise<TagWithCount[]> {
 
   const { vault, path } = await resolveActiveVault();
   kickoffVaultIndexSync(vault.id, path);
-  return listTagsWithCounts(getContext(), vault.id, path);
+  return listTagsWithCounts(getContext(), vault.id);
 }
 
 export async function createTag(input: {
@@ -1088,21 +1086,17 @@ export function subscribeFolderTree(
     }
 
     const ctx = getContext();
-    const foldersFilePaths = await readVaultFolderPaths(ctx, path);
 
     const publish = async () => {
       if (signal?.aborted) {
         return;
       }
       try {
-        const indexCountRows = await ctx.index.listFolderItemCounts(vault.id);
-        onUpdate(
-          publishFolderTreeFromLayers(foldersFilePaths, indexCountRows, null),
-        );
+        onUpdate(await listFolderTreeFromIndex(ctx, path, vault.id));
       } catch (error: unknown) {
         handlers?.onError?.("folder tree index", error);
         if (!signal?.aborted) {
-          onUpdate(publishFolderTreeFromLayers(foldersFilePaths, [], null));
+          onUpdate([]);
         }
       }
     };
