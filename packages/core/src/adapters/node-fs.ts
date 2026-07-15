@@ -1,6 +1,11 @@
 import { access, constants, mkdir, readFile, readdir, rm, writeFile, stat, utimes } from "node:fs/promises";
 import { join } from "node:path";
-import type { FileSystemAdapter } from "./types.js";
+import type {
+  FileSystemAdapter,
+  VaultItemMetaRead,
+  VaultItemStatMeta,
+} from "./types.js";
+import { itemMetaPath, itemRoot, itemsRoot } from "../vault/paths.js";
 
 export class NodeFileSystemAdapter implements FileSystemAdapter {
   join(...parts: string[]): string {
@@ -57,5 +62,36 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
 
   async remove(path: string, options?: { recursive?: boolean }): Promise<void> {
     await rm(path, { recursive: options?.recursive ?? false, force: true });
+  }
+
+  async statVaultItemsMeta(vaultPath: string): Promise<VaultItemStatMeta[]> {
+    const itemsDir = itemsRoot(vaultPath);
+    if (!(await this.exists(itemsDir))) {
+      return [];
+    }
+
+    const itemIds = await this.readDir(itemsDir);
+    const results: VaultItemStatMeta[] = [];
+    for (const itemId of itemIds) {
+      const fileStat = await this.stat(itemMetaPath(itemRoot(vaultPath, itemId)));
+      results.push({ id: itemId, mtimeMs: fileStat.mtimeMs });
+    }
+    return results;
+  }
+
+  async readVaultItemsMeta(
+    vaultPath: string,
+    itemIds: string[],
+  ): Promise<VaultItemMetaRead[]> {
+    const results: VaultItemMetaRead[] = [];
+    for (const itemId of itemIds) {
+      const metaPath = itemMetaPath(itemRoot(vaultPath, itemId));
+      if (!(await this.exists(metaPath))) {
+        continue;
+      }
+      const itemJson = await this.readText(metaPath);
+      results.push({ id: itemId, itemJson });
+    }
+    return results;
   }
 }

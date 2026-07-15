@@ -1,3 +1,9 @@
+import { invoke } from "@tauri-apps/api/core";
+import type {
+  FileSystemAdapter,
+  VaultItemMetaRead,
+  VaultItemStatMeta,
+} from "@collector/core";
 import {
   exists,
   mkdir,
@@ -9,7 +15,6 @@ import {
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
 import { RECONCILE_TOUCH_FILE } from "@collector/core";
-import type { FileSystemAdapter } from "@collector/core";
 
 export class TauriFileSystemAdapter implements FileSystemAdapter {
   join(...parts: string[]): string {
@@ -68,5 +73,19 @@ export class TauriFileSystemAdapter implements FileSystemAdapter {
 
   async remove(path: string, options?: { recursive?: boolean }): Promise<void> {
     await remove(path, { recursive: options?.recursive ?? false });
+  }
+
+  async statVaultItemsMeta(vaultPath: string): Promise<VaultItemStatMeta[]> {
+    return invoke<VaultItemStatMeta[]>("vault_items_stat_meta", { vaultPath });
+  }
+
+  async readVaultItemsMeta(
+    vaultPath: string,
+    itemIds: string[],
+  ): Promise<VaultItemMetaRead[]> {
+    return invoke<VaultItemMetaRead[]>("vault_items_read_meta", {
+      vaultPath,
+      ids: itemIds,
+    });
   }
 }

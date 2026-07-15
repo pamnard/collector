@@ -1,5 +1,5 @@
 import type { ItemFile, VaultMeta } from "@collector/shared";
-import { SCHEMA_VERSION } from "@collector/shared";
+import { itemFileSchema, SCHEMA_VERSION } from "@collector/shared";
 import type {
   CreateVaultInput,
   IndexSyncOptions,
@@ -25,7 +25,6 @@ import {
   DISK_ITEM_READ_CONCURRENCY,
   INDEX_SYNC_WRITE_BATCH,
   INDEX_SYNC_YIELD_MS,
-  runWithConcurrencyYielding,
   yieldToEventLoop,
 } from "../util/concurrency.js";
 import { classifyItemSyncAction } from "./sync-classifier.js";
@@ -42,6 +41,10 @@ import {
   vaultRoot,
   vaultsRoot,
 } from "./paths.js";
+import {
+  readVaultItemMetaBatch,
+  statAllVaultItemMeta,
+} from "./vault-fs-batch.js";
 
 export async function createVault(
   ctx: VaultContext,
@@ -196,8 +199,7 @@ export async function syncIndexFromFilesystem(
   const storedFingerprint = await ctx.index.getReconcileFingerprint(vaultId);
   const indexMeta = new Map(indexedItems.map((item) => [item.id, item]));
   const indexedIds = new Set(indexedItems.map((item) => item.id));
-  const diskIds = [...diskItemIds];
-  const total = diskIds.length;
+  const total = diskItemIds.size;
 
   if (
     canTakeReconcileFastPath({
@@ -217,25 +219,14 @@ export async function syncIndexFromFilesystem(
 
   emitProgress(0, total);
 
-  const stats = await runWithConcurrencyYielding(
-    diskIds.length,
-    DISK_ITEM_READ_CONCURRENCY,
-    async (index) => {
-      const itemId = diskIds[index]!;
-      const itemPath = itemRoot(vaultPath, itemId);
-      try {
-        const fileStat = await ctx.fs.stat(itemMetaPath(itemPath));
-        return {
-          itemId,
-          diskMtimeMs: fileStat.mtimeMs ?? 0,
-          error: null as unknown,
-        };
-      } catch (error) {
-        return { itemId, diskMtimeMs: 0, error };
-      }
-    },
-    { yieldEvery: INDEX_SYNC_WRITE_BATCH, yieldMs: INDEX_SYNC_YIELD_MS },
-  );
+  const diskStats = await statAllVaultItemMeta(ctx.fs, vaultPath);
+  const stats = diskStats
+    .filter((entry) => diskItemIds.has(entry.id))
+    .map((entry) => ({
+      itemId: entry.id,
+      diskMtimeMs: entry.mtimeMs ?? 0,
+      error: null as unknown,
+    }));
 
   const metadataReadQueue: Array<{ itemId: string; diskMtimeMs: number }> = [];
   const reindexQueue: ReindexWork[] = [];
@@ -269,21 +260,60 @@ export async function syncIndexFromFilesystem(
   }
 
   if (metadataReadQueue.length > 0) {
-    const metadataReads = await runWithConcurrencyYielding(
-      metadataReadQueue.length,
-      DISK_ITEM_READ_CONCURRENCY,
-      async (index) => {
-        const work = metadataReadQueue[index]!;
-        const itemPath = itemRoot(vaultPath, work.itemId);
-        try {
-          const item = await readItemFile(ctx.fs, itemPath);
-          return { ...work, item, error: null as unknown };
-        } catch (error) {
-          return { ...work, item: null, error };
-        }
-      },
-      { yieldEvery: INDEX_SYNC_WRITE_BATCH, yieldMs: INDEX_SYNC_YIELD_MS },
+    const metadataIds = metadataReadQueue.map((work) => work.itemId);
+    const metadataById = new Map(
+      metadataReadQueue.map((work) => [work.itemId, work.diskMtimeMs]),
     );
+
+    let metadataReads: Array<{
+      itemId: string;
+      diskMtimeMs: number;
+      item: ItemFile | null;
+      error: unknown;
+    }>;
+
+    try {
+      const batchReads = await readVaultItemMetaBatch(
+        ctx.fs,
+        vaultPath,
+        metadataIds,
+      );
+      const readById = new Map(batchReads.map((read) => [read.id, read.itemJson]));
+      metadataReads = metadataIds.map((itemId) => {
+        const itemJson = readById.get(itemId);
+        if (!itemJson) {
+          return {
+            itemId,
+            diskMtimeMs: metadataById.get(itemId) ?? 0,
+            item: null,
+            error: new Error(`Missing item.json for ${itemId}`),
+          };
+        }
+        try {
+          const item = itemFileSchema.parse(JSON.parse(itemJson));
+          return {
+            itemId,
+            diskMtimeMs: metadataById.get(itemId) ?? 0,
+            item,
+            error: null,
+          };
+        } catch (error) {
+          return {
+            itemId,
+            diskMtimeMs: metadataById.get(itemId) ?? 0,
+            item: null,
+            error,
+          };
+        }
+      });
+    } catch (error) {
+      metadataReads = metadataIds.map((itemId) => ({
+        itemId,
+        diskMtimeMs: metadataById.get(itemId) ?? 0,
+        item: null,
+        error,
+      }));
+    }
 
     for (const read of metadataReads) {
       classified += 1;
@@ -337,17 +367,42 @@ export async function syncIndexFromFilesystem(
   phase = "metadata";
   emitProgress(processedBeforeReindex, total);
 
+  const reindexIdsNeedingRead = reindexQueue
+    .filter((work) => !work.item)
+    .map((work) => work.itemId);
+  if (reindexIdsNeedingRead.length > 0) {
+    const reindexReads = await readVaultItemMetaBatch(
+      ctx.fs,
+      vaultPath,
+      reindexIdsNeedingRead,
+    );
+    const reindexJsonById = new Map(
+      reindexReads.map((read) => [read.id, read.itemJson]),
+    );
+    for (const work of reindexQueue) {
+      if (work.item) {
+        continue;
+      }
+      const itemJson = reindexJsonById.get(work.itemId);
+      if (!itemJson) {
+        continue;
+      }
+      work.item = itemFileSchema.parse(JSON.parse(itemJson));
+    }
+  }
+
   // Phase A: metadata → list/filters queryable; FTS title/description only.
   for (let i = 0; i < reindexQueue.length; i += 1) {
     const work = reindexQueue[i]!;
-    const itemPath = itemRoot(vaultPath, work.itemId);
     try {
-      const item = work.item ?? (await readItemFile(ctx.fs, itemPath));
+      if (!work.item) {
+        throw new Error(`Missing item.json for ${work.itemId}`);
+      }
+      const item = work.item;
       await ctx.index.upsertItemMetadata(
         { item, fileMtimeMs: work.diskMtimeMs },
         vaultId,
       );
-      work.item = item;
       report.indexed += 1;
     } catch (error) {
       report.errors.push({
@@ -442,14 +497,7 @@ export async function listItemsOnDisk(
   }
 
   const itemIds = await ctx.fs.readDir(itemsDir);
-  const items: ItemFile[] = [];
-
-  for (const itemId of itemIds) {
-    const itemPath = itemRoot(vaultPath, itemId);
-    items.push(await readItemFile(ctx.fs, itemPath));
-  }
-
-  return items;
+  return listItemsByIds(ctx, vaultPath, itemIds);
 }
 
 export interface StreamedItemRead {
@@ -476,7 +524,7 @@ async function readItemFromDisk(
   return readItemFile(ctx.fs, itemPath);
 }
 
-/** Read item.json files in parallel; invokes onItem as each read finishes. */
+/** Read item.json files; uses batched FS when the adapter supports it. */
 export async function streamItemsByIds(
   ctx: VaultContext,
   vaultPath: string,
@@ -488,6 +536,28 @@ export async function streamItemsByIds(
   }
 
   const { concurrency, onItem, signal } = options;
+
+  if (ctx.fs.readVaultItemsMeta) {
+    const batchReads = await readVaultItemMetaBatch(ctx.fs, vaultPath, itemIds);
+    const readById = new Map(batchReads.map((read) => [read.id, read.itemJson]));
+    for (const [index, itemId] of itemIds.entries()) {
+      if (signal?.aborted) {
+        return;
+      }
+      const itemJson = readById.get(itemId);
+      let item: ItemFile | null = null;
+      if (itemJson) {
+        try {
+          item = itemFileSchema.parse(JSON.parse(itemJson));
+        } catch {
+          item = null;
+        }
+      }
+      onItem({ index, itemId, item });
+    }
+    return;
+  }
+
   let nextIndex = 0;
 
   async function worker(): Promise<void> {

@@ -11,6 +11,8 @@ export type {
   UpsertItemInput,
   VaultContext,
   VaultIndexAdapter,
+  VaultItemMetaRead,
+  VaultItemStatMeta,
 } from "./adapters/types.js";
 
 export {
