@@ -10,12 +10,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ItemFile } from "@collector/shared";
 import type { TagWithCount } from "@collector/core";
 import { ItemFlagActions } from "./ItemFlagActions";
-import { resolveItemThumbnailPath } from "../../services/collector-service";
 import { formatItemDate } from "../../utils/formatItemDate";
 import { getYouTubeThumbnail } from "../../utils/youtube-thumbnail";
 
 interface ItemGridCardProps {
   item: ItemFile;
+  thumbnailPath?: string | null;
   tagsById: Map<string, TagWithCount>;
   onOpen: (itemId: string) => void;
   onUpdated: () => void;
@@ -47,6 +47,7 @@ function iconForContentType(type: string) {
 
 export function ItemGridCard({
   item,
+  thumbnailPath,
   tagsById,
   onOpen,
   onUpdated,
@@ -64,33 +65,25 @@ export function ItemGridCard({
   );
 
   useEffect(() => {
-    let cancelled = false;
     setIsMediaLoaded(false);
     setCoverSrc(null);
 
-    void (async () => {
-      const thumbnailPath = await resolveItemThumbnailPath(item).catch(() => null);
-      if (cancelled) {
-        return;
-      }
+    if (thumbnailPath === undefined) {
+      return;
+    }
 
-      if (thumbnailPath) {
-        setCoverSrc(toCoverDisplaySrc(thumbnailPath));
-        return;
-      }
+    if (thumbnailPath) {
+      setCoverSrc(toCoverDisplaySrc(thumbnailPath));
+      return;
+    }
 
-      if (item.url) {
-        const youtube = getYouTubeThumbnail(item.url);
-        if (youtube) {
-          setCoverSrc(youtube);
-        }
+    if (item.url) {
+      const youtube = getYouTubeThumbnail(item.url);
+      if (youtube) {
+        setCoverSrc(youtube);
       }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [item]);
+    }
+  }, [item.url, thumbnailPath]);
 
   useEffect(() => {
     if (coverSrc && imgRef.current?.complete) {
