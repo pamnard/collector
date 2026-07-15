@@ -52,6 +52,7 @@ import {
   ensureAppSettings,
   updateAppSettings,
 } from "./app-settings-service";
+import { clearDashboardSnapshot } from "./dashboard-snapshot-service";
 import { generateCoverFromMedia } from "./thumbnail-service";
 import { getLegacyIndexDatabasePaths } from "./index-db-path";
 import { reportServiceError } from "./runtime-error";
@@ -271,6 +272,7 @@ async function runIndexHealthChecks(): Promise<void> {
   });
 
   try {
+    await clearDashboardSnapshot();
     await rebuildIndexDatabase();
 
     if (!sql) {
@@ -940,6 +942,7 @@ export async function switchVault(vaultId: string): Promise<VaultMeta> {
   }
 
   activeVault = selected;
+  await clearDashboardSnapshot();
   await updateAppSettings({ active_vault_id: vaultId });
   return selected.meta;
 }

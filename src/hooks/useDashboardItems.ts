@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ItemFile } from "@collector/shared";
+import { useAppSettings } from "../context/AppSettingsContext";
 import { navFilterKey, type NavFilter } from "../types/ui";
 import {
   DASHBOARD_PREFETCH_SIZE,
@@ -7,6 +8,12 @@ import {
   streamDashboardItems,
   subscribeDashboardLoad,
 } from "../services/collector-service";
+import { getAppSettingsSync } from "../services/app-settings-service";
+import {
+  buildDashboardSnapshot,
+  peekMatchingDashboardSnapshot,
+  persistDashboardSnapshot,
+} from "../services/dashboard-snapshot-service";
 import { reportServiceError } from "../services/runtime-error";
 
 export { DASHBOARD_PREFETCH_SIZE, DASHBOARD_BATCH_SIZE } from "../services/collector-service";
@@ -21,24 +28,71 @@ interface UseDashboardItemsResult {
   loadMore: () => void;
 }
 
+function readWarmStartSeed(filter: NavFilter, searchQuery: string) {
+  const vaultId = getAppSettingsSync()?.active_vault_id;
+  if (!vaultId) {
+    return null;
+  }
+  return peekMatchingDashboardSnapshot(vaultId, filter, searchQuery);
+}
+
+function itemIdsEqual(left: string[], right: string[]): boolean {
+  return (
+    left.length === right.length && left.every((id, index) => id === right[index])
+  );
+}
+
+function createInitialItemsByIdMap(
+  filter: NavFilter,
+  searchQuery: string,
+): Map<string, ItemFile> {
+  const warm = readWarmStartSeed(filter, searchQuery);
+  if (!warm) {
+    return new Map();
+  }
+  return new Map(warm.items.map((item) => [item.id, item]));
+}
+
 export function useDashboardItems(
   filter: NavFilter,
   searchQuery: string,
   vaultRevision: number,
 ): UseDashboardItemsResult {
-  const [itemIds, setItemIds] = useState<string[]>([]);
-  const [itemsById, setItemsById] = useState<Map<string, ItemFile>>(
-    () => new Map(),
+  const { settings } = useAppSettings();
+
+  const [itemIds, setItemIds] = useState<string[]>(
+    () => readWarmStartSeed(filter, searchQuery)?.item_ids ?? [],
   );
-  const [streamEndOffset, setStreamEndOffset] = useState(0);
-  const [totalCount, setTotalCount] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
+  const [itemsById, setItemsById] = useState<Map<string, ItemFile>>(() => {
+    const warm = readWarmStartSeed(filter, searchQuery);
+    if (!warm) {
+      return new Map();
+    }
+    return new Map(warm.items.map((item) => [item.id, item]));
+  });
+  const [streamEndOffset, setStreamEndOffset] = useState(
+    () => readWarmStartSeed(filter, searchQuery)?.stream_end_offset ?? 0,
+  );
+  const [totalCount, setTotalCount] = useState(
+    () => readWarmStartSeed(filter, searchQuery)?.total_count ?? 0,
+  );
+  const [isLoading, setIsLoading] = useState(
+    () => readWarmStartSeed(filter, searchQuery) === null,
+  );
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestVersionRef = useRef(0);
-  const streamEndOffsetRef = useRef(0);
-  const itemIdsRef = useRef<string[]>([]);
+  const streamEndOffsetRef = useRef(
+    readWarmStartSeed(filter, searchQuery)?.stream_end_offset ?? 0,
+  );
+  const itemIdsRef = useRef<string[]>(
+    readWarmStartSeed(filter, searchQuery)?.item_ids ?? [],
+  );
+  const itemsByIdRef = useRef<Map<string, ItemFile>>(
+    createInitialItemsByIdMap(filter, searchQuery),
+  );
   const streamAbortRef = useRef<AbortController | null>(null);
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const items = useMemo(() => {
     const ordered: ItemFile[] = [];
@@ -50,6 +104,10 @@ export function useDashboardItems(
     }
     return ordered;
   }, [itemIds, itemsById, streamEndOffset]);
+
+  useEffect(() => {
+    itemsByIdRef.current = itemsById;
+  }, [itemsById]);
 
   const streamSlice = useCallback(
     async (
@@ -103,18 +161,37 @@ export function useDashboardItems(
     ) => {
       setTotalCount(page.totalCount);
 
-      if (page.offset === 0) {
-        setLoadedItemIds(page.itemIds);
-        if (!page.itemIds.length) {
-          setStreamWindowEnd(0);
-          return;
-        }
+      if (page.offset !== 0) {
+        return;
+      }
 
-        const preservedEnd =
-          streamEndOffsetRef.current > 0
-            ? Math.min(streamEndOffsetRef.current, page.itemIds.length)
-            : Math.min(DASHBOARD_PREFETCH_SIZE, page.itemIds.length);
+      if (!page.itemIds.length) {
+        setLoadedItemIds([]);
+        setStreamWindowEnd(0);
+        return;
+      }
+
+      const preservedEnd =
+        streamEndOffsetRef.current > 0
+          ? Math.min(streamEndOffsetRef.current, page.itemIds.length)
+          : Math.min(DASHBOARD_PREFETCH_SIZE, page.itemIds.length);
+
+      const previousIds = itemIdsRef.current;
+      const sameIds = itemIdsEqual(previousIds, page.itemIds);
+
+      if (!sameIds) {
+        setLoadedItemIds(page.itemIds);
+        setItemsById(new Map());
         setStreamWindowEnd(preservedEnd);
+        void streamSlice(page.itemIds, 0, preservedEnd, requestVersion);
+        return;
+      }
+
+      setStreamWindowEnd(preservedEnd);
+      const needsStream = page.itemIds
+        .slice(0, preservedEnd)
+        .some((id) => !itemsByIdRef.current.has(id));
+      if (needsStream) {
         void streamSlice(page.itemIds, 0, preservedEnd, requestVersion);
       }
     },
@@ -122,16 +199,33 @@ export function useDashboardItems(
   );
 
   const filterKey = navFilterKey(filter);
+  const vaultId = settings.active_vault_id ?? null;
 
   useEffect(() => {
     const requestVersion = requestVersionRef.current + 1;
     requestVersionRef.current = requestVersion;
-    setIsLoading(true);
-    setError(null);
-    setItemsById(new Map());
-    setLoadedItemIds([]);
-    setTotalCount(0);
-    setStreamWindowEnd(0);
+
+    const warm =
+      vaultId !== null
+        ? peekMatchingDashboardSnapshot(vaultId, filter, searchQuery)
+        : null;
+
+    if (!warm) {
+      setIsLoading(true);
+      setError(null);
+      setItemsById(new Map());
+      setLoadedItemIds([]);
+      setTotalCount(0);
+      setStreamWindowEnd(0);
+    } else {
+      setIsLoading(false);
+      setError(null);
+      setLoadedItemIds(warm.item_ids);
+      setItemsById(new Map(warm.items.map((item) => [item.id, item])));
+      setTotalCount(warm.total_count);
+      setStreamWindowEnd(warm.stream_end_offset);
+    }
+
     streamAbortRef.current?.abort();
 
     const controller = new AbortController();
@@ -170,11 +264,49 @@ export function useDashboardItems(
     };
   }, [
     applyIndexPage,
+    filter,
     filterKey,
     searchQuery,
     setLoadedItemIds,
     setStreamWindowEnd,
+    vaultId,
     vaultRevision,
+  ]);
+
+  useEffect(() => {
+    if (!vaultId || isLoading || !itemIds.length || !items.length) {
+      return;
+    }
+
+    persistTimerRef.current = setTimeout(() => {
+      void persistDashboardSnapshot(
+        buildDashboardSnapshot({
+          vaultId,
+          filter,
+          search: searchQuery,
+          itemIds,
+          items,
+          totalCount,
+          streamEndOffset,
+        }),
+      );
+    }, 400);
+
+    return () => {
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+      }
+    };
+  }, [
+    filter,
+    filterKey,
+    isLoading,
+    itemIds,
+    items,
+    searchQuery,
+    streamEndOffset,
+    totalCount,
+    vaultId,
   ]);
 
   const loadMore = useCallback(() => {
