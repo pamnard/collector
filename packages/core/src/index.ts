@@ -53,6 +53,16 @@ export {
 } from "./vault/operations.js";
 export type { StreamedItemRead, StreamItemsByIdsOptions } from "./vault/operations.js";
 
+export { syncIndexItemsFromFilesystem } from "./vault/item-index-sync.js";
+
+export {
+  createVaultWatchBatcher,
+  dedupeVaultWatchItemIds,
+} from "./vault/vault-watch-batch.js";
+export type { VaultWatchBatcher } from "./vault/vault-watch-batch.js";
+
+export { parseVaultItemsWatchItemId } from "./vault/vault-watch-path.js";
+
 export {
   createSingleFlight,
   DISK_ITEM_READ_CONCURRENCY,

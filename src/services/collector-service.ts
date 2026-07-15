@@ -57,6 +57,11 @@ import { clearDashboardSnapshot } from "./dashboard-snapshot-service";
 import { generateCoverFromMedia } from "./thumbnail-service";
 import { getLegacyIndexDatabasePaths } from "./index-db-path";
 import { reportServiceError } from "./runtime-error";
+import {
+  configureVaultFilesystemWatcher,
+  startVaultFilesystemWatcher,
+  stopVaultFilesystemWatcher,
+} from "./vault-fs-watcher-service";
 import { isDevMock } from "../dev/is-dev-mock";
 import * as devMockCollector from "../dev/mock-collector";
 
@@ -66,6 +71,17 @@ let activeVault: { meta: VaultMeta; path: string } | null = null;
 const syncedVaultIds = new Set<string>();
 const vaultSyncPromises = new Map<string, Promise<void>>();
 const fs = new TauriFileSystemAdapter();
+
+configureVaultFilesystemWatcher({
+  getContext,
+  getActiveVaultId: () => activeVault?.meta.id ?? null,
+  onItemsSynced: (vaultId) => {
+    emitVaultSyncEvent(vaultId, "complete");
+  },
+  forceVaultIndexResync: (vaultId, vaultPath) => {
+    forceVaultIndexResync(vaultId, vaultPath);
+  },
+});
 
 export interface VaultIndexSyncStatus {
   vaultId: string | null;
@@ -268,6 +284,7 @@ async function rebuildIndexDatabase(): Promise<void> {
   syncedVaultIds.clear();
   vaultSyncPromises.clear();
   activeVault = null;
+  await stopVaultFilesystemWatcher();
   await resetIndexSchema(sql);
   await runMigrations(sql);
 }
@@ -490,6 +507,9 @@ function startVaultIndexSync(vaultId: string, vaultPath: string): Promise<void> 
         ftsReady,
       });
       emitVaultSyncEvent(vaultId, "complete");
+      void startVaultFilesystemWatcher(vaultId, vaultPath).catch((error: unknown) => {
+        reportServiceError("start vault filesystem watcher", error);
+      });
     } catch (error) {
       publishRunningStatus.cancel();
       setVaultIndexSyncStatus({
@@ -513,6 +533,11 @@ function kickoffVaultIndexSync(vaultId: string, vaultPath: string): void {
   void startVaultIndexSync(vaultId, vaultPath).catch((error: unknown) => {
     reportServiceError("index sync", error);
   });
+}
+
+function forceVaultIndexResync(vaultId: string, vaultPath: string): void {
+  syncedVaultIds.delete(vaultId);
+  kickoffVaultIndexSync(vaultId, vaultPath);
 }
 
 function pickVaultEntry(
@@ -968,6 +993,7 @@ export async function switchVault(vaultId: string): Promise<VaultMeta> {
   }
 
   activeVault = selected;
+  await stopVaultFilesystemWatcher();
   await clearDashboardSnapshot();
   await updateAppSettings({ active_vault_id: vaultId });
   return selected.meta;
