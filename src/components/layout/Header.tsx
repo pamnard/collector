@@ -27,7 +27,7 @@ export function Header({
   searchIndexBuilding,
 }: HeaderProps) {
   return (
-    <header className="h-16 border-b border-border bg-header/60 backdrop-blur-md transition-colors duration-200">
+    <header className="relative h-16 border-b border-border transition-colors duration-200">
       <div className="flex h-full items-center justify-between gap-4 px-4 md:px-8">
         <div className="flex flex-1 items-center">
           <button
