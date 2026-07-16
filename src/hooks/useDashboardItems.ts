@@ -205,6 +205,8 @@ export function useDashboardItems(
     [setLoadedItemIds, setStreamWindowEnd, streamSlice],
   );
 
+  // Object folder/tag filters are new each render from navFilterFromSetting;
+  // depend on filterKey only (#82). Do not re-add `filter` to deps (#114 / #78 regression).
   const filterKey = navFilterKey(filter);
   const vaultId = settings.active_vault_id ?? null;
 
@@ -271,7 +273,6 @@ export function useDashboardItems(
     };
   }, [
     applyIndexPage,
-    filter,
     filterKey,
     searchQuery,
     setLoadedItemIds,
@@ -305,7 +306,6 @@ export function useDashboardItems(
       }
     };
   }, [
-    filter,
     filterKey,
     isLoading,
     itemIds,
@@ -380,7 +380,7 @@ export function useDashboardItems(
 
     streamNextWindow(itemIds);
   }, [
-    filter,
+    filterKey,
     isLoading,
     isLoadingMore,
     itemIds,
