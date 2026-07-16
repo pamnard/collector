@@ -27,8 +27,8 @@ export function Header({
   searchIndexBuilding,
 }: HeaderProps) {
   return (
-    <header className="pointer-events-none absolute top-0 left-0 right-0 z-40 h-16 border-b border-border bg-header/60 backdrop-blur-md transition-colors duration-200">
-      <div className="pointer-events-auto flex h-full items-center justify-between gap-4 px-4 pr-[calc(1rem+14px)] md:pl-8 md:pr-[calc(2rem+14px)]">
+    <header className="h-16 border-b border-border bg-header/60 backdrop-blur-md transition-colors duration-200">
+      <div className="flex h-full items-center justify-between gap-4 px-4 md:px-8">
         <div className="flex flex-1 items-center">
           <button
             type="button"
