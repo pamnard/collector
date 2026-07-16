@@ -59,8 +59,13 @@ body {
   @apply bg-gray-300 dark:bg-gray-700 rounded-full;
 }
 
+:root {
+  /* Keep in sync with AlertStack right inset (content pad + this). */
+  --main-scrollbar-width: 14px;
+}
+
 .main-scrollbar::-webkit-scrollbar {
-  width: 14px;
+  width: var(--main-scrollbar-width);
 }
 
 .main-scrollbar::-webkit-scrollbar-track {
