@@ -64,13 +64,19 @@ body {
 }
 
 .main-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgb(var(--bg-sidebar));
 }
 
 .main-scrollbar::-webkit-scrollbar-thumb {
   @apply bg-gray-300 dark:bg-gray-700 rounded-full;
   border: 3px solid transparent;
   background-clip: content-box;
+}
+
+.nav-frost {
+  background-color: rgb(var(--bg-header) / 0.6);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
 }
 
 .scrollbar-none {
