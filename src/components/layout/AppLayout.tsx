@@ -75,11 +75,6 @@ export function AppLayout() {
     vaultRevision,
   );
 
-  const topBannerCount =
-    (startupUpdateVersion ? 1 : 0) + (isMetadataIndexing ? 1 : 0);
-  const contentInsetClass =
-    topBannerCount === 0 ? "pt-16" : topBannerCount === 1 ? "pt-24" : "pt-32";
-
   const indexingLabel = formatIndexingBannerLabel(indexSync);
 
   return (
@@ -103,54 +98,52 @@ export function AppLayout() {
         />
 
         <main className="relative flex min-h-0 flex-1 overflow-hidden bg-main transition-colors duration-200">
-          <MainScrollArea contentInsetClass={contentInsetClass}>
+          <MainScrollArea>
+            <div className="sticky top-0 z-40">
+              <Header
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+                onOpenSidebar={() => setIsSidebarOpen(true)}
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
+                onAddClick={() => setIsCreateOpen(true)}
+                theme={theme}
+                onToggleTheme={toggleTheme}
+                searchIndexBuilding={searchIndexBuilding}
+              />
+
+              {startupUpdateVersion && (
+                <div className="flex items-center justify-between gap-3 border-b border-indigo-500/30 bg-indigo-500/10 px-4 py-2 text-sm backdrop-blur-md">
+                  <span>Доступно обновление {startupUpdateVersion}.</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => navigate("/settings")}
+                      className="rounded-lg border border-indigo-500/40 px-3 py-1 hover:bg-indigo-500/10 transition-colors"
+                    >
+                      Настройки
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStartupUpdateVersion(null)}
+                      className="text-secondary hover:text-primary transition-colors"
+                      aria-label="Скрыть"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {isMetadataIndexing && (
+                <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm backdrop-blur-md">
+                  <span>{indexingLabel}</span>
+                </div>
+              )}
+            </div>
+
             <Outlet />
           </MainScrollArea>
-
-          {isMetadataIndexing && (
-            <div
-              className={`pointer-events-none absolute left-0 right-0 z-30 border-b border-amber-500/30 bg-amber-500/10 px-4 pr-[calc(1rem+14px)] py-2 text-sm ${
-                startupUpdateVersion ? "top-24" : "top-16"
-              }`}
-            >
-              <span>{indexingLabel}</span>
-            </div>
-          )}
-
-          {startupUpdateVersion && (
-            <div className="pointer-events-none absolute top-16 left-0 right-0 z-30 flex items-center justify-between gap-3 border-b border-indigo-500/30 bg-indigo-500/10 px-4 pr-[calc(1rem+14px)] py-2 text-sm">
-              <span>Доступно обновление {startupUpdateVersion}.</span>
-              <div className="pointer-events-auto flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => navigate("/settings")}
-                  className="rounded-lg border border-indigo-500/40 px-3 py-1 hover:bg-indigo-500/10 transition-colors"
-                >
-                  Настройки
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStartupUpdateVersion(null)}
-                  className="text-secondary hover:text-primary transition-colors"
-                  aria-label="Скрыть"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          )}
-
-          <Header
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            onOpenSidebar={() => setIsSidebarOpen(true)}
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
-            onAddClick={() => setIsCreateOpen(true)}
-            theme={theme}
-            onToggleTheme={toggleTheme}
-            searchIndexBuilding={searchIndexBuilding}
-          />
         </main>
       </div>
 
