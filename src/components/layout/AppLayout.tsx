@@ -117,7 +117,7 @@ export function AppLayout() {
 
           {isMetadataIndexing && (
             <div
-              className={`pointer-events-none absolute left-0 right-[14px] z-30 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm ${
+              className={`pointer-events-none absolute left-0 right-0 z-30 border-b border-amber-500/30 bg-amber-500/10 px-4 pr-[calc(1rem+14px)] py-2 text-sm ${
                 startupUpdateVersion ? "top-24" : "top-16"
               }`}
             >
@@ -126,7 +126,7 @@ export function AppLayout() {
           )}
 
           {startupUpdateVersion && (
-            <div className="pointer-events-none absolute top-16 left-0 right-[14px] z-30 flex items-center justify-between gap-3 border-b border-indigo-500/30 bg-indigo-500/10 px-4 py-2 text-sm">
+            <div className="pointer-events-none absolute top-16 left-0 right-0 z-30 flex items-center justify-between gap-3 border-b border-indigo-500/30 bg-indigo-500/10 px-4 pr-[calc(1rem+14px)] py-2 text-sm">
               <span>Доступно обновление {startupUpdateVersion}.</span>
               <div className="pointer-events-auto flex items-center gap-2">
                 <button
