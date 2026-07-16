@@ -79,10 +79,6 @@ export function AppLayout() {
     (startupUpdateVersion ? 1 : 0) + (isMetadataIndexing ? 1 : 0);
   const contentInsetClass =
     topBannerCount === 0 ? "pt-16" : topBannerCount === 1 ? "pt-24" : "pt-32";
-  const gutterCoverClass =
-    topBannerCount === 0 ? "h-16" : topBannerCount === 1 ? "h-24" : "h-32";
-  const gutterInsetClass =
-    topBannerCount === 0 ? "top-16" : topBannerCount === 1 ? "top-24" : "top-32";
 
   const indexingLabel = formatIndexingBannerLabel(indexSync);
 
@@ -107,11 +103,7 @@ export function AppLayout() {
         />
 
         <main className="relative flex min-h-0 flex-1 overflow-hidden bg-main transition-colors duration-200">
-          <MainScrollArea
-            contentInsetClass={contentInsetClass}
-            gutterCoverClass={gutterCoverClass}
-            gutterInsetClass={gutterInsetClass}
-          >
+          <MainScrollArea contentInsetClass={contentInsetClass}>
             <Outlet />
           </MainScrollArea>
 
