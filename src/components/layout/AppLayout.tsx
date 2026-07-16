@@ -13,7 +13,10 @@ import { useDashboardItems } from "../../hooks/useDashboardItems";
 import { useVaultIndexSyncStatus } from "../../hooks/useVaultIndexSyncStatus";
 import { formatIndexingBannerLabel } from "@collector/core";
 import type { NavFilter, ViewMode } from "../../types/ui";
+import { Alert } from "../alerts/Alert";
+import { AlertStack } from "../alerts/AlertStack";
 import { Header } from "./Header";
+import { IndexingStatusAlert } from "./IndexingStatusAlert";
 import { MainScrollArea } from "./MainScrollArea";
 import { Sidebar } from "./Sidebar";
 
@@ -53,6 +56,8 @@ export function AppLayout() {
   const [startupUpdateVersion, setStartupUpdateVersion] = useState<string | null>(
     null,
   );
+  /** Dismissed dashboard error message; new/different errors show again. */
+  const [dismissedError, setDismissedError] = useState<string | null>(null);
   const indexSync = useVaultIndexSyncStatus();
   const isMetadataIndexing =
     indexSync.status === "rebuilding" ||
@@ -76,6 +81,10 @@ export function AppLayout() {
   );
 
   const indexingLabel = formatIndexingBannerLabel(indexSync);
+  const dashboardError = dashboardCache.error;
+  const showErrorAlert =
+    dashboardError !== null && dashboardError !== dismissedError;
+  const showAlertStack = isMetadataIndexing || showErrorAlert;
 
   return (
     <ShellContext.Provider
@@ -140,12 +149,6 @@ export function AppLayout() {
                     </div>
                   </div>
                 )}
-
-                {isMetadataIndexing && (
-                  <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm">
-                    <span>{indexingLabel}</span>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -153,6 +156,22 @@ export function AppLayout() {
           </MainScrollArea>
         </main>
       </div>
+
+      {showAlertStack && (
+        <AlertStack>
+          {isMetadataIndexing && (
+            <IndexingStatusAlert label={indexingLabel} />
+          )}
+          {showErrorAlert && dashboardError !== null && (
+            <Alert
+              tone="danger"
+              onDismiss={() => setDismissedError(dashboardError)}
+            >
+              {dashboardError}
+            </Alert>
+          )}
+        </AlertStack>
+      )}
 
       {isCreateOpen && (
         <CreateItemDialog
