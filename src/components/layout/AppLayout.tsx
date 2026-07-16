@@ -12,8 +12,12 @@ import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useDashboardItems } from "../../hooks/useDashboardItems";
 import { useVaultIndexSyncStatus } from "../../hooks/useVaultIndexSyncStatus";
 import { formatIndexingBannerLabel } from "@collector/core";
+import { isDevMock } from "../../dev/is-dev-mock";
 import type { NavFilter, ViewMode } from "../../types/ui";
+import { Alert } from "../alerts/Alert";
+import { AlertStack } from "../alerts/AlertStack";
 import { Header } from "./Header";
+import { IndexingStatusAlert } from "./IndexingStatusAlert";
 import { MainScrollArea } from "./MainScrollArea";
 import { Sidebar } from "./Sidebar";
 
@@ -53,6 +57,10 @@ export function AppLayout() {
   const [startupUpdateVersion, setStartupUpdateVersion] = useState<string | null>(
     null,
   );
+  // Visual-only mock error alert in web/dev — stacked above indexing.
+  const [devErrorAlertVisible, setDevErrorAlertVisible] = useState(() =>
+    isDevMock(),
+  );
   const indexSync = useVaultIndexSyncStatus();
   const isMetadataIndexing =
     indexSync.status === "rebuilding" ||
@@ -75,7 +83,23 @@ export function AppLayout() {
     vaultRevision,
   );
 
-  const indexingLabel = formatIndexingBannerLabel(indexSync);
+  // Web/dev mock always shows a sample alert so the overlay is visible without a real sync.
+  const showIndexingAlert = isMetadataIndexing || isDevMock();
+  const indexingLabel = isMetadataIndexing
+    ? formatIndexingBannerLabel(indexSync)
+    : formatIndexingBannerLabel({
+        status: "running",
+        progress: {
+          phase: "metadata",
+          processed: 12,
+          total: 48,
+          skipped: 0,
+          patched: 0,
+          indexed: 12,
+          contentIndexed: 0,
+          removed: 0,
+        },
+      });
 
   return (
     <ShellContext.Provider
@@ -140,12 +164,6 @@ export function AppLayout() {
                     </div>
                   </div>
                 )}
-
-                {isMetadataIndexing && (
-                  <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm">
-                    <span>{indexingLabel}</span>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -153,6 +171,22 @@ export function AppLayout() {
           </MainScrollArea>
         </main>
       </div>
+
+      {(showIndexingAlert || devErrorAlertVisible) && (
+        <AlertStack>
+          {showIndexingAlert && (
+            <IndexingStatusAlert label={indexingLabel} />
+          )}
+          {devErrorAlertVisible && (
+            <Alert
+              tone="danger"
+              onDismiss={() => setDevErrorAlertVisible(false)}
+            >
+              Не удалось сохранить элемент. Повторите попытку.
+            </Alert>
+          )}
+        </AlertStack>
+      )}
 
       {isCreateOpen && (
         <CreateItemDialog

@@ -7,7 +7,7 @@ export interface IndexBannerInput {
   progress: IndexSyncProgress | null;
 }
 
-/** Label for the top indexing / rebuild banner. */
+/** Label for the indexing / rebuild status alert. */
 export function formatIndexingBannerLabel(input: IndexBannerInput): string {
   if (input.status === "rebuilding") {
     return "Пересборка индекса…";
