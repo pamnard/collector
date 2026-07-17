@@ -38,6 +38,26 @@ export const itemFileSchema = z.object({
   updated_at: z.string().datetime(),
 });
 
+
+/** Known YAML frontmatter fields written for Collector documents. */
+export const documentFrontmatterSchema = z.object({
+  title: z.string().min(1).max(500).optional(),
+  description: z.string().optional(),
+  url: z.string().url().nullable().optional(),
+  content_type: contentTypeSchema.optional(),
+  type: contentTypeSchema.optional(),
+  source_type: sourceTypeSchema.optional(),
+  source_id: z.string().nullable().optional(),
+  thumbnail: z.string().nullable().optional(),
+  tags: z.array(z.string().min(1)).optional(),
+  content_revision: z.number().int().optional(),
+  created: z.union([z.string(), z.date()]).optional(),
+  created_at: z.union([z.string(), z.date()]).optional(),
+  updated: z.union([z.string(), z.date()]).optional(),
+  updated_at: z.union([z.string(), z.date()]).optional(),
+  metadata: z.record(z.unknown()).optional(),
+});
+
 export const vaultMetaSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1).max(200),
@@ -58,6 +78,7 @@ export const mediaFileMetaSchema = z.object({
 });
 
 export type ItemFile = z.infer<typeof itemFileSchema>;
+export type DocumentFrontmatter = z.infer<typeof documentFrontmatterSchema>;
 export type VaultMeta = z.infer<typeof vaultMetaSchema>;
 export type SourceRef = z.infer<typeof sourceRefSchema>;
 export type MediaFileMeta = z.infer<typeof mediaFileMetaSchema>;
