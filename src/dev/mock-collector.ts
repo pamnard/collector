@@ -220,6 +220,14 @@ export async function resolveItemThumbnailPath(
   item: ItemFile,
 ): Promise<string | null> {
   ensureWarmedUp();
+
+  if (mockStore.isDiskVault()) {
+    const resolved = mockStore.getThumbnailUrl(item.id);
+    if (resolved !== undefined) {
+      return resolved;
+    }
+  }
+
   if (!item.thumbnail) {
     return null;
   }
