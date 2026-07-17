@@ -42,8 +42,6 @@ describe("cover operations", () => {
         content_type: "image",
         source_type: "manual",
         metadata: {},
-        is_archived: false,
-        is_favorite: false,
         tag_ids: [],
         collection_ids: [],
         folder_path: "",

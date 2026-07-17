@@ -77,32 +77,26 @@ describe("index startup validation", () => {
     db.close();
   });
 
-  it("fails startup probes when legacy items table is missing is_archived", async () => {
+  it("fails schema validation when items table is missing folder_path", async () => {
     tempDir = mkdtempSync(join(tmpdir(), "collector-db-"));
     dbPath = join(tempDir, "collector-legacy.db");
     const db = BetterSqliteMigrator.open(dbPath);
 
     await runMigrations(db);
-    await db.execute("ALTER TABLE items DROP COLUMN is_archived").catch(() => {
-      // SQLite < 3.35 cannot DROP COLUMN; recreate minimal legacy table instead.
-    });
 
-    const columns = await db.select<{ name: string }>("PRAGMA table_info(items)");
-    if (columns.some((column) => column.name === "is_archived")) {
-      await db.execute(`CREATE TABLE items_legacy AS SELECT id, vault_id, title FROM items`);
-      await db.execute("DROP TABLE items");
-      await db.execute(`CREATE TABLE items (
-        id TEXT PRIMARY KEY,
-        vault_id TEXT NOT NULL,
-        title TEXT NOT NULL
-      )`);
-      await db.execute("INSERT INTO items SELECT id, vault_id, title FROM items_legacy");
-      await db.execute("DROP TABLE items_legacy");
-    }
+    await db.execute(`CREATE TABLE items_legacy AS SELECT id, vault_id, title FROM items`);
+    await db.execute("DROP TABLE items");
+    await db.execute(`CREATE TABLE items (
+      id TEXT PRIMARY KEY,
+      vault_id TEXT NOT NULL,
+      title TEXT NOT NULL
+    )`);
+    await db.execute("INSERT INTO items SELECT id, vault_id, title FROM items_legacy");
+    await db.execute("DROP TABLE items_legacy");
 
     const schema = await validateIndexSchema(db);
     expect(schema.ok).toBe(false);
-    expect(schema.errors.some((error) => error.includes("is_archived"))).toBe(true);
+    expect(schema.errors.some((error) => error.includes("folder_path"))).toBe(true);
 
     const startup = await runIndexStartupChecks(db);
     expect(startup.ok).toBe(false);

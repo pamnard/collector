@@ -6,7 +6,6 @@ import { MarkdownContent } from "../components/content/MarkdownContent";
 import { ItemDetailHero } from "../components/items/ItemDetailHero";
 import { ItemDetailInlineEditor } from "../components/items/ItemDetailInlineEditor";
 import { ItemDetailMetadata } from "../components/items/ItemDetailMetadata";
-import { ItemFlagActions } from "../components/items/ItemFlagActions";
 import { MediaGallery } from "../components/media/MediaGallery";
 import { useShell } from "../components/layout/AppLayout";
 import {
@@ -26,8 +25,6 @@ function toFormValues(
     url: item.url ?? "",
     content_type: item.content_type,
     content: content ?? "",
-    is_favorite: item.is_favorite,
-    is_archived: item.is_archived,
     tag_ids: item.tag_ids,
     folder_path: item.folder_path,
   };
@@ -80,8 +77,6 @@ export function ItemDetailPage() {
         url: formValues.url.trim() || null,
         content_type: formValues.content_type,
         content: formValues.content.trim() || null,
-        is_favorite: formValues.is_favorite,
-        is_archived: formValues.is_archived,
         tag_ids: formValues.tag_ids,
         folder_path: formValues.folder_path,
       });
@@ -170,12 +165,6 @@ export function ItemDetailPage() {
 
       {item && !isEditing && (
         <div className="flex items-center gap-2">
-          <ItemFlagActions
-            itemId={item.id}
-            isFavorite={item.is_favorite}
-            isArchived={item.is_archived}
-            onUpdated={handleItemUpdated}
-          />
           <button
             type="button"
             onClick={() => setIsEditing(true)}

@@ -22,8 +22,6 @@ export const ITEMS_COLUMNS = [
   "source_id",
   "metadata_json",
   "thumbnail_path",
-  "is_archived",
-  "is_favorite",
   "has_content_file",
   "sort_order",
   "folder_path",

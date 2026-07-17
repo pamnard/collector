@@ -17,9 +17,8 @@ let diskVault = false;
 function folderItemCount(folderPath: string): number {
   return items.filter(
     (item) =>
-      !item.is_archived &&
-      (item.folder_path === folderPath ||
-        item.folder_path.startsWith(`${folderPath}/`)),
+      item.folder_path === folderPath ||
+      item.folder_path.startsWith(`${folderPath}/`),
   ).length;
 }
 
@@ -130,8 +129,6 @@ export const mockStore = {
         | "description"
         | "url"
         | "content_type"
-        | "is_favorite"
-        | "is_archived"
         | "tag_ids"
         | "folder_path"
       >

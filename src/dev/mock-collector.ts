@@ -53,22 +53,13 @@ function ensureWarmedUp(): void {
 
 function matchesNavFilter(item: ItemFile, filter: NavFilter): boolean {
   if (isTagFilter(filter)) {
-    return !item.is_archived && item.tag_ids.includes(filter.tagId);
+    return item.tag_ids.includes(filter.tagId);
   }
   if (isFolderFilter(filter)) {
-    if (item.is_archived) {
-      return false;
-    }
     const path = filter.folderPath;
     return item.folder_path === path || item.folder_path.startsWith(`${path}/`);
   }
-  if (filter === "all") {
-    return !item.is_archived;
-  }
-  if (filter === "favorite") {
-    return item.is_favorite;
-  }
-  return item.is_archived;
+  return true;
 }
 
 function matchesSearch(item: ItemFile, query: string): boolean {
@@ -255,8 +246,6 @@ export async function updateItem(
     description: input.description ?? existing.description,
     url: input.url !== undefined ? input.url : existing.url,
     content_type: input.content_type ?? existing.content_type,
-    is_favorite: input.is_favorite ?? existing.is_favorite,
-    is_archived: input.is_archived ?? existing.is_archived,
     tag_ids: input.tag_ids ?? existing.tag_ids,
     folder_path: input.folder_path ?? existing.folder_path,
   });

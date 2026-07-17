@@ -12,7 +12,7 @@ export function DashboardPage() {
       )}
 
       {viewMode === "grid" ? (
-        <ItemGridView dashboard={dashboard} onUpdated={refreshVault} />
+        <ItemGridView dashboard={dashboard} />
       ) : (
         <ItemTableView dashboard={dashboard} onUpdated={refreshVault} />
       )}

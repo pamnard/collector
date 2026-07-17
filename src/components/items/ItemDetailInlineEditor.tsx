@@ -89,27 +89,6 @@ export function ItemDetailInlineEditor({
         onChange={(tag_ids) => update("tag_ids", tag_ids)}
       />
 
-      <div className="flex flex-wrap gap-4">
-        <label className="inline-flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={values.is_favorite}
-            onChange={(event) => update("is_favorite", event.target.checked)}
-            className="rounded border-border"
-          />
-          Избранное
-        </label>
-        <label className="inline-flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={values.is_archived}
-            onChange={(event) => update("is_archived", event.target.checked)}
-            className="rounded border-border"
-          />
-          Архив
-        </label>
-      </div>
-
       <label className="block">
         <span className="text-sm font-medium">Содержимое (Markdown)</span>
         <textarea

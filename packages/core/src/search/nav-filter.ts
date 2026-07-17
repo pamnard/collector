@@ -1,15 +1,11 @@
 export type NavSearchFilter =
   | "all"
-  | "favorite"
-  | "archived"
   | { type: "tag"; tagId: string }
   | { type: "folder"; folderPath: string };
 
 export function navFilterFromSetting(
   filter:
     | "all"
-    | "favorite"
-    | "archived"
     | { type: "tag"; tag_id: string }
     | { type: "folder"; folder_path: string },
 ): NavSearchFilter {
@@ -26,8 +22,6 @@ export function navFilterToSetting(
   filter: NavSearchFilter,
 ):
   | "all"
-  | "favorite"
-  | "archived"
   | { type: "tag"; tag_id: string }
   | { type: "folder"; folder_path: string } {
   if (typeof filter === "object" && filter.type === "tag") {

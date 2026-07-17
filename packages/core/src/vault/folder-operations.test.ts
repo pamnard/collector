@@ -43,8 +43,6 @@ describe("folder operations", () => {
         content_type: "note",
         source_type: "manual",
         metadata: {},
-        is_archived: false,
-        is_favorite: false,
         tag_ids: [],
         collection_ids: [],
         folder_path: "",
@@ -80,8 +78,6 @@ describe("folder operations", () => {
         content_type: "note",
         source_type: "manual",
         metadata: {},
-        is_archived: false,
-        is_favorite: false,
         tag_ids: [],
         collection_ids: [],
         folder_path: "",
@@ -125,8 +121,6 @@ describe("folder operations", () => {
         content_type: "note",
         source_type: "manual",
         metadata: {},
-        is_archived: false,
-        is_favorite: false,
         tag_ids: [],
         collection_ids: [],
         folder_path: "",
@@ -145,8 +139,6 @@ describe("folder operations", () => {
         content_type: "note",
         source_type: "manual",
         metadata: {},
-        is_archived: true,
-        is_favorite: false,
         tag_ids: [],
         collection_ids: [],
         folder_path: "",
@@ -165,8 +157,6 @@ describe("folder operations", () => {
         content_type: "note",
         source_type: "manual",
         metadata: {},
-        is_archived: false,
-        is_favorite: false,
         tag_ids: [],
         collection_ids: [],
         folder_path: "",
@@ -192,9 +182,7 @@ describe("folder operations", () => {
     );
 
     expect(
-      await ctx.index.listItemIdsByFolderPrefix(meta.id, "Projects", {
-        includeArchived: true,
-      }),
+      await ctx.index.listItemIdsByFolderPrefix(meta.id, "Projects"),
     ).toEqual(expect.arrayContaining([newWorkRootId, newWorkNestedId]));
     expect(await ctx.index.listItemIdsByFolderPrefix(meta.id, "Work")).toEqual(
       [],

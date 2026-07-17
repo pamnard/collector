@@ -33,8 +33,6 @@ export const itemFileSchema = z.object({
   source_id: z.string().nullable().optional(),
   metadata: z.record(z.unknown()).default({}),
   thumbnail: z.string().nullable().optional(),
-  is_archived: z.boolean().default(false),
-  is_favorite: z.boolean().default(false),
   tag_ids: z.array(z.string().uuid()).default([]),
   collection_ids: z.array(z.string().uuid()).default([]),
   folder_path: z.string().default(""),
@@ -60,8 +58,6 @@ export const documentFrontmatterSchema = z.object({
   updated: z.union([z.string(), z.date()]).optional(),
   updated_at: z.union([z.string(), z.date()]).optional(),
   metadata: z.record(z.unknown()).optional(),
-  is_archived: z.boolean().optional(),
-  is_favorite: z.boolean().optional(),
 });
 
 export const vaultMetaSchema = z.object({

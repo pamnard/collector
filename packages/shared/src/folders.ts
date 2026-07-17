@@ -6,11 +6,19 @@ export const foldersFileSchema = z.object({
 
 export type FoldersFile = z.infer<typeof foldersFileSchema>;
 
-export const navFilterSettingSchema = z.union([
-  z.enum(["all", "favorite", "archived"]),
+const navFilterPrimitiveSchema = z.union([
+  z.literal("all"),
   z.object({ type: z.literal("tag"), tag_id: z.string().uuid() }),
   z.object({ type: z.literal("folder"), folder_path: z.string() }),
 ]);
+
+/** Accepts legacy favorite/archived settings and maps them to "all". */
+export const navFilterSettingSchema = z.preprocess((value) => {
+  if (value === "favorite" || value === "archived") {
+    return "all";
+  }
+  return value;
+}, navFilterPrimitiveSchema);
 
 export type NavFilterSetting = z.infer<typeof navFilterSettingSchema>;
 

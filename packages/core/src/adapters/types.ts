@@ -140,9 +140,7 @@ export interface ItemIdPageOptions {
   offset?: number;
 }
 
-export interface ItemIdListOptions extends ItemIdPageOptions {
-  includeArchived?: boolean;
-}
+export type ItemIdListOptions = ItemIdPageOptions;
 
 export interface VaultContext {
   fs: FileSystemAdapter;

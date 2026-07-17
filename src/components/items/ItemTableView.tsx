@@ -80,8 +80,6 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
                 <td className="px-4 py-3 text-right">
                   <ItemRowActions
                     itemId={item.id}
-                    isFavorite={item.is_favorite}
-                    isArchived={item.is_archived}
                     onUpdated={onUpdated}
                   />
                 </td>

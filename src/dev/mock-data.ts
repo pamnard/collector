@@ -8,7 +8,7 @@ const TAG_DEFS = [
   { id: "b0000000-0000-4000-8000-000000000002", name: "dev", color: "#22c55e" },
   { id: "b0000000-0000-4000-8000-000000000003", name: "video", color: "#f97316" },
   { id: "b0000000-0000-4000-8000-000000000004", name: "design", color: "#ec4899" },
-  { id: "b0000000-0000-4000-8000-000000000005", name: "archive-candidate", color: "#94a3b8" },
+  { id: "b0000000-0000-4000-8000-000000000005", name: "misc", color: "#94a3b8" },
 ] as const;
 
 const YOUTUBE_URLS = [
@@ -40,8 +40,6 @@ interface ItemSeed {
   thumbnail?: string | null;
   tagIndexes: number[];
   folder_path: string;
-  is_favorite: boolean;
-  is_archived: boolean;
 }
 
 const ITEM_SEEDS: ItemSeed[] = [
@@ -51,8 +49,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     content_type: "note",
     tagIndexes: [1],
     folder_path: "projects/collector",
-    is_favorite: true,
-    is_archived: false,
   },
   {
     title: "Offline-first vault architecture",
@@ -61,8 +57,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     thumbnail: picsum("collector-arch", 900, 500),
     tagIndexes: [1, 3],
     folder_path: "projects/collector",
-    is_favorite: true,
-    is_archived: false,
   },
   {
     title: "Rick Astley — Never Gonna Give You Up",
@@ -71,8 +65,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     url: YOUTUBE_URLS[0],
     tagIndexes: [2],
     folder_path: "reading",
-    is_favorite: false,
-    is_archived: false,
   },
   {
     title: "Gangnam Style",
@@ -81,8 +73,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     url: YOUTUBE_URLS[1],
     tagIndexes: [2],
     folder_path: "reading",
-    is_favorite: true,
-    is_archived: false,
   },
   {
     title: "Me at the zoo",
@@ -91,8 +81,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     url: YOUTUBE_URLS[2],
     tagIndexes: [2, 0],
     folder_path: "inbox",
-    is_favorite: false,
-    is_archived: false,
   },
   {
     title: "Tall cover image sample",
@@ -101,8 +89,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     thumbnail: picsum("collector-tall", 700, 1100),
     tagIndexes: [3],
     folder_path: "projects/research",
-    is_favorite: false,
-    is_archived: false,
   },
   {
     title: "Wide cover image sample",
@@ -111,8 +97,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     thumbnail: picsum("collector-wide", 1200, 620),
     tagIndexes: [3],
     folder_path: "projects/research",
-    is_favorite: true,
-    is_archived: false,
   },
   {
     title: "Podcast episode: local-first apps",
@@ -120,8 +104,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     content_type: "audio",
     tagIndexes: [0, 1],
     folder_path: "reading",
-    is_favorite: false,
-    is_archived: false,
   },
   {
     title: "PDF: SQLite FTS5 cheatsheet",
@@ -129,8 +111,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     content_type: "pdf",
     tagIndexes: [1],
     folder_path: "projects/research",
-    is_favorite: false,
-    is_archived: false,
   },
   {
     title: "Hacker News front page",
@@ -139,27 +119,21 @@ const ITEM_SEEDS: ItemSeed[] = [
     url: "https://news.ycombinator.com/",
     tagIndexes: [0],
     folder_path: "inbox",
-    is_favorite: false,
-    is_archived: false,
   },
   {
-    title: "Archived research link",
-    description: "Попадает только в фильтр архива.",
+    title: "Research link without cover",
+    description: "Обычная статья в projects/research.",
     content_type: "article",
-    url: "https://example.com/archived",
+    url: "https://example.com/research",
     tagIndexes: [4],
     folder_path: "projects/research",
-    is_favorite: false,
-    is_archived: true,
   },
   {
-    title: "Old mock item in archive",
-    description: "Второй archived для sidebar count.",
+    title: "Old mock note in inbox",
+    description: "Ещё один seed для sidebar count.",
     content_type: "note",
     tagIndexes: [4],
     folder_path: "inbox",
-    is_favorite: true,
-    is_archived: true,
   },
   {
     title: "Design system color tokens",
@@ -168,8 +142,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     thumbnail: picsum("collector-design", 800, 900),
     tagIndexes: [3, 1, 0],
     folder_path: "projects/collector",
-    is_favorite: true,
-    is_archived: false,
   },
   {
     title: "Meow",
@@ -178,8 +150,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     url: YOUTUBE_URLS[3],
     tagIndexes: [2],
     folder_path: "inbox",
-    is_favorite: false,
-    is_archived: false,
   },
   {
     title: "React 19 release notes",
@@ -188,8 +158,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     thumbnail: picsum("collector-react", 820, 680),
     tagIndexes: [1],
     folder_path: "reading",
-    is_favorite: false,
-    is_archived: false,
   },
   {
     title: "Grid card hover states",
@@ -198,18 +166,14 @@ const ITEM_SEEDS: ItemSeed[] = [
     thumbnail: picsum("collector-hover", 760, 760),
     tagIndexes: [3],
     folder_path: "projects/collector",
-    is_favorite: false,
-    is_archived: false,
   },
   {
-    title: "Favorite without cover",
-    description: "Избранное без картинки.",
+    title: "Bookmark without cover",
+    description: "Закладка без картинки.",
     content_type: "bookmark",
     url: "https://developer.mozilla.org/",
     tagIndexes: [0],
     folder_path: "reading",
-    is_favorite: true,
-    is_archived: false,
   },
   {
     title: "Typography scale draft",
@@ -217,8 +181,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     content_type: "note",
     tagIndexes: [3],
     folder_path: "projects",
-    is_favorite: false,
-    is_archived: false,
   },
   {
     title: "Screenshot reference",
@@ -227,8 +189,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     thumbnail: picsum("collector-square", 800, 800),
     tagIndexes: [3],
     folder_path: "inbox",
-    is_favorite: false,
-    is_archived: false,
   },
   {
     title: "Long title that should wrap nicely on the card without breaking the masonry column layout in the dashboard",
@@ -237,8 +197,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     thumbnail: picsum("collector-long-title", 880, 520),
     tagIndexes: [0, 1],
     folder_path: "projects/collector",
-    is_favorite: false,
-    is_archived: false,
   },
   {
     title: "Minimal note",
@@ -246,8 +204,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     content_type: "note",
     tagIndexes: [],
     folder_path: "inbox",
-    is_favorite: false,
-    is_archived: false,
   },
   {
     title: "Tagged reading list",
@@ -255,8 +211,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     content_type: "bookmark",
     tagIndexes: [0, 4],
     folder_path: "reading",
-    is_favorite: false,
-    is_archived: false,
   },
   {
     title: "Research paper scan",
@@ -265,8 +219,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     thumbnail: picsum("collector-pdf", 700, 980),
     tagIndexes: [0],
     folder_path: "projects/research",
-    is_favorite: false,
-    is_archived: false,
   },
   {
     title: "Ambient mix",
@@ -274,8 +226,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     content_type: "audio",
     tagIndexes: [2],
     folder_path: "inbox",
-    is_favorite: true,
-    is_archived: false,
   },
   {
     title: "Other misc link",
@@ -284,8 +234,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     url: "https://example.com/misc",
     tagIndexes: [4],
     folder_path: "inbox",
-    is_favorite: false,
-    is_archived: false,
   },
   {
     title: "Collector issue #57",
@@ -294,8 +242,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     thumbnail: picsum("collector-issue-57", 900, 720),
     tagIndexes: [1],
     folder_path: "projects/collector",
-    is_favorite: true,
-    is_archived: false,
   },
   {
     title: "Folder inbox quick capture",
@@ -303,8 +249,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     content_type: "note",
     tagIndexes: [],
     folder_path: "inbox",
-    is_favorite: false,
-    is_archived: false,
   },
   {
     title: "Nested folder path item",
@@ -313,8 +257,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     thumbnail: picsum("collector-nested", 840, 640),
     tagIndexes: [1, 0],
     folder_path: "projects/research",
-    is_favorite: false,
-    is_archived: false,
   },
   {
     title: "Extra item for pagination batch boundary",
@@ -323,8 +265,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     url: "https://github.com/pamnard/collector/issues/57",
     tagIndexes: [1],
     folder_path: "projects/collector",
-    is_favorite: false,
-    is_archived: false,
   },
   {
     title: "Thirtieth mock card",
@@ -333,8 +273,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     thumbnail: picsum("collector-thirty", 750, 1050),
     tagIndexes: [3, 2],
     folder_path: "reading",
-    is_favorite: true,
-    is_archived: false,
   },
 ];
 
@@ -351,8 +289,6 @@ function buildItems(): ItemFile[] {
       source_type: seed.url?.includes("youtube") ? "youtube" : "manual",
       metadata: {},
       thumbnail: seed.thumbnail ?? null,
-      is_archived: seed.is_archived,
-      is_favorite: seed.is_favorite,
       tag_ids: seed.tagIndexes.map((tagIndex) => TAG_DEFS[tagIndex].id),
       collection_ids: [],
       folder_path: seed.folder_path,
@@ -384,9 +320,7 @@ export function createMockTags(items: ItemFile[]): TagWithCount[] {
     name: tag.name,
     color: tag.color,
     created_at: timestamp,
-    item_count: items.filter(
-      (item) => !item.is_archived && item.tag_ids.includes(tag.id),
-    ).length,
+    item_count: items.filter((item) => item.tag_ids.includes(tag.id)).length,
   }));
 }
 

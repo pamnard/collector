@@ -12,7 +12,6 @@ import type { useDashboardItems } from "../../hooks/useDashboardItems";
 
 interface ItemGridViewProps {
   dashboard: ReturnType<typeof useDashboardItems>;
-  onUpdated: () => void;
 }
 
 function itemThumbnailBatchKey(items: ItemFile[]): string {
@@ -21,7 +20,7 @@ function itemThumbnailBatchKey(items: ItemFile[]): string {
     .join("|");
 }
 
-export function ItemGridView({ dashboard, onUpdated }: ItemGridViewProps) {
+export function ItemGridView({ dashboard }: ItemGridViewProps) {
   const navigate = useNavigate();
   const { vaultRevision } = useShell();
   const [tags, setTags] = useState<TagWithCount[]>([]);
@@ -95,7 +94,6 @@ export function ItemGridView({ dashboard, onUpdated }: ItemGridViewProps) {
               }
               tagsById={tagsById}
               onOpen={(itemId) => navigate(`/item/${itemId}`)}
-              onUpdated={onUpdated}
             />
           </div>
         ))}

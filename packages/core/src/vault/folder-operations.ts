@@ -116,9 +116,7 @@ export async function renameFolder(
     throw new Error(`Folder already exists: ${to}`);
   }
 
-  const itemIds = await ctx.index.listItemIdsByFolderPrefix(vaultId, from, {
-    includeArchived: true,
-  });
+  const itemIds = await ctx.index.listItemIdsByFolderPrefix(vaultId, from);
 
   await ctx.fs.rename(fromAbs, toAbs);
   await ctx.fs.touch(vaultPath);
