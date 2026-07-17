@@ -186,7 +186,7 @@ export function AppLayout() {
                 vaultRevision={vaultRevision}
               />
             </ResizablePanel>
-            <ResizableHandle />
+            <ResizableHandle className="bg-transparent hover:bg-border data-[separator=active]:bg-border focus-visible:ring-0" />
             <ResizablePanel
               id="main"
               minSize="50%"
