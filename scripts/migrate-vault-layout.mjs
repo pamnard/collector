@@ -117,12 +117,20 @@ if (dryRun) {
 let backupPath = null;
 if (!noBackup) {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  // Never write backups inside vaults/ — app discovers every dir with vault.meta.json.
+  // Prefer sibling of vaults/: <dataDir>/vault-layout-backups/<id>.pre-layout-migrate-…
+  const vaultsDir = dirname(vaultPath);
+  const dataDir = dirname(vaultsDir);
+  const backupRoot =
+    basename(vaultsDir) === "vaults"
+      ? resolve(dataDir, "vault-layout-backups")
+      : resolve(vaultsDir, "vault-layout-backups");
   backupPath = resolve(
-    dirname(vaultPath),
+    backupRoot,
     `${basename(vaultPath)}.pre-layout-migrate-${stamp}`,
   );
   console.error(`Backup → ${backupPath}`);
-  await mkdir(dirname(backupPath), { recursive: true });
+  await mkdir(backupRoot, { recursive: true });
   await cp(vaultPath, backupPath, { recursive: true, verbatimSymlinks: true });
   console.error("Backup done.");
 } else {

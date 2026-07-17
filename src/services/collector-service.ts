@@ -249,6 +249,10 @@ function buildSearchFtsQuery(userQuery: string, vaultId: string): string | null 
 
 type VaultEntry = { meta: VaultMeta; path: string };
 
+/** Vault dirs are UUID folders only — skip backups / stray names under vaults/. */
+const VAULT_DIR_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function listVaultEntries(): Promise<VaultEntry[]> {
   await ensureInitialized();
   const root = vaultsRoot(dataDir);
@@ -258,9 +262,13 @@ async function listVaultEntries(): Promise<VaultEntry[]> {
 
   const entries: VaultEntry[] = [];
   for (const vaultId of await fs.readDir(root)) {
+    if (!VAULT_DIR_ID_RE.test(vaultId)) {
+      continue;
+    }
     const path = vaultRoot(root, vaultId);
     if (await fs.exists(vaultMetaPath(path))) {
-      await assertVaultTreeLayout(fs, path);
+      // Do not assert layout here: orphan/legacy neighbors must not block listing
+      // or opening a healthy active vault. Assert only when selecting a vault.
       const meta = await readVaultMeta(fs, path);
       entries.push({ meta, path });
     }
@@ -618,6 +626,8 @@ const resolveActiveVaultShared = createSingleFlight(async () => {
       },
       content: "# Collector\n\nOffline vault is working.",
     });
+  } else {
+    await assertVaultTreeLayout(fs, vaultPath);
   }
 
   activeVault = { meta, path: vaultPath };
@@ -1027,6 +1037,8 @@ export async function switchVault(vaultId: string): Promise<VaultMeta> {
   if (!selected) {
     throw new Error(`Vault not found: ${vaultId}`);
   }
+
+  await assertVaultTreeLayout(fs, selected.path);
 
   activeVault = selected;
   watcherDisabledVaultIds.delete(vaultId);
