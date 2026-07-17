@@ -5,9 +5,13 @@ import {
   createMockTags,
   createMockVault,
 } from "./mock-data";
+import type { DevVaultSnapshot } from "./dev-vault-types";
 
 let items: ItemFile[] = createMockItems();
-const vault: VaultMeta = createMockVault();
+let vault: VaultMeta = createMockVault();
+let tags: TagWithCount[] | null = null;
+let folderTree: FolderTreeNode[] | null = null;
+let diskVault = false;
 
 function folderItemCount(folderPath: string): number {
   return items.filter(
@@ -18,7 +22,7 @@ function folderItemCount(folderPath: string): number {
   ).length;
 }
 
-function buildFolderTree(): FolderTreeNode[] {
+function buildSyntheticFolderTree(): FolderTreeNode[] {
   const projects: FolderTreeNode = {
     name: "projects",
     path: "projects",
@@ -56,7 +60,31 @@ function buildFolderTree(): FolderTreeNode[] {
   ];
 }
 
+function resetSynthetic(): void {
+  items = createMockItems();
+  vault = createMockVault();
+  tags = null;
+  folderTree = null;
+  diskVault = false;
+}
+
 export const mockStore = {
+  isDiskVault(): boolean {
+    return diskVault;
+  },
+
+  loadVaultSnapshot(snapshot: DevVaultSnapshot): void {
+    vault = snapshot.vault;
+    items = snapshot.items;
+    tags = snapshot.tags;
+    folderTree = snapshot.folderTree;
+    diskVault = true;
+  },
+
+  resetToSynthetic(): void {
+    resetSynthetic();
+  },
+
   getVault(): VaultMeta {
     return vault;
   },
@@ -70,11 +98,17 @@ export const mockStore = {
   },
 
   listTags(): TagWithCount[] {
+    if (tags) {
+      return tags;
+    }
     return createMockTags(items);
   },
 
   listFolderTree(): FolderTreeNode[] {
-    return buildFolderTree();
+    if (folderTree) {
+      return folderTree;
+    }
+    return buildSyntheticFolderTree();
   },
 
   updateItem(

@@ -1,4 +1,3 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   FileText,
   Image as ImageIcon,
@@ -11,6 +10,7 @@ import type { SyntheticEvent } from "react";
 import type { ItemFile } from "@collector/shared";
 import type { TagWithCount } from "@collector/core";
 import { ItemFlagActions } from "./ItemFlagActions";
+import { toDisplayAssetSrc } from "../../utils/asset-src";
 import { formatItemDate } from "../../utils/formatItemDate";
 import { getYouTubeThumbnail } from "../../utils/youtube-thumbnail";
 
@@ -23,13 +23,6 @@ interface ItemGridCardProps {
   tagsById: Map<string, TagWithCount>;
   onOpen: (itemId: string) => void;
   onUpdated: () => void;
-}
-
-function toCoverDisplaySrc(pathOrUrl: string): string {
-  if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
-    return pathOrUrl;
-  }
-  return convertFileSrc(pathOrUrl);
 }
 
 function iconForContentType(type: string) {
@@ -86,7 +79,7 @@ export function ItemGridCard({
     }
 
     if (thumbnailPath) {
-      setCoverSrc(toCoverDisplaySrc(thumbnailPath));
+      setCoverSrc(toDisplayAssetSrc(thumbnailPath));
       return;
     }
 

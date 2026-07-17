@@ -913,6 +913,10 @@ export async function loadDashboardItems(
 export async function getItemById(
   itemId: string,
 ): Promise<{ item: ItemFile; content: string | null }> {
+  if (isDevMock()) {
+    return devMockCollector.getItemById(itemId);
+  }
+
   const { path } = await resolveActiveVault();
   const itemPath = itemRoot(path, itemId);
 
@@ -1255,6 +1259,10 @@ export async function moveItemToFolderPath(
 }
 
 export async function listItemMedia(itemId: string): Promise<MediaWithPath[]> {
+  if (isDevMock()) {
+    return devMockCollector.listItemMedia(itemId);
+  }
+
   const { path } = await resolveActiveVault();
   return listItemMediaWithPaths(getContext(), path, itemId);
 }

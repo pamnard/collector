@@ -1,4 +1,3 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { ImagePlus, Star, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MediaWithPath } from "@collector/core";
@@ -8,6 +7,7 @@ import {
   listItemMedia,
   setItemCoverFromMedia,
 } from "../../services/collector-service";
+import { toDisplayAssetSrc } from "../../utils/asset-src";
 
 interface MediaGalleryProps {
   itemId: string;
@@ -123,7 +123,7 @@ export function MediaGallery({ itemId, onUpdated }: MediaGalleryProps) {
             >
               {file.media_type === "image" ? (
                 <img
-                  src={convertFileSrc(file.absolute_path)}
+                  src={toDisplayAssetSrc(file.absolute_path)}
                   alt={file.filename}
                   className="w-full h-40 object-cover bg-input/20"
                 />

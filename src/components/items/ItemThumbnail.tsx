@@ -1,8 +1,8 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { ImageIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ItemFile } from "@collector/shared";
 import { resolveItemThumbnailPath } from "../../services/collector-service";
+import { toDisplayAssetSrc } from "../../utils/asset-src";
 import { getYouTubeThumbnail } from "../../utils/youtube-thumbnail";
 
 interface ItemThumbnailProps {
@@ -29,7 +29,7 @@ export function ItemThumbnail({
       }
 
       if (path) {
-        setSrc(convertFileSrc(path));
+        setSrc(toDisplayAssetSrc(path));
         return;
       }
 
