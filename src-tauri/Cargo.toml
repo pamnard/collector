@@ -1,6 +1,6 @@
 [package]
 name = "collector"
-version = "0.1.19"
+version = "0.1.20"
 description = "Offline-first desktop vault for articles, images, videos, notes, and bookmarks"
 authors = ["pamnard"]
 edition = "2021"
