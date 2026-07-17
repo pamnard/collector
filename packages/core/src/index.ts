@@ -154,6 +154,7 @@ export {
   clearItemCover,
   resolveItemThumbnailAbsolutePath,
 } from "./vault/cover-operations.js";
+export { assertVaultTreeLayout } from "./vault/assert-vault-layout.js";
 
 export { SqlVaultIndexAdapter, SqlVaultIndexStore } from "./index/sql-index.js";
 export type { SqlSelector } from "./index/sql-index.js";
@@ -172,5 +173,3 @@ export {
   readDashboardSnapshot,
   writeDashboardSnapshot,
 } from "./settings/dashboard-snapshot-io.js";
-
-export { migrateVaultSchema } from "./vault/schema-migrate.js";

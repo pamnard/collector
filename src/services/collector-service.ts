@@ -14,9 +14,10 @@ import {
   itemMarkdownPath,
   listItemsByIds,
   listItemsOnDisk,
-  migrateVaultSchema,
+  assertVaultTreeLayout,
   readItemContent,
   readItemFile,
+  readVaultMeta,
   syncVaultIndexFromFilesystem,
   upsertItem,
   vaultMetaPath,
@@ -259,7 +260,8 @@ async function listVaultEntries(): Promise<VaultEntry[]> {
   for (const vaultId of await fs.readDir(root)) {
     const path = vaultRoot(root, vaultId);
     if (await fs.exists(vaultMetaPath(path))) {
-      const meta = await migrateVaultSchema(fs, path);
+      await assertVaultTreeLayout(fs, path);
+      const meta = await readVaultMeta(fs, path);
       entries.push({ meta, path });
     }
   }
