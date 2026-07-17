@@ -7,8 +7,10 @@ export interface VaultItemStatMeta {
 }
 
 export interface VaultItemMetaRead {
+  /** Vault-relative posix path of the `.md` file (item id). */
   id: string;
-  itemJson: string;
+  /** Raw markdown document text (frontmatter + body). */
+  markdown: string;
 }
 
 export interface FileSystemAdapter {
@@ -22,10 +24,11 @@ export interface FileSystemAdapter {
   stat(path: string): Promise<{ mtimeMs: number | null }>;
   touch(path: string): Promise<void>;
   remove(path: string, options?: { recursive?: boolean }): Promise<void>;
+  rename(from: string, to: string): Promise<void>;
   join(...parts: string[]): string;
-  /** One IPC: stat item.json mtimes for every item dir under vault. */
+  /** One IPC: stat mtimes for every markdown item under the vault (recursive). */
   statVaultItemsMeta?(vaultPath: string): Promise<VaultItemStatMeta[]>;
-  /** One IPC per chunk: read item.json for the given ids. */
+  /** One IPC per chunk: read markdown documents for the given item ids (relative paths). */
   readVaultItemsMeta?(
     vaultPath: string,
     itemIds: string[],

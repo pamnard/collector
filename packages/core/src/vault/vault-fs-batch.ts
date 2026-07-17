@@ -8,7 +8,8 @@ import {
   INDEX_SYNC_YIELD_MS,
   yieldToEventLoop,
 } from "../util/concurrency.js";
-import { filterDiskItemIds, itemMetaPath, itemRoot, itemsRoot } from "./paths.js";
+import { itemMarkdownPath } from "./paths.js";
+import { listItemRelativePaths } from "./scan.js";
 
 /** Max item ids per batched read-meta IPC call; aligned with write batch for yield cadence. */
 export const VAULT_ITEM_READ_META_BATCH = INDEX_SYNC_WRITE_BATCH;
@@ -28,15 +29,10 @@ export async function statAllVaultItemMeta(
     return fs.statVaultItemsMeta(vaultPath);
   }
 
-  const itemsDir = itemsRoot(vaultPath);
-  if (!(await fs.exists(itemsDir))) {
-    return [];
-  }
-
-  const itemIds = filterDiskItemIds(await fs.readDir(itemsDir));
+  const itemIds = await listItemRelativePaths(fs, vaultPath);
   const results: VaultItemStatMeta[] = [];
   for (const itemId of itemIds) {
-    const fileStat = await fs.stat(itemMetaPath(itemRoot(vaultPath, itemId)));
+    const fileStat = await fs.stat(itemMarkdownPath(vaultPath, itemId));
     results.push({ id: itemId, mtimeMs: fileStat.mtimeMs });
   }
   return results;
@@ -67,13 +63,12 @@ export async function readVaultItemMetaBatch(
   const results: VaultItemMetaRead[] = [];
   for (let i = 0; i < itemIds.length; i += 1) {
     const itemId = itemIds[i]!;
-    const itemPath = itemRoot(vaultPath, itemId);
-    const metaPath = itemMetaPath(itemPath);
-    if (!(await fs.exists(metaPath))) {
+    const markdownPath = itemMarkdownPath(vaultPath, itemId);
+    if (!(await fs.exists(markdownPath))) {
       continue;
     }
-    const itemJson = await fs.readText(metaPath);
-    results.push({ id: itemId, itemJson });
+    const markdown = await fs.readText(markdownPath);
+    results.push({ id: itemId, markdown });
     if ((i + 1) % VAULT_ITEM_READ_META_BATCH === 0 && i + 1 < itemIds.length) {
       await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
     }

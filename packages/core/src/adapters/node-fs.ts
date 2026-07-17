@@ -1,4 +1,15 @@
-import { access, constants, mkdir, readFile, readdir, rm, writeFile, stat, utimes } from "node:fs/promises";
+import {
+  access,
+  constants,
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  writeFile,
+  stat,
+  utimes,
+} from "node:fs/promises";
 import { join } from "node:path";
 import type {
   FileSystemAdapter,
@@ -6,10 +17,9 @@ import type {
   VaultItemStatMeta,
 } from "./types.js";
 import {
-  filterDiskItemIds,
-  itemMetaPath,
-  itemRoot,
-  itemsRoot,
+  isMarkdownItemFile,
+  isReservedVaultEntry,
+  itemMarkdownPath,
 } from "../vault/paths.js";
 
 export class NodeFileSystemAdapter implements FileSystemAdapter {
@@ -69,18 +79,42 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
     await rm(path, { recursive: options?.recursive ?? false, force: true });
   }
 
+  async rename(from: string, to: string): Promise<void> {
+    await rename(from, to);
+  }
+
+  private async walkItems(
+    vaultPath: string,
+    relDir: string,
+    onItem: (relPath: string) => Promise<void>,
+  ): Promise<void> {
+    const absDir = relDir ? join(vaultPath, relDir) : vaultPath;
+    const dirents = await readdir(absDir, { withFileTypes: true });
+    for (const dirent of dirents) {
+      const name = dirent.name;
+      if (name.startsWith(".") || isReservedVaultEntry(name)) {
+        continue;
+      }
+      const rel = relDir ? `${relDir}/${name}` : name;
+      if (dirent.isDirectory()) {
+        await this.walkItems(vaultPath, rel, onItem);
+        continue;
+      }
+      if (isMarkdownItemFile(name)) {
+        await onItem(rel);
+      }
+    }
+  }
+
   async statVaultItemsMeta(vaultPath: string): Promise<VaultItemStatMeta[]> {
-    const itemsDir = itemsRoot(vaultPath);
-    if (!(await this.exists(itemsDir))) {
+    if (!(await this.exists(vaultPath))) {
       return [];
     }
-
-    const itemIds = filterDiskItemIds(await this.readDir(itemsDir));
     const results: VaultItemStatMeta[] = [];
-    for (const itemId of itemIds) {
-      const fileStat = await this.stat(itemMetaPath(itemRoot(vaultPath, itemId)));
-      results.push({ id: itemId, mtimeMs: fileStat.mtimeMs });
-    }
+    await this.walkItems(vaultPath, "", async (rel) => {
+      const fileStat = await this.stat(itemMarkdownPath(vaultPath, rel));
+      results.push({ id: rel, mtimeMs: fileStat.mtimeMs });
+    });
     return results;
   }
 
@@ -90,12 +124,12 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
   ): Promise<VaultItemMetaRead[]> {
     const results: VaultItemMetaRead[] = [];
     for (const itemId of itemIds) {
-      const metaPath = itemMetaPath(itemRoot(vaultPath, itemId));
-      if (!(await this.exists(metaPath))) {
+      const markdownPath = itemMarkdownPath(vaultPath, itemId);
+      if (!(await this.exists(markdownPath))) {
         continue;
       }
-      const itemJson = await this.readText(metaPath);
-      results.push({ id: itemId, itemJson });
+      const markdown = await this.readText(markdownPath);
+      results.push({ id: itemId, markdown });
     }
     return results;
   }
