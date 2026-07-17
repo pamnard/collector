@@ -5,7 +5,10 @@ import { join } from "node:path";
 import { SCHEMA_VERSION } from "@collector/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
-import { migrateVaultSchema } from "../vault/schema-migrate.js";
+import {
+  migrateVaultSchema,
+  preflightLegacyVaultLayout,
+} from "../vault/schema-migrate.js";
 import {
   legacyItemRoot,
   legacyItemsRoot,
@@ -80,9 +83,10 @@ describe("migrateVaultSchema", () => {
     );
     await writeFile(join(itemDir, "content.md"), "# Legacy");
 
-    const meta = await migrateVaultSchema(fs, vaultPath);
-    expect(meta.schema_version).toBe(SCHEMA_VERSION);
-    expect(meta.settings).toEqual({});
+    const report = await migrateVaultSchema(fs, vaultPath);
+    expect(report.meta.schema_version).toBe(SCHEMA_VERSION);
+    expect(report.meta.settings).toEqual({});
+    expect(report.itemsMigrated).toBe(1);
 
     const destPath = join(vaultPath, `${itemId}.md`);
     expect(await exists(destPath)).toBe(true);
@@ -105,8 +109,146 @@ describe("migrateVaultSchema", () => {
 
     // Idempotent second pass
     const again = await migrateVaultSchema(fs, vaultPath);
-    expect(again.schema_version).toBe(SCHEMA_VERSION);
+    expect(again.meta.schema_version).toBe(SCHEMA_VERSION);
     expect(await exists(destPath)).toBe(true);
+  });
+
+  it("keeps content.md bodies that start with --- when item.json is present", async () => {
+    const fs = new NodeFileSystemAdapter();
+    const root = await mkdtemp(join(tmpdir(), "collector-vault-hr-"));
+    vaultPath = root;
+    const itemId = "11111111-1111-4111-8111-111111111111";
+    const vaultId = "22222222-2222-4222-8222-222222222222";
+    const timestamp = "2026-01-01T00:00:00.000Z";
+    const body = "---\nnot: frontmatter\n---\n\nActual body";
+
+    await writeFile(
+      join(vaultPath, "vault.meta.json"),
+      JSON.stringify(
+        {
+          id: vaultId,
+          name: "HR Vault",
+          description: "",
+          is_default: true,
+          schema_version: 2,
+          settings: {},
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+        null,
+        2,
+      ),
+    );
+    await writeFile(join(vaultPath, "tags.json"), JSON.stringify({ tags: [] }));
+
+    const itemDir = legacyItemRoot(vaultPath, itemId);
+    await mkdir(itemDir, { recursive: true });
+    await writeFile(
+      join(itemDir, "item.json"),
+      JSON.stringify(
+        {
+          id: itemId,
+          vault_id: vaultId,
+          title: "Dashed body",
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          tag_ids: [],
+          collection_ids: [],
+          folder_path: "",
+          content_revision: 1,
+          created_at: timestamp,
+          updated_at: timestamp,
+          schema_version: 2,
+        },
+        null,
+        2,
+      ),
+    );
+    await writeFile(join(itemDir, "content.md"), body);
+
+    const preflight = await preflightLegacyVaultLayout(fs, vaultPath);
+    expect(preflight.issues).toEqual([]);
+
+    const report = await migrateVaultSchema(fs, vaultPath);
+    expect(report.itemsMigrated).toBe(1);
+
+    const md = await readFile(join(vaultPath, `${itemId}.md`), "utf8");
+    const parsed = parseDocumentMarkdown(md);
+    expect(parsed.frontmatter.title).toBe("Dashed body");
+    // Writer may wrap body; the legacy --- block must still be in the document body.
+    expect(parsed.body).toContain("not: frontmatter");
+    expect(parsed.body).toContain("Actual body");
+  });
+
+  it("resumes after a partial item migrate (dest md exists, legacy dir remains)", async () => {
+    const fs = new NodeFileSystemAdapter();
+    const root = await mkdtemp(join(tmpdir(), "collector-vault-resume-"));
+    vaultPath = root;
+    const itemId = "11111111-1111-4111-8111-111111111111";
+    const vaultId = "22222222-2222-4222-8222-222222222222";
+    const timestamp = "2026-01-01T00:00:00.000Z";
+
+    await writeFile(
+      join(vaultPath, "vault.meta.json"),
+      JSON.stringify(
+        {
+          id: vaultId,
+          name: "Resume Vault",
+          description: "",
+          is_default: true,
+          schema_version: 2,
+          settings: {},
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+        null,
+        2,
+      ),
+    );
+    await writeFile(join(vaultPath, "tags.json"), JSON.stringify({ tags: [] }));
+
+    const itemDir = legacyItemRoot(vaultPath, itemId);
+    await mkdir(itemDir, { recursive: true });
+    await writeFile(
+      join(itemDir, "item.json"),
+      JSON.stringify(
+        {
+          id: itemId,
+          vault_id: vaultId,
+          title: "Partial",
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          tag_ids: [],
+          collection_ids: [],
+          folder_path: "",
+          content_revision: 1,
+          created_at: timestamp,
+          updated_at: timestamp,
+          schema_version: 2,
+        },
+        null,
+        2,
+      ),
+    );
+    await writeFile(join(itemDir, "content.md"), "body from legacy");
+    await mkdir(join(itemDir, "media"), { recursive: true });
+    await writeFile(join(itemDir, "media", "manifest.json"), '{"files":[]}');
+    // Simulate crash after writing dest md but before removing legacy:
+    await writeFile(join(vaultPath, `${itemId}.md`), "---\ntitle: stale\n---\n\nold\n");
+
+    const report = await migrateVaultSchema(fs, vaultPath);
+    expect(report.itemsMigrated).toBe(1);
+    expect(await exists(itemDir)).toBe(false);
+    expect(await exists(join(vaultPath, `${itemId}.media`))).toBe(true);
+
+    const md = await readFile(join(vaultPath, `${itemId}.md`), "utf8");
+    const parsed = parseDocumentMarkdown(md);
+    expect(parsed.frontmatter.title).toBe("Partial");
+    expect(parsed.body).toBe("body from legacy");
   });
 
   it("ignores leftover .collector-touch stamp under items/", async () => {
@@ -162,12 +304,66 @@ describe("migrateVaultSchema", () => {
     );
     await writeFile(join(legacyItemsRoot(vaultPath), RECONCILE_TOUCH_FILE), "1");
 
-    const meta = await migrateVaultSchema(fs, vaultPath);
-    expect(meta.schema_version).toBe(SCHEMA_VERSION);
+    const report = await migrateVaultSchema(fs, vaultPath);
+    expect(report.meta.schema_version).toBe(SCHEMA_VERSION);
 
     const destPath = join(vaultPath, `${itemId}.md`);
     expect(await exists(destPath)).toBe(true);
     expect(await exists(itemDir)).toBe(false);
     expect(await fs.exists(legacyItemsRoot(vaultPath))).toBe(false);
+  });
+
+  it("preflight reports invalid item.json without writing", async () => {
+    const fs = new NodeFileSystemAdapter();
+    const root = await mkdtemp(join(tmpdir(), "collector-vault-pf-"));
+    vaultPath = root;
+    const itemId = "11111111-1111-4111-8111-111111111111";
+    const vaultId = "22222222-2222-4222-8222-222222222222";
+    const timestamp = "2026-01-01T00:00:00.000Z";
+
+    await writeFile(
+      join(vaultPath, "vault.meta.json"),
+      JSON.stringify(
+        {
+          id: vaultId,
+          name: "PF Vault",
+          description: "",
+          is_default: true,
+          schema_version: 2,
+          settings: {},
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+        null,
+        2,
+      ),
+    );
+    await writeFile(join(vaultPath, "tags.json"), JSON.stringify({ tags: [] }));
+
+    const itemDir = legacyItemRoot(vaultPath, itemId);
+    await mkdir(itemDir, { recursive: true });
+    await writeFile(
+      join(itemDir, "item.json"),
+      JSON.stringify(
+        {
+          id: itemId,
+          vault_id: vaultId,
+          title: "",
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+        null,
+        2,
+      ),
+    );
+
+    const preflight = await preflightLegacyVaultLayout(fs, vaultPath);
+    expect(preflight.issues).toHaveLength(1);
+    expect(preflight.issues[0]?.uuid).toBe(itemId);
+    expect(await exists(itemDir)).toBe(true);
   });
 });
