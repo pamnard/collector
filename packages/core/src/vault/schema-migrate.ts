@@ -1,3 +1,7 @@
+/**
+ * One-shot vault layout conversion (legacy `items/<uuid>/` → tree).
+ * Used by `scripts/migrate-vault-layout.mjs` only — never from app open/sync.
+ */
 import {
   SCHEMA_VERSION,
   itemFileSchema,
