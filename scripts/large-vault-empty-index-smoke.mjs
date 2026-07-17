@@ -66,20 +66,22 @@ try {
   });
 
   for (let i = 0; i < ITEM_COUNT; i += 1) {
+    const stem = createId();
+    // Path-as-id (#134): item id is vault-relative `.md` path; folder = dirname.
+    const id = i % 10 === 0 ? `Bench/${stem}.md` : `${stem}.md`;
     await upsertItem(diskCtx, path, meta.id, {
       item: {
-        id: createId(),
+        id,
         vault_id: meta.id,
         title: `Item ${i}`,
         description: "",
         content_type: "note",
         source_type: "manual",
         metadata: {},
-        is_archived: false,
-        is_favorite: false,
         tag_ids: [],
         collection_ids: [],
-        folder_path: i % 10 === 0 ? "Bench" : "",
+        folder_path: "",
+        content_revision: 1,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       },
