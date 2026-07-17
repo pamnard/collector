@@ -8,11 +8,16 @@ import { getYouTubeThumbnail } from "../../utils/youtube-thumbnail";
 interface ItemThumbnailProps {
   item: ItemFile;
   className?: string;
+  /** When false, render nothing until src resolves (no placeholder). Default true. */
+  showLoadingPlaceholder?: boolean;
+  loadingClassName?: string;
 }
 
 export function ItemThumbnail({
   item,
   className = "h-32 w-full object-cover",
+  showLoadingPlaceholder = true,
+  loadingClassName = "flex h-32 w-full items-center justify-center bg-input/20 text-secondary",
 }: ItemThumbnailProps) {
   const [src, setSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,8 +56,11 @@ export function ItemThumbnail({
   }, [item.id, item.thumbnail, item.updated_at, item.url]);
 
   if (loading) {
+    if (!showLoadingPlaceholder) {
+      return null;
+    }
     return (
-      <div className="flex h-32 w-full items-center justify-center bg-input/20 text-secondary">
+      <div className={loadingClassName}>
         <ImageIcon size={20} />
       </div>
     );

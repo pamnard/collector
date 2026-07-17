@@ -166,8 +166,8 @@ export function ItemGridCard({
       <div
         className={
           overlayLayout
-            ? "mt-4 flex items-center justify-between border-t border-white/20 pt-4 text-xs text-white/70 dark:border-neutral-900/15 dark:text-neutral-600"
-            : "mt-4 flex items-center justify-between border-t border-border-card pt-4 text-xs text-muted"
+            ? "relative mt-4 flex items-center text-xs leading-none text-white/70 dark:text-neutral-600"
+            : "relative mt-4 flex items-center text-xs leading-none text-muted"
         }
       >
         <div className="flex items-center gap-2">
@@ -182,7 +182,7 @@ export function ItemGridCard({
         </div>
 
         <div
-          className="opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
+          className="absolute right-0 top-1/2 -translate-y-1/2 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
         >

@@ -10,6 +10,7 @@ import { SidebarCollections } from "./SidebarCollections";
 import { SidebarMenu } from "./SidebarMenu";
 
 interface SidebarProps {
+  variant?: "drawer" | "docked";
   isOpen: boolean;
   onClose: () => void;
   activeFilter: NavFilter;
@@ -18,6 +19,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({
+  variant = "drawer",
   isOpen,
   onClose,
   activeFilter,
@@ -55,7 +57,7 @@ export function Sidebar({
 
   return (
     <>
-      {isOpen && (
+      {variant === "drawer" && isOpen && (
         <button
           type="button"
           aria-label="Закрыть меню"
@@ -65,9 +67,13 @@ export function Sidebar({
       )}
 
       <aside
-        className={`fixed md:static inset-y-0 left-0 z-50 w-72 bg-sidebar border-r border-border flex flex-col transition-all duration-300 ease-in-out shrink-0 ${
-          isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
-        }`}
+        className={
+          variant === "docked"
+            ? "flex h-full w-full flex-col bg-sidebar"
+            : `fixed md:static inset-y-0 left-0 z-50 w-72 bg-sidebar border-r border-border flex flex-col transition-all duration-300 ease-in-out shrink-0 ${
+                isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+              }`
+        }
       >
         <div className="h-16 px-6 flex items-center justify-between border-b border-border shrink-0 box-border">
           <button

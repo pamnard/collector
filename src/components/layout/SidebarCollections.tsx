@@ -1,4 +1,4 @@
-import { Folder } from "lucide-react";
+import { Folder, FolderOpen } from "lucide-react";
 import { useMemo } from "react";
 import type { FolderTreeNode } from "@collector/core";
 import { useFolderTree } from "../../hooks/useFolderTree";
@@ -22,7 +22,7 @@ function flattenFolders(nodes: FolderTreeNode[]): FolderTreeNode[] {
 }
 
 function collectionButtonClass(selected: boolean): string {
-  return `w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+  return `w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
     selected
       ? "bg-indigo-50 dark:bg-indigo-600/10 text-indigo-600 dark:text-indigo-400"
       : "text-secondary hover:bg-input hover:text-primary"
@@ -45,23 +45,25 @@ export function SidebarCollections({
   const folders = useFolderTree(vaultRevision);
   const activeKey = navFilterKey(activeFilter);
   const flatFolders = useMemo(() => flattenFolders(folders), [folders]);
+  const uncategorizedSelected =
+    !isSettings && activeKey === navFilterKey(UNCATEGORIZED_FILTER);
+  const UncategorizedIcon = uncategorizedSelected ? FolderOpen : Folder;
 
   return (
     <div className="space-y-1">
       <button
         type="button"
         onClick={() => onSelect(UNCATEGORIZED_FILTER)}
-        className={collectionButtonClass(
-          !isSettings && activeKey === navFilterKey(UNCATEGORIZED_FILTER),
-        )}
+        className={collectionButtonClass(uncategorizedSelected)}
       >
-        <Folder size={18} className="opacity-50" />
+        <UncategorizedIcon size={18} className="opacity-50" />
         <span className="truncate">Без коллекции</span>
       </button>
 
       {flatFolders.map((folder) => {
         const filter: NavFilter = { type: "folder", folderPath: folder.path };
         const selected = !isSettings && activeKey === navFilterKey(filter);
+        const Icon = selected ? FolderOpen : Folder;
         return (
           <button
             key={folder.path}
@@ -69,9 +71,9 @@ export function SidebarCollections({
             onClick={() => onSelect(filter)}
             className={collectionButtonClass(selected)}
           >
-            <Folder size={18} />
+            <Icon size={18} />
             <span className="truncate">{folder.name}</span>
-            <span className="ml-auto text-xs text-muted group-hover:text-secondary">
+            <span className="ml-auto text-sm text-muted/65">
               {folder.item_count}
             </span>
           </button>
