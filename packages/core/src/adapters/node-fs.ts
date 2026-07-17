@@ -94,8 +94,8 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
       if (!(await this.exists(metaPath))) {
         continue;
       }
-      const itemJson = await this.readText(metaPath);
-      results.push({ id: itemId, itemJson });
+      const documentMarkdown = await this.readText(metaPath);
+      results.push({ id: itemId, documentMarkdown });
     }
     return results;
   }

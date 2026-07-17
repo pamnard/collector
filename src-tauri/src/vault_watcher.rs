@@ -143,7 +143,7 @@ mod tests {
     fn parse_item_id_from_nested_path() {
         let items = Path::new("/vault/items");
         assert_eq!(
-            parse_item_id(items, Path::new("/vault/items/abc/item.json")).as_deref(),
+            parse_item_id(items, Path::new("/vault/items/abc/content.md")).as_deref(),
             Some("abc")
         );
         assert_eq!(

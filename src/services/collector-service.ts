@@ -917,15 +917,15 @@ export async function getItemById(
     return devMockCollector.getItemById(itemId);
   }
 
-  const { path } = await resolveActiveVault();
+  const { path, vault } = await resolveActiveVault();
   const itemPath = itemRoot(path, itemId);
 
   if (!(await fs.exists(itemPath))) {
     throw new Error(`Item not found: ${itemId}`);
   }
 
-  const item = await readItemFile(fs, itemPath);
-  const content = await readItemContent(fs, itemPath);
+  const item = await readItemFile(fs, itemPath, vault.id);
+  const content = await readItemContent(fs, itemPath, vault.id);
   return { item, content };
 }
 

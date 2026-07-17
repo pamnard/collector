@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 const ITEMS_DIR: &str = "items";
-const ITEM_META_FILE: &str = "item.json";
+const ITEM_META_FILE: &str = "content.md";
 const MEDIA_DIR: &str = "media";
 const MEDIA_MANIFEST_FILE: &str = "manifest.json";
 
@@ -20,7 +20,7 @@ pub struct VaultItemStatMeta {
 #[serde(rename_all = "camelCase")]
 pub struct VaultItemMetaRead {
     pub id: String,
-    pub item_json: String,
+    pub document_markdown: String,
 }
 
 #[derive(Deserialize)]
@@ -114,9 +114,12 @@ pub fn vault_items_read_meta(
             continue;
         }
 
-        let item_json =
+        let document_markdown =
             fs::read_to_string(&meta_path).map_err(|error| format!("{id}: {error}"))?;
-        results.push(VaultItemMetaRead { id, item_json });
+        results.push(VaultItemMetaRead {
+            id,
+            document_markdown,
+        });
     }
 
     Ok(results)

@@ -362,7 +362,7 @@ describe("vault operations", () => {
     });
 
     const itemPath = itemRoot(path, itemId);
-    const onDisk = await readItemFile(fs, itemPath);
+    const onDisk = await readItemFile(fs, itemPath, meta.id);
     await writeItemFile(fs, itemPath, {
       ...onDisk,
       content_revision: onDisk.content_revision + 1,
@@ -627,7 +627,7 @@ describe("vault operations", () => {
     });
 
     const itemPath = itemRoot(path, itemId);
-    const onDisk = await readItemFile(fs, itemPath);
+    const onDisk = await readItemFile(fs, itemPath, meta.id);
     await writeItemFile(fs, itemPath, {
       ...onDisk,
       folder_path: "New/Branch",

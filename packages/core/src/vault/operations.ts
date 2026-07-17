@@ -1,5 +1,5 @@
 import type { ItemFile, VaultMeta } from "@collector/shared";
-import { itemFileSchema, SCHEMA_VERSION } from "@collector/shared";
+import { SCHEMA_VERSION } from "@collector/shared";
 import type {
   CreateVaultInput,
   IndexSyncOptions,
@@ -11,11 +11,12 @@ import type {
 } from "../adapters/types.js";
 import { createId, nowIso } from "../util/ids.js";
 import {
+  itemFileFromDocumentMarkdown,
   readItemContent,
   readItemFile,
   readItemSourceRef,
-  writeItemContent,
-  writeItemFile,
+  readVaultMeta,
+  writeItemDocument,
   writeItemSourceRef,
   writeVaultMeta,
 } from "./item-io.js";
@@ -95,17 +96,14 @@ export async function upsertItem(
   const itemPath = itemRoot(vaultPath, item.id);
   await ctx.fs.mkdir(itemPath);
   await ctx.fs.mkdir(itemMediaRoot(itemPath));
-  await writeItemFile(ctx.fs, itemPath, item);
-
-  if (input.content) {
-    await writeItemContent(ctx.fs, itemPath, input.content);
-  }
+  const body = input.content ?? "";
+  await writeItemDocument(ctx.fs, itemPath, item, body);
 
   if (input.sourceRef) {
     await writeItemSourceRef(ctx.fs, itemPath, input.sourceRef);
   }
 
-  const content = input.content ?? (await readItemContent(ctx.fs, itemPath));
+  const content = input.content ?? (await readItemContent(ctx.fs, itemPath, vaultId));
   const sourceRef = input.sourceRef ?? (await readItemSourceRef(ctx.fs, itemPath));
   const fileStat = await ctx.fs.stat(itemMetaPath(itemPath));
 
@@ -282,34 +280,46 @@ export async function syncIndexFromFilesystem(
         vaultPath,
         metadataIds,
       );
-      const readById = new Map(batchReads.map((read) => [read.id, read.itemJson]));
-      metadataReads = metadataIds.map((itemId) => {
-        const itemJson = readById.get(itemId);
-        if (!itemJson) {
-          return {
+      const readById = new Map(
+        batchReads.map((read) => [read.id, read.documentMarkdown]),
+      );
+      metadataReads = [];
+      for (const itemId of metadataIds) {
+        const documentMarkdown = readById.get(itemId);
+        const diskMtimeMs = metadataById.get(itemId) ?? 0;
+        if (!documentMarkdown) {
+          metadataReads.push({
             itemId,
-            diskMtimeMs: metadataById.get(itemId) ?? 0,
+            diskMtimeMs,
             item: null,
-            error: new Error(`Missing item.json for ${itemId}`),
-          };
+            error: new Error(`Missing content.md for ${itemId}`),
+          });
+          continue;
         }
         try {
-          const item = itemFileSchema.parse(JSON.parse(itemJson));
-          return {
+          const item = await itemFileFromDocumentMarkdown(
+            ctx.fs,
+            vaultPath,
+            vaultId,
             itemId,
-            diskMtimeMs: metadataById.get(itemId) ?? 0,
+            documentMarkdown,
+            diskMtimeMs,
+          );
+          metadataReads.push({
+            itemId,
+            diskMtimeMs,
             item,
             error: null,
-          };
+          });
         } catch (error) {
-          return {
+          metadataReads.push({
             itemId,
-            diskMtimeMs: metadataById.get(itemId) ?? 0,
+            diskMtimeMs,
             item: null,
             error,
-          };
+          });
         }
-      });
+      }
     } catch (error) {
       metadataReads = metadataIds.map((itemId) => ({
         itemId,
@@ -383,18 +393,25 @@ export async function syncIndexFromFilesystem(
       vaultPath,
       reindexIdsNeedingRead,
     );
-    const reindexJsonById = new Map(
-      reindexReads.map((read) => [read.id, read.itemJson]),
+    const reindexMdById = new Map(
+      reindexReads.map((read) => [read.id, read.documentMarkdown]),
     );
     for (const work of reindexQueue) {
       if (work.item) {
         continue;
       }
-      const itemJson = reindexJsonById.get(work.itemId);
-      if (!itemJson) {
+      const documentMarkdown = reindexMdById.get(work.itemId);
+      if (!documentMarkdown) {
         continue;
       }
-      work.item = itemFileSchema.parse(JSON.parse(itemJson));
+      work.item = await itemFileFromDocumentMarkdown(
+        ctx.fs,
+        vaultPath,
+        vaultId,
+        work.itemId,
+        documentMarkdown,
+        work.diskMtimeMs,
+      );
     }
   }
 
@@ -403,7 +420,7 @@ export async function syncIndexFromFilesystem(
     const work = reindexQueue[i]!;
     try {
       if (!work.item) {
-        throw new Error(`Missing item.json for ${work.itemId}`);
+        throw new Error(`Missing content.md for ${work.itemId}`);
       }
       const item = work.item;
       await ctx.index.upsertItemMetadata(
@@ -447,7 +464,7 @@ export async function syncIndexFromFilesystem(
     }
     const itemPath = itemRoot(vaultPath, work.itemId);
     try {
-      const content = await readItemContent(ctx.fs, itemPath);
+      const content = await readItemContent(ctx.fs, itemPath, vaultId);
       const sourceRef = await readItemSourceRef(ctx.fs, itemPath);
       await ctx.index.upsertItemContent({
         itemId: work.item.id,
@@ -533,10 +550,11 @@ async function readItemFromDisk(
   if (!(await ctx.fs.exists(itemPath))) {
     return null;
   }
-  return readItemFile(ctx.fs, itemPath);
+  const meta = await readVaultMeta(ctx.fs, vaultPath);
+  return readItemFile(ctx.fs, itemPath, meta.id);
 }
 
-/** Read item.json files; uses batched FS when the adapter supports it. */
+/** Read item documents; uses batched FS when the adapter supports it. */
 export async function streamItemsByIds(
   ctx: VaultContext,
   vaultPath: string,
@@ -548,19 +566,33 @@ export async function streamItemsByIds(
   }
 
   const { concurrency, onItem, signal } = options;
+  const vaultMeta = await readVaultMeta(ctx.fs, vaultPath);
+  const vaultId = vaultMeta.id;
 
   if (ctx.fs.readVaultItemsMeta) {
     const batchReads = await readVaultItemMetaBatch(ctx.fs, vaultPath, itemIds);
-    const readById = new Map(batchReads.map((read) => [read.id, read.itemJson]));
+    const readById = new Map(
+      batchReads.map((read) => [read.id, read.documentMarkdown]),
+    );
     for (const [index, itemId] of itemIds.entries()) {
       if (signal?.aborted) {
         return;
       }
-      const itemJson = readById.get(itemId);
+      const documentMarkdown = readById.get(itemId);
       let item: ItemFile | null = null;
-      if (itemJson) {
+      if (documentMarkdown) {
         try {
-          item = itemFileSchema.parse(JSON.parse(itemJson));
+          const fileStat = await ctx.fs.stat(
+            itemMetaPath(itemRoot(vaultPath, itemId)),
+          );
+          item = await itemFileFromDocumentMarkdown(
+            ctx.fs,
+            vaultPath,
+            vaultId,
+            itemId,
+            documentMarkdown,
+            fileStat.mtimeMs ?? 0,
+          );
         } catch {
           item = null;
         }

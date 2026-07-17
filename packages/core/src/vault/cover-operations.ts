@@ -44,7 +44,7 @@ export async function applyItemCover(
   await ctx.fs.mkdir(itemMediaRoot(itemPath));
   await ctx.fs.writeBinary(coverPath, coverData);
 
-  const item = await readItemFile(ctx.fs, itemPath);
+  const item = await readItemFile(ctx.fs, itemPath, vaultId);
   const updated: ItemFile = {
     ...item,
     thumbnail: itemCoverRelativePath(),
@@ -52,7 +52,7 @@ export async function applyItemCover(
   };
   await writeItemFile(ctx.fs, itemPath, updated);
 
-  const content = await readItemContent(ctx.fs, itemPath);
+  const content = await readItemContent(ctx.fs, itemPath, vaultId);
   const sourceRef = await readItemSourceRef(ctx.fs, itemPath);
   await ctx.index.upsertItem({ item: updated, content, sourceRef }, vaultId);
   return updated;
@@ -71,7 +71,7 @@ export async function clearItemCover(
     await ctx.fs.remove(coverPath);
   }
 
-  const item = await readItemFile(ctx.fs, itemPath);
+  const item = await readItemFile(ctx.fs, itemPath, vaultId);
   if (!item.thumbnail) {
     return item;
   }
@@ -83,7 +83,7 @@ export async function clearItemCover(
   };
   await writeItemFile(ctx.fs, itemPath, updated);
 
-  const content = await readItemContent(ctx.fs, itemPath);
+  const content = await readItemContent(ctx.fs, itemPath, vaultId);
   const sourceRef = await readItemSourceRef(ctx.fs, itemPath);
   await ctx.index.upsertItem({ item: updated, content, sourceRef }, vaultId);
   return updated;

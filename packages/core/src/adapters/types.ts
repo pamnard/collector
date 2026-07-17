@@ -8,7 +8,7 @@ export interface VaultItemStatMeta {
 
 export interface VaultItemMetaRead {
   id: string;
-  itemJson: string;
+  documentMarkdown: string;
 }
 
 export interface FileSystemAdapter {
@@ -23,9 +23,9 @@ export interface FileSystemAdapter {
   touch(path: string): Promise<void>;
   remove(path: string, options?: { recursive?: boolean }): Promise<void>;
   join(...parts: string[]): string;
-  /** One IPC: stat item.json mtimes for every item dir under vault. */
+  /** One IPC: stat content.md mtimes for every item dir under vault. */
   statVaultItemsMeta?(vaultPath: string): Promise<VaultItemStatMeta[]>;
-  /** One IPC per chunk: read item.json for the given ids. */
+  /** One IPC per chunk: read content.md for the given ids. */
   readVaultItemsMeta?(
     vaultPath: string,
     itemIds: string[],

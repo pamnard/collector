@@ -72,11 +72,19 @@ describe("serializeDocumentMarkdown round-trip", () => {
       tags: ["one", "two"],
       description: "desc",
       created: "2024-01-02T03:04:05.000Z",
+      is_favorite: true,
+      folder_path: "Inbox/Work",
+      collection_ids: ["11111111-1111-4111-8111-111111111111"],
     });
     const serialized = serializeDocumentMarkdown(fm, "Hello world\n");
     const parsed = parseDocumentMarkdown(serialized);
     expect(parsed.frontmatter.title).toBe("Round");
     expect(parsed.frontmatter.tags).toEqual(["one", "two"]);
+    expect(parsed.frontmatter.is_favorite).toBe(true);
+    expect(parsed.frontmatter.folder_path).toBe("Inbox/Work");
+    expect(parsed.frontmatter.collection_ids).toEqual([
+      "11111111-1111-4111-8111-111111111111",
+    ]);
     expect(parsed.body).toBe("Hello world\n");
     expect(serializeDocumentMarkdown(parsed.frontmatter, parsed.body)).toBe(serialized);
   });

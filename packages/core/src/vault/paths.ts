@@ -28,12 +28,19 @@ export function itemRoot(vaultRootPath: string, itemId: string): string {
   return joinSegments(itemsRoot(vaultRootPath), itemId);
 }
 
+/** On-disk item document (`content.md` with YAML frontmatter + body). */
 export function itemMetaPath(itemRootPath: string): string {
   return joinSegments(itemRootPath, ITEM_FILES.meta);
 }
 
+/** Same path as {@link itemMetaPath} — body lives in the document after frontmatter. */
 export function itemContentPath(itemRootPath: string): string {
   return joinSegments(itemRootPath, ITEM_FILES.content);
+}
+
+/** Pre-v3 `item.json` sidecar (migration only). */
+export function itemLegacyMetaPath(itemRootPath: string): string {
+  return joinSegments(itemRootPath, ITEM_FILES.legacyMeta);
 }
 
 export function itemSourcePath(itemRootPath: string): string {

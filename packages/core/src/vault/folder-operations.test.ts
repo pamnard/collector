@@ -178,12 +178,12 @@ describe("folder operations", () => {
     readDirSpy.mockRestore();
 
     expect(
-      (await readItemFile(fs, itemRoot(path, workRootId))).folder_path,
+      (await readItemFile(fs, itemRoot(path, workRootId), meta.id)).folder_path,
     ).toBe("Projects");
     expect(
-      (await readItemFile(fs, itemRoot(path, workNestedId))).folder_path,
+      (await readItemFile(fs, itemRoot(path, workNestedId), meta.id)).folder_path,
     ).toBe("Projects/Articles");
-    expect((await readItemFile(fs, itemRoot(path, otherId))).folder_path).toBe(
+    expect((await readItemFile(fs, itemRoot(path, otherId), meta.id)).folder_path).toBe(
       "Other",
     );
 
