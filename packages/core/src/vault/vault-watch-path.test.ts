@@ -6,7 +6,7 @@ describe("parseVaultItemsWatchItemId", () => {
   const itemsDir = itemsRoot("/vault/root");
 
   it("returns item id for nested paths under items/", () => {
-    expect(parseVaultItemsWatchItemId(itemsDir, `${itemsDir}/abc/item.json`)).toBe(
+    expect(parseVaultItemsWatchItemId(itemsDir, `${itemsDir}/abc/content.md`)).toBe(
       "abc",
     );
     expect(

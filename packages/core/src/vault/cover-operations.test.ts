@@ -66,6 +66,6 @@ describe("cover operations", () => {
     const cleared = await clearItemCover(ctx, path, meta.id, itemId);
     expect(cleared.thumbnail).toBeNull();
     expect(await fs.exists(itemCoverPath(itemRoot(path, itemId)))).toBe(false);
-    expect((await readItemFile(fs, itemRoot(path, itemId))).thumbnail).toBeNull();
+    expect((await readItemFile(fs, itemRoot(path, itemId), meta.id)).thumbnail).toBeNull();
   });
 });

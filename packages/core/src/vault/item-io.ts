@@ -4,28 +4,62 @@ import {
   vaultMetaSchema,
   type ItemFile,
   type SourceRef,
+  type Tag,
   type VaultMeta,
 } from "@collector/shared";
 import type { FileSystemAdapter } from "../adapters/types.js";
+import { createId, nowIso } from "../util/ids.js";
 import {
-  buildCanonicalFrontmatter,
-  contentTypeFromFrontmatter,
+  extractUnknownFrontmatterKeys,
   parseDocumentMarkdown,
-  parseKnownFrontmatter,
-  resolveFrontmatterDates,
-  serializeDocumentMarkdown,
 } from "./frontmatter.js";
 import {
-  basename,
-  dirname,
-  folderPathFromItemId,
-  itemMarkdownPath,
-  itemMediaRoot,
+  buildTagMaps,
+  parseItemDocument,
+  parseItemDocumentResolved,
+  serializeItemDocument,
+} from "./item-document.js";
+import {
+  itemContentPath,
+  itemLegacyMetaPath,
+  itemMetaPath,
   itemSourcePath,
   joinSegments,
-  normalizeRelativePath,
   vaultMetaPath,
 } from "./paths.js";
+import { readTagsFile, writeTagsFile } from "./tag-io.js";
+
+function parentDir(path: string): string {
+  const segments = path.replace(/\\/g, "/").split("/").filter(Boolean);
+  if (segments.length <= 1) {
+    return path.startsWith("/") ? "/" : "";
+  }
+  segments.pop();
+  const joined = segments.join("/");
+  return path.startsWith("/") ? `/${joined}` : joined;
+}
+
+/** `…/items/<uuid>` → vault root. */
+export function vaultPathFromItemRoot(itemRootPath: string): string {
+  return parentDir(parentDir(itemRootPath));
+}
+
+/** Basename of item root (= item id under UUID layout). */
+export function itemIdFromItemRoot(itemRootPath: string): string {
+  const segments = itemRootPath.replace(/\\/g, "/").split("/").filter(Boolean);
+  const id = segments[segments.length - 1];
+  if (!id) {
+    throw new Error(`Cannot derive item id from path: ${itemRootPath}`);
+  }
+  return id;
+}
+
+function mtimeToIso(mtimeMs: number | null): string {
+  if (mtimeMs === null) {
+    throw new Error("Cannot derive ISO date from missing file mtime");
+  }
+  return new Date(mtimeMs).toISOString();
+}
 
 export async function readVaultMeta(
   fs: FileSystemAdapter,
@@ -44,87 +78,182 @@ export async function writeVaultMeta(
   await fs.writeText(vaultMetaPath(vaultRootPath), JSON.stringify(parsed, null, 2));
 }
 
-function isoFromMtime(mtimeMs: number | null): string | undefined {
-  return mtimeMs === null ? undefined : new Date(mtimeMs).toISOString();
-}
-
-/** Portable fallback title: filename stem when frontmatter has no `title`. */
-function titleFromPath(itemRelativePath: string): string {
-  const base = basename(itemRelativePath);
-  return base.toLowerCase().endsWith(".md") ? base.slice(0, -3) : base;
+async function loadTagMaps(
+  fs: FileSystemAdapter,
+  vaultPath: string,
+): Promise<{ byName: Map<string, Tag>; byId: Map<string, Tag> }> {
+  const file = await readTagsFile(fs, vaultPath);
+  return buildTagMaps(file.tags);
 }
 
 /**
- * Assemble an {@link ItemFile} from a markdown document. Dates come from
- * frontmatter first, falling back to the file's mtime (FS stat). `vault_id`
- * and `folder_path` are injected from context / the item path.
+ * Ensure tag names exist in tags.json; returns refreshed maps.
+ * Creates new Tag records for missing names (portable import).
  */
-export async function assembleItemFileFromMarkdown(
+export async function ensureTagsByName(
   fs: FileSystemAdapter,
-  vaultRootPath: string,
-  itemRelativePath: string,
-  vaultId: string,
-  markdown: string,
-): Promise<ItemFile> {
-  const id = normalizeRelativePath(itemRelativePath);
-  const parsed = parseDocumentMarkdown(markdown);
-  const fm = parseKnownFrontmatter(parsed.frontmatter);
-  const dates = resolveFrontmatterDates(fm);
-
-  let createdAt = dates.created_at;
-  let updatedAt = dates.updated_at;
-  if (!createdAt || !updatedAt) {
-    const stat = await fs.stat(itemMarkdownPath(vaultRootPath, id));
-    const iso = isoFromMtime(stat.mtimeMs);
-    if (!iso) {
-      throw new Error(`Cannot resolve created/updated dates for item ${id}`);
-    }
-    createdAt = createdAt ?? iso;
-    updatedAt = updatedAt ?? iso;
+  vaultPath: string,
+  names: string[],
+): Promise<{ byName: Map<string, Tag>; byId: Map<string, Tag> }> {
+  if (names.length === 0) {
+    return loadTagMaps(fs, vaultPath);
   }
 
-  return itemFileSchema.parse({
-    id,
-    vault_id: vaultId,
-    title: fm.title ?? titleFromPath(id),
-    description: fm.description,
-    url: fm.url ?? null,
-    content_type: contentTypeFromFrontmatter(fm),
-    source_type: fm.source_type,
-    source_id: fm.source_id ?? null,
-    metadata: fm.metadata,
-    thumbnail: fm.thumbnail ?? null,
-    tags: fm.tags,
-    folder_path: folderPathFromItemId(id),
-    content_revision: fm.content_revision,
-    created_at: createdAt,
-    updated_at: updatedAt,
+  const file = await readTagsFile(fs, vaultPath);
+  let maps = buildTagMaps(file.tags);
+  let mutated = false;
+
+  for (const rawName of names) {
+    const normalized = rawName.trim();
+    if (!normalized) {
+      throw new Error("Tag name must be non-empty");
+    }
+    const key = normalized.toLowerCase();
+    if (maps.byName.has(key)) {
+      continue;
+    }
+    const tag: Tag = {
+      id: createId(),
+      name: normalized,
+      color: null,
+      created_at: nowIso(),
+    };
+    file.tags.push(tag);
+    mutated = true;
+    maps = buildTagMaps(file.tags);
+  }
+
+  if (mutated) {
+    await writeTagsFile(fs, vaultPath, file);
+    maps = buildTagMaps(file.tags);
+  }
+  return maps;
+}
+
+async function parseDocumentWithTags(
+  fs: FileSystemAdapter,
+  vaultPath: string,
+  vaultId: string,
+  itemId: string,
+  raw: string,
+  fallbackMtimeMs: number | null,
+): Promise<{ item: ItemFile; body: string; extra: Record<string, unknown> }> {
+  const maps = await loadTagMaps(fs, vaultPath);
+  const fallbackIso =
+    fallbackMtimeMs !== null ? mtimeToIso(fallbackMtimeMs) : undefined;
+  return parseItemDocumentResolved(raw, {
+    itemId,
+    vaultId,
+    tagsByName: maps.byName,
+    fallbackCreatedAt: fallbackIso,
+    fallbackUpdatedAt: fallbackIso,
   });
+}
+
+/**
+ * Parse raw document markdown into ItemFile, creating missing tags as needed.
+ * Used by batch sync / portable import paths that already have the file contents.
+ */
+export async function itemFileFromDocumentMarkdown(
+  fs: FileSystemAdapter,
+  vaultPath: string,
+  vaultId: string,
+  itemId: string,
+  raw: string,
+  diskMtimeMs: number,
+): Promise<ItemFile> {
+  const maps = await loadTagMaps(fs, vaultPath);
+  const fallbackIso = mtimeToIso(diskMtimeMs);
+  const first = parseItemDocument(raw, {
+    itemId,
+    vaultId,
+    tagsByName: maps.byName,
+    fallbackCreatedAt: fallbackIso,
+    fallbackUpdatedAt: fallbackIso,
+  });
+  if (first.missingTagNames.length === 0) {
+    return first.item;
+  }
+  const refreshed = await ensureTagsByName(fs, vaultPath, first.missingTagNames);
+  return parseItemDocumentResolved(raw, {
+    itemId,
+    vaultId,
+    tagsByName: refreshed.byName,
+    fallbackCreatedAt: fallbackIso,
+    fallbackUpdatedAt: fallbackIso,
+  }).item;
+}
+
+export async function readItemDocument(
+  fs: FileSystemAdapter,
+  itemRootPath: string,
+  vaultId: string,
+): Promise<{ item: ItemFile; body: string; extra: Record<string, unknown> }> {
+  const docPath = itemMetaPath(itemRootPath);
+  if (!(await fs.exists(docPath))) {
+    throw new Error(`Missing content.md for ${itemIdFromItemRoot(itemRootPath)}`);
+  }
+  const raw = await fs.readText(docPath);
+  const fileStat = await fs.stat(docPath);
+  const vaultPath = vaultPathFromItemRoot(itemRootPath);
+  return parseDocumentWithTags(
+    fs,
+    vaultPath,
+    vaultId,
+    itemIdFromItemRoot(itemRootPath),
+    raw,
+    fileStat.mtimeMs,
+  );
+}
+
+export async function writeItemDocument(
+  fs: FileSystemAdapter,
+  itemRootPath: string,
+  item: ItemFile,
+  body: string,
+  extra?: Record<string, unknown>,
+): Promise<void> {
+  const parsed = itemFileSchema.parse(item);
+  const vaultPath = vaultPathFromItemRoot(itemRootPath);
+  const maps = await loadTagMaps(fs, vaultPath);
+  const markdown = serializeItemDocument(parsed, body, maps.byId, extra);
+  await fs.writeText(itemMetaPath(itemRootPath), markdown);
+  await fs.touch(parentDir(itemRootPath));
 }
 
 export async function readItemFile(
   fs: FileSystemAdapter,
-  vaultRootPath: string,
-  itemRelativePath: string,
+  itemRootPath: string,
   vaultId: string,
 ): Promise<ItemFile> {
-  const raw = await fs.readText(itemMarkdownPath(vaultRootPath, itemRelativePath));
-  return assembleItemFileFromMarkdown(
-    fs,
-    vaultRootPath,
-    itemRelativePath,
-    vaultId,
-    raw,
-  );
+  const doc = await readItemDocument(fs, itemRootPath, vaultId);
+  return doc.item;
 }
 
-/** Markdown body (content) of an item document, or null when absent on disk. */
+export async function writeItemFile(
+  fs: FileSystemAdapter,
+  itemRootPath: string,
+  item: ItemFile,
+): Promise<void> {
+  const docPath = itemMetaPath(itemRootPath);
+  let body = "";
+  let extra: Record<string, unknown> | undefined;
+  if (await fs.exists(docPath)) {
+    // Body/extra only — do not re-parse ItemFile (avoids recreating deleted tags).
+    const raw = await fs.readText(docPath);
+    const parsed = parseDocumentMarkdown(raw);
+    body = parsed.body;
+    extra = extractUnknownFrontmatterKeys(parsed.frontmatter);
+  }
+  await writeItemDocument(fs, itemRootPath, item, body, extra);
+}
+
 export async function readItemContent(
   fs: FileSystemAdapter,
-  vaultRootPath: string,
-  itemRelativePath: string,
+  itemRootPath: string,
+  _vaultId: string,
 ): Promise<string | null> {
-  const path = itemMarkdownPath(vaultRootPath, itemRelativePath);
+  const path = itemContentPath(itemRootPath);
   if (!(await fs.exists(path))) {
     return null;
   }
@@ -132,74 +261,27 @@ export async function readItemContent(
   return parseDocumentMarkdown(raw).body;
 }
 
-function itemToFrontmatter(item: ItemFile): Record<string, unknown> {
-  return buildCanonicalFrontmatter({
-    title: item.title,
-    description: item.description || undefined,
-    url: item.url ?? undefined,
-    content_type: item.content_type,
-    source_type: item.source_type,
-    source_id: item.source_id ?? undefined,
-    tags: item.tags,
-    thumbnail: item.thumbnail ?? undefined,
-    content_revision: item.content_revision,
-    created: item.created_at,
-    updated: item.updated_at,
-    metadata: Object.keys(item.metadata).length > 0 ? item.metadata : undefined,
-  });
-}
-
-async function ensureItemDir(
+export async function writeItemContent(
   fs: FileSystemAdapter,
-  vaultRootPath: string,
-  itemRelativePath: string,
+  itemRootPath: string,
+  content: string,
+  vaultId: string,
 ): Promise<void> {
-  const dir = dirname(itemRelativePath);
-  await fs.mkdir(dir ? joinSegments(vaultRootPath, dir) : vaultRootPath);
-}
-
-/** Write an item as a YAML-frontmatter markdown document (canonical writer). */
-export async function writeItemFile(
-  fs: FileSystemAdapter,
-  vaultRootPath: string,
-  item: ItemFile,
-  content: string | null = null,
-): Promise<void> {
-  const parsed = itemFileSchema.parse(item);
-  await ensureItemDir(fs, vaultRootPath, parsed.id);
-  const markdown = serializeDocumentMarkdown(
-    itemToFrontmatter(parsed),
-    content ?? "",
+  const existing = await readItemDocument(fs, itemRootPath, vaultId);
+  await writeItemDocument(
+    fs,
+    itemRootPath,
+    existing.item,
+    content,
+    existing.extra,
   );
-  await fs.writeText(itemMarkdownPath(vaultRootPath, parsed.id), markdown);
-  await fs.touch(vaultRootPath);
-}
-
-/**
- * Mutate only frontmatter of an existing document, preserving body and any
- * unknown (portable) keys. Used when Collector edits a subset of fields.
- */
-export async function updateItemFrontmatter(
-  fs: FileSystemAdapter,
-  vaultRootPath: string,
-  itemRelativePath: string,
-  mutate: (frontmatter: Record<string, unknown>) => void,
-): Promise<void> {
-  const abs = itemMarkdownPath(vaultRootPath, itemRelativePath);
-  const raw = await fs.readText(abs);
-  const parsed = parseDocumentMarkdown(raw);
-  const frontmatter = { ...parsed.frontmatter };
-  mutate(frontmatter);
-  await fs.writeText(abs, serializeDocumentMarkdown(frontmatter, parsed.body));
-  await fs.touch(vaultRootPath);
 }
 
 export async function readItemSourceRef(
   fs: FileSystemAdapter,
-  vaultRootPath: string,
-  itemRelativePath: string,
+  itemRootPath: string,
 ): Promise<SourceRef | null> {
-  const path = itemSourcePath(vaultRootPath, itemRelativePath);
+  const path = itemSourcePath(itemRootPath);
   if (!(await fs.exists(path))) {
     return null;
   }
@@ -209,15 +291,19 @@ export async function readItemSourceRef(
 
 export async function writeItemSourceRef(
   fs: FileSystemAdapter,
-  vaultRootPath: string,
-  itemRelativePath: string,
+  itemRootPath: string,
   sourceRef: SourceRef,
 ): Promise<void> {
   const parsed = sourceRefSchema.parse(sourceRef);
-  await fs.mkdir(itemMediaRoot(vaultRootPath, itemRelativePath));
-  await fs.writeText(
-    itemSourcePath(vaultRootPath, itemRelativePath),
-    JSON.stringify(parsed, null, 2),
-  );
-  await fs.touch(vaultRootPath);
+  await fs.writeText(itemSourcePath(itemRootPath), JSON.stringify(parsed, null, 2));
 }
+
+/** True when pre-v3 `item.json` still exists beside (or instead of) the document. */
+export async function hasLegacyItemMeta(
+  fs: FileSystemAdapter,
+  itemRootPath: string,
+): Promise<boolean> {
+  return fs.exists(itemLegacyMetaPath(itemRootPath));
+}
+
+export { itemLegacyMetaPath, joinSegments };

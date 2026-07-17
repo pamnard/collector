@@ -35,7 +35,7 @@ export const MEDIA_TYPES = [
 
 export type MediaType = (typeof MEDIA_TYPES)[number];
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const VAULT_DIRS = {
   items: "items",
@@ -43,8 +43,11 @@ export const VAULT_DIRS = {
 } as const;
 
 export const ITEM_FILES = {
-  meta: "item.json",
+  /** Canonical on-disk document (YAML frontmatter + body). */
+  meta: "content.md",
   content: "content.md",
+  /** Pre-v3 sidecar; migration reads then deletes. */
+  legacyMeta: "item.json",
   source: ".source.json",
   mediaManifest: "manifest.json",
   cover: "cover.webp",

@@ -98,16 +98,14 @@ export async function deleteTag(
     includeArchived: true,
   });
 
-  await writeTagsFile(ctx.fs, vaultPath, { tags: nextTags });
-  await ctx.index.deleteTag(tagId);
-
+  // Strip tag from documents while tags.json still has the name for serialize/read.
   for (const itemId of itemIds) {
     const itemPath = itemRoot(vaultPath, itemId);
     if (!(await ctx.fs.exists(itemPath))) {
       continue;
     }
 
-    const item = await readItemFile(ctx.fs, itemPath);
+    const item = await readItemFile(ctx.fs, itemPath, vaultId);
     if (!item.tag_ids.includes(tagId)) {
       continue;
     }
@@ -118,9 +116,12 @@ export async function deleteTag(
       updated_at: nowIso(),
     };
     await writeItemFile(ctx.fs, itemPath, updated);
-    const content = await readItemContent(ctx.fs, itemPath);
+    const content = await readItemContent(ctx.fs, itemPath, vaultId);
     await ctx.index.upsertItem({ item: updated, content, sourceRef: null }, vaultId);
   }
+
+  await writeTagsFile(ctx.fs, vaultPath, { tags: nextTags });
+  await ctx.index.deleteTag(tagId);
 }
 
 /** Tag list + counts from SQLite only (sidebar / navigation). */

@@ -27,6 +27,10 @@ const KNOWN_FM_KEYS = new Set([
   "updated",
   "updated_at",
   "metadata",
+  "is_archived",
+  "is_favorite",
+  "folder_path",
+  "collection_ids",
 ]);
 
 /**
@@ -42,6 +46,10 @@ const KNOWN_KEY_ORDER = [
   "source_id",
   "tags",
   "thumbnail",
+  "is_archived",
+  "is_favorite",
+  "folder_path",
+  "collection_ids",
   "content_revision",
   "created",
   "updated",
@@ -220,6 +228,10 @@ export function buildCanonicalFrontmatter(input: {
   source_id?: string | null;
   tags?: string[];
   thumbnail?: string | null;
+  is_archived?: boolean;
+  is_favorite?: boolean;
+  folder_path?: string;
+  collection_ids?: string[];
   content_revision?: number;
   created?: string;
   updated?: string;
@@ -249,6 +261,18 @@ export function buildCanonicalFrontmatter(input: {
   }
   if (input.thumbnail !== undefined && input.thumbnail !== null && input.thumbnail !== "") {
     data.thumbnail = input.thumbnail;
+  }
+  if (input.is_archived === true) {
+    data.is_archived = true;
+  }
+  if (input.is_favorite === true) {
+    data.is_favorite = true;
+  }
+  if (input.folder_path) {
+    data.folder_path = input.folder_path;
+  }
+  if (input.collection_ids && input.collection_ids.length > 0) {
+    data.collection_ids = [...input.collection_ids];
   }
   if (input.content_revision !== undefined) {
     data.content_revision = input.content_revision;

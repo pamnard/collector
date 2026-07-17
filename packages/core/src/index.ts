@@ -19,6 +19,7 @@ export {
   itemContentPath,
   itemCoverPath,
   itemCoverRelativePath,
+  itemLegacyMetaPath,
   itemMediaRoot,
   itemMetaPath,
   itemRoot,
@@ -32,15 +33,38 @@ export {
 } from "./vault/paths.js";
 
 export {
+  ensureTagsByName,
+  itemFileFromDocumentMarkdown,
+  itemIdFromItemRoot,
   readItemContent,
+  readItemDocument,
   readItemFile,
   readItemSourceRef,
   readVaultMeta,
+  vaultPathFromItemRoot,
   writeItemContent,
+  writeItemDocument,
   writeItemFile,
   writeItemSourceRef,
   writeVaultMeta,
 } from "./vault/item-io.js";
+
+export {
+  buildTagMaps,
+  parseItemDocument,
+  parseItemDocumentResolved,
+  serializeItemDocument,
+} from "./vault/item-document.js";
+
+export {
+  buildCanonicalFrontmatter,
+  contentTypeFromFrontmatter,
+  extractUnknownFrontmatterKeys,
+  parseDocumentMarkdown,
+  parseKnownFrontmatter,
+  resolveFrontmatterDates,
+  serializeDocumentMarkdown,
+} from "./vault/frontmatter.js";
 
 export {
   createVault,

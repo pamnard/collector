@@ -56,6 +56,10 @@ export const documentFrontmatterSchema = z.object({
   updated: z.union([z.string(), z.date()]).optional(),
   updated_at: z.union([z.string(), z.date()]).optional(),
   metadata: z.record(z.unknown()).optional(),
+  is_archived: z.boolean().optional(),
+  is_favorite: z.boolean().optional(),
+  folder_path: z.string().optional(),
+  collection_ids: z.array(z.string().uuid()).optional(),
 });
 
 export const vaultMetaSchema = z.object({

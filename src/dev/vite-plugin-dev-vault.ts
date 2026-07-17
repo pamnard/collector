@@ -163,7 +163,7 @@ async function buildSnapshot(vaultRoot: string): Promise<DevVaultSnapshot> {
     const itemIds = filterDiskItemIds(await fs.readDir(itemsDir));
     for (const itemId of itemIds) {
       try {
-        const item = await readItemFile(fs, itemRoot(vaultRoot, itemId));
+        const item = await readItemFile(fs, itemRoot(vaultRoot, itemId), vault.id);
         items.push(item);
         thumbnailUrls[item.id] = await resolveThumbnailUrl(fs, vaultRoot, item);
       } catch (error: unknown) {

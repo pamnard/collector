@@ -12,6 +12,7 @@ import { readItemFile } from "./item-io.js";
 import { itemRoot } from "./paths.js";
 import { createVault, upsertItem } from "./operations.js";
 import { createTag, deleteTag, listTagsWithCounts } from "./tag-operations.js";
+import { writeTagsFile } from "./tag-io.js";
 
 describe("tag operations", () => {
   let dataDir = "";
@@ -73,12 +74,12 @@ describe("tag operations", () => {
     readDirSpy.mockRestore();
 
     for (const itemId of taggedIds) {
-      const item = await readItemFile(fs, itemRoot(path, itemId));
+      const item = await readItemFile(fs, itemRoot(path, itemId), meta.id);
       expect(item.tag_ids).toEqual([]);
     }
 
     for (const itemId of untouchedIds) {
-      const item = await readItemFile(fs, itemRoot(path, itemId));
+      const item = await readItemFile(fs, itemRoot(path, itemId), meta.id);
       expect(item.tag_ids).toEqual([]);
     }
 
@@ -93,15 +94,14 @@ describe("tag operations", () => {
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
 
     const tagId = createId();
-    await ctx.index.upsertTag(
-      {
-        id: tagId,
-        name: "Research",
-        color: null,
-        created_at: nowIso(),
-      },
-      meta.id,
-    );
+    const tag = {
+      id: tagId,
+      name: "Research",
+      color: null as string | null,
+      created_at: nowIso(),
+    };
+    await writeTagsFile(fs, path, { tags: [tag] });
+    await ctx.index.upsertTag(tag, meta.id);
 
     const itemId = createId();
     await upsertItem(ctx, path, meta.id, {

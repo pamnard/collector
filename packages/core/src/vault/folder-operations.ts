@@ -21,7 +21,7 @@ function assertFolderPath(path: string): string {
   return normalized;
 }
 
-/** Folder paths from item.json on disk (parallel source for tree merge). */
+/** Folder paths from item documents on disk (parallel source for tree merge). */
 export async function collectItemFolderPaths(
   ctx: VaultContext,
   vaultPath: string,
@@ -126,7 +126,7 @@ export async function listFolderTreeFromIndex(
   return buildFolderTreeFromSources(file.paths, countRows);
 }
 
-/** Authoritative merge: union folder paths from disk item.json files. */
+/** Authoritative merge: union folder paths from disk item documents. */
 export async function reconcileFolderTreeFromDisk(
   ctx: VaultContext,
   vaultPath: string,
@@ -198,7 +198,7 @@ export async function renameFolder(
       continue;
     }
 
-    const item = await readItemFile(ctx.fs, itemPath);
+    const item = await readItemFile(ctx.fs, itemPath, vaultId);
     const nextPath = renameFolderPath(item.folder_path, from, to);
     if (nextPath === item.folder_path) {
       continue;
@@ -210,7 +210,7 @@ export async function renameFolder(
       updated_at: nowIso(),
     };
     await writeItemFile(ctx.fs, itemPath, updated);
-    const content = await readItemContent(ctx.fs, itemPath);
+    const content = await readItemContent(ctx.fs, itemPath, vaultId);
     await ctx.index.upsertItem({ item: updated, content, sourceRef: null }, vaultId);
   }
 
@@ -249,7 +249,7 @@ export async function moveItemToFolder(
 ): Promise<ItemFile> {
   const normalized = assertFolderPath(folderPath);
   const itemPath = itemRoot(vaultPath, itemId);
-  const item = await readItemFile(ctx.fs, itemPath);
+  const item = await readItemFile(ctx.fs, itemPath, vaultId);
   const updated: ItemFile = {
     ...item,
     folder_path: normalized,
@@ -265,7 +265,7 @@ export async function moveItemToFolder(
     }
   }
 
-  const content = await readItemContent(ctx.fs, itemPath);
+  const content = await readItemContent(ctx.fs, itemPath, vaultId);
   await ctx.index.upsertItem({ item: updated, content, sourceRef: null }, vaultId);
   return updated;
 }

@@ -1,4 +1,4 @@
-import { itemFileSchema, type ItemFile } from "@collector/shared";
+import type { ItemFile } from "@collector/shared";
 import type { SyncReport, VaultContext } from "../adapters/types.js";
 import {
   INDEX_SYNC_CONTENT_YIELD_MS,
@@ -13,7 +13,11 @@ import {
   itemRoot,
   itemsRoot,
 } from "./paths.js";
-import { readItemContent, readItemSourceRef } from "./item-io.js";
+import {
+  itemFileFromDocumentMarkdown,
+  readItemContent,
+  readItemSourceRef,
+} from "./item-io.js";
 import { readVaultItemMetaBatch } from "./vault-fs-batch.js";
 
 function createEmptySyncReport(): SyncReport {
@@ -96,22 +100,31 @@ export async function syncIndexItemsFromFilesystem(
       metadataReadQueue.map((work) => [work.itemId, work.diskMtimeMs]),
     );
     const batchReads = await readVaultItemMetaBatch(ctx.fs, vaultPath, metadataIds);
-    const readById = new Map(batchReads.map((read) => [read.id, read.itemJson]));
+    const readById = new Map(
+      batchReads.map((read) => [read.id, read.documentMarkdown]),
+    );
 
     for (const itemId of metadataIds) {
       const diskMtimeMs = metadataById.get(itemId) ?? 0;
-      const itemJson = readById.get(itemId);
-      if (!itemJson) {
+      const documentMarkdown = readById.get(itemId);
+      if (!documentMarkdown) {
         report.errors.push({
           itemId,
-          message: `Missing item.json for ${itemId}`,
+          message: `Missing content.md for ${itemId}`,
         });
         continue;
       }
 
       let item: ItemFile;
       try {
-        item = itemFileSchema.parse(JSON.parse(itemJson));
+        item = await itemFileFromDocumentMarkdown(
+          ctx.fs,
+          vaultPath,
+          vaultId,
+          itemId,
+          documentMarkdown,
+          diskMtimeMs,
+        );
       } catch (error) {
         report.errors.push({
           itemId,
@@ -166,18 +179,25 @@ export async function syncIndexItemsFromFilesystem(
       vaultPath,
       reindexIdsNeedingRead,
     );
-    const reindexJsonById = new Map(
-      reindexReads.map((read) => [read.id, read.itemJson]),
+    const reindexMdById = new Map(
+      reindexReads.map((read) => [read.id, read.documentMarkdown]),
     );
     for (const work of reindexQueue) {
       if (work.item) {
         continue;
       }
-      const itemJson = reindexJsonById.get(work.itemId);
-      if (!itemJson) {
+      const documentMarkdown = reindexMdById.get(work.itemId);
+      if (!documentMarkdown) {
         continue;
       }
-      work.item = itemFileSchema.parse(JSON.parse(itemJson));
+      work.item = await itemFileFromDocumentMarkdown(
+        ctx.fs,
+        vaultPath,
+        vaultId,
+        work.itemId,
+        documentMarkdown,
+        work.diskMtimeMs,
+      );
     }
   }
 
@@ -185,7 +205,7 @@ export async function syncIndexItemsFromFilesystem(
     const work = reindexQueue[i]!;
     try {
       if (!work.item) {
-        throw new Error(`Missing item.json for ${work.itemId}`);
+        throw new Error(`Missing content.md for ${work.itemId}`);
       }
       await ctx.index.upsertItemMetadata(
         { item: work.item, fileMtimeMs: work.diskMtimeMs },
@@ -211,7 +231,7 @@ export async function syncIndexItemsFromFilesystem(
     }
     const itemPath = itemRoot(vaultPath, work.itemId);
     try {
-      const content = await readItemContent(ctx.fs, itemPath);
+      const content = await readItemContent(ctx.fs, itemPath, vaultId);
       const sourceRef = await readItemSourceRef(ctx.fs, itemPath);
       await ctx.index.upsertItemContent({
         itemId: work.item.id,
