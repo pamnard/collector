@@ -1,13 +1,47 @@
-import type { FolderTreeNode, TagWithCount } from "@collector/core";
-import type { ItemFile, VaultMeta } from "@collector/shared";
+import type { FolderTreeNode, MediaWithPath, TagWithCount } from "@collector/core";
+import { mediaFilePath } from "@collector/core";
+import {
+  ITEM_FILES,
+  mediaManifestSchema,
+  type ItemFile,
+  type VaultMeta,
+} from "@collector/shared";
 import type { NavFilter } from "../types/ui";
 import { isFolderFilter, isTagFilter } from "../types/ui";
 import type { UpdateItemInput } from "../types/item";
+import {
+  DEV_VAULT_FS_PREFIX,
+  DEV_VAULT_SNAPSHOT_PATH,
+  type DevVaultSnapshot,
+} from "./dev-vault-types";
 import { mockStore } from "./mock-store";
 
 let warmedUp = false;
 
+function diskItemFileUrl(itemId: string, relativePath: string): string {
+  const cleaned = relativePath.replace(/^\/+/, "");
+  return `${DEV_VAULT_FS_PREFIX}/items/${itemId}/${cleaned}`;
+}
+
+async function fetchDevVaultText(url: string): Promise<string | null> {
+  const response = await fetch(url);
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    throw new Error(`Dev vault fetch failed (${response.status}): ${url}`);
+  }
+  return response.text();
+}
+
 export async function warmupCollector(): Promise<void> {
+  const response = await fetch(DEV_VAULT_SNAPSHOT_PATH);
+  if (response.ok) {
+    const snapshot = (await response.json()) as DevVaultSnapshot;
+    mockStore.loadVaultSnapshot(snapshot);
+  } else {
+    mockStore.resetToSynthetic();
+  }
   warmedUp = true;
 }
 
@@ -139,6 +173,49 @@ export async function listFolderTree(): Promise<FolderTreeNode[]> {
   return mockStore.listFolderTree();
 }
 
+export async function getItemById(
+  itemId: string,
+): Promise<{ item: ItemFile; content: string | null }> {
+  ensureWarmedUp();
+  const item = mockStore.getItemById(itemId);
+  if (!item) {
+    throw new Error(`Item not found: ${itemId}`);
+  }
+
+  if (!mockStore.isDiskVault()) {
+    return { item, content: null };
+  }
+
+  const content = await fetchDevVaultText(
+    diskItemFileUrl(itemId, ITEM_FILES.content),
+  );
+  return { item, content };
+}
+
+export async function listItemMedia(itemId: string): Promise<MediaWithPath[]> {
+  ensureWarmedUp();
+  if (!mockStore.isDiskVault()) {
+    return [];
+  }
+
+  const raw = await fetchDevVaultText(
+    diskItemFileUrl(itemId, `media/${ITEM_FILES.mediaManifest}`),
+  );
+  if (!raw) {
+    return [];
+  }
+
+  const manifest = mediaManifestSchema.parse(JSON.parse(raw));
+  return manifest.files.map((file) => ({
+    ...file,
+    absolute_path: `${DEV_VAULT_FS_PREFIX}/${mediaFilePath(
+      `items/${itemId}`,
+      file.id,
+      file.filename,
+    )}`,
+  }));
+}
+
 export async function resolveItemThumbnailPath(
   item: ItemFile,
 ): Promise<string | null> {
@@ -148,9 +225,13 @@ export async function resolveItemThumbnailPath(
   }
   if (
     item.thumbnail.startsWith("https://") ||
-    item.thumbnail.startsWith("http://")
+    item.thumbnail.startsWith("http://") ||
+    item.thumbnail.startsWith("/")
   ) {
     return item.thumbnail;
+  }
+  if (mockStore.isDiskVault()) {
+    return diskItemFileUrl(item.id, item.thumbnail);
   }
   return null;
 }
