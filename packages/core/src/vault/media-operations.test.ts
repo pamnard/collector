@@ -12,7 +12,7 @@ import {
 } from "../vault/media-operations.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import { createId } from "../util/ids.js";
-import { itemRoot } from "../vault/paths.js";
+import { itemMediaManifestPath } from "../vault/paths.js";
 
 describe("media operations", () => {
   let dataDir = "";
@@ -30,7 +30,7 @@ describe("media operations", () => {
     const sql = new MemorySqlAdapter();
     const ctx = { fs, index: new SqlVaultIndexStore(sql) };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
-    const itemId = createId();
+    const itemId = `${createId()}.md`;
 
     await upsertItem(ctx, path, meta.id, {
       item: {
@@ -65,8 +65,6 @@ describe("media operations", () => {
 
     await deleteMediaFile(ctx, path, itemId, media.id);
     expect(await listItemMediaWithPaths(ctx, path, itemId)).toHaveLength(0);
-    expect(await fs.exists(`${itemRoot(path, itemId)}/media/manifest.json`)).toBe(
-      true,
-    );
+    expect(await fs.exists(itemMediaManifestPath(path, itemId))).toBe(true);
   });
 });

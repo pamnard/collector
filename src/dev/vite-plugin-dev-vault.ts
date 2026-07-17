@@ -6,9 +6,10 @@ import type { Plugin } from "vite";
 import type { ItemFile } from "@collector/shared";
 import {
   buildFolderTreeFromSources,
-  itemsRoot,
-  itemRoot,
+  dirname,
   joinSegments,
+  listFolderRelativePaths,
+  listItemRelativePaths,
   listMediaFiles,
   mediaFilePath,
   readItemFile,
@@ -16,8 +17,6 @@ import {
   type TagWithCount,
 } from "@collector/core";
 import { NodeFileSystemAdapter } from "../../packages/core/src/adapters/node-fs";
-import { filterDiskItemIds } from "../../packages/core/src/vault/paths";
-import { readFoldersFile } from "../../packages/core/src/vault/folder-io";
 import { readTagsFile } from "../../packages/core/src/vault/tag-io";
 import {
   DEV_VAULT_FS_PREFIX,
@@ -117,8 +116,6 @@ async function resolveThumbnailUrl(
   vaultRoot: string,
   item: ItemFile,
 ): Promise<string | null> {
-  const itemPath = itemRoot(vaultRoot, item.id);
-
   if (item.thumbnail) {
     if (
       item.thumbnail.startsWith("http://") ||
@@ -129,24 +126,25 @@ async function resolveThumbnailUrl(
     if (item.thumbnail.startsWith("/")) {
       return item.thumbnail;
     }
-    const candidate = joinSegments(itemPath, item.thumbnail);
-    if (await fs.exists(candidate)) {
-      return vaultFsUrl("items", item.id, item.thumbnail);
+    const folder = dirname(item.id);
+    const relativePath = folder
+      ? joinSegments(folder, item.thumbnail)
+      : item.thumbnail;
+    if (await fs.exists(joinSegments(vaultRoot, relativePath))) {
+      return vaultFsUrl(relativePath);
     }
   }
 
-  const mediaFiles = await listMediaFiles(fs, itemPath);
+  const mediaFiles = await listMediaFiles(fs, vaultRoot, item.id);
   for (const file of mediaFiles) {
     if (file.media_type !== "image") {
       continue;
     }
-    const onDisk = mediaFilePath(itemPath, file.id, file.filename);
+    const onDisk = mediaFilePath(vaultRoot, item.id, file.id, file.filename);
     if (!(await fs.exists(onDisk))) {
       continue;
     }
-    return vaultFsUrl(
-      mediaFilePath(`items/${item.id}`, file.id, file.filename),
-    );
+    return vaultFsUrl(mediaFilePath("", item.id, file.id, file.filename));
   }
 
   return null;
@@ -155,21 +153,18 @@ async function resolveThumbnailUrl(
 async function buildSnapshot(vaultRoot: string): Promise<DevVaultSnapshot> {
   const fs = new NodeFileSystemAdapter();
   const vault = await readVaultMeta(fs, vaultRoot);
-  const itemsDir = itemsRoot(vaultRoot);
+  const itemIds = await listItemRelativePaths(fs, vaultRoot);
   const items: ItemFile[] = [];
   const thumbnailUrls: Record<string, string | null> = {};
 
-  if (await fs.exists(itemsDir)) {
-    const itemIds = filterDiskItemIds(await fs.readDir(itemsDir));
-    for (const itemId of itemIds) {
-      try {
-        const item = await readItemFile(fs, itemRoot(vaultRoot, itemId), vault.id);
-        items.push(item);
-        thumbnailUrls[item.id] = await resolveThumbnailUrl(fs, vaultRoot, item);
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.warn(`[dev-vault] skip item ${itemId}: ${message}`);
-      }
+  for (const itemId of itemIds) {
+    try {
+      const item = await readItemFile(fs, vaultRoot, itemId, vault.id);
+      items.push(item);
+      thumbnailUrls[item.id] = await resolveThumbnailUrl(fs, vaultRoot, item);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[dev-vault] skip item ${itemId}: ${message}`);
     }
   }
 
@@ -181,14 +176,10 @@ async function buildSnapshot(vaultRoot: string): Promise<DevVaultSnapshot> {
     ).length,
   }));
 
-  const foldersFile = await readFoldersFile(fs, vaultRoot);
-  const itemFolderPaths = items
-    .map((item) => item.folder_path)
-    .filter((path): path is string => Boolean(path));
+  const diskFolderPaths = await listFolderRelativePaths(fs, vaultRoot);
   const folderTree = buildFolderTreeFromSources(
-    foldersFile.paths,
+    diskFolderPaths,
     countRowsFromItems(items),
-    itemFolderPaths,
   );
 
   return { vault, items, tags, folderTree, thumbnailUrls };

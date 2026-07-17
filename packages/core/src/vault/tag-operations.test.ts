@@ -9,7 +9,6 @@ import { SqlVaultIndexStore } from "../index/sql-index.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import { createId, nowIso } from "../util/ids.js";
 import { readItemFile } from "./item-io.js";
-import { itemRoot } from "./paths.js";
 import { createVault, upsertItem } from "./operations.js";
 import { createTag, deleteTag, listTagsWithCounts } from "./tag-operations.js";
 import { writeTagsFile } from "./tag-io.js";
@@ -40,7 +39,7 @@ describe("tag operations", () => {
     const timestamp = new Date().toISOString();
 
     for (let i = 0; i < 5; i += 1) {
-      const itemId = createId();
+      const itemId = `${createId()}.md`;
       const withTag = i < 3;
       if (withTag) {
         taggedIds.push(itemId);
@@ -74,12 +73,12 @@ describe("tag operations", () => {
     readDirSpy.mockRestore();
 
     for (const itemId of taggedIds) {
-      const item = await readItemFile(fs, itemRoot(path, itemId), meta.id);
+      const item = await readItemFile(fs, path, itemId, meta.id);
       expect(item.tag_ids).toEqual([]);
     }
 
     for (const itemId of untouchedIds) {
-      const item = await readItemFile(fs, itemRoot(path, itemId), meta.id);
+      const item = await readItemFile(fs, path, itemId, meta.id);
       expect(item.tag_ids).toEqual([]);
     }
 
@@ -103,7 +102,7 @@ describe("tag operations", () => {
     await writeTagsFile(fs, path, { tags: [tag] });
     await ctx.index.upsertTag(tag, meta.id);
 
-    const itemId = createId();
+    const itemId = `${createId()}.md`;
     await upsertItem(ctx, path, meta.id, {
       item: {
         id: itemId,

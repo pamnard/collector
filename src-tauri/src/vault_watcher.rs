@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -7,16 +7,18 @@ use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
-const ITEMS_DIR: &str = "items";
-const RECONCILE_TOUCH: &str = ".collector-touch";
 const WATCH_EVENT: &str = "vault-item-fs-change";
 const WATCH_ERROR_EVENT: &str = "vault-items-watcher-error";
 
+/// Raw filesystem change under the vault root. Path-to-item-id resolution
+/// (including `*.media/` sidecar → sibling `.md` mapping) happens on the TS
+/// side via `parseVaultItemWatchPath` (`packages/core/src/vault/vault-watch-path.ts`),
+/// so this stays a dumb forwarder of whatever `notify` reports.
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct VaultItemFsChange {
     vault_path: String,
-    item_id: String,
+    changed_path: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -42,33 +44,15 @@ impl VaultWatcherState {
     }
 }
 
-fn items_dir(vault_path: &str) -> PathBuf {
-    Path::new(vault_path).join(ITEMS_DIR)
-}
-
-fn parse_item_id(items_dir: &Path, event_path: &Path) -> Option<String> {
-    let relative = event_path.strip_prefix(items_dir).ok()?;
-    let item_id = relative
-        .components()
-        .next()?
-        .as_os_str()
-        .to_string_lossy()
-        .into_owned();
-    if item_id.is_empty() || item_id == RECONCILE_TOUCH {
-        return None;
-    }
-    Some(item_id)
-}
-
 #[tauri::command]
 pub fn start_vault_items_watcher(
     app: AppHandle,
     state: State<'_, VaultWatcherState>,
     vault_path: String,
 ) -> Result<(), String> {
-    let items = items_dir(&vault_path);
-    if !items.is_dir() {
-        return Err(format!("items directory missing: {}", items.display()));
+    let root = Path::new(&vault_path);
+    if !root.is_dir() {
+        return Err(format!("vault directory missing: {}", root.display()));
     }
 
     let mut watchers = state.watchers.lock().map_err(|error| error.to_string())?;
@@ -78,22 +62,19 @@ pub fn start_vault_items_watcher(
 
     let vault_path_for_emit = vault_path.clone();
     let app_handle = app.clone();
-    let items_for_watch = items.clone();
 
     let mut watcher = RecommendedWatcher::new(
         move |result: Result<Event, notify::Error>| {
             match result {
                 Ok(event) => {
                     for path in event.paths {
-                        if let Some(item_id) = parse_item_id(&items_for_watch, &path) {
-                            let _ = app_handle.emit(
-                                WATCH_EVENT,
-                                VaultItemFsChange {
-                                    vault_path: vault_path_for_emit.clone(),
-                                    item_id,
-                                },
-                            );
-                        }
+                        let _ = app_handle.emit(
+                            WATCH_EVENT,
+                            VaultItemFsChange {
+                                vault_path: vault_path_for_emit.clone(),
+                                changed_path: path.to_string_lossy().into_owned(),
+                            },
+                        );
                     }
                 }
                 Err(error) => {
@@ -112,7 +93,7 @@ pub fn start_vault_items_watcher(
     .map_err(|error| error.to_string())?;
 
     watcher
-        .watch(&items, RecursiveMode::Recursive)
+        .watch(root, RecursiveMode::Recursive)
         .map_err(|error| error.to_string())?;
 
     watchers.insert(
@@ -132,23 +113,4 @@ pub fn stop_vault_items_watcher(
     let mut watchers = state.watchers.lock().map_err(|error| error.to_string())?;
     watchers.remove(&vault_path);
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::parse_item_id;
-    use std::path::Path;
-
-    #[test]
-    fn parse_item_id_from_nested_path() {
-        let items = Path::new("/vault/items");
-        assert_eq!(
-            parse_item_id(items, Path::new("/vault/items/abc/content.md")).as_deref(),
-            Some("abc")
-        );
-        assert_eq!(
-            parse_item_id(items, Path::new("/vault/items/.collector-touch")).as_deref(),
-            None
-        );
-    }
 }

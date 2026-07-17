@@ -1,16 +1,23 @@
-import { access, constants, mkdir, readFile, readdir, rm, writeFile, stat, utimes } from "node:fs/promises";
+import {
+  access,
+  constants,
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  writeFile,
+  stat,
+  utimes,
+} from "node:fs/promises";
 import { join } from "node:path";
 import type {
   FileSystemAdapter,
   VaultItemMetaRead,
   VaultItemStatMeta,
 } from "./types.js";
-import {
-  filterDiskItemIds,
-  itemMetaPath,
-  itemRoot,
-  itemsRoot,
-} from "../vault/paths.js";
+import { itemMarkdownPath } from "../vault/paths.js";
+import { listItemRelativePaths } from "../vault/scan.js";
 
 export class NodeFileSystemAdapter implements FileSystemAdapter {
   join(...parts: string[]): string {
@@ -69,16 +76,15 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
     await rm(path, { recursive: options?.recursive ?? false, force: true });
   }
 
-  async statVaultItemsMeta(vaultPath: string): Promise<VaultItemStatMeta[]> {
-    const itemsDir = itemsRoot(vaultPath);
-    if (!(await this.exists(itemsDir))) {
-      return [];
-    }
+  async rename(from: string, to: string): Promise<void> {
+    await rename(from, to);
+  }
 
-    const itemIds = filterDiskItemIds(await this.readDir(itemsDir));
+  async statVaultItemsMeta(vaultPath: string): Promise<VaultItemStatMeta[]> {
+    const itemIds = await listItemRelativePaths(this, vaultPath);
     const results: VaultItemStatMeta[] = [];
     for (const itemId of itemIds) {
-      const fileStat = await this.stat(itemMetaPath(itemRoot(vaultPath, itemId)));
+      const fileStat = await this.stat(itemMarkdownPath(vaultPath, itemId));
       results.push({ id: itemId, mtimeMs: fileStat.mtimeMs });
     }
     return results;
@@ -90,11 +96,11 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
   ): Promise<VaultItemMetaRead[]> {
     const results: VaultItemMetaRead[] = [];
     for (const itemId of itemIds) {
-      const metaPath = itemMetaPath(itemRoot(vaultPath, itemId));
-      if (!(await this.exists(metaPath))) {
+      const docPath = itemMarkdownPath(vaultPath, itemId);
+      if (!(await this.exists(docPath))) {
         continue;
       }
-      const documentMarkdown = await this.readText(metaPath);
+      const documentMarkdown = await this.readText(docPath);
       results.push({ id: itemId, documentMarkdown });
     }
     return results;

@@ -11,6 +11,7 @@ import {
   readFile,
   readTextFile,
   remove,
+  rename,
   writeFile,
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
@@ -71,6 +72,10 @@ export class TauriFileSystemAdapter implements FileSystemAdapter {
 
   async remove(path: string, options?: { recursive?: boolean }): Promise<void> {
     await remove(path, { recursive: options?.recursive ?? false });
+  }
+
+  async rename(from: string, to: string): Promise<void> {
+    await rename(from, to);
   }
 
   async statVaultItemsMeta(vaultPath: string): Promise<VaultItemStatMeta[]> {

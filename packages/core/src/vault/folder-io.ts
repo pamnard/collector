@@ -1,21 +1,17 @@
-import {
-  foldersFileSchema,
-  normalizeFolderPath,
-  VAULT_FILES,
-  type FoldersFile,
-} from "@collector/shared";
+import { foldersFileSchema, normalizeFolderPath, type FoldersFile } from "@collector/shared";
 import type { FileSystemAdapter } from "../adapters/types.js";
-import { joinSegments } from "./paths.js";
+import { legacyFoldersPath } from "./paths.js";
 
-export function foldersFilePath(vaultRootPath: string): string {
-  return joinSegments(vaultRootPath, VAULT_FILES.folders);
-}
-
-export async function readFoldersFile(
+/**
+ * Legacy `folders.json` — no longer written. Collections are real FS folders
+ * (#134); this is read-only, used by schema migration to seed empty folders
+ * that have no items yet, then deleted.
+ */
+export async function readLegacyFoldersFile(
   fs: FileSystemAdapter,
   vaultRootPath: string,
 ): Promise<FoldersFile> {
-  const path = foldersFilePath(vaultRootPath);
+  const path = legacyFoldersPath(vaultRootPath);
   if (!(await fs.exists(path))) {
     return { paths: [] };
   }
@@ -27,16 +23,12 @@ export async function readFoldersFile(
   };
 }
 
-export async function writeFoldersFile(
+export async function deleteLegacyFoldersFile(
   fs: FileSystemAdapter,
   vaultRootPath: string,
-  file: FoldersFile,
 ): Promise<void> {
-  const parsed = foldersFileSchema.parse({
-    paths: [...new Set(file.paths.map(normalizeFolderPath).filter(Boolean))].sort(),
-  });
-  await fs.writeText(
-    foldersFilePath(vaultRootPath),
-    JSON.stringify(parsed, null, 2),
-  );
+  const path = legacyFoldersPath(vaultRootPath);
+  if (await fs.exists(path)) {
+    await fs.remove(path);
+  }
 }

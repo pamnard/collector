@@ -8,7 +8,7 @@ import { createId } from "../util/ids.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import { createVault, syncIndexFromFilesystem, upsertItem } from "./operations.js";
 import { syncIndexItemsFromFilesystem } from "./item-index-sync.js";
-import { itemRoot } from "./paths.js";
+import { itemMarkdownPath } from "./paths.js";
 import { writeItemFile } from "./item-io.js";
 
 describe("syncIndexItemsFromFilesystem", () => {
@@ -27,8 +27,8 @@ describe("syncIndexItemsFromFilesystem", () => {
     const sql = new MemorySqlAdapter();
     const ctx = { fs, index: new SqlVaultIndexStore(sql) };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
-    const firstId = createId();
-    const secondId = createId();
+    const firstId = `${createId()}.md`;
+    const secondId = `${createId()}.md`;
     const timestamp = new Date().toISOString();
 
     for (const itemId of [firstId, secondId]) {
@@ -45,6 +45,8 @@ describe("syncIndexItemsFromFilesystem", () => {
           is_favorite: false,
           tag_ids: [],
           collection_ids: [],
+          folder_path: "",
+          content_revision: 1,
           created_at: timestamp,
           updated_at: timestamp,
         },
@@ -70,7 +72,7 @@ describe("syncIndexItemsFromFilesystem", () => {
     const sql = new MemorySqlAdapter();
     const ctx = { fs, index: new SqlVaultIndexStore(sql) };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
-    const itemId = createId();
+    const itemId = `${createId()}.md`;
     const timestamp = new Date().toISOString();
 
     await upsertItem(ctx, path, meta.id, {
@@ -86,6 +88,8 @@ describe("syncIndexItemsFromFilesystem", () => {
         is_favorite: false,
         tag_ids: [],
         collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
         created_at: timestamp,
         updated_at: timestamp,
       },
@@ -93,7 +97,7 @@ describe("syncIndexItemsFromFilesystem", () => {
     });
     await syncIndexFromFilesystem(ctx, path, meta.id);
 
-    await fs.remove(itemRoot(path, itemId), { recursive: true });
+    await fs.remove(itemMarkdownPath(path, itemId), { recursive: true });
     const report = await syncIndexItemsFromFilesystem(ctx, path, meta.id, [itemId]);
     expect(report.removed).toBe(1);
     expect(await ctx.index.listVaultItemIds(meta.id)).toEqual([]);
@@ -104,7 +108,7 @@ describe("syncIndexItemsFromFilesystem", () => {
     const sql = new MemorySqlAdapter();
     const ctx = { fs, index: new SqlVaultIndexStore(sql) };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
-    const itemId = createId();
+    const itemId = `${createId()}.md`;
     const timestamp = new Date().toISOString();
 
     await upsertItem(ctx, path, meta.id, {
@@ -120,6 +124,7 @@ describe("syncIndexItemsFromFilesystem", () => {
         is_favorite: false,
         tag_ids: [],
         collection_ids: [],
+        folder_path: "",
         content_revision: 1,
         created_at: timestamp,
         updated_at: timestamp,
@@ -128,7 +133,7 @@ describe("syncIndexItemsFromFilesystem", () => {
     });
     await syncIndexFromFilesystem(ctx, path, meta.id);
 
-    await writeItemFile(fs, itemRoot(path, itemId), {
+    await writeItemFile(fs, path, {
       id: itemId,
       vault_id: meta.id,
       title: "Patch me",
@@ -140,6 +145,7 @@ describe("syncIndexItemsFromFilesystem", () => {
       is_favorite: false,
       tag_ids: [],
       collection_ids: [],
+      folder_path: "",
       content_revision: 1,
       created_at: timestamp,
       updated_at: timestamp,

@@ -11,7 +11,7 @@ import {
   createTwoPhaseBootGate,
   createVault,
   deleteItem as deleteItemOnDisk,
-  itemRoot,
+  itemMarkdownPath,
   listItemsByIds,
   listItemsOnDisk,
   migrateVaultSchema,
@@ -600,7 +600,7 @@ const resolveActiveVaultShared = createSingleFlight(async () => {
 
     await upsertItem(ctx, vaultPath, meta.id, {
       item: {
-        id: crypto.randomUUID(),
+        id: `${crypto.randomUUID()}.md`,
         vault_id: meta.id,
         title: "Welcome to Collector",
         description: "First offline item stored on disk and indexed in SQLite.",
@@ -918,24 +918,30 @@ export async function getItemById(
   }
 
   const { path, vault } = await resolveActiveVault();
-  const itemPath = itemRoot(path, itemId);
 
-  if (!(await fs.exists(itemPath))) {
+  if (!(await fs.exists(itemMarkdownPath(path, itemId)))) {
     throw new Error(`Item not found: ${itemId}`);
   }
 
-  const item = await readItemFile(fs, itemPath, vault.id);
-  const content = await readItemContent(fs, itemPath, vault.id);
+  const item = await readItemFile(fs, path, itemId, vault.id);
+  const content = await readItemContent(fs, path, itemId);
   return { item, content };
 }
 
 export async function createItem(input: CreateItemInput): Promise<ItemFile> {
   const { vault, path } = await resolveActiveVault();
   const timestamp = new Date().toISOString();
+  const folderPath = input.folder_path?.trim() ?? "";
+  const fileName = `${crypto.randomUUID()}.md`;
+  const id = folderPath ? `${folderPath}/${fileName}` : fileName;
+
+  if (folderPath) {
+    await createFolderOnVault(getContext(), path, folderPath);
+  }
 
   return upsertItem(getContext(), path, vault.id, {
     item: {
-      id: crypto.randomUUID(),
+      id,
       vault_id: vault.id,
       title: input.title,
       description: input.description ?? "",
@@ -947,7 +953,7 @@ export async function createItem(input: CreateItemInput): Promise<ItemFile> {
       is_favorite: false,
       tag_ids: [],
       collection_ids: [],
-      folder_path: "",
+      folder_path: folderPath,
       content_revision: 1,
       created_at: timestamp,
       updated_at: timestamp,
@@ -966,20 +972,36 @@ export async function updateItem(
 
   const { vault, path } = await resolveActiveVault();
   const { item: existing, content: existingContent } = await getItemById(itemId);
+  const ctx = getContext();
 
-  return upsertItem(getContext(), path, vault.id, {
+  let current = existing;
+  let currentContent = existingContent;
+  if (
+    input.folder_path !== undefined &&
+    input.folder_path !== existing.folder_path
+  ) {
+    current = await moveItemToFolder(
+      ctx,
+      path,
+      vault.id,
+      existing.id,
+      input.folder_path,
+    );
+    currentContent = await readItemContent(fs, path, current.id);
+  }
+
+  return upsertItem(ctx, path, vault.id, {
     item: {
-      ...existing,
-      title: input.title ?? existing.title,
-      description: input.description ?? existing.description,
-      url: input.url !== undefined ? input.url : existing.url,
-      content_type: input.content_type ?? existing.content_type,
-      is_favorite: input.is_favorite ?? existing.is_favorite,
-      is_archived: input.is_archived ?? existing.is_archived,
-      tag_ids: input.tag_ids ?? existing.tag_ids,
-      folder_path: input.folder_path ?? existing.folder_path,
+      ...current,
+      title: input.title ?? current.title,
+      description: input.description ?? current.description,
+      url: input.url !== undefined ? input.url : current.url,
+      content_type: input.content_type ?? current.content_type,
+      is_favorite: input.is_favorite ?? current.is_favorite,
+      is_archived: input.is_archived ?? current.is_archived,
+      tag_ids: input.tag_ids ?? current.tag_ids,
     },
-    content: input.content !== undefined ? input.content : existingContent,
+    content: input.content !== undefined ? input.content : currentContent,
   });
 }
 

@@ -142,9 +142,28 @@ export const mockStore = {
       throw new Error(`Item not found: ${itemId}`);
     }
 
+    const existing = items[index]!;
+    const nextFolder =
+      patch.folder_path !== undefined ? patch.folder_path : existing.folder_path;
+    let nextId = existing.id;
+    if (
+      patch.folder_path !== undefined &&
+      patch.folder_path !== existing.folder_path &&
+      existing.id.toLowerCase().endsWith(".md")
+    ) {
+      const slash = existing.id.lastIndexOf("/");
+      const name = slash === -1 ? existing.id : existing.id.slice(slash + 1);
+      nextId = nextFolder ? `${nextFolder}/${name}` : name;
+      if (items.some((item, i) => i !== index && item.id === nextId)) {
+        throw new Error(`Item already exists at destination: ${nextId}`);
+      }
+    }
+
     const updated: ItemFile = {
-      ...items[index],
+      ...existing,
       ...patch,
+      id: nextId,
+      folder_path: nextFolder,
       updated_at: new Date().toISOString(),
     };
     items = [...items.slice(0, index), updated, ...items.slice(index + 1)];

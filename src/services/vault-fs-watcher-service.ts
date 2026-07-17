@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   createVaultWatchBatcher,
+  parseVaultItemWatchPath,
   syncIndexItemsFromFilesystem,
   type VaultContext,
 } from "@collector/core";
@@ -104,7 +105,7 @@ export async function startVaultFilesystemWatcher(
     return;
   }
 
-  const unlisten = await listen<{ vaultPath: string; itemId: string }>(
+  const unlisten = await listen<{ vaultPath: string; changedPath: string }>(
     "vault-item-fs-change",
     (event) => {
       if (event.payload.vaultPath !== vaultPath) {
@@ -113,7 +114,11 @@ export async function startVaultFilesystemWatcher(
       if (config!.getActiveVaultId() !== vaultId) {
         return;
       }
-      batcher.enqueue(event.payload.itemId);
+      const itemId = parseVaultItemWatchPath(vaultPath, event.payload.changedPath);
+      if (!itemId) {
+        return;
+      }
+      batcher.enqueue(itemId);
     },
   );
 

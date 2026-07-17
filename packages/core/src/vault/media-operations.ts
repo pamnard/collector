@@ -2,7 +2,7 @@ import type { MediaFileMeta } from "@collector/shared";
 import { inferMediaType } from "@collector/shared";
 import type { VaultContext } from "../adapters/types.js";
 import { createId, nowIso } from "../util/ids.js";
-import { itemMediaRoot, itemRoot } from "./paths.js";
+import { itemMediaRoot } from "./paths.js";
 import {
   listMediaFiles,
   mediaFilePath,
@@ -20,8 +20,7 @@ export async function attachMediaFile(
   itemId: string,
   input: { filename: string; data: Uint8Array; mediaType?: MediaFileMeta["media_type"] },
 ): Promise<MediaFileMeta> {
-  const itemPath = itemRoot(vaultPath, itemId);
-  const manifest = await readMediaManifest(ctx.fs, itemPath);
+  const manifest = await readMediaManifest(ctx.fs, vaultPath, itemId);
   const mediaId = createId();
   const mediaType = input.mediaType ?? inferMediaType(input.filename);
   const entry: MediaFileMeta = {
@@ -32,12 +31,12 @@ export async function attachMediaFile(
     created_at: nowIso(),
   };
 
-  const destination = mediaFilePath(itemPath, mediaId, input.filename);
-  await ctx.fs.mkdir(itemMediaRoot(itemPath));
+  const destination = mediaFilePath(vaultPath, itemId, mediaId, input.filename);
+  await ctx.fs.mkdir(itemMediaRoot(vaultPath, itemId));
   await ctx.fs.writeBinary(destination, input.data);
 
   manifest.files.push(entry);
-  await writeMediaManifest(ctx.fs, itemPath, manifest);
+  await writeMediaManifest(ctx.fs, vaultPath, itemId, manifest);
   await ctx.index.upsertMedia(entry);
   return entry;
 }
@@ -47,11 +46,10 @@ export async function listItemMediaWithPaths(
   vaultPath: string,
   itemId: string,
 ): Promise<MediaWithPath[]> {
-  const itemPath = itemRoot(vaultPath, itemId);
-  const files = await listMediaFiles(ctx.fs, itemPath);
+  const files = await listMediaFiles(ctx.fs, vaultPath, itemId);
   return files.map((file) => ({
     ...file,
-    absolute_path: mediaFilePath(itemPath, file.id, file.filename),
+    absolute_path: mediaFilePath(vaultPath, itemId, file.id, file.filename),
   }));
 }
 
@@ -61,20 +59,19 @@ export async function deleteMediaFile(
   itemId: string,
   mediaId: string,
 ): Promise<void> {
-  const itemPath = itemRoot(vaultPath, itemId);
-  const manifest = await readMediaManifest(ctx.fs, itemPath);
+  const manifest = await readMediaManifest(ctx.fs, vaultPath, itemId);
   const target = manifest.files.find((file) => file.id === mediaId);
   if (!target) {
     throw new Error(`Media not found: ${mediaId}`);
   }
 
-  const destination = mediaFilePath(itemPath, mediaId, target.filename);
+  const destination = mediaFilePath(vaultPath, itemId, mediaId, target.filename);
   if (await ctx.fs.exists(destination)) {
     await ctx.fs.remove(destination);
   }
 
   manifest.files = manifest.files.filter((file) => file.id !== mediaId);
-  await writeMediaManifest(ctx.fs, itemPath, manifest);
+  await writeMediaManifest(ctx.fs, vaultPath, itemId, manifest);
   await ctx.index.deleteMedia(mediaId);
 }
 
@@ -83,8 +80,7 @@ export async function syncItemMediaToIndex(
   vaultPath: string,
   itemId: string,
 ): Promise<void> {
-  const itemPath = itemRoot(vaultPath, itemId);
-  const files = await listMediaFiles(ctx.fs, itemPath);
+  const files = await listMediaFiles(ctx.fs, vaultPath, itemId);
   await ctx.index.deleteMediaForItem(itemId);
   for (const file of files) {
     await ctx.index.upsertMedia(file);

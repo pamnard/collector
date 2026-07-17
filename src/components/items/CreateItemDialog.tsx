@@ -30,6 +30,7 @@ export function CreateItemDialog({ onClose, onCreated }: CreateItemDialogProps) 
         url: values.url.trim() || null,
         content_type: values.content_type,
         content: values.content.trim() || null,
+        folder_path: values.folder_path.trim() || undefined,
       });
       onCreated(item.id);
     } catch (err: unknown) {

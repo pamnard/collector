@@ -2,11 +2,13 @@ import type { ItemFile, MediaFileMeta, SourceRef, Tag, VaultMeta } from "@collec
 import type { NavSearchFilter } from "../search/nav-filter.js";
 
 export interface VaultItemStatMeta {
+  /** Vault-relative posix path of the markdown item (e.g. `Inbox/note.md`). */
   id: string;
   mtimeMs: number | null;
 }
 
 export interface VaultItemMetaRead {
+  /** Vault-relative posix path of the markdown item (e.g. `Inbox/note.md`). */
   id: string;
   documentMarkdown: string;
 }
@@ -22,10 +24,12 @@ export interface FileSystemAdapter {
   stat(path: string): Promise<{ mtimeMs: number | null }>;
   touch(path: string): Promise<void>;
   remove(path: string, options?: { recursive?: boolean }): Promise<void>;
+  /** Move/rename a file or directory (used for folder renames + item moves). */
+  rename(from: string, to: string): Promise<void>;
   join(...parts: string[]): string;
-  /** One IPC: stat content.md mtimes for every item dir under vault. */
+  /** One IPC: recursively stat every markdown item `.md` file under vault root. */
   statVaultItemsMeta?(vaultPath: string): Promise<VaultItemStatMeta[]>;
-  /** One IPC per chunk: read content.md for the given ids. */
+  /** One IPC per chunk: read markdown documents for the given vault-relative paths. */
   readVaultItemsMeta?(
     vaultPath: string,
     itemIds: string[],

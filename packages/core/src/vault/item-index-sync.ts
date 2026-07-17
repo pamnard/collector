@@ -8,16 +8,13 @@ import {
 } from "../util/concurrency.js";
 import { classifyItemSyncAction } from "./sync-classifier.js";
 import { readVaultReconcileFingerprint } from "./reconcile-fingerprint.js";
-import {
-  itemMetaPath,
-  itemRoot,
-  itemsRoot,
-} from "./paths.js";
+import { itemMarkdownPath } from "./paths.js";
 import {
   itemFileFromDocumentMarkdown,
   readItemContent,
   readItemSourceRef,
 } from "./item-io.js";
+import { listItemRelativePaths } from "./scan.js";
 import { readVaultItemMetaBatch } from "./vault-fs-batch.js";
 
 function createEmptySyncReport(): SyncReport {
@@ -51,8 +48,8 @@ export async function syncIndexItemsFromFilesystem(
   const removedIds: string[] = [];
 
   for (const itemId of uniqueItemIds) {
-    const itemPath = itemRoot(vaultPath, itemId);
-    if (await ctx.fs.exists(itemPath)) {
+    const docPath = itemMarkdownPath(vaultPath, itemId);
+    if (await ctx.fs.exists(docPath)) {
       existingIds.push(itemId);
     } else if (indexMeta.has(itemId)) {
       removedIds.push(itemId);
@@ -76,8 +73,7 @@ export async function syncIndexItemsFromFilesystem(
   }> = [];
 
   for (const itemId of existingIds) {
-    const metaPath = itemMetaPath(itemRoot(vaultPath, itemId));
-    const fileStat = await ctx.fs.stat(metaPath);
+    const fileStat = await ctx.fs.stat(itemMarkdownPath(vaultPath, itemId));
     const diskMtimeMs = fileStat.mtimeMs ?? 0;
     const meta = indexMeta.get(itemId);
 
@@ -110,7 +106,7 @@ export async function syncIndexItemsFromFilesystem(
       if (!documentMarkdown) {
         report.errors.push({
           itemId,
-          message: `Missing content.md for ${itemId}`,
+          message: `Missing document for ${itemId}`,
         });
         continue;
       }
@@ -205,7 +201,7 @@ export async function syncIndexItemsFromFilesystem(
     const work = reindexQueue[i]!;
     try {
       if (!work.item) {
-        throw new Error(`Missing content.md for ${work.itemId}`);
+        throw new Error(`Missing document for ${work.itemId}`);
       }
       await ctx.index.upsertItemMetadata(
         { item: work.item, fileMtimeMs: work.diskMtimeMs },
@@ -229,10 +225,9 @@ export async function syncIndexItemsFromFilesystem(
     if (!work.item) {
       continue;
     }
-    const itemPath = itemRoot(vaultPath, work.itemId);
     try {
-      const content = await readItemContent(ctx.fs, itemPath, vaultId);
-      const sourceRef = await readItemSourceRef(ctx.fs, itemPath);
+      const content = await readItemContent(ctx.fs, vaultPath, work.itemId);
+      const sourceRef = await readItemSourceRef(ctx.fs, vaultPath, work.itemId);
       await ctx.index.upsertItemContent({
         itemId: work.item.id,
         title: work.item.title,
@@ -254,8 +249,12 @@ export async function syncIndexItemsFromFilesystem(
   }
 
   if (report.errors.length === 0) {
-    const itemsDir = itemsRoot(vaultPath);
-    const currentFingerprint = await readVaultReconcileFingerprint(ctx.fs, itemsDir);
+    const itemCount = (await listItemRelativePaths(ctx.fs, vaultPath)).length;
+    const currentFingerprint = await readVaultReconcileFingerprint(
+      ctx.fs,
+      vaultPath,
+      itemCount,
+    );
     await ctx.index.setReconcileFingerprint(vaultId, currentFingerprint);
   }
 

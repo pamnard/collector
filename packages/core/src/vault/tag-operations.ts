@@ -1,7 +1,7 @@
 import type { ItemFile, Tag } from "@collector/shared";
 import type { VaultContext } from "../adapters/types.js";
 import { createId, nowIso } from "../util/ids.js";
-import { itemRoot } from "./paths.js";
+import { itemMarkdownPath } from "./paths.js";
 import { readItemContent, readItemFile, writeItemFile } from "./item-io.js";
 import { listTagsOnDisk, readTagsFile, writeTagsFile } from "./tag-io.js";
 
@@ -100,12 +100,11 @@ export async function deleteTag(
 
   // Strip tag from documents while tags.json still has the name for serialize/read.
   for (const itemId of itemIds) {
-    const itemPath = itemRoot(vaultPath, itemId);
-    if (!(await ctx.fs.exists(itemPath))) {
+    if (!(await ctx.fs.exists(itemMarkdownPath(vaultPath, itemId)))) {
       continue;
     }
 
-    const item = await readItemFile(ctx.fs, itemPath, vaultId);
+    const item = await readItemFile(ctx.fs, vaultPath, itemId, vaultId);
     if (!item.tag_ids.includes(tagId)) {
       continue;
     }
@@ -115,8 +114,8 @@ export async function deleteTag(
       tag_ids: item.tag_ids.filter((id) => id !== tagId),
       updated_at: nowIso(),
     };
-    await writeItemFile(ctx.fs, itemPath, updated);
-    const content = await readItemContent(ctx.fs, itemPath, vaultId);
+    await writeItemFile(ctx.fs, vaultPath, updated);
+    const content = await readItemContent(ctx.fs, vaultPath, itemId);
     await ctx.index.upsertItem({ item: updated, content, sourceRef: null }, vaultId);
   }
 

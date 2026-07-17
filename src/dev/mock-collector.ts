@@ -1,11 +1,11 @@
 import type { FolderTreeNode, MediaWithPath, TagWithCount } from "@collector/core";
-import { mediaFilePath } from "@collector/core";
 import {
-  ITEM_FILES,
-  mediaManifestSchema,
-  type ItemFile,
-  type VaultMeta,
-} from "@collector/shared";
+  itemMediaManifestPath,
+  mediaFilePath,
+  parseDocumentMarkdown,
+  resolveItemThumbnailAbsolutePath,
+} from "@collector/core";
+import { mediaManifestSchema, type ItemFile, type VaultMeta } from "@collector/shared";
 import type { NavFilter } from "../types/ui";
 import { isFolderFilter, isTagFilter } from "../types/ui";
 import type { UpdateItemInput } from "../types/item";
@@ -18,9 +18,9 @@ import { mockStore } from "./mock-store";
 
 let warmedUp = false;
 
-function diskItemFileUrl(itemId: string, relativePath: string): string {
-  const cleaned = relativePath.replace(/^\/+/, "");
-  return `${DEV_VAULT_FS_PREFIX}/items/${itemId}/${cleaned}`;
+/** Vault-relative path (e.g. `Inbox/note.md`) → browser URL under the dev fs mount. */
+function devVaultFsUrl(vaultRelativePath: string): string {
+  return `${DEV_VAULT_FS_PREFIX}/${vaultRelativePath.replace(/^\/+/, "")}`;
 }
 
 async function fetchDevVaultText(url: string): Promise<string | null> {
@@ -186,9 +186,8 @@ export async function getItemById(
     return { item, content: null };
   }
 
-  const content = await fetchDevVaultText(
-    diskItemFileUrl(itemId, ITEM_FILES.content),
-  );
+  const raw = await fetchDevVaultText(devVaultFsUrl(itemId));
+  const content = raw === null ? null : parseDocumentMarkdown(raw).body;
   return { item, content };
 }
 
@@ -199,7 +198,7 @@ export async function listItemMedia(itemId: string): Promise<MediaWithPath[]> {
   }
 
   const raw = await fetchDevVaultText(
-    diskItemFileUrl(itemId, `media/${ITEM_FILES.mediaManifest}`),
+    devVaultFsUrl(itemMediaManifestPath("", itemId)),
   );
   if (!raw) {
     return [];
@@ -208,11 +207,7 @@ export async function listItemMedia(itemId: string): Promise<MediaWithPath[]> {
   const manifest = mediaManifestSchema.parse(JSON.parse(raw));
   return manifest.files.map((file) => ({
     ...file,
-    absolute_path: `${DEV_VAULT_FS_PREFIX}/${mediaFilePath(
-      `items/${itemId}`,
-      file.id,
-      file.filename,
-    )}`,
+    absolute_path: devVaultFsUrl(mediaFilePath("", itemId, file.id, file.filename)),
   }));
 }
 
@@ -239,7 +234,8 @@ export async function resolveItemThumbnailPath(
     return item.thumbnail;
   }
   if (mockStore.isDiskVault()) {
-    return diskItemFileUrl(item.id, item.thumbnail);
+    const relativePath = resolveItemThumbnailAbsolutePath("", item.id, item.thumbnail);
+    return relativePath ? devVaultFsUrl(relativePath) : null;
   }
   return null;
 }

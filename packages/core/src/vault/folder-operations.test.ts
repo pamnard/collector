@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { createId } from "../util/ids.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
@@ -13,7 +13,6 @@ import {
   renameFolder,
 } from "../vault/folder-operations.js";
 import { readItemFile } from "../vault/item-io.js";
-import { itemRoot } from "../vault/paths.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 
 describe("folder operations", () => {
@@ -34,7 +33,7 @@ describe("folder operations", () => {
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
 
     await createFolder(ctx, path, "Work/Articles");
-    const itemId = createId();
+    const itemId = `Work/Articles/${createId()}.md`;
     await upsertItem(ctx, path, meta.id, {
       item: {
         id: itemId,
@@ -48,7 +47,8 @@ describe("folder operations", () => {
         is_favorite: false,
         tag_ids: [],
         collection_ids: [],
-        folder_path: "Work/Articles",
+        folder_path: "",
+        content_revision: 1,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       },
@@ -70,7 +70,7 @@ describe("folder operations", () => {
     const ctx = { fs, index: new SqlVaultIndexStore(sql) };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
 
-    const itemId = createId();
+    const itemId = `Imports/Drop/${createId()}.md`;
     await upsertItem(ctx, path, meta.id, {
       item: {
         id: itemId,
@@ -84,7 +84,8 @@ describe("folder operations", () => {
         is_favorite: false,
         tag_ids: [],
         collection_ids: [],
-        folder_path: "Imports/Drop",
+        folder_path: "",
+        content_revision: 1,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       },
@@ -111,9 +112,9 @@ describe("folder operations", () => {
 
     await createFolder(ctx, path, "Work/Articles");
 
-    const workRootId = createId();
-    const workNestedId = createId();
-    const otherId = createId();
+    const workRootId = `Work/${createId()}.md`;
+    const workNestedId = `Work/Articles/${createId()}.md`;
+    const otherId = `Other/${createId()}.md`;
 
     await upsertItem(ctx, path, meta.id, {
       item: {
@@ -128,7 +129,8 @@ describe("folder operations", () => {
         is_favorite: false,
         tag_ids: [],
         collection_ids: [],
-        folder_path: "Work",
+        folder_path: "",
+        content_revision: 1,
         created_at: timestamp,
         updated_at: timestamp,
       },
@@ -147,7 +149,8 @@ describe("folder operations", () => {
         is_favorite: false,
         tag_ids: [],
         collection_ids: [],
-        folder_path: "Work/Articles",
+        folder_path: "",
+        content_revision: 1,
         created_at: timestamp,
         updated_at: timestamp,
       },
@@ -166,24 +169,25 @@ describe("folder operations", () => {
         is_favorite: false,
         tag_ids: [],
         collection_ids: [],
-        folder_path: "Other",
+        folder_path: "",
+        content_revision: 1,
         created_at: timestamp,
         updated_at: timestamp,
       },
     });
 
-    const readDirSpy = vi.spyOn(fs, "readDir");
     await renameFolder(ctx, path, meta.id, "Work", "Projects");
-    expect(readDirSpy).not.toHaveBeenCalled();
-    readDirSpy.mockRestore();
+
+    const newWorkRootId = workRootId.replace("Work/", "Projects/");
+    const newWorkNestedId = workNestedId.replace("Work/Articles/", "Projects/Articles/");
 
     expect(
-      (await readItemFile(fs, itemRoot(path, workRootId), meta.id)).folder_path,
+      (await readItemFile(fs, path, newWorkRootId, meta.id)).folder_path,
     ).toBe("Projects");
     expect(
-      (await readItemFile(fs, itemRoot(path, workNestedId), meta.id)).folder_path,
+      (await readItemFile(fs, path, newWorkNestedId, meta.id)).folder_path,
     ).toBe("Projects/Articles");
-    expect((await readItemFile(fs, itemRoot(path, otherId), meta.id)).folder_path).toBe(
+    expect((await readItemFile(fs, path, otherId, meta.id)).folder_path).toBe(
       "Other",
     );
 
@@ -191,7 +195,7 @@ describe("folder operations", () => {
       await ctx.index.listItemIdsByFolderPrefix(meta.id, "Projects", {
         includeArchived: true,
       }),
-    ).toEqual(expect.arrayContaining([workRootId, workNestedId]));
+    ).toEqual(expect.arrayContaining([newWorkRootId, newWorkNestedId]));
     expect(await ctx.index.listItemIdsByFolderPrefix(meta.id, "Work")).toEqual(
       [],
     );

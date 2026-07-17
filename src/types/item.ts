@@ -18,6 +18,7 @@ export interface CreateItemInput {
   url?: string | null;
   content_type: ContentType;
   content?: string | null;
+  folder_path?: string;
 }
 
 export interface UpdateItemInput {

@@ -33,9 +33,9 @@ describe("listItemIdsByNavFilter", () => {
     const ctx = { fs, index };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
 
-    const activeId = createId();
-    const favoriteId = createId();
-    const archivedId = createId();
+    const activeId = `${createId()}.md`;
+    const favoriteId = `${createId()}.md`;
+    const archivedId = `${createId()}.md`;
     const timestamp = new Date().toISOString();
 
     for (const [id, flags] of [
@@ -99,7 +99,7 @@ describe("dashboard item id pagination", () => {
     const ids: string[] = [];
 
     for (let i = 0; i < 5; i += 1) {
-      const id = createId();
+      const id = `${createId()}.md`;
       ids.push(id);
       await upsertItem(ctx, path, meta.id, {
         item: {
@@ -209,9 +209,9 @@ describe("listItemFilesByIds", () => {
 
     const tag = await createTag(ctx, path, meta.id, { name: "inbox" });
     const collectionId = createId();
-    const firstId = createId();
-    const secondId = createId();
-    const missingId = createId();
+    const firstId = `work/${createId()}.md`;
+    const secondId = `${createId()}.md`;
+    const missingId = `${createId()}.md`;
     const timestamp = new Date().toISOString();
 
     await upsertItem(ctx, path, meta.id, {

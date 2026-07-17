@@ -63,7 +63,7 @@ describe("syncVaultIndexFromFilesystem", () => {
     });
 
     const tag = await createTag(diskCtx, path, meta.id, { name: "inbox" });
-    const itemId = createId();
+    const itemId = `${createId()}.md`;
     await upsertItem(diskCtx, path, meta.id, {
       item: {
         id: itemId,
@@ -135,7 +135,7 @@ describe("syncVaultIndexFromFilesystem", () => {
     for (let i = 0; i < itemCount; i += 1) {
       await upsertItem(diskCtx, path, meta.id, {
         item: {
-          id: createId(),
+          id: `${createId()}.md`,
           vault_id: meta.id,
           title: `Item ${i}`,
           description: "",

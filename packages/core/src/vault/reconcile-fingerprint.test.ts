@@ -3,6 +3,7 @@ import {
   canTakeReconcileFastPath,
   parseStoredReconcileFingerprint,
   reconcileFingerprintsMatch,
+  serializeReconcileFingerprint,
 } from "./reconcile-fingerprint.js";
 
 describe("reconcile fingerprint", () => {
@@ -25,17 +26,42 @@ describe("reconcile fingerprint", () => {
         indexedItemCount: 0,
         diskItemCount: 2,
         indexedIds: new Set(),
-        diskItemIds: new Set(["a", "b"]),
+        diskItemIds: new Set(["a.md", "b.md"]),
       }),
     ).toBe(false);
   });
 
-  it("parses stored fingerprint JSON", () => {
+  it("accepts fast path when fingerprints and id sets fully agree", () => {
     expect(
-      parseStoredReconcileFingerprint(
-        JSON.stringify({ itemsDirMtimeMs: 42, itemCount: 7 }),
-      ),
-    ).toEqual({ itemsDirMtimeMs: 42, itemCount: 7 });
+      canTakeReconcileFastPath({
+        storedFingerprint: { itemsDirMtimeMs: 1, itemCount: 2 },
+        currentFingerprint: { itemsDirMtimeMs: 1, itemCount: 2 },
+        indexedItemCount: 2,
+        diskItemCount: 2,
+        indexedIds: new Set(["a.md", "b.md"]),
+        diskItemIds: new Set(["a.md", "b.md"]),
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects fast path when there is no stored fingerprint", () => {
+    expect(
+      canTakeReconcileFastPath({
+        storedFingerprint: null,
+        currentFingerprint: { itemsDirMtimeMs: 1, itemCount: 0 },
+        indexedItemCount: 0,
+        diskItemCount: 0,
+        indexedIds: new Set(),
+        diskItemIds: new Set(),
+      }),
+    ).toBe(false);
+  });
+
+  it("round-trips serialize/parse", () => {
+    const fingerprint = { itemsDirMtimeMs: 42, itemCount: 7 };
+    expect(
+      parseStoredReconcileFingerprint(serializeReconcileFingerprint(fingerprint)),
+    ).toEqual(fingerprint);
     expect(parseStoredReconcileFingerprint(null)).toBeNull();
   });
 });

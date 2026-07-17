@@ -4,10 +4,20 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-const ITEMS_DIR: &str = "items";
-const ITEM_META_FILE: &str = "content.md";
-const MEDIA_DIR: &str = "media";
+/// Sidecar dir next to `note.md` → `note.media/`. Mirrors
+/// `packages/shared/src/constants.ts` `ITEM_MEDIA_SUFFIX`.
+const ITEM_MEDIA_SUFFIX: &str = ".media";
 const MEDIA_MANIFEST_FILE: &str = "manifest.json";
+
+/// Top-level names that are never markdown items / real folders. Mirrors
+/// `packages/shared/src/constants.ts` `RESERVED_VAULT_ENTRIES`.
+const RESERVED_VAULT_ENTRIES: &[&str] = &[
+    "vault.meta.json",
+    "tags.json",
+    "folders.json",
+    "items",
+    ".collector-touch",
+];
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,12 +61,91 @@ struct MediaFileEntry {
     created_at: String,
 }
 
-fn items_dir(vault_path: &str) -> PathBuf {
-    Path::new(vault_path).join(ITEMS_DIR)
+fn is_reserved_entry(name: &str) -> bool {
+    RESERVED_VAULT_ENTRIES.contains(&name) || name.ends_with(ITEM_MEDIA_SUFFIX)
 }
 
-fn item_meta_path(items_dir: &Path, item_id: &str) -> PathBuf {
-    items_dir.join(item_id).join(ITEM_META_FILE)
+fn is_markdown_item_file(name: &str) -> bool {
+    name.to_lowercase().ends_with(".md") && !name.starts_with('.')
+}
+
+fn join_relative(base: &str, name: &str) -> String {
+    if base.is_empty() {
+        name.to_string()
+    } else {
+        format!("{base}/{name}")
+    }
+}
+
+/// Recursively collect vault-relative `.md` item paths, mirroring the
+/// TS `walkVault` traversal in `packages/core/src/vault/scan.ts`.
+fn walk_items(root: &Path, rel_dir: &str, items: &mut Vec<String>) -> Result<(), String> {
+    let abs_dir = if rel_dir.is_empty() {
+        root.to_path_buf()
+    } else {
+        root.join(rel_dir)
+    };
+
+    let entries = fs::read_dir(&abs_dir).map_err(|error| error.to_string())?;
+    for entry in entries {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') || is_reserved_entry(&name) {
+            continue;
+        }
+
+        let rel = join_relative(rel_dir, &name);
+        let file_type = entry.file_type().map_err(|error| error.to_string())?;
+
+        if file_type.is_dir() {
+            walk_items(root, &rel, items)?;
+            continue;
+        }
+
+        if is_markdown_item_file(&name) {
+            items.push(rel);
+        }
+    }
+
+    Ok(())
+}
+
+fn dirname(relative_path: &str) -> String {
+    match relative_path.rfind('/') {
+        Some(index) => relative_path[..index].to_string(),
+        None => String::new(),
+    }
+}
+
+fn basename(relative_path: &str) -> &str {
+    match relative_path.rfind('/') {
+        Some(index) => &relative_path[index + 1..],
+        None => relative_path,
+    }
+}
+
+/// `note.md` → `note.media` (directory name). Mirrors `itemMediaDirName`.
+fn item_media_dir_name(item_id: &str) -> Result<String, String> {
+    let base = basename(item_id);
+    if base.len() < 3 || !base.to_lowercase().ends_with(".md") {
+        return Err(format!("Item path must end with .md: {item_id}"));
+    }
+    let stem = &base[..base.len() - 3];
+    Ok(format!("{stem}{ITEM_MEDIA_SUFFIX}"))
+}
+
+/// Absolute media root for an item (`…/note.media`). Mirrors `itemMediaRoot`.
+fn item_media_root(vault_path: &str, item_id: &str) -> Result<PathBuf, String> {
+    let dir = dirname(item_id);
+    let media_name = item_media_dir_name(item_id)?;
+    let mut path = PathBuf::from(vault_path);
+    if !dir.is_empty() {
+        for segment in dir.split('/') {
+            path.push(segment);
+        }
+    }
+    path.push(media_name);
+    Ok(path)
 }
 
 fn mtime_ms(path: &Path) -> Option<i64> {
@@ -68,31 +157,19 @@ fn mtime_ms(path: &Path) -> Option<i64> {
 
 #[tauri::command]
 pub fn vault_items_stat_meta(vault_path: String) -> Result<Vec<VaultItemStatMeta>, String> {
-    let items_dir = items_dir(&vault_path);
-    if !items_dir.is_dir() {
+    let root = Path::new(&vault_path);
+    if !root.is_dir() {
         return Ok(vec![]);
     }
 
-    let entries = fs::read_dir(&items_dir).map_err(|error| error.to_string())?;
-    let mut results = Vec::new();
+    let mut ids = Vec::new();
+    walk_items(root, "", &mut ids)?;
 
-    for entry in entries {
-        let entry = entry.map_err(|error| error.to_string())?;
-        if !entry.file_type().map_err(|error| error.to_string())?.is_dir() {
-            continue;
-        }
-
-        let id = entry.file_name().to_string_lossy().into_owned();
-        let meta_path = item_meta_path(&items_dir, &id);
-        let mtime_ms = if meta_path.is_file() {
-            mtime_ms(&meta_path)
-        } else {
-            None
-        };
-
+    let mut results = Vec::with_capacity(ids.len());
+    for id in ids {
+        let mtime_ms = mtime_ms(&root.join(&id));
         results.push(VaultItemStatMeta { id, mtime_ms });
     }
-
     Ok(results)
 }
 
@@ -105,17 +182,17 @@ pub fn vault_items_read_meta(
         return Ok(vec![]);
     }
 
-    let items_dir = items_dir(&vault_path);
+    let root = Path::new(&vault_path);
     let mut results = Vec::with_capacity(ids.len());
 
     for id in ids {
-        let meta_path = item_meta_path(&items_dir, &id);
-        if !meta_path.is_file() {
+        let doc_path = root.join(&id);
+        if !doc_path.is_file() {
             continue;
         }
 
         let document_markdown =
-            fs::read_to_string(&meta_path).map_err(|error| format!("{id}: {error}"))?;
+            fs::read_to_string(&doc_path).map_err(|error| format!("{id}: {error}"))?;
         results.push(VaultItemMetaRead {
             id,
             document_markdown,
@@ -123,10 +200,6 @@ pub fn vault_items_read_meta(
     }
 
     Ok(results)
-}
-
-fn item_root_path(vault_path: &str, item_id: &str) -> PathBuf {
-    items_dir(vault_path).join(item_id)
 }
 
 fn resolve_thumbnail_absolute(vault_path: &str, item_id: &str, thumbnail: &str) -> PathBuf {
@@ -143,7 +216,13 @@ fn resolve_thumbnail_absolute(vault_path: &str, item_id: &str, thumbnail: &str) 
         return PathBuf::from(normalized);
     }
 
-    let mut resolved = item_root_path(vault_path, item_id);
+    let dir = dirname(item_id);
+    let mut resolved = PathBuf::from(vault_path);
+    if !dir.is_empty() {
+        for segment in dir.split('/') {
+            resolved.push(segment);
+        }
+    }
     for segment in normalized.split('/').filter(|segment| !segment.is_empty()) {
         resolved.push(segment);
     }
@@ -172,13 +251,13 @@ fn sanitize_media_filename(filename: &str) -> String {
     }
 }
 
-fn media_file_path(item_root: &Path, media_id: &str, filename: &str) -> PathBuf {
+fn media_file_path(media_root: &Path, media_id: &str, filename: &str) -> PathBuf {
     let stored = format!("{}-{}", media_id, sanitize_media_filename(filename));
-    item_root.join(MEDIA_DIR).join(stored)
+    media_root.join(stored)
 }
 
-fn first_image_media_path(item_root: &Path) -> Option<PathBuf> {
-    let manifest_path = item_root.join(MEDIA_DIR).join(MEDIA_MANIFEST_FILE);
+fn first_image_media_path(media_root: &Path) -> Option<PathBuf> {
+    let manifest_path = media_root.join(MEDIA_MANIFEST_FILE);
     if !manifest_path.is_file() {
         return None;
     }
@@ -193,7 +272,7 @@ fn first_image_media_path(item_root: &Path) -> Option<PathBuf> {
             continue;
         }
 
-        let candidate = media_file_path(item_root, &file.id, &file.filename);
+        let candidate = media_file_path(media_root, &file.id, &file.filename);
         if candidate.is_file() {
             return Some(candidate);
         }
@@ -203,8 +282,6 @@ fn first_image_media_path(item_root: &Path) -> Option<PathBuf> {
 }
 
 fn resolve_one_thumbnail(vault_path: &str, item: &ThumbnailResolveItem) -> ThumbnailResolveResult {
-    let item_root = item_root_path(vault_path, &item.id);
-
     if let Some(thumbnail) = item.thumbnail.as_deref().filter(|value| !value.is_empty()) {
         let candidate = resolve_thumbnail_absolute(vault_path, &item.id, thumbnail);
         if candidate.is_file() {
@@ -215,8 +292,12 @@ fn resolve_one_thumbnail(vault_path: &str, item: &ThumbnailResolveItem) -> Thumb
         }
     }
 
-    let path = first_image_media_path(&item_root)
-        .map(|candidate| candidate.to_string_lossy().into_owned());
+    let path = match item_media_root(vault_path, &item.id) {
+        Ok(media_root) => {
+            first_image_media_path(&media_root).map(|candidate| candidate.to_string_lossy().into_owned())
+        }
+        Err(_) => None,
+    };
     ThumbnailResolveResult {
         id: item.id.clone(),
         path,
@@ -256,18 +337,20 @@ fn touch_path(path: &str) -> Result<(), String> {
 }
 
 #[cfg(test)]
-mod touch_tests {
-    use super::touch_path;
+mod tests {
+    use super::{item_media_dir_name, touch_path, walk_items};
     use std::fs;
+    use std::path::Path;
     use std::thread;
     use std::time::Duration;
 
     #[test]
     fn touch_path_updates_directory_mtime() {
-        let dir = tempfile_dir();
+        let dir = tempfile_dir("touch");
+        let dir_str = dir.to_string_lossy().into_owned();
         let before = fs::metadata(&dir).unwrap().modified().unwrap();
         thread::sleep(Duration::from_millis(20));
-        touch_path(&dir).unwrap();
+        touch_path(&dir_str).unwrap();
         let after = fs::metadata(&dir).unwrap().modified().unwrap();
         assert!(after >= before);
         let _ = fs::remove_dir_all(&dir);
@@ -279,12 +362,39 @@ mod touch_tests {
         assert!(err.contains("does not exist"));
     }
 
-    fn tempfile_dir() -> String {
+    #[test]
+    fn item_media_dir_name_appends_suffix() {
+        assert_eq!(item_media_dir_name("note.md").unwrap(), "note.media");
+        assert_eq!(item_media_dir_name("Inbox/note.md").unwrap(), "note.media");
+        assert!(item_media_dir_name("note").is_err());
+    }
+
+    #[test]
+    fn walk_items_skips_reserved_entries_and_media_dirs() {
+        let dir = tempfile_dir("walk");
+        fs::write(dir.join("vault.meta.json"), "{}").unwrap();
+        fs::write(dir.join("root.md"), "# root").unwrap();
+        fs::create_dir_all(dir.join("Inbox")).unwrap();
+        fs::write(dir.join("Inbox/note.md"), "# note").unwrap();
+        fs::create_dir_all(dir.join("Inbox/note.media")).unwrap();
+        fs::write(dir.join("Inbox/note.media/manifest.json"), "{}").unwrap();
+
+        let mut items = Vec::new();
+        walk_items(Path::new(&dir), "", &mut items).unwrap();
+        items.sort();
+        assert_eq!(items, vec!["Inbox/note.md".to_string(), "root.md".to_string()]);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    fn tempfile_dir(label: &str) -> std::path::PathBuf {
         let path = std::env::temp_dir().join(format!(
-            "collector-fs-touch-{}",
+            "collector-fs-{}-{}",
+            label,
             std::process::id()
         ));
+        let _ = fs::remove_dir_all(&path);
         fs::create_dir_all(&path).unwrap();
-        path.to_string_lossy().into_owned()
+        path
     }
 }

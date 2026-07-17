@@ -1,39 +1,65 @@
 import type { FileSystemAdapter } from "../adapters/types.js";
-import { filterDiskItemIds } from "./paths.js";
 
 export interface ReconcileFingerprint {
+  /** Vault root directory mtime (bumped on every item write via touch). */
   itemsDirMtimeMs: number;
+  /** Count of markdown items on disk. */
   itemCount: number;
 }
 
+/**
+ * Cheap fingerprint from the vault root mtime + on-disk item count. The item
+ * count is supplied by the caller (already computed from a directory scan) to
+ * avoid a second walk; only the vault root is `stat`ed here.
+ */
 export async function readVaultReconcileFingerprint(
   fs: FileSystemAdapter,
-  itemsDir: string,
+  vaultRootPath: string,
+  itemCount: number,
 ): Promise<ReconcileFingerprint> {
-  const diskItemIds = filterDiskItemIds(await fs.readDir(itemsDir));
-  const itemsDirStat = await fs.stat(itemsDir);
-  if (itemsDirStat.mtimeMs === null) {
-    throw new Error(`items directory mtime unavailable: ${itemsDir}`);
+  const rootStat = await fs.stat(vaultRootPath);
+  if (rootStat.mtimeMs === null) {
+    throw new Error(`vault root mtime unavailable: ${vaultRootPath}`);
   }
   return {
-    itemsDirMtimeMs: itemsDirStat.mtimeMs,
-    itemCount: diskItemIds.length,
+    itemsDirMtimeMs: rootStat.mtimeMs,
+    itemCount,
   };
 }
 
 export function reconcileFingerprintsMatch(
-  stored: ReconcileFingerprint | null,
-  current: ReconcileFingerprint,
+  a: ReconcileFingerprint,
+  b: ReconcileFingerprint,
 ): boolean {
-  if (!stored) {
-    return false;
-  }
-  return (
-    stored.itemsDirMtimeMs === current.itemsDirMtimeMs &&
-    stored.itemCount === current.itemCount
-  );
+  return a.itemsDirMtimeMs === b.itemsDirMtimeMs && a.itemCount === b.itemCount;
 }
 
+export function serializeReconcileFingerprint(fingerprint: ReconcileFingerprint): string {
+  return JSON.stringify(fingerprint);
+}
+
+export function parseStoredReconcileFingerprint(
+  raw: string | null | undefined,
+): ReconcileFingerprint | null {
+  if (!raw) {
+    return null;
+  }
+  const parsed = JSON.parse(raw) as Partial<ReconcileFingerprint>;
+  if (
+    typeof parsed.itemsDirMtimeMs !== "number" ||
+    typeof parsed.itemCount !== "number"
+  ) {
+    return null;
+  }
+  return { itemsDirMtimeMs: parsed.itemsDirMtimeMs, itemCount: parsed.itemCount };
+}
+
+/**
+ * Fast path: skip the per-item stat/read pass entirely when the vault root
+ * mtime + on-disk item count exactly match what was indexed last time, and
+ * the indexed id count agrees with the disk id count (belt-and-suspenders
+ * against silent index/disk drift).
+ */
 export function canTakeReconcileFastPath(input: {
   storedFingerprint: ReconcileFingerprint | null;
   currentFingerprint: ReconcileFingerprint;
@@ -42,53 +68,22 @@ export function canTakeReconcileFastPath(input: {
   indexedIds: Set<string>;
   diskItemIds: Set<string>;
 }): boolean {
+  if (!input.storedFingerprint) {
+    return false;
+  }
+  if (!reconcileFingerprintsMatch(input.storedFingerprint, input.currentFingerprint)) {
+    return false;
+  }
   if (input.indexedItemCount !== input.diskItemCount) {
-    return false;
-  }
-  if (input.diskItemCount > 0 && input.indexedItemCount === 0) {
-    return false;
-  }
-  if (
-    !reconcileFingerprintsMatch(input.storedFingerprint, input.currentFingerprint)
-  ) {
     return false;
   }
   if (input.indexedIds.size !== input.diskItemIds.size) {
     return false;
   }
-  for (const id of input.indexedIds) {
-    if (!input.diskItemIds.has(id)) {
+  for (const id of input.diskItemIds) {
+    if (!input.indexedIds.has(id)) {
       return false;
     }
   }
   return true;
-}
-
-export function parseStoredReconcileFingerprint(
-  raw: string | null,
-): ReconcileFingerprint | null {
-  if (raw === null || raw === "") {
-    return null;
-  }
-  const parsed: unknown = JSON.parse(raw);
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("invalid reconcile fingerprint JSON");
-  }
-  const record = parsed as Record<string, unknown>;
-  if (
-    typeof record.itemsDirMtimeMs !== "number" ||
-    typeof record.itemCount !== "number"
-  ) {
-    throw new Error("invalid reconcile fingerprint shape");
-  }
-  return {
-    itemsDirMtimeMs: record.itemsDirMtimeMs,
-    itemCount: record.itemCount,
-  };
-}
-
-export function serializeReconcileFingerprint(
-  fingerprint: ReconcileFingerprint,
-): string {
-  return JSON.stringify(fingerprint);
 }

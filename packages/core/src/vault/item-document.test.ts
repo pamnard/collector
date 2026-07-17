@@ -8,7 +8,7 @@ import {
 } from "./item-document.js";
 
 const VAULT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-const ITEM_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const ITEM_ID = "Inbox/note.md";
 const TAG_A: Tag = {
   id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
   name: "Focus",
