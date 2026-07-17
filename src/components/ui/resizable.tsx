@@ -35,8 +35,9 @@ export function ResizableHandle({
         "aria-[orientation=horizontal]:after:left-0 aria-[orientation=horizontal]:after:h-1.5",
         "aria-[orientation=horizontal]:after:w-full aria-[orientation=horizontal]:after:-translate-y-1/2",
         "aria-[orientation=horizontal]:after:translate-x-0",
-        "hover:bg-border data-[separator=active]:bg-border data-[separator=focus]:bg-border",
-        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-indigo-500",
+        // Line only on hover / active drag — not on focus (focus sticks after mouseup).
+        "hover:bg-border data-[separator=active]:bg-border",
+        "focus-visible:outline-none",
         className,
       )}
       {...props}
