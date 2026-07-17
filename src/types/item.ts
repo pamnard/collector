@@ -6,8 +6,6 @@ export interface ItemFormValues {
   url: string;
   content_type: ContentType;
   content: string;
-  is_favorite: boolean;
-  is_archived: boolean;
   tag_ids: string[];
   folder_path: string;
 }
@@ -27,8 +25,6 @@ export interface UpdateItemInput {
   url?: string | null;
   content_type?: ContentType;
   content?: string | null;
-  is_favorite?: boolean;
-  is_archived?: boolean;
   tag_ids?: string[];
   folder_path?: string;
 }
@@ -39,8 +35,6 @@ export const EMPTY_ITEM_FORM: ItemFormValues = {
   url: "",
   content_type: "note",
   content: "",
-  is_favorite: false,
-  is_archived: false,
   tag_ids: [],
   folder_path: "",
 };

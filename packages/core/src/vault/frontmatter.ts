@@ -27,6 +27,7 @@ const KNOWN_FM_KEYS = new Set([
   "updated",
   "updated_at",
   "metadata",
+  // Legacy keys stripped on rewrite (not part of the item model).
   "is_archived",
   "is_favorite",
   // Legacy keys stripped on rewrite (folder = dirname of path; collections = FS dirs).
@@ -47,8 +48,6 @@ const KNOWN_KEY_ORDER = [
   "source_id",
   "tags",
   "thumbnail",
-  "is_archived",
-  "is_favorite",
   "content_revision",
   "created",
   "updated",
@@ -227,8 +226,6 @@ export function buildCanonicalFrontmatter(input: {
   source_id?: string | null;
   tags?: string[];
   thumbnail?: string | null;
-  is_archived?: boolean;
-  is_favorite?: boolean;
   content_revision?: number;
   created?: string;
   updated?: string;
@@ -258,12 +255,6 @@ export function buildCanonicalFrontmatter(input: {
   }
   if (input.thumbnail !== undefined && input.thumbnail !== null && input.thumbnail !== "") {
     data.thumbnail = input.thumbnail;
-  }
-  if (input.is_archived === true) {
-    data.is_archived = true;
-  }
-  if (input.is_favorite === true) {
-    data.is_favorite = true;
   }
   if (input.content_revision !== undefined) {
     data.content_revision = input.content_revision;

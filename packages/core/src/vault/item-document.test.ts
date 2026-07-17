@@ -34,8 +34,6 @@ function sampleItem(overrides: Partial<ItemFile> = {}): ItemFile {
     source_id: null,
     metadata: {},
     thumbnail: null,
-    is_archived: false,
-    is_favorite: true,
     tag_ids: [TAG_A.id],
     collection_ids: [],
     folder_path: "Inbox",

@@ -67,15 +67,6 @@ export function ItemDetailMetadata({ item }: ItemDetailMetadataProps) {
           <ItemTagBadges tagIds={item.tag_ids} tagsById={tagsById} />
         </div>
       )}
-
-      <div className="flex flex-wrap gap-2 text-sm text-muted">
-        {item.is_favorite && (
-          <span className="rounded-full bg-input px-2 py-1">избранное</span>
-        )}
-        {item.is_archived && (
-          <span className="rounded-full bg-input px-2 py-1">архив</span>
-        )}
-      </div>
     </section>
   );
 }

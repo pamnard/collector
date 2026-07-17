@@ -26,23 +26,18 @@ describe("listItemIdsByNavFilter", () => {
     }
   });
 
-  it("returns ids for all, favorite, and archived filters", async () => {
+  it("returns ids for all items under the all filter", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "collector-nav-filter-"));
     const sql = new MemorySqlAdapter();
     const index = new SqlVaultIndexStore(sql);
     const ctx = { fs, index };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
 
-    const activeId = `${createId()}.md`;
-    const favoriteId = `${createId()}.md`;
-    const archivedId = `${createId()}.md`;
+    const firstId = `${createId()}.md`;
+    const secondId = `${createId()}.md`;
     const timestamp = new Date().toISOString();
 
-    for (const [id, flags] of [
-      [activeId, { is_archived: false, is_favorite: false }],
-      [favoriteId, { is_archived: false, is_favorite: true }],
-      [archivedId, { is_archived: true, is_favorite: false }],
-    ] as const) {
+    for (const id of [firstId, secondId]) {
       await upsertItem(ctx, path, meta.id, {
         item: {
           id,
@@ -52,8 +47,6 @@ describe("listItemIdsByNavFilter", () => {
           content_type: "note",
           source_type: "manual",
           metadata: {},
-          is_archived: flags.is_archived,
-          is_favorite: flags.is_favorite,
           tag_ids: [],
           collection_ids: [],
           folder_path: "",
@@ -65,14 +58,8 @@ describe("listItemIdsByNavFilter", () => {
     }
 
     expect(await index.listItemIdsByNavFilter(meta.id, "all")).toEqual([
-      activeId,
-      favoriteId,
-    ]);
-    expect(await index.listItemIdsByNavFilter(meta.id, "favorite")).toEqual([
-      favoriteId,
-    ]);
-    expect(await index.listItemIdsByNavFilter(meta.id, "archived")).toEqual([
-      archivedId,
+      firstId,
+      secondId,
     ]);
   });
 });
@@ -110,8 +97,6 @@ describe("dashboard item id pagination", () => {
           content_type: "note",
           source_type: "manual",
           metadata: {},
-          is_archived: false,
-          is_favorite: false,
           tag_ids: [],
           collection_ids: [],
           folder_path: "",
@@ -154,8 +139,6 @@ describe("dashboard item id pagination", () => {
         content_type: "note" as const,
         source_type: "manual" as const,
         metadata: {},
-        is_archived: false,
-        is_favorite: false,
         tag_ids: [] as string[],
         collection_ids: [] as string[],
         folder_path: "",
@@ -225,8 +208,6 @@ describe("listItemFilesByIds", () => {
         source_type: "manual",
         metadata: { k: 1 },
         thumbnail: "media/cover.webp",
-        is_archived: false,
-        is_favorite: true,
         tag_ids: [tag.id],
         collection_ids: [collectionId],
         folder_path: "work",
@@ -245,8 +226,6 @@ describe("listItemFilesByIds", () => {
         content_type: "note",
         source_type: "manual",
         metadata: {},
-        is_archived: false,
-        is_favorite: false,
         tag_ids: [],
         collection_ids: [],
         folder_path: "",
@@ -270,7 +249,6 @@ describe("listItemFilesByIds", () => {
     expect(first.url).toBe("https://example.com/a");
     expect(first.content_type).toBe("bookmark");
     expect(first.thumbnail).toBe("media/cover.webp");
-    expect(first.is_favorite).toBe(true);
     expect(first.folder_path).toBe("work");
     expect(first.metadata).toEqual({ k: 1 });
     expect(first.tag_ids).toEqual([tag.id]);
@@ -328,8 +306,6 @@ describe("upsertItemMetadata / upsertItemContent", () => {
       content_type: "note" as const,
       source_type: "manual" as const,
       metadata: {},
-      is_archived: false,
-      is_favorite: false,
       tag_ids: [] as string[],
       collection_ids: [] as string[],
       folder_path: "",
@@ -390,8 +366,6 @@ describe("upsertItemMetadata / upsertItemContent", () => {
       content_type: "note" as const,
       source_type: "manual" as const,
       metadata: {},
-      is_archived: false,
-      is_favorite: false,
       tag_ids: [] as string[],
       collection_ids: [] as string[],
       folder_path: "",
@@ -466,8 +440,6 @@ describe("upsertItemMetadata / upsertItemContent", () => {
           content_type: "note",
           source_type: "manual",
           metadata: {},
-          is_archived: false,
-          is_favorite: false,
           tag_ids: tags.map((tag) => tag.id),
           collection_ids: collectionIds,
           folder_path: "",
@@ -511,8 +483,6 @@ describe("upsertItemMetadata / upsertItemContent", () => {
           content_type: "note",
           source_type: "manual",
           metadata: {},
-          is_archived: false,
-          is_favorite: false,
           tag_ids: [tags[0]!.id],
           collection_ids: [],
           folder_path: "",

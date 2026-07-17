@@ -1,19 +1,14 @@
 import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { deleteItem } from "../../services/collector-service";
-import { ItemFlagActions } from "./ItemFlagActions";
 
 interface ItemRowActionsProps {
   itemId: string;
-  isFavorite: boolean;
-  isArchived: boolean;
   onUpdated?: () => void;
 }
 
 export function ItemRowActions({
   itemId,
-  isFavorite,
-  isArchived,
   onUpdated,
 }: ItemRowActionsProps) {
   const [isDeleting, setIsDeleting] = useState(false);
@@ -38,13 +33,6 @@ export function ItemRowActions({
       onClick={(event) => event.stopPropagation()}
       onKeyDown={(event) => event.stopPropagation()}
     >
-      <ItemFlagActions
-        itemId={itemId}
-        isFavorite={isFavorite}
-        isArchived={isArchived}
-        onUpdated={onUpdated}
-        compact
-      />
       <button
         type="button"
         aria-label="Удалить"

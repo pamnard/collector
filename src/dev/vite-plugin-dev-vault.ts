@@ -95,7 +95,7 @@ function countRowsFromItems(
 ): Array<{ folder_path: string; item_count: number }> {
   const counts = new Map<string, number>();
   for (const item of items) {
-    if (item.is_archived || !item.folder_path) {
+    if (!item.folder_path) {
       continue;
     }
     counts.set(item.folder_path, (counts.get(item.folder_path) ?? 0) + 1);
@@ -171,9 +171,7 @@ async function buildSnapshot(vaultRoot: string): Promise<DevVaultSnapshot> {
   const tagsFile = await readTagsFile(fs, vaultRoot);
   const tags: TagWithCount[] = tagsFile.tags.map((tag) => ({
     ...tag,
-    item_count: items.filter(
-      (item) => !item.is_archived && item.tag_ids.includes(tag.id),
-    ).length,
+    item_count: items.filter((item) => item.tag_ids.includes(tag.id)).length,
   }));
 
   const diskFolderPaths = await listFolderRelativePaths(fs, vaultRoot);

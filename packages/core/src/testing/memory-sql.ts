@@ -180,9 +180,6 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       let rows = [...items.values()].filter(
         (row) => row.vault_id === vaultId && taggedItemIds.has(String(row.id)),
       );
-      if (normalized.includes("is_archived = 0")) {
-        rows = rows.filter((row) => row.is_archived === 0);
-      }
 
       return rows.map((row) => ({ id: row.id })) as T[];
     }
@@ -203,9 +200,6 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
         const path = String(row.folder_path ?? "");
         return path === folderPath || path.startsWith(folderPrefix);
       });
-      if (normalized.includes("is_archived = 0")) {
-        rows = rows.filter((row) => row.is_archived === 0);
-      }
 
       return rows.map((row) => ({ id: row.id })) as T[];
     }
@@ -219,14 +213,6 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       const vaultId = bindValues[0];
       const table = this.tables.get("items") ?? new Map();
       let rows = [...table.values()].filter((row) => row.vault_id === vaultId);
-
-      if (normalized.includes("is_favorite = 1")) {
-        rows = rows.filter((row) => row.is_favorite === 1);
-      } else if (normalized.includes("is_archived = 1")) {
-        rows = rows.filter((row) => row.is_archived === 1);
-      } else if (normalized.includes("is_archived = 0")) {
-        rows = rows.filter((row) => row.is_archived === 0);
-      }
 
       return rows.map((row) => ({ id: row.id })) as T[];
     }
@@ -270,7 +256,7 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       const table = this.tables.get("items") ?? new Map();
       const counts = new Map<string, number>();
       for (const row of table.values()) {
-        if (row.vault_id !== vaultId || row.is_archived === 1) {
+        if (row.vault_id !== vaultId) {
           continue;
         }
         const folderPath = String(row.folder_path ?? "");
@@ -302,8 +288,6 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
           source_id: row.source_id,
           metadata_json: row.metadata_json,
           thumbnail_path: row.thumbnail_path,
-          is_archived: row.is_archived,
-          is_favorite: row.is_favorite,
           folder_path: row.folder_path,
           content_revision: row.content_revision,
           created_at: row.created_at,
@@ -428,14 +412,12 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       source_id: bindValues[7],
       metadata_json: bindValues[8],
       thumbnail_path: bindValues[9],
-      is_archived: bindValues[10],
-      is_favorite: bindValues[11],
-      has_content_file: bindValues[12],
-      folder_path: bindValues[13],
-      created_at: bindValues[14],
-      updated_at: bindValues[15],
-      file_mtime_ms: bindValues[16],
-      content_revision: bindValues[17],
+      has_content_file: bindValues[10],
+      folder_path: bindValues[11],
+      created_at: bindValues[12],
+      updated_at: bindValues[13],
+      file_mtime_ms: bindValues[14],
+      content_revision: bindValues[15],
     });
     return 1;
   }

@@ -9,7 +9,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { SyntheticEvent } from "react";
 import type { ItemFile } from "@collector/shared";
 import type { TagWithCount } from "@collector/core";
-import { ItemFlagActions } from "./ItemFlagActions";
 import { toDisplayAssetSrc } from "../../utils/asset-src";
 import { formatItemDate } from "../../utils/formatItemDate";
 import { getYouTubeThumbnail } from "../../utils/youtube-thumbnail";
@@ -22,7 +21,6 @@ interface ItemGridCardProps {
   thumbnailPath?: string | null;
   tagsById: Map<string, TagWithCount>;
   onOpen: (itemId: string) => void;
-  onUpdated: () => void;
 }
 
 function iconForContentType(type: string) {
@@ -54,7 +52,6 @@ export function ItemGridCard({
   thumbnailPath,
   tagsById,
   onOpen,
-  onUpdated,
 }: ItemGridCardProps) {
   const imgRef = useRef<HTMLImageElement>(null);
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
@@ -166,8 +163,8 @@ export function ItemGridCard({
       <div
         className={
           overlayLayout
-            ? "relative mt-4 flex items-center text-xs leading-none text-white/70 dark:text-neutral-600"
-            : "relative mt-4 flex items-center text-xs leading-none text-muted"
+            ? "mt-4 flex items-center text-xs leading-none text-white/70 dark:text-neutral-600"
+            : "mt-4 flex items-center text-xs leading-none text-muted"
         }
       >
         <div className="flex items-center gap-2">
@@ -179,20 +176,6 @@ export function ItemGridCard({
             {iconForContentType(item.content_type)}
           </span>
           <span>{formatItemDate(item.created_at)}</span>
-        </div>
-
-        <div
-          className="absolute right-0 top-1/2 -translate-y-1/2 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
-          onClick={(event) => event.stopPropagation()}
-          onKeyDown={(event) => event.stopPropagation()}
-        >
-          <ItemFlagActions
-            itemId={item.id}
-            isFavorite={item.is_favorite}
-            isArchived={item.is_archived}
-            onUpdated={onUpdated}
-            compact
-          />
         </div>
       </div>
     </>

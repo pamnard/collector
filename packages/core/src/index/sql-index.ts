@@ -36,8 +36,6 @@ interface ItemRow {
   source_id: string | null;
   metadata_json: string;
   thumbnail_path: string | null;
-  is_archived: number;
-  is_favorite: number;
   folder_path: string;
   content_revision: number;
   created_at: string;
@@ -76,8 +74,6 @@ function itemRowToFile(
     source_id: row.source_id ?? undefined,
     metadata: parseMetadata(row.metadata_json),
     thumbnail: row.thumbnail_path ?? undefined,
-    is_archived: row.is_archived === 1,
-    is_favorite: row.is_favorite === 1,
     tag_ids: tagIds,
     collection_ids: collectionIds,
     folder_path: row.folder_path ?? "",
@@ -169,22 +165,6 @@ async function replaceItemCollections(
   }
 }
 
-function navFilterClause(filter: NavSearchFilter): string {
-  if (isTagFilter(filter) || isFolderFilter(filter)) {
-    return "AND i.is_archived = 0";
-  }
-
-  switch (filter) {
-    case "favorite":
-      return "AND i.is_favorite = 1";
-    case "archived":
-      return "AND i.is_archived = 1";
-    case "all":
-    default:
-      return "AND i.is_archived = 0";
-  }
-}
-
 function sqlPageClause(options?: ItemIdPageOptions): {
   sql: string;
   binds: number[];
@@ -255,9 +235,9 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     await this.db.execute(
       `INSERT INTO items (
         id, vault_id, title, description, url, content_type, source_type, source_id,
-        metadata_json, thumbnail_path, is_archived, is_favorite, has_content_file,
+        metadata_json, thumbnail_path, has_content_file,
         folder_path, created_at, updated_at, file_mtime_ms, content_revision
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         vault_id = excluded.vault_id,
         title = excluded.title,
@@ -268,8 +248,6 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
         source_id = excluded.source_id,
         metadata_json = excluded.metadata_json,
         thumbnail_path = excluded.thumbnail_path,
-        is_archived = excluded.is_archived,
-        is_favorite = excluded.is_favorite,
         folder_path = excluded.folder_path,
         updated_at = excluded.updated_at,
         file_mtime_ms = excluded.file_mtime_ms,
@@ -285,8 +263,6 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
         item.source_id ?? null,
         serializeMetadata(item.metadata),
         item.thumbnail ?? null,
-        item.is_archived ? 1 : 0,
-        item.is_favorite ? 1 : 0,
         0,
         item.folder_path ?? "",
         item.created_at,
@@ -404,7 +380,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
   async listItemIdsByTag(
     _vaultId: string,
     _tagId: string,
-    _options?: { includeArchived?: boolean },
+    _options?: ItemIdListOptions,
   ): Promise<string[]> {
     throw new Error(
       "listItemIdsByTag requires select(); use SqlVaultIndexStore instead",
@@ -414,7 +390,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
   async listItemIdsByFolderPrefix(
     _vaultId: string,
     _folderPath: string,
-    _options?: { includeArchived?: boolean },
+    _options?: ItemIdListOptions,
   ): Promise<string[]> {
     throw new Error(
       "listItemIdsByFolderPrefix requires select(); use SqlVaultIndexStore instead",
@@ -561,7 +537,7 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     const rows = await this.selector.select<ItemRow>(
       `SELECT
          id, vault_id, title, description, url, content_type, source_type,
-         source_id, metadata_json, thumbnail_path, is_archived, is_favorite,
+         source_id, metadata_json, thumbnail_path,
          folder_path, content_revision, created_at, updated_at
        FROM items
        WHERE vault_id = ? AND id IN (${placeholders})`,
@@ -675,7 +651,6 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
        ${extraJoin}
        WHERE items_fts MATCH ?
          AND i.vault_id = ?
-         ${navFilterClause(filter)}
          ${folderClause}
        ORDER BY rank
        ${page.sql}`,
@@ -698,7 +673,6 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
        ${extraJoin}
        WHERE items_fts MATCH ?
          AND i.vault_id = ?
-         ${navFilterClause(filter)}
          ${folderClause}`,
       [...extraBinds, ftsQuery, vaultId],
     );
@@ -760,8 +734,6 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     tagId: string,
     options?: ItemIdListOptions,
   ): Promise<string[]> {
-    const archivedClause =
-      options?.includeArchived === true ? "" : "AND i.is_archived = 0";
     const page = sqlPageClause(options);
     const rows = await this.selector.select<SqlSelectRow>(
       `SELECT i.id
@@ -769,7 +741,6 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
        INNER JOIN item_tags it ON it.item_id = i.id
        WHERE i.vault_id = ?
          AND it.tag_id = ?
-         ${archivedClause}
        ORDER BY i.created_at DESC
        ${page.sql}`,
       [vaultId, tagId, ...page.binds],
@@ -782,14 +753,11 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     folderPath: string,
     options?: ItemIdListOptions,
   ): Promise<string[]> {
-    const archivedClause =
-      options?.includeArchived === true ? "" : "AND i.is_archived = 0";
     const page = sqlPageClause(options);
     const rows = await this.selector.select<SqlSelectRow>(
       `SELECT i.id
        FROM items i
        WHERE i.vault_id = ?
-         ${archivedClause}
          AND (i.folder_path = ? OR i.folder_path LIKE ?)
        ORDER BY i.created_at DESC
        ${page.sql}`,
@@ -815,7 +783,6 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
       `SELECT i.id
        FROM items i
        WHERE i.vault_id = ?
-         ${navFilterClause(filter)}
        ORDER BY i.created_at DESC
        ${page.sql}`,
       [vaultId, ...page.binds],
@@ -833,8 +800,7 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
          FROM items i
          INNER JOIN item_tags it ON it.item_id = i.id
          WHERE i.vault_id = ?
-           AND it.tag_id = ?
-           AND i.is_archived = 0`,
+           AND it.tag_id = ?`,
         [vaultId, filter.tagId],
       );
       return rows[0]?.count ?? 0;
@@ -844,7 +810,6 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
         `SELECT COUNT(*) AS count
          FROM items i
          WHERE i.vault_id = ?
-           AND i.is_archived = 0
            AND (i.folder_path = ? OR i.folder_path LIKE ?)`,
         [vaultId, filter.folderPath, `${filter.folderPath}/%`],
       );
@@ -854,8 +819,7 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     const rows = await this.selector.select<{ count: number }>(
       `SELECT COUNT(*) AS count
        FROM items i
-       WHERE i.vault_id = ?
-         ${navFilterClause(filter)}`,
+       WHERE i.vault_id = ?`,
       [vaultId],
     );
     return rows[0]?.count ?? 0;
@@ -870,7 +834,7 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     }>(
       `SELECT folder_path, COUNT(*) AS item_count
        FROM items
-       WHERE vault_id = ? AND is_archived = 0
+       WHERE vault_id = ?
        GROUP BY folder_path`,
       [vaultId],
     );

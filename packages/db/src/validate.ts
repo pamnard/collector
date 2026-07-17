@@ -49,15 +49,7 @@ export async function runIndexStartupChecks(db: SqlMigrator): Promise<IndexValid
       label: "items nav filter",
       run: () =>
         db.select(
-          "SELECT id FROM items WHERE vault_id = ? AND is_archived = 0 ORDER BY created_at DESC LIMIT 1",
-          ["00000000-0000-0000-0000-000000000000"],
-        ),
-    },
-    {
-      label: "items favorite filter",
-      run: () =>
-        db.select(
-          "SELECT id FROM items WHERE vault_id = ? AND is_favorite = 1 LIMIT 1",
+          "SELECT id FROM items WHERE vault_id = ? ORDER BY created_at DESC LIMIT 1",
           ["00000000-0000-0000-0000-000000000000"],
         ),
     },
@@ -67,7 +59,6 @@ export async function runIndexStartupChecks(db: SqlMigrator): Promise<IndexValid
         db.select(
           `SELECT id FROM items
            WHERE vault_id = ?
-             AND is_archived = 0
              AND (folder_path = ? OR folder_path LIKE ?)
            LIMIT 1`,
           ["00000000-0000-0000-0000-000000000000", "inbox", "inbox/%"],
@@ -80,7 +71,7 @@ export async function runIndexStartupChecks(db: SqlMigrator): Promise<IndexValid
           `SELECT i.id
            FROM items i
            INNER JOIN item_tags it ON it.item_id = i.id
-           WHERE i.vault_id = ? AND it.tag_id = ? AND i.is_archived = 0
+           WHERE i.vault_id = ? AND it.tag_id = ?
            LIMIT 1`,
           ["00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000001"],
         ),
@@ -108,7 +99,6 @@ export async function runIndexStartupChecks(db: SqlMigrator): Promise<IndexValid
            INNER JOIN items i ON i.id = items_fts.item_id
            WHERE items_fts MATCH ?
              AND i.vault_id = ?
-             AND i.is_archived = 0
            LIMIT 1`,
           ["welcome", "00000000-0000-0000-0000-000000000000"],
         ),

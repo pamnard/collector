@@ -53,7 +53,7 @@ function readLegacySettings(): Partial<AppSettings> {
     active_vault_id: activeVaultId ?? null,
     view_mode: viewMode === "grid" || viewMode === "table" ? viewMode : undefined,
     nav_filter:
-      navFilter === "all" || navFilter === "favorite" || navFilter === "archived"
+      navFilter === "all"
         ? navFilter
         : undefined,
     nav_search: navSearch ?? undefined,

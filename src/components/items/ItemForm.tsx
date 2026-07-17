@@ -16,10 +16,9 @@ const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
 interface ItemFormProps {
   values: ItemFormValues;
   onChange: (values: ItemFormValues) => void;
-  showFlags?: boolean;
 }
 
-export function ItemForm({ values, onChange, showFlags = false }: ItemFormProps) {
+export function ItemForm({ values, onChange }: ItemFormProps) {
   const update = <K extends keyof ItemFormValues>(
     key: K,
     value: ItemFormValues[K],
@@ -93,29 +92,6 @@ export function ItemForm({ values, onChange, showFlags = false }: ItemFormProps)
           className="mt-1 w-full rounded-lg border border-border bg-input/20 px-3 py-2 text-sm font-mono resize-y"
         />
       </label>
-
-      {showFlags && (
-        <div className="flex flex-wrap gap-4">
-          <label className="inline-flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={values.is_favorite}
-              onChange={(event) => update("is_favorite", event.target.checked)}
-              className="rounded border-border"
-            />
-            Избранное
-          </label>
-          <label className="inline-flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={values.is_archived}
-              onChange={(event) => update("is_archived", event.target.checked)}
-              className="rounded border-border"
-            />
-            Архив
-          </label>
-        </div>
-      )}
     </div>
   );
 }

@@ -33,8 +33,6 @@ CREATE TABLE IF NOT EXISTS items (
   source_id TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   thumbnail_path TEXT,
-  is_archived INTEGER NOT NULL DEFAULT 0,
-  is_favorite INTEGER NOT NULL DEFAULT 0,
   has_content_file INTEGER NOT NULL DEFAULT 0,
   sort_order INTEGER NOT NULL DEFAULT 0,
   folder_path TEXT NOT NULL DEFAULT '',
@@ -46,7 +44,6 @@ CREATE TABLE IF NOT EXISTS items (
 
 CREATE INDEX IF NOT EXISTS idx_items_vault_created ON items(vault_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_items_content_type ON items(content_type);
-CREATE INDEX IF NOT EXISTS idx_items_flags ON items(is_archived, is_favorite);
 CREATE INDEX IF NOT EXISTS idx_items_sort_order ON items(vault_id, sort_order, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_items_folder_path ON items(vault_id, folder_path);
 

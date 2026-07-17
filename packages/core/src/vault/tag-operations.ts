@@ -94,9 +94,7 @@ export async function deleteTag(
     throw new Error(`Tag not found: ${tagId}`);
   }
 
-  const itemIds = await ctx.index.listItemIdsByTag(vaultId, tagId, {
-    includeArchived: true,
-  });
+  const itemIds = await ctx.index.listItemIdsByTag(vaultId, tagId);
 
   // Strip tag from documents while tags.json still has the name for serialize/read.
   for (const itemId of itemIds) {
