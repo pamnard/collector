@@ -8,6 +8,9 @@ import {
   buildFolderTreeFromSources,
   itemsRoot,
   itemRoot,
+  joinSegments,
+  listMediaFiles,
+  mediaFilePath,
   readItemFile,
   readVaultMeta,
   type TagWithCount,
@@ -104,11 +107,57 @@ function countRowsFromItems(
   }));
 }
 
+function vaultFsUrl(...parts: string[]): string {
+  return `${DEV_VAULT_FS_PREFIX}/${joinSegments(...parts)}`;
+}
+
+/** Same rules as Tauri `resolve_one_thumbnail`: item.thumbnail file, else first image media. */
+async function resolveThumbnailUrl(
+  fs: NodeFileSystemAdapter,
+  vaultRoot: string,
+  item: ItemFile,
+): Promise<string | null> {
+  const itemPath = itemRoot(vaultRoot, item.id);
+
+  if (item.thumbnail) {
+    if (
+      item.thumbnail.startsWith("http://") ||
+      item.thumbnail.startsWith("https://")
+    ) {
+      return item.thumbnail;
+    }
+    if (item.thumbnail.startsWith("/")) {
+      return item.thumbnail;
+    }
+    const candidate = joinSegments(itemPath, item.thumbnail);
+    if (await fs.exists(candidate)) {
+      return vaultFsUrl("items", item.id, item.thumbnail);
+    }
+  }
+
+  const mediaFiles = await listMediaFiles(fs, itemPath);
+  for (const file of mediaFiles) {
+    if (file.media_type !== "image") {
+      continue;
+    }
+    const onDisk = mediaFilePath(itemPath, file.id, file.filename);
+    if (!(await fs.exists(onDisk))) {
+      continue;
+    }
+    return vaultFsUrl(
+      mediaFilePath(`items/${item.id}`, file.id, file.filename),
+    );
+  }
+
+  return null;
+}
+
 async function buildSnapshot(vaultRoot: string): Promise<DevVaultSnapshot> {
   const fs = new NodeFileSystemAdapter();
   const vault = await readVaultMeta(fs, vaultRoot);
   const itemsDir = itemsRoot(vaultRoot);
   const items: ItemFile[] = [];
+  const thumbnailUrls: Record<string, string | null> = {};
 
   if (await fs.exists(itemsDir)) {
     const itemIds = filterDiskItemIds(await fs.readDir(itemsDir));
@@ -116,6 +165,7 @@ async function buildSnapshot(vaultRoot: string): Promise<DevVaultSnapshot> {
       try {
         const item = await readItemFile(fs, itemRoot(vaultRoot, itemId));
         items.push(item);
+        thumbnailUrls[item.id] = await resolveThumbnailUrl(fs, vaultRoot, item);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         console.warn(`[dev-vault] skip item ${itemId}: ${message}`);
@@ -141,7 +191,7 @@ async function buildSnapshot(vaultRoot: string): Promise<DevVaultSnapshot> {
     itemFolderPaths,
   );
 
-  return { vault, items, tags, folderTree };
+  return { vault, items, tags, folderTree, thumbnailUrls };
 }
 
 async function handleSnapshot(

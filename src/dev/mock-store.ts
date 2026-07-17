@@ -11,6 +11,7 @@ let items: ItemFile[] = createMockItems();
 let vault: VaultMeta = createMockVault();
 let tags: TagWithCount[] | null = null;
 let folderTree: FolderTreeNode[] | null = null;
+let thumbnailUrls: Record<string, string | null> = {};
 let diskVault = false;
 
 function folderItemCount(folderPath: string): number {
@@ -65,6 +66,7 @@ function resetSynthetic(): void {
   vault = createMockVault();
   tags = null;
   folderTree = null;
+  thumbnailUrls = {};
   diskVault = false;
 }
 
@@ -78,11 +80,19 @@ export const mockStore = {
     items = snapshot.items;
     tags = snapshot.tags;
     folderTree = snapshot.folderTree;
+    thumbnailUrls = snapshot.thumbnailUrls ?? {};
     diskVault = true;
   },
 
   resetToSynthetic(): void {
     resetSynthetic();
+  },
+
+  getThumbnailUrl(itemId: string): string | null | undefined {
+    if (!diskVault) {
+      return undefined;
+    }
+    return thumbnailUrls[itemId] ?? null;
   },
 
   getVault(): VaultMeta {

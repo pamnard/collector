@@ -9,4 +9,6 @@ export interface DevVaultSnapshot {
   items: ItemFile[];
   tags: TagWithCount[];
   folderTree: FolderTreeNode[];
+  /** Browser URLs under /__dev/vault/fs — mirrors Tauri resolve_item_thumbnail_paths. */
+  thumbnailUrls: Record<string, string | null>;
 }
