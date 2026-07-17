@@ -11,7 +11,7 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
   }
 
   return (
-    <div className="prose prose-sm dark:prose-invert max-w-none prose-pre:bg-input/30 prose-pre:border prose-pre:border-border prose-a:text-indigo-400">
+    <div className="prose dark:prose-invert max-w-none prose-pre:border prose-pre:border-border prose-a:text-indigo-400 [--tw-prose-pre-bg:rgb(var(--bg-input)/0.3)] [--tw-prose-pre-code:rgb(var(--text-main))] dark:[--tw-prose-pre-bg:rgb(var(--bg-input)/0.3)] dark:[--tw-prose-pre-code:rgb(var(--text-main))]">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
     </div>
   );

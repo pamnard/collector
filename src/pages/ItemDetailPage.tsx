@@ -3,6 +3,7 @@ import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { ItemFile } from "@collector/shared";
 import { MarkdownContent } from "../components/content/MarkdownContent";
+import { ItemDetailHero } from "../components/items/ItemDetailHero";
 import { ItemDetailInlineEditor } from "../components/items/ItemDetailInlineEditor";
 import { ItemDetailMetadata } from "../components/items/ItemDetailMetadata";
 import { ItemFlagActions } from "../components/items/ItemFlagActions";
@@ -131,96 +132,119 @@ export function ItemDetailPage() {
     void reloadItem(item.id).finally(() => refreshVault());
   };
 
+  const toolbar = (
+    <div className="flex items-center justify-between gap-4">
+      <button
+        type="button"
+        onClick={() => navigate(-1)}
+        className="inline-flex items-center gap-2 text-secondary hover:text-primary transition-colors"
+      >
+        <ArrowLeft size={18} />
+        Назад
+      </button>
+
+      {item && isEditing && formValues && (
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleCancelEdit}
+            disabled={isSaving}
+            className="px-3 py-1.5 rounded-lg border border-border hover:bg-input/40 transition-colors text-sm"
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={isSaving || !formValues.title.trim()}
+            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors text-sm disabled:opacity-50"
+          >
+            {isSaving ? "Сохранение…" : "Сохранить"}
+          </button>
+        </div>
+      )}
+
+      {item && !isEditing && (
+        <div className="flex items-center gap-2">
+          <ItemFlagActions
+            itemId={item.id}
+            isFavorite={item.is_favorite}
+            isArchived={item.is_archived}
+            onUpdated={handleItemUpdated}
+          />
+          <button
+            type="button"
+            onClick={() => setIsEditing(true)}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border hover:bg-input/40 transition-colors text-sm"
+          >
+            <Pencil size={16} />
+            Редактировать
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleDelete()}
+            disabled={isDeleting}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors text-sm disabled:opacity-50"
+          >
+            <Trash2 size={16} />
+            {isDeleting ? "Удаление…" : "Удалить"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
-    <div className="p-4 md:p-8 max-w-3xl">
-      <div className="mb-4 flex items-center justify-between gap-4">
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="inline-flex items-center gap-2 text-secondary hover:text-primary transition-colors"
-        >
-          <ArrowLeft size={18} />
-          Назад
-        </button>
-
-        {item && isEditing && formValues && (
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleCancelEdit}
-              disabled={isSaving}
-              className="px-3 py-1.5 rounded-lg border border-border hover:bg-input/40 transition-colors text-sm"
-            >
-              Отмена
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleSave()}
-              disabled={isSaving || !formValues.title.trim()}
-              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors text-sm disabled:opacity-50"
-            >
-              {isSaving ? "Сохранение…" : "Сохранить"}
-            </button>
-          </div>
-        )}
-
-        {item && !isEditing && (
-          <div className="flex items-center gap-2">
-            <ItemFlagActions
-              itemId={item.id}
-              isFavorite={item.is_favorite}
-              isArchived={item.is_archived}
-              onUpdated={handleItemUpdated}
-            />
-            <button
-              type="button"
-              onClick={() => setIsEditing(true)}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border hover:bg-input/40 transition-colors text-sm"
-            >
-              <Pencil size={16} />
-              Редактировать
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleDelete()}
-              disabled={isDeleting}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors text-sm disabled:opacity-50"
-            >
-              <Trash2 size={16} />
-              {isDeleting ? "Удаление…" : "Удалить"}
-            </button>
-          </div>
-        )}
-      </div>
-
+    <div className="@container w-full p-4 md:p-8">
       {error && (
         <pre className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-400 whitespace-pre-wrap">
           {error}
         </pre>
       )}
 
+      {(!item || isEditing) && (
+        <div className="mx-auto mb-4 w-full max-w-[900px]">{toolbar}</div>
+      )}
+
       {item && isEditing && formValues && (
-        <ItemDetailInlineEditor values={formValues} onChange={setFormValues} />
+        <div className="mx-auto w-full max-w-[900px]">
+          <ItemDetailInlineEditor values={formValues} onChange={setFormValues} />
+        </div>
       )}
 
       {item && !isEditing && (
-        <article className="space-y-6">
-          <header>
-            <h1 className="text-2xl font-semibold">{item.title}</h1>
-            {item.description && (
-              <p className="text-secondary mt-2">{item.description}</p>
-            )}
+        <article className="grid grid-cols-1 gap-6 @[1100px]:grid-cols-12 @[1100px]:items-start @[1100px]:gap-8">
+          <div className="min-w-0 @[1100px]:col-span-9">
+            <div className="mx-auto w-full max-w-[900px]">{toolbar}</div>
+          </div>
+
+          <ItemDetailHero item={item} />
+
+          <header className="min-w-0 @[1100px]:col-span-9">
+            <div className="mx-auto w-full max-w-[900px]">
+              <h1 className="text-2xl font-semibold">{item.title}</h1>
+            </div>
           </header>
 
-          <ItemDetailMetadata item={item} />
+          <aside className="min-w-0 @[1100px]:col-span-3 @[1100px]:col-start-10 @[1100px]:row-span-6 @[1100px]:row-start-1">
+            <div className="mx-auto w-full max-w-[900px] @[1100px]:max-w-none @[1100px]:sticky @[1100px]:top-4">
+              <ItemDetailMetadata item={item} />
+            </div>
+          </aside>
 
           {content && (
-            <section className="rounded-xl border border-border bg-card p-4 md:p-6">
-              <MarkdownContent content={content} />
+            <section className="min-w-0 @[1100px]:col-span-9">
+              <div className="mx-auto w-full max-w-[900px] rounded-xl border border-border bg-card p-4 md:p-6">
+                <MarkdownContent content={content} />
+              </div>
             </section>
           )}
 
-          <MediaGallery itemId={item.id} onUpdated={handleItemUpdated} />
+          <div className="min-w-0 @[1100px]:col-span-9">
+            <div className="mx-auto w-full max-w-[900px]">
+              <MediaGallery itemId={item.id} onUpdated={handleItemUpdated} />
+            </div>
+          </div>
         </article>
       )}
     </div>

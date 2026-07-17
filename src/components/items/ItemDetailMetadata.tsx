@@ -31,13 +31,17 @@ export function ItemDetailMetadata({ item }: ItemDetailMetadataProps) {
           <dd className="mt-1">{item.content_type}</dd>
         </div>
         <div>
+          <dt className="text-secondary">Создано</dt>
+          <dd className="mt-1">{formatItemDate(item.created_at)}</dd>
+        </div>
+        <div>
           <dt className="text-secondary">Обновлено</dt>
           <dd className="mt-1">{formatItemDate(item.updated_at)}</dd>
         </div>
         {item.folder_path && (
           <div className="sm:col-span-2">
             <dt className="text-secondary">Папка</dt>
-            <dd className="mt-1 font-mono text-xs">{item.folder_path}</dd>
+            <dd className="mt-1">{item.folder_path}</dd>
           </div>
         )}
         {item.url && (
@@ -64,7 +68,7 @@ export function ItemDetailMetadata({ item }: ItemDetailMetadataProps) {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2 text-xs text-muted">
+      <div className="flex flex-wrap gap-2 text-sm text-muted">
         {item.is_favorite && (
           <span className="rounded-full bg-input px-2 py-1">избранное</span>
         )}
