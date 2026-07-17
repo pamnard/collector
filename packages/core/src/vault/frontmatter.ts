@@ -93,14 +93,7 @@ function parseFrontmatterBlock(
     return { data, format: "json" };
   }
 
-  if (hinted === "toml") {
-    const data = parseToml(trimmed);
-    if (!isPlainObject(data)) {
-      throw new Error("TOML frontmatter must be a table/object");
-    }
-    return { data, format: "toml" };
-  }
-
+  // TOML already handled above when hinted === "toml" or +++ delimiter.
   const data = parseYaml(trimmed) as unknown;
   if (data === null || data === undefined) {
     return { data: {}, format: "yaml" };
