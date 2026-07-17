@@ -2,16 +2,21 @@ import type { ItemFile } from "@collector/shared";
 import { isValidFolderPath, normalizeFolderPath } from "@collector/shared";
 import type { VaultContext } from "../adapters/types.js";
 import { nowIso } from "../util/ids.js";
+import { buildFolderTree, renameFolderPath, type FolderTreeNode } from "./folder-tree.js";
 import {
-  buildFolderTree,
-  folderMatchesPrefix,
-  renameFolderPath,
-  type FolderTreeNode,
-} from "./folder-tree.js";
-import { readFoldersFile, writeFoldersFile } from "./folder-io.js";
-import { filterDiskItemIds, itemRoot, itemsRoot } from "./paths.js";
-import { readItemContent, readItemFile, writeItemFile } from "./item-io.js";
-import { streamItemsByIds } from "./operations.js";
+  readItemContent,
+  readItemFile,
+  readItemSourceRef,
+  writeItemFile,
+} from "./item-io.js";
+import {
+  basename,
+  itemMarkdownPath,
+  itemMediaRoot,
+  joinSegments,
+  normalizeRelativePath,
+} from "./paths.js";
+import { listFolderRelativePaths } from "./scan.js";
 
 function assertFolderPath(path: string): string {
   const normalized = normalizeFolderPath(path);
@@ -21,121 +26,42 @@ function assertFolderPath(path: string): string {
   return normalized;
 }
 
-/** Folder paths from item documents on disk (parallel source for tree merge). */
-export async function collectItemFolderPaths(
-  ctx: VaultContext,
-  vaultPath: string,
-): Promise<string[]> {
-  const itemsDir = itemsRoot(vaultPath);
-  if (!(await ctx.fs.exists(itemsDir))) {
-    return [];
-  }
-
-  const itemIds = filterDiskItemIds(await ctx.fs.readDir(itemsDir));
-  const paths: string[] = [];
-  await streamItemsByIds(ctx, vaultPath, itemIds, {
-    onItem: ({ item }) => {
-      if (item?.folder_path) {
-        paths.push(item.folder_path);
-      }
-    },
-  });
-  return paths;
-}
-
-export function mergeFolderCountRows(
-  indexRows: Array<{ folder_path: string; item_count: number }> | null,
-  diskFolderPaths: string[] | null,
-): Array<{ folder_path: string; item_count: number }> {
-  const counts = new Map<string, number>();
-
-  if (indexRows) {
-    for (const row of indexRows) {
-      counts.set(row.folder_path, row.item_count);
-    }
-  }
-
-  if (diskFolderPaths) {
-    const diskCounts = new Map<string, number>();
-    for (const path of diskFolderPaths) {
-      diskCounts.set(path, (diskCounts.get(path) ?? 0) + 1);
-    }
-    if (!indexRows) {
-      return [...diskCounts.entries()].map(([folder_path, item_count]) => ({
-        folder_path,
-        item_count,
-      }));
-    }
-    for (const [path, count] of diskCounts) {
-      if (!counts.has(path)) {
-        counts.set(path, count);
-      }
-    }
-  }
-
-  return [...counts.entries()].map(([folder_path, item_count]) => ({
-    folder_path,
-    item_count,
-  }));
-}
-
 export function buildFolderTreeFromSources(
-  foldersFilePaths: string[],
+  diskFolderPaths: string[],
   countRows: Array<{ folder_path: string; item_count: number }>,
-  diskItemFolderPaths: string[] = [],
 ): FolderTreeNode[] {
-  const counts = new Map(
-    countRows.map((row) => [row.folder_path, row.item_count]),
-  );
-  const allPaths = [
-    ...foldersFilePaths,
-    ...countRows.map((row) => row.folder_path),
-    ...diskItemFolderPaths,
-  ];
+  const counts = new Map(countRows.map((row) => [row.folder_path, row.item_count]));
+  const allPaths = [...diskFolderPaths, ...countRows.map((row) => row.folder_path)];
   return buildFolderTree(allPaths, counts);
 }
 
+/** Real FS folder paths under the vault root (collections are directories, #134). */
 export async function readVaultFolderPaths(
   ctx: VaultContext,
   vaultPath: string,
 ): Promise<string[]> {
-  const file = await readFoldersFile(ctx.fs, vaultPath);
-  return file.paths;
+  return listFolderRelativePaths(ctx.fs, vaultPath);
 }
 
-export function publishFolderTreeFromLayers(
-  foldersFilePaths: string[],
-  indexCountRows: Array<{ folder_path: string; item_count: number }> | null,
-  diskFolderPaths: string[] | null,
-): FolderTreeNode[] {
-  return buildFolderTreeFromSources(
-    foldersFilePaths,
-    mergeFolderCountRows(indexCountRows, diskFolderPaths),
-    diskFolderPaths ?? [],
-  );
-}
-
-/** SQLite counts + folders.json (no item disk scan). */
+/** SQLite counts only (no disk scan) — misses folders that currently hold zero items. */
 export async function listFolderTreeFromIndex(
   ctx: VaultContext,
-  vaultPath: string,
+  _vaultPath: string,
   vaultId: string,
 ): Promise<FolderTreeNode[]> {
-  const file = await readFoldersFile(ctx.fs, vaultPath);
   const countRows = await ctx.index.listFolderItemCounts(vaultId);
-  return buildFolderTreeFromSources(file.paths, countRows);
+  return buildFolderTreeFromSources([], countRows);
 }
 
-/** Authoritative merge: union folder paths from disk item documents. */
+/** Authoritative: union of real on-disk folders + SQLite item counts. */
 export async function reconcileFolderTreeFromDisk(
   ctx: VaultContext,
   vaultPath: string,
   vaultId: string,
 ): Promise<FolderTreeNode[]> {
-  const file = await readFoldersFile(ctx.fs, vaultPath);
-  const itemPaths = await collectItemFolderPaths(ctx, vaultPath);
+  const diskFolders = await listFolderRelativePaths(ctx.fs, vaultPath);
   const countRows = await ctx.index.listFolderItemCounts(vaultId);
-  return buildFolderTreeFromSources(file.paths, countRows, itemPaths);
+  return buildFolderTreeFromSources(diskFolders, countRows);
 }
 
 export async function listFolderTree(
@@ -152,16 +78,19 @@ export async function createFolder(
   path: string,
 ): Promise<string> {
   const normalized = assertFolderPath(path);
-  const file = await readFoldersFile(ctx.fs, vaultPath);
-  if (file.paths.includes(normalized)) {
-    return normalized;
+  if (!normalized) {
+    throw new Error("Folder path must be non-empty");
   }
-
-  file.paths.push(normalized);
-  await writeFoldersFile(ctx.fs, vaultPath, file);
+  await ctx.fs.mkdir(joinSegments(vaultPath, normalized));
+  await ctx.fs.touch(vaultPath);
   return normalized;
 }
 
+/**
+ * Rename a real FS folder. Item ids embed their path, so every item under
+ * the old prefix gets a new id; the index rows are dropped and re-added
+ * under the new id (disk files already moved via the directory rename).
+ */
 export async function renameFolder(
   ctx: VaultContext,
   vaultPath: string,
@@ -171,75 +100,76 @@ export async function renameFolder(
 ): Promise<string> {
   const from = assertFolderPath(oldPath);
   const to = assertFolderPath(newPath);
+  if (!from) {
+    throw new Error("Cannot rename the vault root");
+  }
   if (from === to) {
     return to;
   }
 
-  const file = await readFoldersFile(ctx.fs, vaultPath);
-  if (file.paths.includes(to)) {
+  const fromAbs = joinSegments(vaultPath, from);
+  const toAbs = joinSegments(vaultPath, to);
+  if (!(await ctx.fs.exists(fromAbs))) {
+    throw new Error(`Folder not found: ${from}`);
+  }
+  if (await ctx.fs.exists(toAbs)) {
     throw new Error(`Folder already exists: ${to}`);
   }
-
-  file.paths = file.paths
-    .map((entry) => renameFolderPath(entry, from, to))
-    .filter(Boolean);
-  if (!file.paths.includes(to)) {
-    file.paths.push(to);
-  }
-  await writeFoldersFile(ctx.fs, vaultPath, file);
 
   const itemIds = await ctx.index.listItemIdsByFolderPrefix(vaultId, from, {
     includeArchived: true,
   });
 
-  for (const itemId of itemIds) {
-    const itemPath = itemRoot(vaultPath, itemId);
-    if (!(await ctx.fs.exists(itemPath))) {
+  await ctx.fs.rename(fromAbs, toAbs);
+  await ctx.fs.touch(vaultPath);
+
+  for (const oldId of itemIds) {
+    await ctx.index.deleteItem(oldId);
+    const newId = renameFolderPath(oldId, from, to);
+    if (newId === oldId || !(await ctx.fs.exists(itemMarkdownPath(vaultPath, newId)))) {
       continue;
     }
 
-    const item = await readItemFile(ctx.fs, itemPath, vaultId);
-    const nextPath = renameFolderPath(item.folder_path, from, to);
-    if (nextPath === item.folder_path) {
-      continue;
-    }
-
-    const updated: ItemFile = {
-      ...item,
-      folder_path: nextPath,
-      updated_at: nowIso(),
-    };
-    await writeItemFile(ctx.fs, itemPath, updated);
-    const content = await readItemContent(ctx.fs, itemPath, vaultId);
-    await ctx.index.upsertItem({ item: updated, content, sourceRef: null }, vaultId);
+    const item = await readItemFile(ctx.fs, vaultPath, newId, vaultId);
+    const content = await readItemContent(ctx.fs, vaultPath, newId);
+    const sourceRef = await readItemSourceRef(ctx.fs, vaultPath, newId);
+    const fileStat = await ctx.fs.stat(itemMarkdownPath(vaultPath, newId));
+    await ctx.index.upsertItem(
+      { item, content, sourceRef, fileMtimeMs: fileStat.mtimeMs },
+      vaultId,
+    );
   }
 
   return to;
 }
 
+/** Empty-dir only — real collections cannot be deleted while they still hold entries. */
 export async function deleteFolder(
   ctx: VaultContext,
   vaultPath: string,
-  vaultId: string,
+  _vaultId: string,
   path: string,
 ): Promise<void> {
   const normalized = assertFolderPath(path);
-  const counts = await ctx.index.listFolderItemCounts(vaultId);
-  const hasItems = counts.some(
-    (row) =>
-      row.item_count > 0 && folderMatchesPrefix(row.folder_path, normalized),
-  );
-  if (hasItems) {
+  if (!normalized) {
+    throw new Error("Cannot delete the vault root");
+  }
+
+  const abs = joinSegments(vaultPath, normalized);
+  if (!(await ctx.fs.exists(abs))) {
+    throw new Error(`Folder not found: ${normalized}`);
+  }
+
+  const entries = await ctx.fs.readDir(abs);
+  if (entries.length > 0) {
     throw new Error(`Folder is not empty: ${normalized}`);
   }
 
-  const file = await readFoldersFile(ctx.fs, vaultPath);
-  file.paths = file.paths.filter(
-    (entry) => entry !== normalized && !entry.startsWith(`${normalized}/`),
-  );
-  await writeFoldersFile(ctx.fs, vaultPath, file);
+  await ctx.fs.remove(abs);
+  await ctx.fs.touch(vaultPath);
 }
 
+/** Rename the item's `.md` file (+ sibling `.media/`) into the target folder. */
 export async function moveItemToFolder(
   ctx: VaultContext,
   vaultPath: string,
@@ -248,24 +178,46 @@ export async function moveItemToFolder(
   folderPath: string,
 ): Promise<ItemFile> {
   const normalized = assertFolderPath(folderPath);
-  const itemPath = itemRoot(vaultPath, itemId);
-  const item = await readItemFile(ctx.fs, itemPath, vaultId);
-  const updated: ItemFile = {
-    ...item,
-    folder_path: normalized,
-    updated_at: nowIso(),
-  };
-  await writeItemFile(ctx.fs, itemPath, updated);
+  const id = normalizeRelativePath(itemId);
+  const name = basename(id);
+  const newId = normalized ? `${normalized}/${name}` : name;
 
-  if (normalized) {
-    const file = await readFoldersFile(ctx.fs, vaultPath);
-    if (!file.paths.includes(normalized)) {
-      file.paths.push(normalized);
-      await writeFoldersFile(ctx.fs, vaultPath, file);
-    }
+  if (newId === id) {
+    return readItemFile(ctx.fs, vaultPath, id, vaultId);
   }
 
-  const content = await readItemContent(ctx.fs, itemPath, vaultId);
-  await ctx.index.upsertItem({ item: updated, content, sourceRef: null }, vaultId);
+  const fromPath = itemMarkdownPath(vaultPath, id);
+  const toPath = itemMarkdownPath(vaultPath, newId);
+  if (!(await ctx.fs.exists(fromPath))) {
+    throw new Error(`Item not found: ${id}`);
+  }
+  if (await ctx.fs.exists(toPath)) {
+    throw new Error(`Item already exists at destination: ${newId}`);
+  }
+
+  if (normalized) {
+    await ctx.fs.mkdir(joinSegments(vaultPath, normalized));
+  }
+  await ctx.fs.rename(fromPath, toPath);
+
+  const fromMediaRoot = itemMediaRoot(vaultPath, id);
+  if (await ctx.fs.exists(fromMediaRoot)) {
+    await ctx.fs.rename(fromMediaRoot, itemMediaRoot(vaultPath, newId));
+  }
+
+  await ctx.fs.touch(vaultPath);
+  await ctx.index.deleteItem(id);
+
+  const moved = await readItemFile(ctx.fs, vaultPath, newId, vaultId);
+  const updated: ItemFile = { ...moved, updated_at: nowIso() };
+  await writeItemFile(ctx.fs, vaultPath, updated);
+
+  const content = await readItemContent(ctx.fs, vaultPath, newId);
+  const sourceRef = await readItemSourceRef(ctx.fs, vaultPath, newId);
+  const fileStat = await ctx.fs.stat(toPath);
+  await ctx.index.upsertItem(
+    { item: updated, content, sourceRef, fileMtimeMs: fileStat.mtimeMs },
+    vaultId,
+  );
   return updated;
 }

@@ -16,32 +16,41 @@ export type {
 } from "./adapters/types.js";
 
 export {
-  itemContentPath,
+  basename,
+  dirname,
+  isMarkdownItemFile,
+  isReservedVaultEntry,
   itemCoverPath,
   itemCoverRelativePath,
-  itemLegacyMetaPath,
+  itemMarkdownPath,
+  itemMediaDirName,
+  itemMediaManifestPath,
   itemMediaRoot,
-  itemMetaPath,
-  itemRoot,
   itemSourcePath,
-  itemsRoot,
   joinSegments,
+  legacyFoldersPath,
+  legacyItemContentPath,
+  legacyItemMediaRoot,
+  legacyItemMetaPath,
+  legacyItemRoot,
+  legacyItemsRoot,
+  normalizeRelativePath,
   RECONCILE_TOUCH_FILE,
   vaultMetaPath,
   vaultsRoot,
   vaultRoot,
 } from "./vault/paths.js";
 
+export { listFolderRelativePaths, listItemRelativePaths } from "./vault/scan.js";
+
 export {
   ensureTagsByName,
   itemFileFromDocumentMarkdown,
-  itemIdFromItemRoot,
   readItemContent,
   readItemDocument,
   readItemFile,
   readItemSourceRef,
   readVaultMeta,
-  vaultPathFromItemRoot,
   writeItemContent,
   writeItemDocument,
   writeItemFile,
@@ -85,7 +94,7 @@ export {
 } from "./vault/vault-watch-batch.js";
 export type { VaultWatchBatcher } from "./vault/vault-watch-batch.js";
 
-export { parseVaultItemsWatchItemId } from "./vault/vault-watch-path.js";
+export { parseVaultItemWatchPath } from "./vault/vault-watch-path.js";
 
 export {
   createSingleFlight,
@@ -118,9 +127,6 @@ export {
   listFolderTreeFromIndex,
   reconcileFolderTreeFromDisk,
   buildFolderTreeFromSources,
-  collectItemFolderPaths,
-  mergeFolderCountRows,
-  publishFolderTreeFromLayers,
   readVaultFolderPaths,
   moveItemToFolder,
   renameFolder,
@@ -167,7 +173,4 @@ export {
   writeDashboardSnapshot,
 } from "./settings/dashboard-snapshot-io.js";
 
-export {
-  migrateItemSchema,
-  migrateVaultSchema,
-} from "./vault/schema-migrate.js";
+export { migrateVaultSchema } from "./vault/schema-migrate.js";

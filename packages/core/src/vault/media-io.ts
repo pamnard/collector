@@ -1,36 +1,32 @@
-import {
-  ITEM_FILES,
-  mediaManifestSchema,
-  sanitizeMediaFilename,
-} from "@collector/shared";
+import { mediaManifestSchema, sanitizeMediaFilename } from "@collector/shared";
 import type { MediaFileMeta, MediaManifest } from "@collector/shared";
 import type { FileSystemAdapter } from "../adapters/types.js";
-import { itemMediaRoot, joinSegments } from "./paths.js";
+import { itemMediaManifestPath, itemMediaRoot, joinSegments } from "./paths.js";
 
-export function mediaManifestPath(itemRootPath: string): string {
-  return joinSegments(itemMediaRoot(itemRootPath), ITEM_FILES.mediaManifest);
-}
+export { itemMediaManifestPath as mediaManifestPath };
 
 export function mediaStoredFilename(mediaId: string, originalFilename: string): string {
   return `${mediaId}-${sanitizeMediaFilename(originalFilename)}`;
 }
 
 export function mediaFilePath(
-  itemRootPath: string,
+  vaultRootPath: string,
+  itemRelativePath: string,
   mediaId: string,
   originalFilename: string,
 ): string {
   return joinSegments(
-    itemMediaRoot(itemRootPath),
+    itemMediaRoot(vaultRootPath, itemRelativePath),
     mediaStoredFilename(mediaId, originalFilename),
   );
 }
 
 export async function readMediaManifest(
   fs: FileSystemAdapter,
-  itemRootPath: string,
+  vaultRootPath: string,
+  itemRelativePath: string,
 ): Promise<MediaManifest> {
-  const path = mediaManifestPath(itemRootPath);
+  const path = itemMediaManifestPath(vaultRootPath, itemRelativePath);
   if (!(await fs.exists(path))) {
     return { files: [] };
   }
@@ -41,18 +37,23 @@ export async function readMediaManifest(
 
 export async function writeMediaManifest(
   fs: FileSystemAdapter,
-  itemRootPath: string,
+  vaultRootPath: string,
+  itemRelativePath: string,
   manifest: MediaManifest,
 ): Promise<void> {
   const parsed = mediaManifestSchema.parse(manifest);
-  await fs.mkdir(itemMediaRoot(itemRootPath));
-  await fs.writeText(mediaManifestPath(itemRootPath), JSON.stringify(parsed, null, 2));
+  await fs.mkdir(itemMediaRoot(vaultRootPath, itemRelativePath));
+  await fs.writeText(
+    itemMediaManifestPath(vaultRootPath, itemRelativePath),
+    JSON.stringify(parsed, null, 2),
+  );
 }
 
 export async function listMediaFiles(
   fs: FileSystemAdapter,
-  itemRootPath: string,
+  vaultRootPath: string,
+  itemRelativePath: string,
 ): Promise<MediaFileMeta[]> {
-  const manifest = await readMediaManifest(fs, itemRootPath);
+  const manifest = await readMediaManifest(fs, vaultRootPath, itemRelativePath);
   return manifest.files.sort((a, b) => a.created_at.localeCompare(b.created_at));
 }

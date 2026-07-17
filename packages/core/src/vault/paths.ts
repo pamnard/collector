@@ -1,62 +1,131 @@
-import { ITEM_FILES, VAULT_DIRS, VAULT_FILES } from "@collector/shared";
+import {
+  ITEM_FILES,
+  ITEM_MEDIA_SUFFIX,
+  LEGACY_VAULT_DIRS,
+  RESERVED_VAULT_ENTRIES,
+  VAULT_DIRS,
+  VAULT_FILES,
+} from "@collector/shared";
+import { folderPathFromItemPath } from "@collector/shared";
 
 export const RECONCILE_TOUCH_FILE = ".collector-touch";
-
-const IGNORED_ITEMS_DIR_ENTRIES = new Set([RECONCILE_TOUCH_FILE]);
-
-export function filterDiskItemIds(itemIds: string[]): string[] {
-  return itemIds.filter((id) => !IGNORED_ITEMS_DIR_ENTRIES.has(id));
-}
 
 export function vaultsRoot(dataDir: string): string {
   return joinSegments(dataDir, "vaults");
 }
 
-export function vaultRoot(vaultsRoot: string, vaultId: string): string {
-  return joinSegments(vaultsRoot, vaultId);
+export function vaultRoot(vaultsRootPath: string, vaultId: string): string {
+  return joinSegments(vaultsRootPath, vaultId);
 }
 
 export function vaultMetaPath(vaultRootPath: string): string {
   return joinSegments(vaultRootPath, VAULT_FILES.meta);
 }
 
-export function itemsRoot(vaultRootPath: string): string {
-  return joinSegments(vaultRootPath, VAULT_DIRS.items);
+export function vaultTagsPath(vaultRootPath: string): string {
+  return joinSegments(vaultRootPath, VAULT_FILES.tags);
 }
 
-export function itemRoot(vaultRootPath: string, itemId: string): string {
-  return joinSegments(itemsRoot(vaultRootPath), itemId);
+/** Absolute path to a vault-relative item `.md` path. */
+export function itemMarkdownPath(vaultRootPath: string, itemRelativePath: string): string {
+  return joinSegments(vaultRootPath, normalizeRelativePath(itemRelativePath));
 }
 
-/** On-disk item document (`content.md` with YAML frontmatter + body). */
-export function itemMetaPath(itemRootPath: string): string {
-  return joinSegments(itemRootPath, ITEM_FILES.meta);
+/** `note.md` → `note.media` (directory name). */
+export function itemMediaDirName(itemRelativePath: string): string {
+  const base = basename(itemRelativePath);
+  if (!base.toLowerCase().endsWith(".md")) {
+    throw new Error(`Item path must end with .md: ${itemRelativePath}`);
+  }
+  const stem = base.slice(0, -3);
+  return `${stem}${ITEM_MEDIA_SUFFIX}`;
 }
 
-/** Same path as {@link itemMetaPath} — body lives in the document after frontmatter. */
-export function itemContentPath(itemRootPath: string): string {
-  return joinSegments(itemRootPath, ITEM_FILES.content);
+/** Absolute media root for an item (`…/note.media`). */
+export function itemMediaRoot(vaultRootPath: string, itemRelativePath: string): string {
+  const dir = dirname(normalizeRelativePath(itemRelativePath));
+  const mediaName = itemMediaDirName(itemRelativePath);
+  return dir
+    ? joinSegments(vaultRootPath, dir, mediaName)
+    : joinSegments(vaultRootPath, mediaName);
 }
 
-/** Pre-v3 `item.json` sidecar (migration only). */
-export function itemLegacyMetaPath(itemRootPath: string): string {
+export function itemSourcePath(vaultRootPath: string, itemRelativePath: string): string {
+  return joinSegments(itemMediaRoot(vaultRootPath, itemRelativePath), ITEM_FILES.source);
+}
+
+export function itemCoverPath(vaultRootPath: string, itemRelativePath: string): string {
+  return joinSegments(itemMediaRoot(vaultRootPath, itemRelativePath), ITEM_FILES.cover);
+}
+
+export function itemCoverRelativePath(itemRelativePath: string): string {
+  return joinSegments(itemMediaDirName(itemRelativePath), ITEM_FILES.cover);
+}
+
+export function itemMediaManifestPath(
+  vaultRootPath: string,
+  itemRelativePath: string,
+): string {
+  return joinSegments(
+    itemMediaRoot(vaultRootPath, itemRelativePath),
+    ITEM_FILES.mediaManifest,
+  );
+}
+
+export function folderPathFromItemId(itemRelativePath: string): string {
+  return folderPathFromItemPath(normalizeRelativePath(itemRelativePath));
+}
+
+/** Legacy `items/` root (migration / detection only). */
+export function legacyItemsRoot(vaultRootPath: string): string {
+  return joinSegments(vaultRootPath, LEGACY_VAULT_DIRS.items);
+}
+
+export function legacyItemRoot(vaultRootPath: string, itemUuid: string): string {
+  return joinSegments(legacyItemsRoot(vaultRootPath), itemUuid);
+}
+
+export function legacyItemContentPath(itemRootPath: string): string {
+  return joinSegments(itemRootPath, ITEM_FILES.legacyContent);
+}
+
+export function legacyItemMetaPath(itemRootPath: string): string {
   return joinSegments(itemRootPath, ITEM_FILES.legacyMeta);
 }
 
-export function itemSourcePath(itemRootPath: string): string {
-  return joinSegments(itemRootPath, ITEM_FILES.source);
-}
-
-export function itemMediaRoot(itemRootPath: string): string {
+export function legacyItemMediaRoot(itemRootPath: string): string {
   return joinSegments(itemRootPath, VAULT_DIRS.media);
 }
 
-export function itemCoverPath(itemRootPath: string): string {
-  return joinSegments(itemMediaRoot(itemRootPath), ITEM_FILES.cover);
+export function legacyFoldersPath(vaultRootPath: string): string {
+  return joinSegments(vaultRootPath, VAULT_FILES.legacyFolders);
 }
 
-export function itemCoverRelativePath(): string {
-  return joinSegments(VAULT_DIRS.media, ITEM_FILES.cover);
+export function isReservedVaultEntry(name: string): boolean {
+  return RESERVED_VAULT_ENTRIES.has(name) || name.endsWith(ITEM_MEDIA_SUFFIX);
+}
+
+export function isMarkdownItemFile(name: string): boolean {
+  return name.toLowerCase().endsWith(".md") && !name.startsWith(".");
+}
+
+export function normalizeRelativePath(path: string): string {
+  return path
+    .replace(/\\/g, "/")
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join("/");
+}
+
+export function basename(path: string): string {
+  const normalized = normalizeRelativePath(path);
+  const idx = normalized.lastIndexOf("/");
+  return idx === -1 ? normalized : normalized.slice(idx + 1);
+}
+
+export function dirname(path: string): string {
+  return folderPathFromItemPath(normalizeRelativePath(path));
 }
 
 export function joinSegments(...parts: string[]): string {
@@ -85,3 +154,5 @@ export function joinSegments(...parts: string[]): string {
   const segments = rest.flatMap((part) => part.split("/")).filter(Boolean);
   return prefix + segments.join("/");
 }
+
+export { VAULT_DIRS, VAULT_FILES, ITEM_FILES, LEGACY_VAULT_DIRS, ITEM_MEDIA_SUFFIX };

@@ -18,8 +18,9 @@ import {
   syncIndexFromFilesystem,
   upsertItem,
 } from "../vault/operations.js";
+import type { ItemFile } from "@collector/shared";
 import { readItemFile, writeItemFile } from "../vault/item-io.js";
-import { itemRoot } from "../vault/paths.js";
+import { itemMarkdownPath, joinSegments } from "../vault/paths.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 
 class CountingFileSystemAdapter implements FileSystemAdapter {
@@ -71,6 +72,10 @@ class CountingFileSystemAdapter implements FileSystemAdapter {
   remove(path: string, options?: { recursive?: boolean }): Promise<void> {
     return this.inner.remove(path, options);
   }
+
+  rename(from: string, to: string): Promise<void> {
+    return this.inner.rename(from, to);
+  }
 }
 
 describe("vault operations", () => {
@@ -106,7 +111,7 @@ describe("vault operations", () => {
       name: "Vault",
     });
 
-    const itemId = createId();
+    const itemId = `${createId()}.md`;
     await upsertItem(ctx, path, meta.id, {
       item: {
         id: itemId,
@@ -142,7 +147,7 @@ describe("vault operations", () => {
       name: "Vault",
     });
 
-    const itemIds = [createId(), createId(), createId()];
+    const itemIds = [`${createId()}.md`, `${createId()}.md`, `${createId()}.md`];
     const titles = ["Third", "First", "Second"];
     for (const [index, itemId] of itemIds.entries()) {
       await upsertItem(ctx, path, meta.id, {
@@ -164,7 +169,7 @@ describe("vault operations", () => {
       });
     }
 
-    const missingId = createId();
+    const missingId = `${createId()}.md`;
     const loaded = await listItemsByIds(ctx, path, [
       itemIds[2]!,
       missingId,
@@ -192,7 +197,7 @@ describe("vault operations", () => {
       name: "Vault",
     });
 
-    const itemIds = [createId(), createId()];
+    const itemIds = [`${createId()}.md`, `${createId()}.md`];
     for (const itemId of itemIds) {
       await upsertItem(ctx, path, meta.id, {
         item: {
@@ -233,7 +238,7 @@ describe("vault operations", () => {
       name: "Vault",
     });
 
-    const itemId = createId();
+    const itemId = `${createId()}.md`;
     await upsertItem(ctx, path, meta.id, {
       item: {
         id: itemId,
@@ -267,7 +272,7 @@ describe("vault operations", () => {
     const sql = new MemorySqlAdapter();
     const ctx = { fs, index: new SqlVaultIndexStore(sql) };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
-    const itemId = createId();
+    const itemId = `${createId()}.md`;
     const timestamp = new Date().toISOString();
 
     await upsertItem(ctx, path, meta.id, {
@@ -300,7 +305,7 @@ describe("vault operations", () => {
     const sql = new MemorySqlAdapter();
     const ctx = { fs, index: new SqlVaultIndexStore(sql) };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
-    const itemId = createId();
+    const itemId = `${createId()}.md`;
     const timestamp = new Date().toISOString();
 
     const item = await upsertItem(ctx, path, meta.id, {
@@ -339,7 +344,7 @@ describe("vault operations", () => {
     const sql = new MemorySqlAdapter();
     const ctx = { fs, index: new SqlVaultIndexStore(sql) };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
-    const itemId = createId();
+    const itemId = `${createId()}.md`;
     const timestamp = new Date().toISOString();
 
     await upsertItem(ctx, path, meta.id, {
@@ -361,9 +366,8 @@ describe("vault operations", () => {
       content: "hello",
     });
 
-    const itemPath = itemRoot(path, itemId);
-    const onDisk = await readItemFile(fs, itemPath, meta.id);
-    await writeItemFile(fs, itemPath, {
+    const onDisk = await readItemFile(fs, path, itemId, meta.id);
+    await writeItemFile(fs, path, {
       ...onDisk,
       content_revision: onDisk.content_revision + 1,
     });
@@ -385,7 +389,7 @@ describe("vault operations", () => {
     for (let i = 0; i < itemCount; i += 1) {
       await upsertItem(diskCtx, path, meta.id, {
         item: {
-          id: createId(),
+          id: `${createId()}.md`,
           vault_id: meta.id,
           title: `Note ${i}`,
           description: "",
@@ -443,7 +447,7 @@ describe("vault operations", () => {
 
     const titleToken = "PhaseTitleUnique";
     const contentToken = "PhaseBodyUniqueZz9";
-    const itemId = createId();
+    const itemId = `Imports/${createId()}.md`;
     await upsertItem(diskCtx, path, meta.id, {
       item: {
         id: itemId,
@@ -457,7 +461,7 @@ describe("vault operations", () => {
         is_favorite: false,
         tag_ids: [],
         collection_ids: [],
-        folder_path: "Imports",
+        folder_path: "",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       },
@@ -524,7 +528,7 @@ describe("vault operations", () => {
 
     await upsertItem(ctx, path, meta.id, {
       item: {
-        id: createId(),
+        id: `${createId()}.md`,
         vault_id: meta.id,
         title: "Existing",
         description: "",
@@ -541,7 +545,7 @@ describe("vault operations", () => {
       content: "old",
     });
 
-    const newId = createId();
+    const newId = `${createId()}.md`;
     await upsertItem(ctx, path, meta.id, {
       item: {
         id: newId,
@@ -572,7 +576,7 @@ describe("vault operations", () => {
     dataDir = await mkdtemp(join(tmpdir(), "collector-vault-"));
     const ctx = { fs, index: new SqlVaultIndexStore(new MemorySqlAdapter()) };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
-    const itemId = createId();
+    const itemId = `${createId()}.md`;
 
     await upsertItem(ctx, path, meta.id, {
       item: {
@@ -592,23 +596,24 @@ describe("vault operations", () => {
       },
     });
 
-    await fs.remove(itemRoot(path, itemId), { recursive: true });
+    await fs.remove(itemMarkdownPath(path, itemId), { recursive: true });
 
     const report = await syncIndexFromFilesystem(ctx, path, meta.id);
     expect(report.removed).toBe(1);
     expect(await ctx.index.listVaultItemIds(meta.id)).toHaveLength(0);
   });
 
-  it("reindexes folder_path changes made offline", async () => {
+  it("reindexes items moved to a new folder offline", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "collector-vault-"));
     const ctx = { fs, index: new SqlVaultIndexStore(new MemorySqlAdapter()) };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
-    const itemId = createId();
+    const uuid = createId();
+    const oldId = `Old/${uuid}.md`;
     const timestamp = new Date().toISOString();
 
     await upsertItem(ctx, path, meta.id, {
       item: {
-        id: itemId,
+        id: oldId,
         vault_id: meta.id,
         title: "Moved",
         description: "",
@@ -619,23 +624,23 @@ describe("vault operations", () => {
         is_favorite: false,
         tag_ids: [],
         collection_ids: [],
-        folder_path: "Old",
+        folder_path: "",
+        content_revision: 1,
         created_at: timestamp,
         updated_at: timestamp,
       },
       content: "x",
     });
 
-    const itemPath = itemRoot(path, itemId);
-    const onDisk = await readItemFile(fs, itemPath, meta.id);
-    await writeItemFile(fs, itemPath, {
-      ...onDisk,
-      folder_path: "New/Branch",
-      content_revision: onDisk.content_revision + 1,
-    });
+    // Simulate an offline move: the file is renamed on disk (id embeds the
+    // folder, #134), not a folder_path frontmatter edit.
+    const newId = `New/Branch/${uuid}.md`;
+    await fs.mkdir(joinSegments(path, "New/Branch"));
+    await fs.rename(itemMarkdownPath(path, oldId), itemMarkdownPath(path, newId));
 
     const report = await syncIndexFromFilesystem(ctx, path, meta.id);
     expect(report.indexed).toBe(1);
+    expect(report.removed).toBe(1);
 
     const counts = await ctx.index.listFolderItemCounts(meta.id);
     expect(counts.find((row) => row.folder_path === "New/Branch")?.item_count).toBe(
@@ -670,7 +675,7 @@ describe("vault operations", () => {
     for (let i = 0; i < itemCount; i += 1) {
       await upsertItem(ctx, path, meta.id, {
         item: {
-          id: createId(),
+          id: `${createId()}.md`,
           vault_id: meta.id,
           title: `Note ${i}`,
           description: "",
@@ -708,7 +713,7 @@ describe("vault operations", () => {
     const sql = new MemorySqlAdapter();
     const ctx = { fs: countingFs, index: new SqlVaultIndexStore(sql) };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
-    const itemId = createId();
+    const itemId = `${createId()}.md`;
     const timestamp = new Date().toISOString();
 
     await upsertItem(ctx, path, meta.id, {
@@ -754,7 +759,7 @@ describe("vault operations", () => {
 
     await upsertItem(diskCtx, path, meta.id, {
       item: {
-        id: createId(),
+        id: `${createId()}.md`,
         vault_id: meta.id,
         title: "On disk",
         description: "",

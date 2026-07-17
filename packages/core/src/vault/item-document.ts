@@ -1,4 +1,5 @@
 import {
+  folderPathFromItemPath,
   itemFileSchema,
   type ItemFile,
   type Tag,
@@ -12,6 +13,7 @@ import {
   resolveFrontmatterDates,
   serializeDocumentMarkdown,
 } from "./frontmatter.js";
+import { basename, normalizeRelativePath } from "./paths.js";
 
 export interface ParseItemDocumentContext {
   itemId: string;
@@ -39,6 +41,12 @@ function tagNameKey(name: string): string {
   return name.toLowerCase();
 }
 
+/** Portable fallback title: filename stem when frontmatter has no `title`. */
+export function titleFromItemPath(itemRelativePath: string): string {
+  const base = basename(itemRelativePath);
+  return base.toLowerCase().endsWith(".md") ? base.slice(0, -3) : base;
+}
+
 export function buildTagMaps(tags: Tag[]): {
   byName: Map<string, Tag>;
   byId: Map<string, Tag>;
@@ -55,11 +63,13 @@ export function buildTagMaps(tags: Tag[]): {
 /**
  * Parse markdown document into ItemFile + body.
  * Does not create tags — reports missingTagNames for the caller.
+ * `folder_path` is always derived from the item path (id).
  */
 export function parseItemDocument(
   raw: string,
   ctx: ParseItemDocumentContext,
 ): ParsedItemDocument {
+  const itemId = normalizeRelativePath(ctx.itemId);
   const parsed = parseDocumentMarkdown(raw);
   const known = parseKnownFrontmatter(parsed.frontmatter);
   const extra = extractUnknownFrontmatterKeys(parsed.frontmatter);
@@ -69,12 +79,12 @@ export function parseItemDocument(
   const updated_at = dates.updated_at ?? ctx.fallbackUpdatedAt;
   if (!created_at) {
     throw new Error(
-      `Item document ${ctx.itemId} is missing created/created_at (and no fallback)`,
+      `Item document ${itemId} is missing created/created_at (and no fallback)`,
     );
   }
   if (!updated_at) {
     throw new Error(
-      `Item document ${ctx.itemId} is missing updated/updated_at (and no fallback)`,
+      `Item document ${itemId} is missing updated/updated_at (and no fallback)`,
     );
   }
 
@@ -90,13 +100,10 @@ export function parseItemDocument(
     tag_ids.push(tag.id);
   }
 
-  const title = known.title;
-  if (!title) {
-    throw new Error(`Item document ${ctx.itemId} is missing title in frontmatter`);
-  }
+  const title = known.title ?? titleFromItemPath(itemId);
 
   const item = itemFileSchema.parse({
-    id: ctx.itemId,
+    id: itemId,
     vault_id: ctx.vaultId,
     title,
     description: known.description ?? "",
@@ -109,8 +116,8 @@ export function parseItemDocument(
     is_archived: known.is_archived ?? false,
     is_favorite: known.is_favorite ?? false,
     tag_ids,
-    collection_ids: known.collection_ids ?? [],
-    folder_path: known.folder_path ?? "",
+    collection_ids: [],
+    folder_path: folderPathFromItemPath(itemId),
     content_revision: known.content_revision ?? 1,
     created_at,
     updated_at,
@@ -154,8 +161,6 @@ export function serializeItemDocument(
     thumbnail: item.thumbnail,
     is_archived: item.is_archived,
     is_favorite: item.is_favorite,
-    folder_path: item.folder_path,
-    collection_ids: item.collection_ids,
     content_revision: item.content_revision,
     created: item.created_at,
     updated: item.updated_at,

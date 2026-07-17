@@ -21,7 +21,6 @@ import {
   writeVaultMeta,
 } from "./item-io.js";
 import { writeTagsFile } from "./tag-io.js";
-import { writeFoldersFile } from "./folder-io.js";
 import {
   DISK_ITEM_READ_CONCURRENCY,
   INDEX_SYNC_CONTENT_YIELD_MS,
@@ -35,14 +34,14 @@ import {
   readVaultReconcileFingerprint,
 } from "./reconcile-fingerprint.js";
 import {
+  folderPathFromItemId,
+  itemMarkdownPath,
   itemMediaRoot,
-  itemMetaPath,
-  itemRoot,
-  itemsRoot,
-  filterDiskItemIds,
+  normalizeRelativePath,
   vaultRoot,
   vaultsRoot,
 } from "./paths.js";
+import { listItemRelativePaths } from "./scan.js";
 import {
   readVaultItemMetaBatch,
   statAllVaultItemMeta,
@@ -70,10 +69,8 @@ export async function createVault(
   const vaultPath = vaultRoot(root, vaultId);
 
   await ctx.fs.mkdir(vaultPath);
-  await ctx.fs.mkdir(itemsRoot(vaultPath));
   await writeVaultMeta(ctx.fs, vaultPath, meta);
   await writeTagsFile(ctx.fs, vaultPath, { tags: [] });
-  await writeFoldersFile(ctx.fs, vaultPath, { paths: [] });
   await ctx.index.upsertVault(meta, vaultPath);
 
   return { meta, path: vaultPath };
@@ -86,26 +83,29 @@ export async function upsertItem(
   input: UpsertItemInput,
 ): Promise<ItemFile> {
   const timestamp = nowIso();
+  const id = normalizeRelativePath(input.item.id);
   const item: ItemFile = {
     ...input.item,
+    id,
     vault_id: vaultId,
+    // Collections are real FS folders (#134): folder_path is always the
+    // dirname of id, never an independent value supplied by the caller.
+    folder_path: folderPathFromItemId(id),
     updated_at: timestamp,
     created_at: input.item.created_at || timestamp,
   };
 
-  const itemPath = itemRoot(vaultPath, item.id);
-  await ctx.fs.mkdir(itemPath);
-  await ctx.fs.mkdir(itemMediaRoot(itemPath));
   const body = input.content ?? "";
-  await writeItemDocument(ctx.fs, itemPath, item, body);
+  await writeItemDocument(ctx.fs, vaultPath, item, body);
 
   if (input.sourceRef) {
-    await writeItemSourceRef(ctx.fs, itemPath, input.sourceRef);
+    await writeItemSourceRef(ctx.fs, vaultPath, item.id, input.sourceRef);
   }
 
-  const content = input.content ?? (await readItemContent(ctx.fs, itemPath, vaultId));
-  const sourceRef = input.sourceRef ?? (await readItemSourceRef(ctx.fs, itemPath));
-  const fileStat = await ctx.fs.stat(itemMetaPath(itemPath));
+  const content = input.content ?? (await readItemContent(ctx.fs, vaultPath, item.id));
+  const sourceRef =
+    input.sourceRef ?? (await readItemSourceRef(ctx.fs, vaultPath, item.id));
+  const fileStat = await ctx.fs.stat(itemMarkdownPath(vaultPath, item.id));
 
   await ctx.index.upsertItem(
     {
@@ -124,11 +124,17 @@ export async function deleteItem(
   vaultPath: string,
   itemId: string,
 ): Promise<void> {
-  const itemPath = itemRoot(vaultPath, itemId);
-  if (await ctx.fs.exists(itemPath)) {
-    await ctx.fs.remove(itemPath, { recursive: true });
+  const id = normalizeRelativePath(itemId);
+  const docPath = itemMarkdownPath(vaultPath, id);
+  if (await ctx.fs.exists(docPath)) {
+    await ctx.fs.remove(docPath);
   }
-  await ctx.index.deleteItem(itemId);
+  const mediaRoot = itemMediaRoot(vaultPath, id);
+  if (await ctx.fs.exists(mediaRoot)) {
+    await ctx.fs.remove(mediaRoot, { recursive: true });
+  }
+  await ctx.fs.touch(vaultPath);
+  await ctx.index.deleteItem(id);
 }
 
 function createEmptySyncReport(): SyncReport {
@@ -173,7 +179,6 @@ export async function syncIndexFromFilesystem(
   options: IndexSyncOptions = {},
 ): Promise<SyncReport> {
   const report = createEmptySyncReport();
-  const itemsDir = itemsRoot(vaultPath);
   const { onProgress, onBatch, onMetadataComplete } = options;
   let phase: IndexSyncPhase = "metadata";
 
@@ -187,13 +192,17 @@ export async function syncIndexFromFilesystem(
     onBatch?.(progress);
   };
 
-  if (!(await ctx.fs.exists(itemsDir))) {
+  if (!(await ctx.fs.exists(vaultPath))) {
     emitProgress(0, 0);
     return report;
   }
 
-  const diskItemIds = new Set(filterDiskItemIds(await ctx.fs.readDir(itemsDir)));
-  const currentFingerprint = await readVaultReconcileFingerprint(ctx.fs, itemsDir);
+  const diskItemIds = new Set(await listItemRelativePaths(ctx.fs, vaultPath));
+  const currentFingerprint = await readVaultReconcileFingerprint(
+    ctx.fs,
+    vaultPath,
+    diskItemIds.size,
+  );
   const indexedItems = await ctx.index.listVaultItemSyncMeta(vaultId);
   const storedFingerprint = await ctx.index.getReconcileFingerprint(vaultId);
   const indexMeta = new Map(indexedItems.map((item) => [item.id, item]));
@@ -292,7 +301,7 @@ export async function syncIndexFromFilesystem(
             itemId,
             diskMtimeMs,
             item: null,
-            error: new Error(`Missing content.md for ${itemId}`),
+            error: new Error(`Missing document for ${itemId}`),
           });
           continue;
         }
@@ -420,7 +429,7 @@ export async function syncIndexFromFilesystem(
     const work = reindexQueue[i]!;
     try {
       if (!work.item) {
-        throw new Error(`Missing content.md for ${work.itemId}`);
+        throw new Error(`Missing document for ${work.itemId}`);
       }
       const item = work.item;
       await ctx.index.upsertItemMetadata(
@@ -462,10 +471,9 @@ export async function syncIndexFromFilesystem(
     if (!work.item) {
       continue;
     }
-    const itemPath = itemRoot(vaultPath, work.itemId);
     try {
-      const content = await readItemContent(ctx.fs, itemPath, vaultId);
-      const sourceRef = await readItemSourceRef(ctx.fs, itemPath);
+      const content = await readItemContent(ctx.fs, vaultPath, work.itemId);
+      const sourceRef = await readItemSourceRef(ctx.fs, vaultPath, work.itemId);
       await ctx.index.upsertItemContent({
         itemId: work.item.id,
         title: work.item.title,
@@ -520,12 +528,11 @@ export async function listItemsOnDisk(
   ctx: VaultContext,
   vaultPath: string,
 ): Promise<ItemFile[]> {
-  const itemsDir = itemsRoot(vaultPath);
-  if (!(await ctx.fs.exists(itemsDir))) {
+  if (!(await ctx.fs.exists(vaultPath))) {
     return [];
   }
 
-  const itemIds = filterDiskItemIds(await ctx.fs.readDir(itemsDir));
+  const itemIds = await listItemRelativePaths(ctx.fs, vaultPath);
   return listItemsByIds(ctx, vaultPath, itemIds);
 }
 
@@ -546,12 +553,12 @@ async function readItemFromDisk(
   vaultPath: string,
   itemId: string,
 ): Promise<ItemFile | null> {
-  const itemPath = itemRoot(vaultPath, itemId);
-  if (!(await ctx.fs.exists(itemPath))) {
+  const docPath = itemMarkdownPath(vaultPath, itemId);
+  if (!(await ctx.fs.exists(docPath))) {
     return null;
   }
   const meta = await readVaultMeta(ctx.fs, vaultPath);
-  return readItemFile(ctx.fs, itemPath, meta.id);
+  return readItemFile(ctx.fs, vaultPath, itemId, meta.id);
 }
 
 /** Read item documents; uses batched FS when the adapter supports it. */
@@ -582,9 +589,7 @@ export async function streamItemsByIds(
       let item: ItemFile | null = null;
       if (documentMarkdown) {
         try {
-          const fileStat = await ctx.fs.stat(
-            itemMetaPath(itemRoot(vaultPath, itemId)),
-          );
+          const fileStat = await ctx.fs.stat(itemMarkdownPath(vaultPath, itemId));
           item = await itemFileFromDocumentMarkdown(
             ctx.fs,
             vaultPath,

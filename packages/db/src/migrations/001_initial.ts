@@ -19,6 +19,9 @@ CREATE TABLE IF NOT EXISTS vaults (
   reconcile_fingerprint_json TEXT
 );
 
+-- id = vault-relative markdown path (e.g. "Inbox/note.md"), not a UUID (#134).
+-- folder_path is derived from id (dirname) and kept as a column purely for
+-- fast prefix queries; it is not an independent source of truth.
 CREATE TABLE IF NOT EXISTS items (
   id TEXT PRIMARY KEY,
   vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,

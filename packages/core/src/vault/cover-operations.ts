@@ -8,10 +8,10 @@ import {
   writeItemFile,
 } from "./item-io.js";
 import {
+  dirname,
   itemCoverPath,
   itemCoverRelativePath,
   itemMediaRoot,
-  itemRoot,
   joinSegments,
 } from "./paths.js";
 
@@ -28,7 +28,10 @@ export function resolveItemThumbnailAbsolutePath(
     return thumbnail;
   }
 
-  return joinSegments(itemRoot(vaultPath, itemId), thumbnail);
+  const folder = dirname(itemId);
+  return folder
+    ? joinSegments(vaultPath, folder, thumbnail)
+    : joinSegments(vaultPath, thumbnail);
 }
 
 export async function applyItemCover(
@@ -38,22 +41,21 @@ export async function applyItemCover(
   itemId: string,
   coverData: Uint8Array,
 ): Promise<ItemFile> {
-  const itemPath = itemRoot(vaultPath, itemId);
-  const coverPath = itemCoverPath(itemPath);
+  const coverPath = itemCoverPath(vaultPath, itemId);
 
-  await ctx.fs.mkdir(itemMediaRoot(itemPath));
+  await ctx.fs.mkdir(itemMediaRoot(vaultPath, itemId));
   await ctx.fs.writeBinary(coverPath, coverData);
 
-  const item = await readItemFile(ctx.fs, itemPath, vaultId);
+  const item = await readItemFile(ctx.fs, vaultPath, itemId, vaultId);
   const updated: ItemFile = {
     ...item,
-    thumbnail: itemCoverRelativePath(),
+    thumbnail: itemCoverRelativePath(itemId),
     updated_at: nowIso(),
   };
-  await writeItemFile(ctx.fs, itemPath, updated);
+  await writeItemFile(ctx.fs, vaultPath, updated);
 
-  const content = await readItemContent(ctx.fs, itemPath, vaultId);
-  const sourceRef = await readItemSourceRef(ctx.fs, itemPath);
+  const content = await readItemContent(ctx.fs, vaultPath, itemId);
+  const sourceRef = await readItemSourceRef(ctx.fs, vaultPath, itemId);
   await ctx.index.upsertItem({ item: updated, content, sourceRef }, vaultId);
   return updated;
 }
@@ -64,14 +66,13 @@ export async function clearItemCover(
   vaultId: string,
   itemId: string,
 ): Promise<ItemFile> {
-  const itemPath = itemRoot(vaultPath, itemId);
-  const coverPath = itemCoverPath(itemPath);
+  const coverPath = itemCoverPath(vaultPath, itemId);
 
   if (await ctx.fs.exists(coverPath)) {
     await ctx.fs.remove(coverPath);
   }
 
-  const item = await readItemFile(ctx.fs, itemPath, vaultId);
+  const item = await readItemFile(ctx.fs, vaultPath, itemId, vaultId);
   if (!item.thumbnail) {
     return item;
   }
@@ -81,10 +82,10 @@ export async function clearItemCover(
     thumbnail: null,
     updated_at: nowIso(),
   };
-  await writeItemFile(ctx.fs, itemPath, updated);
+  await writeItemFile(ctx.fs, vaultPath, updated);
 
-  const content = await readItemContent(ctx.fs, itemPath, vaultId);
-  const sourceRef = await readItemSourceRef(ctx.fs, itemPath);
+  const content = await readItemContent(ctx.fs, vaultPath, itemId);
+  const sourceRef = await readItemSourceRef(ctx.fs, vaultPath, itemId);
   await ctx.index.upsertItem({ item: updated, content, sourceRef }, vaultId);
   return updated;
 }

@@ -1,4 +1,5 @@
 import {
+  folderPathFromItemPath,
   itemFileSchema,
   sourceRefSchema,
   vaultMetaSchema,
@@ -20,39 +21,15 @@ import {
   serializeItemDocument,
 } from "./item-document.js";
 import {
-  itemContentPath,
-  itemLegacyMetaPath,
-  itemMetaPath,
+  dirname,
+  itemMarkdownPath,
+  itemMediaRoot,
   itemSourcePath,
   joinSegments,
+  normalizeRelativePath,
   vaultMetaPath,
 } from "./paths.js";
 import { readTagsFile, writeTagsFile } from "./tag-io.js";
-
-function parentDir(path: string): string {
-  const segments = path.replace(/\\/g, "/").split("/").filter(Boolean);
-  if (segments.length <= 1) {
-    return path.startsWith("/") ? "/" : "";
-  }
-  segments.pop();
-  const joined = segments.join("/");
-  return path.startsWith("/") ? `/${joined}` : joined;
-}
-
-/** `…/items/<uuid>` → vault root. */
-export function vaultPathFromItemRoot(itemRootPath: string): string {
-  return parentDir(parentDir(itemRootPath));
-}
-
-/** Basename of item root (= item id under UUID layout). */
-export function itemIdFromItemRoot(itemRootPath: string): string {
-  const segments = itemRootPath.replace(/\\/g, "/").split("/").filter(Boolean);
-  const id = segments[segments.length - 1];
-  if (!id) {
-    throw new Error(`Cannot derive item id from path: ${itemRootPath}`);
-  }
-  return id;
-}
 
 function mtimeToIso(mtimeMs: number | null): string {
   if (mtimeMs === null) {
@@ -186,74 +163,89 @@ export async function itemFileFromDocumentMarkdown(
 
 export async function readItemDocument(
   fs: FileSystemAdapter,
-  itemRootPath: string,
+  vaultRootPath: string,
+  itemRelativePath: string,
   vaultId: string,
 ): Promise<{ item: ItemFile; body: string; extra: Record<string, unknown> }> {
-  const docPath = itemMetaPath(itemRootPath);
+  const id = normalizeRelativePath(itemRelativePath);
+  const docPath = itemMarkdownPath(vaultRootPath, id);
   if (!(await fs.exists(docPath))) {
-    throw new Error(`Missing content.md for ${itemIdFromItemRoot(itemRootPath)}`);
+    throw new Error(`Missing item document: ${id}`);
   }
   const raw = await fs.readText(docPath);
   const fileStat = await fs.stat(docPath);
-  const vaultPath = vaultPathFromItemRoot(itemRootPath);
   return parseDocumentWithTags(
     fs,
-    vaultPath,
+    vaultRootPath,
     vaultId,
-    itemIdFromItemRoot(itemRootPath),
+    id,
     raw,
     fileStat.mtimeMs,
   );
 }
 
+async function ensureParentDir(
+  fs: FileSystemAdapter,
+  vaultRootPath: string,
+  itemRelativePath: string,
+): Promise<void> {
+  const dir = dirname(itemRelativePath);
+  await fs.mkdir(dir ? joinSegments(vaultRootPath, dir) : vaultRootPath);
+}
+
 export async function writeItemDocument(
   fs: FileSystemAdapter,
-  itemRootPath: string,
+  vaultRootPath: string,
   item: ItemFile,
   body: string,
   extra?: Record<string, unknown>,
 ): Promise<void> {
-  const parsed = itemFileSchema.parse(item);
-  const vaultPath = vaultPathFromItemRoot(itemRootPath);
-  const maps = await loadTagMaps(fs, vaultPath);
+  const parsed = itemFileSchema.parse({
+    ...item,
+    id: normalizeRelativePath(item.id),
+    folder_path: folderPathFromItemPath(item.id),
+  });
+  await ensureParentDir(fs, vaultRootPath, parsed.id);
+  const maps = await loadTagMaps(fs, vaultRootPath);
   const markdown = serializeItemDocument(parsed, body, maps.byId, extra);
-  await fs.writeText(itemMetaPath(itemRootPath), markdown);
-  await fs.touch(parentDir(itemRootPath));
+  await fs.writeText(itemMarkdownPath(vaultRootPath, parsed.id), markdown);
+  await fs.touch(vaultRootPath);
 }
 
 export async function readItemFile(
   fs: FileSystemAdapter,
-  itemRootPath: string,
+  vaultRootPath: string,
+  itemRelativePath: string,
   vaultId: string,
 ): Promise<ItemFile> {
-  const doc = await readItemDocument(fs, itemRootPath, vaultId);
+  const doc = await readItemDocument(fs, vaultRootPath, itemRelativePath, vaultId);
   return doc.item;
 }
 
 export async function writeItemFile(
   fs: FileSystemAdapter,
-  itemRootPath: string,
+  vaultRootPath: string,
   item: ItemFile,
 ): Promise<void> {
-  const docPath = itemMetaPath(itemRootPath);
+  const id = normalizeRelativePath(item.id);
+  const docPath = itemMarkdownPath(vaultRootPath, id);
   let body = "";
   let extra: Record<string, unknown> | undefined;
   if (await fs.exists(docPath)) {
-    // Body/extra only — do not re-parse ItemFile (avoids recreating deleted tags).
     const raw = await fs.readText(docPath);
     const parsed = parseDocumentMarkdown(raw);
     body = parsed.body;
     extra = extractUnknownFrontmatterKeys(parsed.frontmatter);
   }
-  await writeItemDocument(fs, itemRootPath, item, body, extra);
+  await writeItemDocument(fs, vaultRootPath, { ...item, id }, body, extra);
 }
 
 export async function readItemContent(
   fs: FileSystemAdapter,
-  itemRootPath: string,
-  _vaultId: string,
+  vaultRootPath: string,
+  itemRelativePath: string,
 ): Promise<string | null> {
-  const path = itemContentPath(itemRootPath);
+  const path = itemMarkdownPath(vaultRootPath, itemRelativePath);
   if (!(await fs.exists(path))) {
     return null;
   }
@@ -263,14 +255,20 @@ export async function readItemContent(
 
 export async function writeItemContent(
   fs: FileSystemAdapter,
-  itemRootPath: string,
+  vaultRootPath: string,
+  itemRelativePath: string,
   content: string,
   vaultId: string,
 ): Promise<void> {
-  const existing = await readItemDocument(fs, itemRootPath, vaultId);
+  const existing = await readItemDocument(
+    fs,
+    vaultRootPath,
+    itemRelativePath,
+    vaultId,
+  );
   await writeItemDocument(
     fs,
-    itemRootPath,
+    vaultRootPath,
     existing.item,
     content,
     existing.extra,
@@ -279,9 +277,10 @@ export async function writeItemContent(
 
 export async function readItemSourceRef(
   fs: FileSystemAdapter,
-  itemRootPath: string,
+  vaultRootPath: string,
+  itemRelativePath: string,
 ): Promise<SourceRef | null> {
-  const path = itemSourcePath(itemRootPath);
+  const path = itemSourcePath(vaultRootPath, itemRelativePath);
   if (!(await fs.exists(path))) {
     return null;
   }
@@ -291,19 +290,17 @@ export async function readItemSourceRef(
 
 export async function writeItemSourceRef(
   fs: FileSystemAdapter,
-  itemRootPath: string,
+  vaultRootPath: string,
+  itemRelativePath: string,
   sourceRef: SourceRef,
 ): Promise<void> {
   const parsed = sourceRefSchema.parse(sourceRef);
-  await fs.writeText(itemSourcePath(itemRootPath), JSON.stringify(parsed, null, 2));
+  await fs.mkdir(itemMediaRoot(vaultRootPath, itemRelativePath));
+  await fs.writeText(
+    itemSourcePath(vaultRootPath, itemRelativePath),
+    JSON.stringify(parsed, null, 2),
+  );
+  await fs.touch(vaultRootPath);
 }
 
-/** True when pre-v3 `item.json` still exists beside (or instead of) the document. */
-export async function hasLegacyItemMeta(
-  fs: FileSystemAdapter,
-  itemRootPath: string,
-): Promise<boolean> {
-  return fs.exists(itemLegacyMetaPath(itemRootPath));
-}
-
-export { itemLegacyMetaPath, joinSegments };
+export { joinSegments, normalizeRelativePath };

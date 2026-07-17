@@ -17,8 +17,13 @@ export const sourceRefSchema = z.object({
   metadata: z.record(z.unknown()).optional(),
 });
 
+/**
+ * Assembled item DTO (path + frontmatter + resolved dates).
+ * `id` is the vault-relative posix path of the `.md` file.
+ * `folder_path` is derived from `id` (dirname), not stored in frontmatter.
+ */
 export const itemFileSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().min(1),
   vault_id: z.string().uuid(),
   title: z.string().min(1).max(500),
   description: z.string().default(""),
@@ -37,7 +42,6 @@ export const itemFileSchema = z.object({
   created_at: z.string().datetime(),
   updated_at: z.string().datetime(),
 });
-
 
 /** Known YAML frontmatter fields written for Collector documents. */
 export const documentFrontmatterSchema = z.object({
@@ -58,8 +62,6 @@ export const documentFrontmatterSchema = z.object({
   metadata: z.record(z.unknown()).optional(),
   is_archived: z.boolean().optional(),
   is_favorite: z.boolean().optional(),
-  folder_path: z.string().optional(),
-  collection_ids: z.array(z.string().uuid()).optional(),
 });
 
 export const vaultMetaSchema = z.object({
@@ -75,7 +77,7 @@ export const vaultMetaSchema = z.object({
 
 export const mediaFileMetaSchema = z.object({
   id: z.string().uuid(),
-  item_id: z.string().uuid(),
+  item_id: z.string().min(1),
   filename: z.string().min(1),
   media_type: mediaTypeSchema.default("image"),
   created_at: z.string().datetime(),

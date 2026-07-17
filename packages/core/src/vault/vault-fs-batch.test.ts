@@ -8,7 +8,6 @@ import { createId } from "../util/ids.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
 import { createVault, syncIndexFromFilesystem, upsertItem } from "./operations.js";
 import { writeItemFile } from "./item-io.js";
-import { itemRoot } from "./paths.js";
 import {
   hasVaultFsBatch,
   readVaultItemMetaBatch,
@@ -39,7 +38,7 @@ describe("vault-fs-batch", () => {
     const ctx = { fs, index: new SqlVaultIndexStore(new MemorySqlAdapter()) };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
 
-    const itemId = createId();
+    const itemId = `${createId()}.md`;
     await upsertItem(ctx, path, meta.id, {
       item: {
         id: itemId,
@@ -69,7 +68,10 @@ describe("vault-fs-batch", () => {
     const ctx = { fs, index: new SqlVaultIndexStore(new MemorySqlAdapter()) };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
 
-    const itemIds = Array.from({ length: VAULT_ITEM_READ_META_BATCH + 3 }, () => createId());
+    const itemIds = Array.from(
+      { length: VAULT_ITEM_READ_META_BATCH + 3 },
+      () => `${createId()}.md`,
+    );
     for (const itemId of itemIds) {
       await upsertItem(ctx, path, meta.id, {
         item: {
@@ -106,7 +108,7 @@ describe("vault-fs-batch", () => {
 
     const itemIds = Array.from(
       { length: VAULT_ITEM_READ_META_BATCH * 2 + 1 },
-      () => createId(),
+      () => `${createId()}.md`,
     );
     for (const itemId of itemIds) {
       await upsertItem(ctx, path, meta.id, {
@@ -142,10 +144,8 @@ describe("vault-fs-batch", () => {
     const itemCount = 48;
     const timestamp = new Date().toISOString();
     for (let i = 0; i < itemCount; i += 1) {
-      const itemId = createId();
-      const itemPath = itemRoot(path, itemId);
-      await fs.mkdir(itemPath);
-      await writeItemFile(ctx.fs, itemPath, {
+      const itemId = `${createId()}.md`;
+      await writeItemFile(ctx.fs, path, {
         id: itemId,
         vault_id: meta.id,
         title: `Item ${i}`,
@@ -157,6 +157,8 @@ describe("vault-fs-batch", () => {
         is_favorite: false,
         tag_ids: [],
         collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
         created_at: timestamp,
         updated_at: timestamp,
       });
@@ -227,6 +229,10 @@ class CountingBatchAdapter implements FileSystemAdapter {
     return this.inner.remove(path, options);
   }
 
+  rename(from: string, to: string): Promise<void> {
+    return this.inner.rename(from, to);
+  }
+
   async statVaultItemsMeta(vaultPath: string): Promise<VaultItemStatMeta[]> {
     this.statCalls += 1;
     return this.inner.statVaultItemsMeta!(vaultPath);
@@ -261,10 +267,8 @@ describe("vault-fs-batch perf guard", () => {
     const itemCount = 200;
     const timestamp = new Date().toISOString();
     for (let i = 0; i < itemCount; i += 1) {
-      const itemId = createId();
-      const itemPath = itemRoot(path, itemId);
-      await fs.mkdir(itemPath);
-      await writeItemFile(fs, itemPath, {
+      const itemId = `${createId()}.md`;
+      await writeItemFile(fs, path, {
         id: itemId,
         vault_id: meta.id,
         title: `Perf ${i}`,
@@ -276,6 +280,8 @@ describe("vault-fs-batch perf guard", () => {
         is_favorite: false,
         tag_ids: [],
         collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
         created_at: timestamp,
         updated_at: timestamp,
       });

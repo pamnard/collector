@@ -35,26 +35,42 @@ export const MEDIA_TYPES = [
 
 export type MediaType = (typeof MEDIA_TYPES)[number];
 
-export const SCHEMA_VERSION = 3;
+/** On-disk vault layout: FS folder tree + path-as-id documents. */
+export const SCHEMA_VERSION = 4;
+
+/** Legacy flat UUID item dirs (pre–schema 4). */
+export const LEGACY_VAULT_DIRS = {
+  items: "items",
+} as const;
 
 export const VAULT_DIRS = {
-  items: "items",
   media: "media",
 } as const;
 
+/** Sidecar dir next to `note.md` → `note.media/`. */
+export const ITEM_MEDIA_SUFFIX = ".media";
+
 export const ITEM_FILES = {
-  /** Canonical on-disk document (YAML frontmatter + body). */
-  meta: "content.md",
-  content: "content.md",
-  /** Pre-v3 sidecar; migration reads then deletes. */
-  legacyMeta: "item.json",
   source: ".source.json",
   mediaManifest: "manifest.json",
   cover: "cover.webp",
+  /** Legacy only — migration reads these. */
+  legacyMeta: "item.json",
+  legacyContent: "content.md",
 } as const;
 
 export const VAULT_FILES = {
   meta: "vault.meta.json",
   tags: "tags.json",
-  folders: "folders.json",
+  /** Legacy only — migration may read then delete. */
+  legacyFolders: "folders.json",
 } as const;
+
+/** Filenames / top-level names that are never markdown items. */
+export const RESERVED_VAULT_ENTRIES = new Set<string>([
+  VAULT_FILES.meta,
+  VAULT_FILES.tags,
+  VAULT_FILES.legacyFolders,
+  LEGACY_VAULT_DIRS.items,
+  ".collector-touch",
+]);

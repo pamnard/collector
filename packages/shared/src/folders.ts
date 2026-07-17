@@ -30,3 +30,13 @@ export function isValidFolderPath(path: string): boolean {
   const normalized = normalizeFolderPath(path);
   return normalized === path && !path.includes("//");
 }
+
+/** Parent folder of a vault-relative item path (`a/b/note.md` → `a/b`). */
+export function folderPathFromItemPath(itemPath: string): string {
+  const normalized = itemPath.replace(/\\/g, "/");
+  const idx = normalized.lastIndexOf("/");
+  if (idx <= 0) {
+    return "";
+  }
+  return normalized.slice(0, idx);
+}

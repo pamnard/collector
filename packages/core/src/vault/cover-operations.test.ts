@@ -12,7 +12,7 @@ import {
 } from "./cover-operations.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import { createId } from "../util/ids.js";
-import { itemCoverPath, itemCoverRelativePath, itemRoot } from "./paths.js";
+import { itemCoverPath, itemCoverRelativePath } from "./paths.js";
 import { readItemFile } from "./item-io.js";
 
 describe("cover operations", () => {
@@ -31,7 +31,7 @@ describe("cover operations", () => {
     const sql = new MemorySqlAdapter();
     const ctx = { fs, index: new SqlVaultIndexStore(sql) };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
-    const itemId = createId();
+    const itemId = `${createId()}.md`;
 
     await upsertItem(ctx, path, meta.id, {
       item: {
@@ -56,16 +56,16 @@ describe("cover operations", () => {
     const coverBytes = new TextEncoder().encode("fake-webp");
     const updated = await applyItemCover(ctx, path, meta.id, itemId, coverBytes);
 
-    expect(updated.thumbnail).toBe(itemCoverRelativePath());
-    expect(await fs.exists(itemCoverPath(itemRoot(path, itemId)))).toBe(true);
+    expect(updated.thumbnail).toBe(itemCoverRelativePath(itemId));
+    expect(await fs.exists(itemCoverPath(path, itemId))).toBe(true);
 
     const resolved = resolveItemThumbnailAbsolutePath(path, itemId, updated.thumbnail);
-    expect(resolved).toBe(itemCoverPath(itemRoot(path, itemId)));
+    expect(resolved).toBe(itemCoverPath(path, itemId));
     expect(await fs.readBinary(resolved!)).toEqual(coverBytes);
 
     const cleared = await clearItemCover(ctx, path, meta.id, itemId);
     expect(cleared.thumbnail).toBeNull();
-    expect(await fs.exists(itemCoverPath(itemRoot(path, itemId)))).toBe(false);
-    expect((await readItemFile(fs, itemRoot(path, itemId), meta.id)).thumbnail).toBeNull();
+    expect(await fs.exists(itemCoverPath(path, itemId))).toBe(false);
+    expect((await readItemFile(fs, path, itemId, meta.id)).thumbnail).toBeNull();
   });
 });

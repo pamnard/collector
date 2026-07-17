@@ -34,7 +34,8 @@ function toFormValues(
 }
 
 export function ItemDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const params = useParams();
+  const id = params["*"];
   const navigate = useNavigate();
   const { refreshVault } = useShell();
   const [item, setItem] = useState<ItemFile | null>(null);
@@ -90,6 +91,9 @@ export function ItemDetailPage() {
       setFormValues(toFormValues(updated, updatedContent));
       setIsEditing(false);
       refreshVault();
+      if (updated.id !== id) {
+        navigate(`/item/${updated.id}`, { replace: true });
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

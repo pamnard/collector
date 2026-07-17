@@ -1,5 +1,6 @@
 import { CONTENT_TYPES, type ContentType } from "@collector/shared";
 import type { ItemFormValues } from "../../types/item";
+import { FolderPicker } from "../folders/FolderPicker";
 
 const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
   article: "Статья",
@@ -76,6 +77,11 @@ export function ItemForm({ values, onChange, showFlags = false }: ItemFormProps)
           className="mt-1 w-full rounded-lg border border-border bg-input/20 px-3 py-2 text-sm"
         />
       </label>
+
+      <FolderPicker
+        value={values.folder_path}
+        onChange={(folder_path) => update("folder_path", folder_path)}
+      />
 
       <label className="block">
         <span className="text-sm font-medium">Содержимое</span>

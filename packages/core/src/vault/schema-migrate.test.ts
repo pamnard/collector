@@ -6,7 +6,11 @@ import { SCHEMA_VERSION } from "@collector/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { migrateVaultSchema } from "../vault/schema-migrate.js";
-import { itemRoot, itemsRoot, RECONCILE_TOUCH_FILE } from "../vault/paths.js";
+import {
+  legacyItemRoot,
+  legacyItemsRoot,
+  RECONCILE_TOUCH_FILE,
+} from "../vault/paths.js";
 import { parseDocumentMarkdown } from "./frontmatter.js";
 
 async function exists(path: string): Promise<boolean> {
@@ -28,7 +32,7 @@ describe("migrateVaultSchema", () => {
     }
   });
 
-  it("migrates a v1 vault fixture to FM markdown without data loss", async () => {
+  it("migrates a v1 vault fixture to the tree layout without data loss", async () => {
     const fs = new NodeFileSystemAdapter();
     const root = await mkdtemp(join(tmpdir(), "collector-vault-v1-"));
     vaultPath = root;
@@ -54,7 +58,7 @@ describe("migrateVaultSchema", () => {
     );
     await writeFile(join(vaultPath, "tags.json"), JSON.stringify({ tags: [] }));
 
-    const itemDir = itemRoot(vaultPath, itemId);
+    const itemDir = legacyItemRoot(vaultPath, itemId);
     await mkdir(itemDir, { recursive: true });
     await writeFile(
       join(itemDir, "item.json"),
@@ -82,8 +86,11 @@ describe("migrateVaultSchema", () => {
     expect(meta.schema_version).toBe(SCHEMA_VERSION);
     expect(meta.settings).toEqual({});
 
-    expect(await exists(join(itemDir, "item.json"))).toBe(false);
-    const md = await readFile(join(itemDir, "content.md"), "utf8");
+    const destPath = join(vaultPath, `${itemId}.md`);
+    expect(await exists(destPath)).toBe(true);
+    expect(await exists(itemDir)).toBe(false);
+
+    const md = await readFile(destPath, "utf8");
     const parsed = parseDocumentMarkdown(md);
     expect(parsed.frontmatter.title).toBe("Legacy note");
     expect(parsed.frontmatter.description).toBe("keep me");
@@ -95,12 +102,13 @@ describe("migrateVaultSchema", () => {
     expect(migratedVault.schema_version).toBe(SCHEMA_VERSION);
     expect(migratedVault.settings).toEqual({});
 
+    // Legacy items/ root is fully retired once every item is migrated.
+    expect(await fs.exists(legacyItemsRoot(vaultPath))).toBe(false);
+
     // Idempotent second pass
     const again = await migrateVaultSchema(fs, vaultPath);
     expect(again.schema_version).toBe(SCHEMA_VERSION);
-    expect(await exists(join(itemDir, "item.json"))).toBe(false);
-
-    expect(await fs.exists(itemsRoot(vaultPath))).toBe(true);
+    expect(await exists(destPath)).toBe(true);
   });
 
   it("ignores leftover .collector-touch stamp under items/", async () => {
@@ -130,7 +138,7 @@ describe("migrateVaultSchema", () => {
     );
     await writeFile(join(vaultPath, "tags.json"), JSON.stringify({ tags: [] }));
 
-    const itemDir = itemRoot(vaultPath, itemId);
+    const itemDir = legacyItemRoot(vaultPath, itemId);
     await mkdir(itemDir, { recursive: true });
     await writeFile(
       join(itemDir, "item.json"),
@@ -156,11 +164,14 @@ describe("migrateVaultSchema", () => {
         2,
       ),
     );
-    await writeFile(join(itemsRoot(vaultPath), RECONCILE_TOUCH_FILE), "1");
+    await writeFile(join(legacyItemsRoot(vaultPath), RECONCILE_TOUCH_FILE), "1");
 
     const meta = await migrateVaultSchema(fs, vaultPath);
     expect(meta.schema_version).toBe(SCHEMA_VERSION);
-    expect(await exists(join(itemDir, "item.json"))).toBe(false);
-    expect(await exists(join(itemDir, "content.md"))).toBe(true);
+
+    const destPath = join(vaultPath, `${itemId}.md`);
+    expect(await exists(destPath)).toBe(true);
+    expect(await exists(itemDir)).toBe(false);
+    expect(await fs.exists(legacyItemsRoot(vaultPath))).toBe(false);
   });
 });
