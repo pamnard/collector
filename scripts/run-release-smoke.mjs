@@ -4,12 +4,17 @@
  * - JS/WebView: app writes to smoke-errors.log when smoke-mode.flag exists
  * - stderr: any non-whitelisted line fails
  * - DB: legacy broken index must be repaired
+ *
+ * Linux launches via `xvfb-run`. The child is started in its own process group
+ * so SIGTERM/SIGKILL reach xvfb-run, Xvfb, and collector — not just the parent.
  */
 import {
   mkdtempSync,
   rmSync,
   existsSync,
   readFileSync,
+  readdirSync,
+  readlinkSync,
   mkdirSync,
   writeFileSync,
 } from "node:fs";
@@ -75,6 +80,22 @@ const STDERR_WHITELIST = [
   /accelerated rendering/,
 ];
 
+/** Kill the whole process group (xvfb-run → Xvfb + collector). */
+function killProcessGroup(child, signal) {
+  if (!child?.pid) {
+    return;
+  }
+  try {
+    process.kill(-child.pid, signal);
+  } catch {
+    try {
+      child.kill(signal);
+    } catch {
+      // already exited
+    }
+  }
+}
+
 function waitForExit(child, timeoutMs) {
   return new Promise((resolvePromise, rejectPromise) => {
     let settled = false;
@@ -86,15 +107,16 @@ function waitForExit(child, timeoutMs) {
       resolvePromise(undefined);
     };
 
+    if (child.exitCode !== null || child.signalCode !== null) {
+      finish();
+      return;
+    }
+
     child.on("error", rejectPromise);
     child.on("exit", finish);
 
     setTimeout(() => {
-      try {
-        child.kill("SIGKILL");
-      } catch {
-        // already exited
-      }
+      killProcessGroup(child, "SIGKILL");
       finish();
     }, timeoutMs);
   });
@@ -105,10 +127,39 @@ function launchBinary(command, args, launchEnv = env) {
     const child = spawn(command, args, {
       env: launchEnv,
       stdio: ["ignore", logFd.fd, logFd.fd],
+      // Own process group so teardown can signal xvfb-run + grandchildren.
+      detached: true,
     });
     child.on("error", rejectPromise);
     child.on("spawn", () => resolvePromise(child));
   });
+}
+
+/** Last-resort: kill any still-running copy of this exact release binary. */
+function killStrayReleaseBinary() {
+  if (process.platform !== "linux") {
+    return;
+  }
+  for (const name of readdirSync("/proc")) {
+    if (!/^\d+$/.test(name)) {
+      continue;
+    }
+    let exe = "";
+    try {
+      exe = readlinkSync(`/proc/${name}/exe`);
+    } catch {
+      continue;
+    }
+    exe = exe.replace(/ \(deleted\)$/, "");
+    if (exe !== binary) {
+      continue;
+    }
+    try {
+      process.kill(Number(name), "SIGKILL");
+    } catch {
+      // gone
+    }
+  }
 }
 
 const isLinux = process.platform === "linux";
@@ -118,72 +169,82 @@ if (isLinux) {
   delete launchEnv.DISPLAY;
 }
 
-const child = isLinux
-  ? await launchBinary("xvfb-run", ["-a", binary], launchEnv)
-  : await launchBinary(binary, [], launchEnv);
-
-await new Promise((resolvePromise) => setTimeout(resolvePromise, RUN_MS));
-
-try {
-  child.kill("SIGTERM");
-} catch {
-  // already exited
-}
-
-await waitForExit(child, SHUTDOWN_MS);
-await logFd.close();
+let child = null;
+let exitCode = 0;
 
 function fail(message, details) {
   console.error(`FAIL: ${message}`);
   if (details) {
     console.error(details);
   }
-  rmSync(profileRoot, { recursive: true, force: true });
-  process.exit(1);
+  exitCode = 1;
 }
 
-const stderrLog = readFileSync(logPath, "utf8");
-const stderrLines = stderrLog
-  .split("\n")
-  .map((line) => line.trim())
-  .filter(Boolean)
-  .filter((line) => !STDERR_WHITELIST.some((re) => re.test(line)));
+try {
+  child = isLinux
+    ? await launchBinary("xvfb-run", ["-a", binary], launchEnv)
+    : await launchBinary(binary, [], launchEnv);
 
-if (stderrLines.length > 0) {
-  fail(
-    "release binary produced stderr output (any non-whitelisted line is a failure)",
-    stderrLines.map((line) => `  ${line}`).join("\n"),
-  );
-}
+  await new Promise((resolvePromise) => setTimeout(resolvePromise, RUN_MS));
 
-if (existsSync(smokeErrorLog)) {
-  const jsErrors = readFileSync(smokeErrorLog, "utf8")
+  killProcessGroup(child, "SIGTERM");
+  await waitForExit(child, SHUTDOWN_MS);
+  killProcessGroup(child, "SIGKILL");
+
+  await logFd.close();
+
+  const stderrLog = readFileSync(logPath, "utf8");
+  const stderrLines = stderrLog
     .split("\n")
     .map((line) => line.trim())
-    .filter(Boolean);
-  if (jsErrors.length > 0) {
+    .filter(Boolean)
+    .filter((line) => !STDERR_WHITELIST.some((re) => re.test(line)));
+
+  if (stderrLines.length > 0) {
     fail(
-      "application logged runtime errors (smoke-errors.log)",
-      jsErrors.map((line) => `  ${line}`).join("\n"),
+      "release binary produced stderr output (any non-whitelisted line is a failure)",
+      stderrLines.map((line) => `  ${line}`).join("\n"),
     );
+  } else if (!existsSync(smokeErrorLog)) {
+    fail("smoke-errors.log was not created — error capture did not run");
+  } else {
+    const jsErrors = readFileSync(smokeErrorLog, "utf8")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (jsErrors.length > 0) {
+      fail(
+        "application logged runtime errors (smoke-errors.log)",
+        jsErrors.map((line) => `  ${line}`).join("\n"),
+      );
+    } else {
+      const dbPath = canonicalIndexPath(home);
+      if (!existsSync(dbPath)) {
+        fail(
+          "canonical collector.db missing after startup",
+          stderrLog.trim() || "(empty stderr)",
+        );
+      } else {
+        const db = BetterSqliteMigrator.open(dbPath);
+        const health = await ensureHealthyIndex(db);
+        db.close();
+        if (!health.ok) {
+          fail("index unhealthy after startup", health.errors.join("; "));
+        } else {
+          console.log("OK: no runtime errors, legacy index repaired");
+        }
+      }
+    }
   }
-} else {
-  fail("smoke-errors.log was not created — error capture did not run");
+} finally {
+  killProcessGroup(child, "SIGKILL");
+  killStrayReleaseBinary();
+  try {
+    await logFd.close();
+  } catch {
+    // already closed
+  }
+  rmSync(profileRoot, { recursive: true, force: true });
 }
 
-const dbPath = canonicalIndexPath(home);
-if (!existsSync(dbPath)) {
-  fail("canonical collector.db missing after startup", stderrLog.trim() || "(empty stderr)");
-}
-
-const db = BetterSqliteMigrator.open(dbPath);
-const health = await ensureHealthyIndex(db);
-db.close();
-
-rmSync(profileRoot, { recursive: true, force: true });
-
-if (!health.ok) {
-  fail("index unhealthy after startup", health.errors.join("; "));
-}
-
-console.log("OK: no runtime errors, legacy index repaired");
+process.exit(exitCode);

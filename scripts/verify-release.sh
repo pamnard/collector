@@ -328,6 +328,8 @@ else
   fi
 
   node scripts/run-release-smoke.mjs "$BIN"
+  # Smoke must not leave collector/Xvfb behind (xvfb-run process-group teardown).
+  stop_running_collector_binaries
 fi
 
 if [[ "$(uname -s)" == "Linux" ]] && [[ "${SKIP_TAURI_BUILD:-}" != "1" ]]; then
