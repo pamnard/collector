@@ -45,7 +45,10 @@ export async function syncIndexItemsFromFilesystem(
   }
 
   const uniqueItemIds = [...new Set(itemIds)];
-  const indexedItems = await ctx.index.listVaultItemSyncMeta(vaultId);
+  const indexedItems = await ctx.index.listItemSyncMetaByIds(
+    vaultId,
+    uniqueItemIds,
+  );
   const indexMeta = new Map(indexedItems.map((item) => [item.id, item]));
 
   const existingIds: string[] = [];

@@ -53,6 +53,7 @@ try {
     listVaultItemIds: async () => [],
     listItemFilesByIds: async () => [],
     listVaultItemSyncMeta: async () => [],
+    listItemSyncMetaByIds: async () => [],
     patchItemSyncMeta: async () => {},
     getReconcileFingerprint: async () => null,
     setReconcileFingerprint: async () => {},

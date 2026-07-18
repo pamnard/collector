@@ -491,6 +491,23 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     );
   }
 
+  async listItemSyncMetaByIds(
+    _vaultId: string,
+    _itemIds: string[],
+  ): Promise<
+    Array<{
+      id: string;
+      file_mtime_ms: number | null;
+      updated_at: string;
+      content_revision: number;
+      created_at: string;
+    }>
+  > {
+    throw new Error(
+      "listItemSyncMetaByIds requires select(); use SqlVaultIndexStore instead",
+    );
+  }
+
   async searchItemIds(
     _vaultId: string,
     _ftsQuery: string,
@@ -634,6 +651,29 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
       [vaultId],
     );
     return rows;
+  }
+
+  override async listItemSyncMetaByIds(
+    vaultId: string,
+    itemIds: string[],
+  ): Promise<
+    Array<{
+      id: string;
+      file_mtime_ms: number | null;
+      updated_at: string;
+      content_revision: number;
+      created_at: string;
+    }>
+  > {
+    if (itemIds.length === 0) {
+      return [];
+    }
+    const placeholders = sqlInPlaceholders(itemIds.length);
+    return this.selector.select(
+      `SELECT id, file_mtime_ms, updated_at, content_revision, created_at
+       FROM items WHERE vault_id = ? AND id IN (${placeholders})`,
+      [vaultId, ...itemIds],
+    );
   }
 
   override async getReconcileFingerprint(
