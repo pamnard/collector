@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ItemFile } from "@collector/shared";
 import type { TagWithCount } from "@collector/core";
+import { ExternalAnchor } from "../content/ExternalAnchor";
 import { ItemTagBadges } from "../items/ItemTagBadges";
 import { listTags } from "../../services/collector-service";
 import { formatItemDate } from "../../utils/formatItemDate";
@@ -48,14 +49,12 @@ export function ItemDetailMetadata({ item }: ItemDetailMetadataProps) {
           <div>
             <dt className="text-secondary">URL</dt>
             <dd className="mt-1">
-              <a
+              <ExternalAnchor
                 href={item.url}
-                target="_blank"
-                rel="noreferrer"
                 className="text-indigo-400 break-all hover:underline"
               >
                 {item.url}
-              </a>
+              </ExternalAnchor>
             </dd>
           </div>
         )}
