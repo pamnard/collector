@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { TagWithCount } from "@collector/core";
 import { ItemRowActions } from "./ItemRowActions";
 import { ItemTagBadges } from "./ItemTagBadges";
-import { DashboardItemsTransition } from "./DashboardItemsTransition";
+import { DashboardTableSkeleton } from "./DashboardListSkeleton";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
 import { useShell } from "../layout/AppLayout";
 import { listTags } from "../../services/collector-service";
@@ -20,10 +20,9 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
   const { vaultRevision } = useShell();
   const [tags, setTags] = useState<TagWithCount[]>([]);
   const sentinelRef = useInfiniteScroll({
-    enabled: !dashboard.isRefreshing,
+    enabled: !dashboard.isLoading,
     hasMore: dashboard.hasMore,
-    isLoading:
-      dashboard.isLoading || dashboard.isLoadingMore || dashboard.isRefreshing,
+    isLoading: dashboard.isLoading || dashboard.isLoadingMore,
     onLoadMore: dashboard.loadMore,
   });
 
@@ -37,18 +36,11 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
   );
 
   if (dashboard.isLoading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-indigo-500" />
-      </div>
-    );
+    return <DashboardTableSkeleton />;
   }
 
   return (
-    <DashboardItemsTransition
-      isRefreshing={dashboard.isRefreshing}
-      transitionEpoch={dashboard.transitionEpoch}
-    >
+    <>
       <div className="rounded-lg border border-border overflow-x-auto">
         <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-input/30 text-secondary">
@@ -107,6 +99,6 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
           {dashboard.isLoadingMore ? "Загрузка…" : "Прокрутите для следующих элементов"}
         </div>
       )}
-    </DashboardItemsTransition>
+    </>
   );
 }

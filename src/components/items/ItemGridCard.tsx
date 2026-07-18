@@ -5,7 +5,7 @@ import {
   Music,
   Video,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ItemFile } from "@collector/shared";
 import type { TagWithCount } from "@collector/core";
 import { toDisplayAssetSrc } from "../../utils/asset-src";
@@ -72,6 +72,8 @@ export function ItemGridCard({
   /** False until path known and (no cover | cover decoded | cover failed). */
   const [isReady, setIsReady] = useState(false);
   const [isRevealed, setIsRevealed] = useState(false);
+  const coverSrcRef = useRef(coverSrc);
+  const isReadyRef = useRef(isReady);
 
   const tags = useMemo(
     () =>
@@ -82,17 +84,29 @@ export function ItemGridCard({
   );
 
   useEffect(() => {
+    coverSrcRef.current = coverSrc;
+  }, [coverSrc]);
+
+  useEffect(() => {
+    isReadyRef.current = isReady;
+  }, [isReady]);
+
+  useEffect(() => {
+    if (thumbnailPath === undefined) {
+      return;
+    }
+
+    const src = resolveCoverSrc(thumbnailPath, item.url ?? undefined);
+    if (src === coverSrcRef.current && isReadyRef.current) {
+      return;
+    }
+
     setCoverSrc(null);
     setIsMediaLoaded(false);
     setIsPortraitCover(false);
     setIsReady(false);
     setIsRevealed(false);
 
-    if (thumbnailPath === undefined) {
-      return;
-    }
-
-    const src = resolveCoverSrc(thumbnailPath, item.url ?? undefined);
     if (!src) {
       setIsReady(true);
       return;
@@ -117,7 +131,6 @@ export function ItemGridCard({
       setIsReady(true);
     };
     const timer = setTimeout(() => {
-      // Don't block the card forever if decode never settles (offline CDN, etc.)
       console.warn("[ItemGridCard] cover decode timed out", { src });
       finish({ src: null, loaded: false, portrait: false });
     }, 4_000);

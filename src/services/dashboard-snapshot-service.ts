@@ -2,6 +2,7 @@ import { appConfigDir, join } from "@tauri-apps/api/path";
 import {
   dashboardSnapshotMatchesQuery,
   dashboardSnapshotSchema,
+  navFilterSettingKey,
   type DashboardSnapshot,
 } from "@collector/shared";
 import {
@@ -13,6 +14,11 @@ import { TauriFileSystemAdapter } from "../adapters/tauri-fs";
 import { isDevMock } from "../dev/is-dev-mock";
 import type { NavFilter } from "../types/ui";
 import { navFilterToSetting } from "../types/ui";
+import {
+  dashboardQueryCacheKey,
+  getDashboardQueryCache,
+  setDashboardQueryCache,
+} from "./dashboard-query-cache";
 
 const DEV_MOCK_SNAPSHOT_KEY = "collector-dev-mock-dashboard-snapshot";
 
@@ -44,6 +50,24 @@ function writeDevMockSnapshot(snapshot: DashboardSnapshot | null): void {
   localStorage.setItem(DEV_MOCK_SNAPSHOT_KEY, JSON.stringify(snapshot));
 }
 
+function seedQueryCacheFromSnapshot(snapshot: DashboardSnapshot): void {
+  const key = dashboardQueryCacheKey(
+    navFilterSettingKey(snapshot.nav_filter),
+    snapshot.search,
+  );
+  if (getDashboardQueryCache(key)) {
+    return;
+  }
+  setDashboardQueryCache(key, {
+    itemIds: [...snapshot.item_ids],
+    itemsById: new Map(snapshot.items.map((item) => [item.id, item])),
+    streamEndOffset: snapshot.stream_end_offset,
+    totalCount: snapshot.total_count,
+    thumbnailPaths: new Map(),
+    updatedAt: Date.now(),
+  });
+}
+
 export async function ensureDashboardSnapshot(): Promise<DashboardSnapshot | null> {
   if (cacheLoaded) {
     return cache;
@@ -52,11 +76,17 @@ export async function ensureDashboardSnapshot(): Promise<DashboardSnapshot | nul
   if (isDevMock()) {
     cache = readDevMockSnapshot();
     cacheLoaded = true;
+    if (cache) {
+      seedQueryCacheFromSnapshot(cache);
+    }
     return cache;
   }
 
   cache = await readDashboardSnapshot(fs, await ensureConfigDir());
   cacheLoaded = true;
+  if (cache) {
+    seedQueryCacheFromSnapshot(cache);
+  }
   return cache;
 }
 

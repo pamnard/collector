@@ -4,7 +4,7 @@ import Masonry from "react-masonry-css";
 import type { ItemFile } from "@collector/shared";
 import type { TagWithCount } from "@collector/core";
 import { ItemGridCard } from "./ItemGridCard";
-import { DashboardItemsTransition } from "./DashboardItemsTransition";
+import { DashboardGridSkeleton } from "./DashboardListSkeleton";
 import { MASONRY_BREAKPOINTS } from "./masonry-breakpoints";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
 import { useShell } from "../layout/AppLayout";
@@ -33,10 +33,9 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
     [dashboard.items],
   );
   const sentinelRef = useInfiniteScroll({
-    enabled: !dashboard.isRefreshing,
+    enabled: !dashboard.isLoading,
     hasMore: dashboard.hasMore,
-    isLoading:
-      dashboard.isLoading || dashboard.isLoadingMore || dashboard.isRefreshing,
+    isLoading: dashboard.isLoading || dashboard.isLoadingMore,
     onLoadMore: dashboard.loadMore,
   });
 
@@ -87,11 +86,7 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
   );
 
   if (dashboard.isLoading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-indigo-500" />
-      </div>
-    );
+    return <DashboardGridSkeleton />;
   }
 
   const resolveThumbnailPath = (itemId: string): string | null | undefined => {
@@ -105,10 +100,7 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
   };
 
   return (
-    <DashboardItemsTransition
-      isRefreshing={dashboard.isRefreshing}
-      transitionEpoch={dashboard.transitionEpoch}
-    >
+    <>
       <Masonry
         breakpointCols={MASONRY_BREAKPOINTS}
         className="my-masonry-grid"
@@ -131,6 +123,6 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
           {dashboard.isLoadingMore ? "Загрузка…" : "Прокрутите для следующих элементов"}
         </div>
       )}
-    </DashboardItemsTransition>
+    </>
   );
 }
