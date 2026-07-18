@@ -4,11 +4,13 @@ import type { ItemFile } from "@collector/shared";
 import {
   isDashboardPrefetchWindowReady,
   itemIdsEqual,
+  mergeStreamedItemsById,
   orderDashboardItems,
+  shouldApplyDashboardStreamBatch,
 } from "./dashboard-display.ts";
 
-function stubItem(id: string): ItemFile {
-  return { id } as ItemFile;
+function stubItem(id: string, title = id): ItemFile {
+  return { id, title } as ItemFile;
 }
 
 describe("orderDashboardItems", () => {
@@ -50,5 +52,32 @@ describe("itemIdsEqual", () => {
   it("compares length and order", () => {
     assert.equal(itemIdsEqual(["a", "b"], ["a", "b"]), true);
     assert.equal(itemIdsEqual(["a", "b"], ["b", "a"]), false);
+  });
+});
+
+describe("mergeStreamedItemsById", () => {
+  it("merges a chunk in one clone without mutating current", () => {
+    const current = new Map([
+      ["a", stubItem("a", "old-a")],
+      ["b", stubItem("b")],
+    ]);
+    const pending = new Map([
+      ["a", stubItem("a", "new-a")],
+      ["c", stubItem("c")],
+    ]);
+    const next = mergeStreamedItemsById(current, pending);
+    assert.equal(current.get("a")?.title, "old-a");
+    assert.equal(next.get("a")?.title, "new-a");
+    assert.equal(next.get("b")?.id, "b");
+    assert.equal(next.get("c")?.id, "c");
+    assert.equal(next.size, 3);
+  });
+});
+
+describe("shouldApplyDashboardStreamBatch", () => {
+  it("applies only matching request versions with pending items", () => {
+    assert.equal(shouldApplyDashboardStreamBatch(3, 3, 2), true);
+    assert.equal(shouldApplyDashboardStreamBatch(4, 3, 2), false);
+    assert.equal(shouldApplyDashboardStreamBatch(3, 3, 0), false);
   });
 });
