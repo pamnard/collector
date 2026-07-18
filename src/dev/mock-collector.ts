@@ -90,6 +90,7 @@ function listFilteredDashboardIds(filter: NavFilter, query = ""): string[] {
     .getItems()
     .filter((item) => matchesNavFilter(item, filter))
     .filter((item) => matchesSearch(item, query))
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
     .map((item) => item.id);
 }
 
