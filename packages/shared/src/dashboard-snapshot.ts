@@ -10,7 +10,7 @@ export const dashboardSnapshotSchema = z.object({
   vault_id: z.string().uuid(),
   nav_filter: navFilterSettingSchema,
   search: z.string().default(""),
-  item_ids: z.array(z.string().uuid()),
+  item_ids: z.array(z.string().min(1)),
   items: z.array(itemFileSchema),
   total_count: z.number().int().nonnegative(),
   stream_end_offset: z.number().int().nonnegative(),
