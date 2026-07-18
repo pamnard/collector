@@ -88,7 +88,12 @@ export interface VaultIndexAdapter {
   deleteVault(vaultId: string): Promise<void>;
   upsertItem(record: IndexedItem, vaultId: string): Promise<void>;
   upsertItemMetadata(record: IndexedItemMetadata, vaultId: string): Promise<void>;
+  upsertItemMetadataBatch(
+    records: IndexedItemMetadata[],
+    vaultId: string,
+  ): Promise<void>;
   upsertItemContent(input: ItemContentUpsert): Promise<void>;
+  upsertItemContentBatch(inputs: ItemContentUpsert[]): Promise<void>;
   deleteItem(itemId: string): Promise<void>;
   upsertMedia(media: MediaFileMeta): Promise<void>;
   deleteMedia(mediaId: string): Promise<void>;
@@ -124,6 +129,9 @@ export interface VaultIndexAdapter {
   listItemFilesByIds(vaultId: string, itemIds: string[]): Promise<ItemFile[]>;
   listVaultItemSyncMeta(vaultId: string): Promise<ItemSyncMeta[]>;
   patchItemSyncMeta(itemId: string, meta: ItemSyncMetaPatch): Promise<void>;
+  patchItemSyncMetaBatch(
+    patches: Array<{ itemId: string } & ItemSyncMetaPatch>,
+  ): Promise<void>;
   getReconcileFingerprint(vaultId: string): Promise<ReconcileFingerprint | null>;
   setReconcileFingerprint(
     vaultId: string,
