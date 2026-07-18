@@ -1,8 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
-import type {
-  FileSystemAdapter,
-  VaultItemMetaRead,
-  VaultItemStatMeta,
+import {
+  joinSegments,
+  type FileSystemAdapter,
+  type VaultItemMetaRead,
+  type VaultItemStatMeta,
 } from "@collector/core";
 import {
   exists,
@@ -17,11 +18,9 @@ import {
 } from "@tauri-apps/plugin-fs";
 
 export class TauriFileSystemAdapter implements FileSystemAdapter {
+  /** Preserve absolute roots (`/` / `C:`) — same as core `joinSegments` (#181). */
   join(...parts: string[]): string {
-    return parts
-      .flatMap((part) => part.split(/[/\\]+/))
-      .filter(Boolean)
-      .join("/");
+    return joinSegments(...parts);
   }
 
   async exists(path: string): Promise<boolean> {
