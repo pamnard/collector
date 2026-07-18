@@ -21,7 +21,6 @@ function itemThumbnailBatchKey(items: ItemFile[]): string {
     .join("|");
 }
 
-/** Dashboard grid: true masonry only — never replace. */
 export function ItemGridView({ dashboard }: ItemGridViewProps) {
   const navigate = useNavigate();
   const { vaultRevision } = useShell();
