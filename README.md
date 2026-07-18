@@ -6,7 +6,7 @@ Built with **Tauri 2**, **React**, and **TypeScript**. Files on disk are the sou
 
 ## Status
 
-Shipping desktop app (`v0.1.22`): vault CRUD, markdown items with YAML frontmatter, folder collections, tags, FTS search, grid/table UI, item detail (including raw markdown source edit), in-app updater, and GitHub Releases for Linux / macOS / Windows.
+Shipping desktop app (`v0.1.23`): vault CRUD, markdown items with YAML frontmatter, folder collections, tags, FTS search, grid/table UI, item detail (including raw markdown source edit), in-app updater, and GitHub Releases for Linux / macOS / Windows.
 
 Installers: [GitHub Releases](https://github.com/pamnard/collector/releases/latest).
 
