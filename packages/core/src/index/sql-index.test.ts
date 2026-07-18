@@ -692,3 +692,89 @@ describe("listItemSyncMetaByIds", () => {
     expect(subset.every((row) => typeof row.updated_at === "string")).toBe(true);
   });
 });
+
+describe("rewriteItemIds", () => {
+  let dataDir = "";
+  const fs = new NodeFileSystemAdapter();
+  let db: BetterSqliteMigrator | null = null;
+
+  afterEach(async () => {
+    db?.close();
+    db = null;
+    if (dataDir) {
+      await rm(dataDir, { recursive: true, force: true });
+      dataDir = "";
+    }
+  });
+
+  it("rewrites item PK and preserves tags, media, and FTS body", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-rewrite-ids-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    const ctx = { fs, index };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const tag = await createTag(ctx, path, meta.id, { name: "keep" });
+
+    const oldId = `Old/${createId()}.md`;
+    const newId = oldId.replace("Old/", "New/");
+    const timestamp = new Date().toISOString();
+    const mediaId = createId();
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: oldId,
+        vault_id: meta.id,
+        title: "Rewrite me",
+        description: "desc",
+        content_type: "note",
+        source_type: "manual",
+        metadata: { k: 1 },
+        tag_ids: [tag.id],
+        collection_ids: [],
+        folder_path: "Old",
+        content_revision: 2,
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      content: "fts body content uniquephrase",
+    });
+    await index.upsertMedia({
+      id: mediaId,
+      item_id: oldId,
+      filename: "shot.png",
+      media_type: "image",
+      created_at: timestamp,
+    });
+
+    await index.rewriteItemIds([
+      { oldId, newId, folderPath: "New" },
+    ]);
+
+    expect(await index.listVaultItemIds(meta.id)).toEqual([newId]);
+    expect(await index.listItemIdsByFolderPrefix(meta.id, "Old")).toEqual([]);
+    expect(await index.listItemIdsByFolderPrefix(meta.id, "New")).toEqual([
+      newId,
+    ]);
+    expect(await index.listItemIdsByTag(meta.id, tag.id)).toEqual([newId]);
+
+    const mediaRows = await db.select<{ item_id: string; filename: string }>(
+      "SELECT item_id, filename FROM media WHERE id = ?",
+      [mediaId],
+    );
+    expect(mediaRows).toEqual([{ item_id: newId, filename: "shot.png" }]);
+
+    const ftsHits = await index.searchItemIds(
+      meta.id,
+      "uniquephrase",
+      "all",
+    );
+    expect(ftsHits).toEqual([newId]);
+
+    const loaded = await index.listItemFilesByIds(meta.id, [newId]);
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0]?.folder_path).toBe("New");
+    expect(loaded[0]?.tag_ids).toEqual([tag.id]);
+    expect(loaded[0]?.title).toBe("Rewrite me");
+  });
+});

@@ -96,6 +96,12 @@ export interface ItemContentUpsert {
   sourceRef: SourceRef | null;
 }
 
+export interface ItemIdRewriteMapping {
+  oldId: string;
+  newId: string;
+  folderPath: string;
+}
+
 export interface VaultIndexAdapter {
   upsertVault(meta: VaultMeta, vaultPath: string): Promise<void>;
   deleteVault(vaultId: string): Promise<void>;
@@ -108,6 +114,8 @@ export interface VaultIndexAdapter {
   upsertItemContent(input: ItemContentUpsert): Promise<void>;
   upsertItemContentBatch(inputs: ItemContentUpsert[]): Promise<void>;
   deleteItem(itemId: string): Promise<void>;
+  /** Copy index rows oldId → newId after a directory rename (no vault FS reads). */
+  rewriteItemIds(mappings: ItemIdRewriteMapping[]): Promise<void>;
   upsertMedia(media: MediaFileMeta): Promise<void>;
   deleteMedia(mediaId: string): Promise<void>;
   deleteMediaForItem(itemId: string): Promise<void>;

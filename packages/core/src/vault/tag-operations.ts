@@ -1,9 +1,18 @@
 import type { ItemFile, Tag } from "@collector/shared";
 import type { VaultContext } from "../adapters/types.js";
+import {
+  DISK_ITEM_READ_CONCURRENCY,
+  runWithConcurrency,
+} from "../util/concurrency.js";
 import { createId, nowIso } from "../util/ids.js";
+import {
+  buildTagMaps,
+  parseItemDocument,
+  serializeItemDocument,
+} from "./item-document.js";
 import { itemMarkdownPath } from "./paths.js";
-import { readItemContent, readItemFile, writeItemFile } from "./item-io.js";
 import { listTagsOnDisk, readTagsFile, writeTagsFile } from "./tag-io.js";
+import { readVaultItemMetaBatch } from "./vault-fs-batch.js";
 
 export interface TagWithCount extends Tag {
   item_count: number;
@@ -95,28 +104,63 @@ export async function deleteTag(
   }
 
   const itemIds = await ctx.index.listItemIdsByTag(vaultId, tagId);
+  const reads = await readVaultItemMetaBatch(ctx.fs, vaultPath, itemIds);
+  // Strip while tags.json still has the name so serialize can resolve remaining tags.
+  const maps = buildTagMaps(file.tags);
+  const updatedAt = nowIso();
 
-  // Strip tag from documents while tags.json still has the name for serialize/read.
-  for (const itemId of itemIds) {
-    if (!(await ctx.fs.exists(itemMarkdownPath(vaultPath, itemId)))) {
-      continue;
+  await runWithConcurrency(reads.length, DISK_ITEM_READ_CONCURRENCY, async (i) => {
+    const read = reads[i]!;
+    const docPath = itemMarkdownPath(vaultPath, read.id);
+    const fileStat = await ctx.fs.stat(docPath);
+    const fallbackIso =
+      fileStat.mtimeMs !== null
+        ? new Date(fileStat.mtimeMs).toISOString()
+        : undefined;
+
+    const parsed = parseItemDocument(read.documentMarkdown, {
+      itemId: read.id,
+      vaultId,
+      tagsByName: maps.byName,
+      fallbackCreatedAt: fallbackIso,
+      fallbackUpdatedAt: fallbackIso,
+    });
+    if (parsed.missingTagNames.length > 0) {
+      throw new Error(
+        `Item document ${read.id} has unresolved tags: ${parsed.missingTagNames.join(", ")}`,
+      );
     }
-
-    const item = await readItemFile(ctx.fs, vaultPath, itemId, vaultId);
-    if (!item.tag_ids.includes(tagId)) {
-      continue;
+    if (!parsed.item.tag_ids.includes(tagId)) {
+      return;
     }
 
     const updated: ItemFile = {
-      ...item,
-      tag_ids: item.tag_ids.filter((id) => id !== tagId),
-      updated_at: nowIso(),
+      ...parsed.item,
+      tag_ids: parsed.item.tag_ids.filter((id) => id !== tagId),
+      updated_at: updatedAt,
     };
-    await writeItemFile(ctx.fs, vaultPath, updated);
-    const content = await readItemContent(ctx.fs, vaultPath, itemId);
-    await ctx.index.upsertItem({ item: updated, content, sourceRef: null }, vaultId);
-  }
+    const markdown = serializeItemDocument(
+      updated,
+      parsed.body,
+      maps.byId,
+      parsed.extra,
+    );
+    await ctx.fs.writeText(docPath, markdown);
 
+    const writtenStat = await ctx.fs.stat(docPath);
+    if (writtenStat.mtimeMs === null) {
+      throw new Error(`Missing mtime after writing item document: ${read.id}`);
+    }
+    // Timestamps only — deleteTag clears item_tags; upsertItemMetadata would wipe FTS body.
+    await ctx.index.patchItemSyncMeta(read.id, {
+      fileMtimeMs: writtenStat.mtimeMs,
+      updatedAt: updated.updated_at,
+      contentRevision: updated.content_revision,
+      createdAt: updated.created_at,
+    });
+  });
+
+  await ctx.fs.touch(vaultPath);
   await writeTagsFile(ctx.fs, vaultPath, { tags: nextTags });
   await ctx.index.deleteTag(tagId);
 }

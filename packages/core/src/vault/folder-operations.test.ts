@@ -1,7 +1,9 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { runMigrations } from "@collector/db";
+import { BetterSqliteMigrator } from "../../../db/src/testing/better-sqlite.js";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { createId } from "../util/ids.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
@@ -18,8 +20,11 @@ import { MemorySqlAdapter } from "../testing/memory-sql.js";
 describe("folder operations", () => {
   let dataDir = "";
   const fs = new NodeFileSystemAdapter();
+  let db: BetterSqliteMigrator | null = null;
 
   afterEach(async () => {
+    db?.close();
+    db = null;
     if (dataDir) {
       await rm(dataDir, { recursive: true, force: true });
       dataDir = "";
@@ -101,8 +106,9 @@ describe("folder operations", () => {
 
   it("renameFolder updates only items under the folder prefix from index", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "collector-folder-rename-"));
-    const sql = new MemorySqlAdapter();
-    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const ctx = { fs, index: new SqlVaultIndexStore(db) };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
     const timestamp = new Date().toISOString();
 
@@ -166,7 +172,15 @@ describe("folder operations", () => {
       },
     });
 
+    const upsertSpy = vi.spyOn(ctx.index, "upsertItem");
+    const rewriteSpy = vi.spyOn(ctx.index, "rewriteItemIds");
+
     await renameFolder(ctx, path, meta.id, "Work", "Projects");
+
+    expect(upsertSpy).not.toHaveBeenCalled();
+    expect(rewriteSpy).toHaveBeenCalledTimes(1);
+    upsertSpy.mockRestore();
+    rewriteSpy.mockRestore();
 
     const newWorkRootId = workRootId.replace("Work/", "Projects/");
     const newWorkNestedId = workNestedId.replace("Work/Articles/", "Projects/Articles/");

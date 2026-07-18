@@ -66,9 +66,12 @@ describe("tag operations", () => {
     }
 
     const readDirSpy = vi.spyOn(fs, "readDir");
+    const upsertSpy = vi.spyOn(ctx.index, "upsertItem");
     await deleteTag(ctx, path, meta.id, tag.id);
     expect(readDirSpy).not.toHaveBeenCalled();
+    expect(upsertSpy).not.toHaveBeenCalled();
     readDirSpy.mockRestore();
+    upsertSpy.mockRestore();
 
     for (const itemId of taggedIds) {
       const item = await readItemFile(fs, path, itemId, meta.id);
