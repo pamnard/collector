@@ -184,6 +184,20 @@ export async function readItemDocument(
   );
 }
 
+/** Read the vault `.md` file bytes as-is (frontmatter + body). */
+export async function readItemRawMarkdown(
+  fs: FileSystemAdapter,
+  vaultRootPath: string,
+  itemRelativePath: string,
+): Promise<string> {
+  const id = normalizeRelativePath(itemRelativePath);
+  const docPath = itemMarkdownPath(vaultRootPath, id);
+  if (!(await fs.exists(docPath))) {
+    throw new Error(`Missing item document: ${id}`);
+  }
+  return fs.readText(docPath);
+}
+
 async function ensureParentDir(
   fs: FileSystemAdapter,
   vaultRootPath: string,

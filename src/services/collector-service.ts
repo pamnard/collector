@@ -17,9 +17,11 @@ import {
   assertVaultTreeLayout,
   readItemContent,
   readItemFile,
+  readItemRawMarkdown,
   readVaultMeta,
   syncVaultIndexFromFilesystem,
   upsertItem,
+  writeItemRawMarkdown,
   vaultMetaPath,
   vaultRoot,
   vaultsRoot,
@@ -936,6 +938,36 @@ export async function getItemById(
   const item = await readItemFile(fs, path, itemId, vault.id);
   const content = await readItemContent(fs, path, itemId);
   return { item, content };
+}
+
+export async function getItemSource(itemId: string): Promise<string> {
+  if (isDevMock()) {
+    return devMockCollector.getItemSource(itemId);
+  }
+
+  const { path } = await resolveActiveVault();
+  if (!(await fs.exists(itemMarkdownPath(path, itemId)))) {
+    throw new Error(`Item not found: ${itemId}`);
+  }
+  return readItemRawMarkdown(fs, path, itemId);
+}
+
+export async function updateItemSource(
+  itemId: string,
+  rawMarkdown: string,
+): Promise<ItemFile> {
+  if (isDevMock()) {
+    return devMockCollector.updateItemSource(itemId, rawMarkdown);
+  }
+
+  const { vault, path } = await resolveActiveVault();
+  return writeItemRawMarkdown(
+    getContext(),
+    path,
+    vault.id,
+    itemId,
+    rawMarkdown,
+  );
 }
 
 export async function createItem(input: CreateItemInput): Promise<ItemFile> {

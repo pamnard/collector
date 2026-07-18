@@ -1,22 +1,24 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Eye, Form, Trash2 } from "lucide-react";
+import { ArrowLeft, Code, Eye, Form, Trash2 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { ItemFile } from "@collector/shared";
 import { MarkdownContent } from "../components/content/MarkdownContent";
 import { ItemDetailHero } from "../components/items/ItemDetailHero";
 import { ItemDetailInlineEditor } from "../components/items/ItemDetailInlineEditor";
 import { ItemDetailMetadata } from "../components/items/ItemDetailMetadata";
+import { ItemDetailSourceEditor } from "../components/items/ItemDetailSourceEditor";
 import { MediaGallery } from "../components/media/MediaGallery";
 import { useShell } from "../components/layout/AppLayout";
 import {
   deleteItem,
   getItemById,
+  getItemSource,
   updateItem,
+  updateItemSource,
 } from "../services/collector-service";
 import type { ItemFormValues } from "../types/item";
 
-/** Detail chrome mode. `source` (raw .md) is a follow-up task. */
-type ItemDetailMode = "view" | "form";
+type ItemDetailMode = "view" | "form" | "source";
 
 function toFormValues(
   item: ItemFile,
@@ -66,11 +68,18 @@ export function ItemDetailPage() {
   const [item, setItem] = useState<ItemFile | null>(null);
   const [content, setContent] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<ItemFormValues | null>(null);
+  const [sourceText, setSourceText] = useState<string | null>(null);
+  const [sourceBaseline, setSourceBaseline] = useState<string | null>(null);
   const [mode, setMode] = useState<ItemDetailMode>("view");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isFormMode = mode === "form";
+  const isSourceMode = mode === "source";
+  const isSourceDirty =
+    sourceText !== null &&
+    sourceBaseline !== null &&
+    sourceText !== sourceBaseline;
 
   const reloadItem = async (itemId: string) => {
     const { item: loadedItem, content: loadedContent } = await getItemById(itemId);
@@ -131,6 +140,33 @@ export function ItemDetailPage() {
     }
   };
 
+  const handleSourceSave = async (): Promise<boolean> => {
+    if (!id || sourceText === null) {
+      return false;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const updated = await updateItemSource(id, sourceText);
+      await reloadItem(updated.id);
+      setSourceText(null);
+      setSourceBaseline(null);
+      setMode("view");
+      refreshVault();
+      if (updated.id !== id) {
+        navigate(`/item/${updated.id}`, { replace: true });
+      }
+      return true;
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!id || !window.confirm("Удалить элемент без возможности восстановления?")) {
       return;
@@ -150,8 +186,23 @@ export function ItemDetailPage() {
     }
   };
 
+  const clearSource = () => {
+    setSourceText(null);
+    setSourceBaseline(null);
+  };
+
   const switchToView = () => {
     if (mode === "view" || isSaving) {
+      return;
+    }
+    if (mode === "source") {
+      if (!isSourceDirty) {
+        clearSource();
+        setMode("view");
+        setError(null);
+        return;
+      }
+      void handleSourceSave();
       return;
     }
     if (!formValues || !item) {
@@ -167,8 +218,59 @@ export function ItemDetailPage() {
   };
 
   const switchToForm = () => {
-    setMode("form");
-    setError(null);
+    if (isSaving) {
+      return;
+    }
+
+    const enter = async () => {
+      if (mode === "source" && isSourceDirty) {
+        const saved = await handleSourceSave();
+        if (!saved) {
+          return;
+        }
+      } else if (mode === "source") {
+        clearSource();
+      }
+      setMode("form");
+      setError(null);
+    };
+
+    void enter();
+  };
+
+  const switchToSource = () => {
+    if (!id || isSaving) {
+      return;
+    }
+
+    const enter = async () => {
+      if (
+        mode === "form" &&
+        formValues &&
+        item &&
+        isFormDirty(formValues, item, content)
+      ) {
+        const saved = await handleSave();
+        if (!saved) {
+          return;
+        }
+      }
+
+      setIsSaving(true);
+      setError(null);
+      try {
+        const raw = await getItemSource(id);
+        setSourceText(raw);
+        setSourceBaseline(raw);
+        setMode("source");
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setIsSaving(false);
+      }
+    };
+
+    void enter();
   };
 
   const handleItemUpdated = () => {
@@ -228,6 +330,21 @@ export function ItemDetailPage() {
           </button>
           <button
             type="button"
+            aria-label="Исходный текст"
+            aria-pressed={mode === "source"}
+            title="Исходный текст"
+            className={`rounded-md p-1.5 transition-all ${
+              mode === "source"
+                ? "bg-header/70 text-primary shadow-sm"
+                : "text-secondary hover:text-primary"
+            }`}
+            onClick={switchToSource}
+            disabled={isSaving}
+          >
+            <Code size={18} />
+          </button>
+          <button
+            type="button"
             aria-label="Удалить"
             title="Удалить"
             className="rounded-md p-1.5 text-red-400 transition-all hover:bg-red-500/10 hover:text-red-400"
@@ -259,7 +376,7 @@ export function ItemDetailPage() {
             <div className="mx-auto w-full max-w-[900px]">{toolbar}</div>
           </div>
 
-          <ItemDetailHero item={item} />
+          {mode === "view" && <ItemDetailHero item={item} />}
 
           <aside className="min-w-0 @[1100px]:col-span-3 @[1100px]:col-start-10 @[1100px]:row-span-6 @[1100px]:row-start-1">
             <div className="mx-auto w-full max-w-[900px] @[1100px]:max-w-none @[1100px]:sticky @[1100px]:top-4">
@@ -273,6 +390,15 @@ export function ItemDetailPage() {
                 <ItemDetailInlineEditor
                   values={formValues}
                   onChange={setFormValues}
+                />
+              </div>
+            </div>
+          ) : isSourceMode && sourceText !== null ? (
+            <div className="min-w-0 @[1100px]:col-span-9">
+              <div className="mx-auto w-full max-w-[900px]">
+                <ItemDetailSourceEditor
+                  value={sourceText}
+                  onChange={setSourceText}
                 />
               </div>
             </div>

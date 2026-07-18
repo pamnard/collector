@@ -10,6 +10,7 @@ import type {
   VaultContext,
 } from "../adapters/types.js";
 import { createId, nowIso } from "../util/ids.js";
+import { parseDocumentMarkdown } from "./frontmatter.js";
 import {
   itemFileFromDocumentMarkdown,
   readItemContent,
@@ -111,6 +112,56 @@ export async function upsertItem(
     {
       item,
       content,
+      sourceRef,
+      fileMtimeMs: fileStat.mtimeMs,
+    },
+    vaultId,
+  );
+  return item;
+}
+
+/**
+ * Replace the vault `.md` with caller-supplied raw markdown (no re-serialize),
+ * then re-parse into the index. Creates missing tags from frontmatter names.
+ */
+export async function writeItemRawMarkdown(
+  ctx: VaultContext,
+  vaultPath: string,
+  vaultId: string,
+  itemId: string,
+  raw: string,
+): Promise<ItemFile> {
+  const id = normalizeRelativePath(itemId);
+  const docPath = itemMarkdownPath(vaultPath, id);
+  if (!(await ctx.fs.exists(docPath))) {
+    throw new Error(`Item not found: ${id}`);
+  }
+
+  const existingStat = await ctx.fs.stat(docPath);
+  if (existingStat.mtimeMs === null) {
+    throw new Error(`Cannot write item document ${id}: missing file mtime`);
+  }
+
+  const item = await itemFileFromDocumentMarkdown(
+    ctx.fs,
+    vaultPath,
+    vaultId,
+    id,
+    raw,
+    existingStat.mtimeMs,
+  );
+  const body = parseDocumentMarkdown(raw).body;
+
+  await ctx.fs.writeText(docPath, raw);
+  await ctx.fs.touch(vaultPath);
+
+  const sourceRef = await readItemSourceRef(ctx.fs, vaultPath, id);
+  const fileStat = await ctx.fs.stat(docPath);
+
+  await ctx.index.upsertItem(
+    {
+      item,
+      content: body,
       sourceRef,
       fileMtimeMs: fileStat.mtimeMs,
     },
