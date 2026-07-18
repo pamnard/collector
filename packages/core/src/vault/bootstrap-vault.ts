@@ -5,7 +5,7 @@ import {
   readAppSettings,
   writeAppSettings,
 } from "../settings/app-settings-io.js";
-import { vaultMetaPath, vaultRoot } from "./paths.js";
+import { joinSegments, vaultMetaPath, vaultRoot } from "./paths.js";
 
 /** Vault dirs are UUID folders only — skip backups / stray names under vaults/. */
 const VAULT_DIR_ID_RE =
@@ -60,7 +60,8 @@ export async function withVaultBootstrapLock<T>(
   work: () => Promise<T>,
 ): Promise<T> {
   await fs.mkdir(vaultsRootPath);
-  const lockPath = fs.join(vaultsRootPath, BOOTSTRAP_LOCK_NAME);
+  // Use joinSegments (not fs.join): Tauri adapter used to strip the leading `/` (#181).
+  const lockPath = joinSegments(vaultsRootPath, BOOTSTRAP_LOCK_NAME);
   await acquireVaultBootstrapLock(fs, lockPath);
   try {
     return await work();
