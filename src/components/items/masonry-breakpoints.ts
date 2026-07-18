@@ -1,4 +1,4 @@
-/** Same breakpoints as collector.tools Django frontend (Dashboard.tsx). */
+/** Same breakpoints as collector.tools Django frontend (Dashboard.tsx). Sacred — keep with Masonry. */
 export const MASONRY_BREAKPOINTS = {
   default: 7,
   3440: 7,
