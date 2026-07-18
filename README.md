@@ -1,21 +1,42 @@
 # Collector
 
-Offline-first desktop app for saving and organizing content — articles, images, videos, notes, bookmarks, and more.
+Offline-first desktop vault for saving and organizing content — articles, images, videos, notes, bookmarks, and more.
 
-Built with **Tauri 2**, **React**, and **TypeScript**.
+Built with **Tauri 2**, **React**, and **TypeScript**. Files on disk are the source of truth; SQLite powers search and filters.
 
 ## Status
 
-M1 app shell + M2 release pipeline (CI, updater). See [Roadmap](docs/ROADMAP.md).
+Shipping desktop app (`v0.1.22`): vault CRUD, markdown items with YAML frontmatter, folder collections, tags, FTS search, grid/table UI, item detail (including raw markdown source edit), in-app updater, and GitHub Releases for Linux / macOS / Windows.
+
+Installers: [GitHub Releases](https://github.com/pamnard/collector/releases/latest).
+
+## How it works
+
+| Layer | Role |
+|-------|------|
+| Vault on disk | Source of truth — markdown documents, tags, media sidecars |
+| SQLite index | Disposable cache for search / filters / UI; rebuilt from vault if unhealthy |
+| Settings | Theme, active vault, nav filter, updater prefs |
+
+**Items** are vault-relative `.md` paths (path-as-id), not UUID folders. Metadata lives in YAML frontmatter; body is markdown. Per-item media sits in a sibling `note.media/` directory.
+
+**Collections** are filesystem folders (`folder_path` = dirname of the item). There is no favorite / archive model (legacy settings map to “all”).
+
+**Legacy** `items/<uuid>/` vaults are not converted on open. Migrate once with:
+
+```bash
+node scripts/migrate-vault-layout.mjs <vault-path>
+```
 
 ## Monorepo
 
 | Package | Purpose |
 |---------|---------|
 | `packages/shared` | Types, Zod schemas, constants |
-| `packages/db` | SQLite migrations |
+| `packages/db` | SQLite migrations, index health / reset |
 | `packages/core` | Vault filesystem + index operations |
 | `src/` | Tauri app shell + React UI |
+| `src-tauri/` | Rust commands, bundling, updater |
 
 ## Development
 
@@ -50,37 +71,35 @@ ulimit -n 4096
 # headless dev (unusual)
 xvfb-run -a npm run tauri:dev
 
-# release binary smoke (maintainers)
-npm run verify:release   # requires xvfb-run on Linux: apt install xvfb
+# release gate (maintainers; requires xvfb on Linux: apt install xvfb)
+npm run verify:release
 ```
 
-Release smoke already launches the built binary via `xvfb-run`; there is no supported headless mode for everyday `tauri dev` without a display.
+Release smoke already launches the built binary via `xvfb-run`; there is no supported headless mode for everyday `tauri:dev` without a display.
 
 ### Data locations
 
-| Platform | Release | Dev (`tauri dev`) |
+**Vault files** (markdown tree, tags, media) live under Tauri `appDataDir()`:
+
+| Platform | Release | Dev (`tauri:dev`) |
 |----------|---------|-------------------|
 | Linux | `~/.local/share/com.collector.app/collector/` | `~/.local/share/com.collector.app.dev/collector/` |
 | macOS | `~/Library/Application Support/com.collector.app/collector/` | `~/Library/Application Support/com.collector.app.dev/collector/` |
 | Windows | `%APPDATA%\com.collector.app\collector\` | `%APPDATA%\com.collector.app.dev\collector\` |
 
-Vault files and the SQLite index live under `…/collector/`. Settings → «Каталог данных» shows the active path.
+**SQLite index** (`collector.db`) and **UI preferences** (`settings.json`) live under Tauri `appConfigDir()` — not next to the vault, and not in WebView `localStorage`:
+
+| Platform | Release | Dev (`tauri:dev`) |
+|----------|---------|-------------------|
+| Linux | `~/.config/com.collector.app/` | `~/.config/com.collector.app.dev/` |
+| macOS | `~/Library/Application Support/com.collector.app/` | `~/Library/Application Support/com.collector.app.dev/` |
+| Windows | `%APPDATA%\com.collector.app\` | `%APPDATA%\com.collector.app.dev\` |
+
+Settings file: `…/collector/settings.json`. Index DB: `…/collector.db` (same config root). Settings → «Каталог данных» shows the active vault data path.
 
 **Upgrade** replaces the app binary only — vaults stay in place (`.deb` over `.deb`, or in-app updater).
 
-**Uninstall** removes the app only; data dirs above are kept unless you delete them manually. See [Packaging](docs/PACKAGING.md) for full removal commands and maintainer checks.
-
-### Preferences (config)
-
-UI preferences (`settings.json`) live under Tauri `appConfigDir()` — not in WebView `localStorage`:
-
-| Platform | Release | Dev (`tauri dev`) |
-|----------|---------|-------------------|
-| Linux | `~/.config/com.collector.app/collector/settings.json` | `~/.config/com.collector.app.dev/collector/settings.json` |
-| macOS | `~/Library/Application Support/com.collector.app/collector/settings.json` | `~/Library/Application Support/com.collector.app.dev/collector/settings.json` |
-| Windows | `%APPDATA%\com.collector.app\collector\settings.json` | `%APPDATA%\com.collector.app.dev\collector\settings.json` |
-
-Schema migrations: [DATABASE.md](docs/DATABASE.md), vault file format: [VAULT_SCHEMA.md](docs/VAULT_SCHEMA.md).
+**Uninstall** removes the app only; data dirs above are kept unless you delete them manually.
 
 ### Build
 
@@ -88,15 +107,26 @@ Schema migrations: [DATABASE.md](docs/DATABASE.md), vault file format: [VAULT_SC
 npm run tauri build
 ```
 
-### Release (maintainers)
-
-Before tagging a GitHub release:
+Useful checks:
 
 ```bash
+npm run typecheck
+npm test
+npm run test:startup
+npm run test:large-empty-index
+```
+
+### Release (maintainers)
+
+Before tagging a GitHub release, run the full local gate (typecheck, unit tests, index smokes, frontend build, signed `tauri build`, headless binary smoke, Linux `.deb` packaging check):
+
+```bash
+export TAURI_SIGNING_PRIVATE_KEY=…   # required for signed updater artifacts
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=…
 npm run verify:release
 ```
 
-Full workflow: [docs/RELEASE.md](docs/RELEASE.md).
+Implementation: [`scripts/verify-release.sh`](scripts/verify-release.sh). Tag `v*` on `main` triggers [`.github/workflows/release.yml`](.github/workflows/release.yml) (draft GitHub Release + installers). Publish the draft when CI is green and assets are present; mark it as latest for the in-app updater.
 
 ## License
 
