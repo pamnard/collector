@@ -99,10 +99,10 @@ export async function readVaultItemSourceRefBatch(
       const chunkResults = await fs.readVaultItemSourceRefs(vaultPath, chunk);
       const sourceJsonById = new Map(chunkResults.map((read) => [read.id, read.sourceJson]));
       for (const itemId of chunk) {
-        if (!sourceJsonById.has(itemId)) {
+        const sourceJson = sourceJsonById.get(itemId);
+        if (sourceJson === undefined) {
           throw new Error(`Missing source reference result for ${itemId}`);
         }
-        const sourceJson = sourceJsonById.get(itemId);
         results.set(
           itemId,
           sourceJson === null ? null : sourceRefSchema.parse(JSON.parse(sourceJson)),

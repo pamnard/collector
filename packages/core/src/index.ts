@@ -13,6 +13,7 @@ export type {
   VaultContext,
   VaultIndexAdapter,
   VaultItemMetaRead,
+  VaultItemSourceRefRead,
   VaultItemStatMeta,
 } from "./adapters/types.js";
 
