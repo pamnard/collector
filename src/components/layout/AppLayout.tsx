@@ -98,7 +98,9 @@ export function AppLayout() {
   const dashboardError = dashboardCache.error;
   const showErrorAlert =
     dashboardError !== null && dashboardError !== dismissedError;
-  const showAlertStack = isMetadataIndexing || showErrorAlert;
+  const showDashboardLoading = dashboardCache.isLoading;
+  const showAlertStack =
+    isMetadataIndexing || showErrorAlert || showDashboardLoading;
 
   const mainColumn = (
     <main className="relative flex min-h-0 h-full flex-1 overflow-hidden bg-main transition-colors duration-200">
@@ -213,6 +215,9 @@ export function AppLayout() {
 
       {showAlertStack && (
         <AlertStack>
+          {showDashboardLoading && (
+            <IndexingStatusAlert label="Загрузка…" />
+          )}
           {isMetadataIndexing && (
             <IndexingStatusAlert label={indexingLabel} />
           )}

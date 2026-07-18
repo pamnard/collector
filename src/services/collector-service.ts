@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { ensureHealthyIndex, runMigrations, resetIndexSchema } from "@collector/db";
 import type { ItemFile, VaultMeta } from "@collector/shared";
 import type { MediaFileMeta } from "@collector/shared";
+import { removeItemIdFromDashboardQueryCache } from "./dashboard-query-cache";
 import {
   SqlVaultIndexStore,
   buildFtsMatchQuery,
@@ -1064,6 +1065,7 @@ export async function updateItem(
 export async function deleteItem(itemId: string): Promise<void> {
   const { path } = await resolveActiveVault();
   await deleteItemOnDisk(getContext(), path, itemId);
+  removeItemIdFromDashboardQueryCache(itemId);
 }
 
 export async function getDataDirectory(): Promise<string> {
