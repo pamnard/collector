@@ -14,7 +14,7 @@ import {
 } from "./dashboard-snapshot-io.js";
 
 const VAULT_ID = "11111111-1111-4111-8111-111111111111";
-const ITEM_ID = "22222222-2222-4222-8222-222222222222";
+const ITEM_ID = "Inbox/welcome-note.md";
 const NOW = "2026-01-01T00:00:00.000Z";
 
 function syntheticSnapshot(
@@ -37,7 +37,7 @@ function syntheticSnapshot(
         metadata: {},
         tag_ids: [],
         collection_ids: [],
-        folder_path: "",
+        folder_path: "Inbox",
         content_revision: 1,
         created_at: NOW,
         updated_at: NOW,
@@ -113,5 +113,34 @@ describe("dashboard-snapshot-io", () => {
         search: "other",
       }),
     ).toBe(false);
+  });
+
+  it("round-trips snapshot with root-level path id (<uuid>.md)", async () => {
+    const fs = new NodeFileSystemAdapter();
+    const configDir = await tempConfigDir();
+    const pathId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.md";
+    const snapshot = syntheticSnapshot({
+      item_ids: [pathId],
+      items: [
+        {
+          id: pathId,
+          vault_id: VAULT_ID,
+          title: "Welcome",
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          tag_ids: [],
+          collection_ids: [],
+          folder_path: "",
+          content_revision: 1,
+          created_at: NOW,
+          updated_at: NOW,
+        },
+      ],
+    });
+
+    await writeDashboardSnapshot(fs, configDir, snapshot);
+    expect(await readDashboardSnapshot(fs, configDir)).toEqual(snapshot);
   });
 });
