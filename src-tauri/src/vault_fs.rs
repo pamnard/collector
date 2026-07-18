@@ -8,6 +8,7 @@ use std::time::UNIX_EPOCH;
 /// `packages/shared/src/constants.ts` `ITEM_MEDIA_SUFFIX`.
 const ITEM_MEDIA_SUFFIX: &str = ".media";
 const MEDIA_MANIFEST_FILE: &str = "manifest.json";
+const SOURCE_REF_FILE: &str = ".source.json";
 
 /// Top-level names that are never markdown items / real folders. Mirrors
 /// `packages/shared/src/constants.ts` `RESERVED_VAULT_ENTRIES`.
@@ -32,6 +33,13 @@ pub struct VaultItemMetaRead {
     pub id: String,
     pub document_markdown: String,
     pub mtime_ms: Option<i64>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultItemSourceRefRead {
+    pub id: String,
+    pub source_json: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -202,6 +210,24 @@ pub fn vault_items_read_meta(
         });
     }
 
+    Ok(results)
+}
+
+#[tauri::command]
+pub fn vault_items_read_source_refs(
+    vault_path: String,
+    ids: Vec<String>,
+) -> Result<Vec<VaultItemSourceRefRead>, String> {
+    let mut results = Vec::with_capacity(ids.len());
+    for id in ids {
+        let source_path = item_media_root(&vault_path, &id)?.join(SOURCE_REF_FILE);
+        let source_json = if source_path.is_file() {
+            Some(fs::read_to_string(&source_path).map_err(|error| format!("{id}: {error}"))?)
+        } else {
+            None
+        };
+        results.push(VaultItemSourceRefRead { id, source_json });
+    }
     Ok(results)
 }
 

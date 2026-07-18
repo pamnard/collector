@@ -14,6 +14,13 @@ export interface VaultItemMetaRead {
   mtimeMs?: number | null;
 }
 
+export interface VaultItemSourceRefRead {
+  /** Vault-relative posix path of the markdown item (e.g. `Inbox/note.md`). */
+  id: string;
+  /** Raw JSON text, or null if sidecar missing. */
+  sourceJson: string | null;
+}
+
 export interface FileSystemAdapter {
   exists(path: string): Promise<boolean>;
   readText(path: string): Promise<string>;
@@ -40,6 +47,11 @@ export interface FileSystemAdapter {
     vaultPath: string,
     itemIds: string[],
   ): Promise<VaultItemMetaRead[]>;
+  /** One IPC per chunk: read source reference sidecars for the given item paths. */
+  readVaultItemSourceRefs?(
+    vaultPath: string,
+    itemIds: string[],
+  ): Promise<VaultItemSourceRefRead[]>;
 }
 
 export interface ItemSyncMeta {

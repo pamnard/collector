@@ -3,6 +3,7 @@ import {
   joinSegments,
   type FileSystemAdapter,
   type VaultItemMetaRead,
+  type VaultItemSourceRefRead,
   type VaultItemStatMeta,
 } from "@collector/core";
 import {
@@ -90,6 +91,16 @@ export class TauriFileSystemAdapter implements FileSystemAdapter {
     itemIds: string[],
   ): Promise<VaultItemMetaRead[]> {
     return invoke<VaultItemMetaRead[]>("vault_items_read_meta", {
+      vaultPath,
+      ids: itemIds,
+    });
+  }
+
+  async readVaultItemSourceRefs(
+    vaultPath: string,
+    itemIds: string[],
+  ): Promise<VaultItemSourceRefRead[]> {
+    return invoke<VaultItemSourceRefRead[]>("vault_items_read_source_refs", {
       vaultPath,
       ids: itemIds,
     });

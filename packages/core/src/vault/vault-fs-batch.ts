@@ -1,3 +1,4 @@
+import { sourceRefSchema, type SourceRef } from "@collector/shared";
 import type {
   FileSystemAdapter,
   VaultItemMetaRead,
@@ -9,6 +10,7 @@ import {
   yieldToEventLoop,
 } from "../util/concurrency.js";
 import { itemMarkdownPath } from "./paths.js";
+import { readItemSourceRef } from "./item-io.js";
 import { listItemRelativePaths } from "./scan.js";
 
 /** Max item ids per batched read-meta IPC call; aligned with write batch for yield cadence. */
@@ -74,6 +76,48 @@ export async function readVaultItemMetaBatch(
       documentMarkdown,
       mtimeMs: fileStat.mtimeMs,
     });
+    if ((i + 1) % VAULT_ITEM_READ_META_BATCH === 0 && i + 1 < itemIds.length) {
+      await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
+    }
+  }
+  return results;
+}
+
+export async function readVaultItemSourceRefBatch(
+  fs: FileSystemAdapter,
+  vaultPath: string,
+  itemIds: string[],
+): Promise<Map<string, SourceRef | null>> {
+  const results = new Map<string, SourceRef | null>();
+  if (!itemIds.length) {
+    return results;
+  }
+
+  if (fs.readVaultItemSourceRefs) {
+    for (let offset = 0; offset < itemIds.length; offset += VAULT_ITEM_READ_META_BATCH) {
+      const chunk = itemIds.slice(offset, offset + VAULT_ITEM_READ_META_BATCH);
+      const chunkResults = await fs.readVaultItemSourceRefs(vaultPath, chunk);
+      const sourceJsonById = new Map(chunkResults.map((read) => [read.id, read.sourceJson]));
+      for (const itemId of chunk) {
+        if (!sourceJsonById.has(itemId)) {
+          throw new Error(`Missing source reference result for ${itemId}`);
+        }
+        const sourceJson = sourceJsonById.get(itemId);
+        results.set(
+          itemId,
+          sourceJson === null ? null : sourceRefSchema.parse(JSON.parse(sourceJson)),
+        );
+      }
+      if (offset + chunk.length < itemIds.length) {
+        await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
+      }
+    }
+    return results;
+  }
+
+  for (let i = 0; i < itemIds.length; i += 1) {
+    const itemId = itemIds[i]!;
+    results.set(itemId, await readItemSourceRef(fs, vaultPath, itemId));
     if ((i + 1) % VAULT_ITEM_READ_META_BATCH === 0 && i + 1 < itemIds.length) {
       await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
     }

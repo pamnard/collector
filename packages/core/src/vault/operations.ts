@@ -51,6 +51,7 @@ import {
 } from "./recover-item-mtime.js";
 import {
   readVaultItemMetaBatch,
+  readVaultItemSourceRefBatch,
   statAllVaultItemMeta,
 } from "./vault-fs-batch.js";
 
@@ -209,6 +210,7 @@ interface ReindexWork {
   itemId: string;
   diskMtimeMs: number;
   item?: ItemFile;
+  content?: string | null;
 }
 
 function toSyncProgress(
@@ -356,7 +358,12 @@ export async function syncIndexFromFilesystem(
           diskMtimeMs,
           tagMaps,
         );
-        reindexQueue.push({ itemId, diskMtimeMs, item });
+        reindexQueue.push({
+          itemId,
+          diskMtimeMs,
+          item,
+          content: parseDocumentMarkdown(documentMarkdown).body,
+        });
       } catch (error) {
         report.errors.push({
           itemId,
@@ -388,6 +395,7 @@ export async function syncIndexFromFilesystem(
       itemId: string;
       diskMtimeMs: number;
       item: ItemFile | null;
+      content: string | null;
       error: unknown;
     }>;
 
@@ -412,6 +420,7 @@ export async function syncIndexFromFilesystem(
             itemId,
             diskMtimeMs,
             item: null,
+            content: null,
             error: new Error(`Missing document for ${itemId}`),
           });
           continue;
@@ -430,6 +439,7 @@ export async function syncIndexFromFilesystem(
             itemId,
             diskMtimeMs,
             item,
+            content: parseDocumentMarkdown(documentMarkdown).body,
             error: null,
           });
         } catch (error) {
@@ -437,6 +447,7 @@ export async function syncIndexFromFilesystem(
             itemId,
             diskMtimeMs,
             item: null,
+            content: null,
             error,
           });
         }
@@ -451,6 +462,7 @@ export async function syncIndexFromFilesystem(
           itemId,
           diskMtimeMs,
           item: null,
+          content: null,
           error,
         };
       });
@@ -508,6 +520,7 @@ export async function syncIndexFromFilesystem(
         itemId: read.itemId,
         diskMtimeMs: read.diskMtimeMs,
         item: read.item,
+        content: read.content,
       });
     }
 
@@ -568,6 +581,7 @@ export async function syncIndexFromFilesystem(
         work.diskMtimeMs,
         tagMaps,
       );
+      work.content = parseDocumentMarkdown(documentMarkdown).body;
     }
   }
 
@@ -624,6 +638,11 @@ export async function syncIndexFromFilesystem(
 
   // Phase B: content + source_ref + FTS body (same queue; reuse item from Phase A).
   phase = "content";
+  const sourceRefs = await readVaultItemSourceRefBatch(
+    ctx.fs,
+    vaultPath,
+    reindexQueue.filter((work) => work.item).map((work) => work.itemId),
+  );
   for (let offset = 0; offset < reindexQueue.length; offset += INDEX_SYNC_WRITE_BATCH) {
     const workBatch = reindexQueue.slice(
       offset,
@@ -635,13 +654,18 @@ export async function syncIndexFromFilesystem(
         continue;
       }
       try {
-        const content = await readItemContent(ctx.fs, vaultPath, work.itemId);
-        const sourceRef = await readItemSourceRef(ctx.fs, vaultPath, work.itemId);
+        if (work.content === undefined) {
+          throw new Error(`Missing content for ${work.itemId}`);
+        }
+        const sourceRef = sourceRefs.get(work.itemId);
+        if (sourceRef === undefined) {
+          throw new Error(`Missing source reference for ${work.itemId}`);
+        }
         inputs.push({
           itemId: work.item.id,
           title: work.item.title,
           description: work.item.description,
-          content,
+          content: work.content,
           sourceRef,
         });
       } catch (error) {
