@@ -36,6 +36,10 @@ export class TauriFileSystemAdapter implements FileSystemAdapter {
     await writeTextFile(path, content);
   }
 
+  async writeTextExclusive(path: string, content: string): Promise<void> {
+    await invoke("fs_write_text_exclusive", { path, content });
+  }
+
   async readBinary(path: string): Promise<Uint8Array> {
     return readFile(path);
   }

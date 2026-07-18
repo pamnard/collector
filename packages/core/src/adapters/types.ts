@@ -17,6 +17,11 @@ export interface FileSystemAdapter {
   exists(path: string): Promise<boolean>;
   readText(path: string): Promise<string>;
   writeText(path: string, content: string): Promise<void>;
+  /**
+   * Create a new text file exclusively (fail if path already exists).
+   * Node: `flag: 'wx'`. Tauri: Rust `create_new`. Used for cross-process locks.
+   */
+  writeTextExclusive(path: string, content: string): Promise<void>;
   readBinary(path: string): Promise<Uint8Array>;
   writeBinary(path: string, content: Uint8Array): Promise<void>;
   mkdir(path: string): Promise<void>;

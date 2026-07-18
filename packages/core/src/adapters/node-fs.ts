@@ -41,6 +41,10 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
     await writeFile(path, content, "utf8");
   }
 
+  async writeTextExclusive(path: string, content: string): Promise<void> {
+    await writeFile(path, content, { encoding: "utf8", flag: "wx" });
+  }
+
   async readBinary(path: string): Promise<Uint8Array> {
     const buffer = await readFile(path);
     return new Uint8Array(buffer);
