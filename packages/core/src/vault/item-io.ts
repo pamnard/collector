@@ -55,10 +55,19 @@ export async function writeVaultMeta(
   await fs.writeText(vaultMetaPath(vaultRootPath), JSON.stringify(parsed, null, 2));
 }
 
-async function loadTagMaps(
+export type TagMaps = {
+  byName: Map<string, Tag>;
+  byId: Map<string, Tag>;
+};
+
+export type TagMapsHolder = {
+  maps: TagMaps;
+};
+
+export async function loadTagMaps(
   fs: FileSystemAdapter,
   vaultPath: string,
-): Promise<{ byName: Map<string, Tag>; byId: Map<string, Tag> }> {
+): Promise<TagMaps> {
   const file = await readTagsFile(fs, vaultPath);
   return buildTagMaps(file.tags);
 }
@@ -71,13 +80,16 @@ export async function ensureTagsByName(
   fs: FileSystemAdapter,
   vaultPath: string,
   names: string[],
-): Promise<{ byName: Map<string, Tag>; byId: Map<string, Tag> }> {
+  current?: TagMaps,
+): Promise<TagMaps> {
   if (names.length === 0) {
-    return loadTagMaps(fs, vaultPath);
+    return current ?? (await loadTagMaps(fs, vaultPath));
   }
 
-  const file = await readTagsFile(fs, vaultPath);
-  let maps = buildTagMaps(file.tags);
+  const file = current
+    ? { tags: [...current.byId.values()] }
+    : await readTagsFile(fs, vaultPath);
+  let maps = current ?? buildTagMaps(file.tags);
   let mutated = false;
 
   for (const rawName of names) {
@@ -138,8 +150,9 @@ export async function itemFileFromDocumentMarkdown(
   itemId: string,
   raw: string,
   diskMtimeMs: number,
+  tagMaps?: TagMapsHolder,
 ): Promise<ItemFile> {
-  const maps = await loadTagMaps(fs, vaultPath);
+  let maps = tagMaps?.maps ?? (await loadTagMaps(fs, vaultPath));
   const fallbackIso = mtimeToIso(diskMtimeMs);
   const first = parseItemDocument(raw, {
     itemId,
@@ -151,11 +164,14 @@ export async function itemFileFromDocumentMarkdown(
   if (first.missingTagNames.length === 0) {
     return first.item;
   }
-  const refreshed = await ensureTagsByName(fs, vaultPath, first.missingTagNames);
+  maps = await ensureTagsByName(fs, vaultPath, first.missingTagNames, maps);
+  if (tagMaps) {
+    tagMaps.maps = maps;
+  }
   return parseItemDocumentResolved(raw, {
     itemId,
     vaultId,
-    tagsByName: refreshed.byName,
+    tagsByName: maps.byName,
     fallbackCreatedAt: fallbackIso,
     fallbackUpdatedAt: fallbackIso,
   }).item;

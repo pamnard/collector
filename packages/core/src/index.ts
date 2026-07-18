@@ -46,6 +46,7 @@ export { listFolderRelativePaths, listItemRelativePaths } from "./vault/scan.js"
 export {
   ensureTagsByName,
   itemFileFromDocumentMarkdown,
+  loadTagMaps,
   readItemContent,
   readItemDocument,
   readItemFile,
@@ -57,6 +58,8 @@ export {
   writeItemFile,
   writeItemSourceRef,
   writeVaultMeta,
+  type TagMaps,
+  type TagMapsHolder,
 } from "./vault/item-io.js";
 
 export {
