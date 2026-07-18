@@ -326,6 +326,34 @@ pub fn fs_touch(path: String) -> Result<(), String> {
     touch_path(&path)
 }
 
+/// Create a new text file exclusively (`O_EXCL` / `create_new`). Fails with an
+/// `EEXIST`-tagged message if the path already exists — used for vault bootstrap lock.
+#[tauri::command]
+pub fn fs_write_text_exclusive(path: String, content: String) -> Result<(), String> {
+    write_text_exclusive(&path, &content)
+}
+
+fn write_text_exclusive(path: &str, content: &str) -> Result<(), String> {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::AlreadyExists {
+                format!("EEXIST: file already exists: {path}")
+            } else {
+                format!("failed to create exclusive file {path}: {error}")
+            }
+        })?;
+    file
+        .write_all(content.as_bytes())
+        .map_err(|error| format!("failed to write exclusive file {path}: {error}"))?;
+    Ok(())
+}
+
 fn touch_path(path: &str) -> Result<(), String> {
     let target = Path::new(path);
     if !target.exists() {
@@ -338,11 +366,23 @@ fn touch_path(path: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{item_media_dir_name, touch_path, walk_items};
+    use super::{item_media_dir_name, touch_path, walk_items, write_text_exclusive};
     use std::fs;
     use std::path::Path;
     use std::thread;
     use std::time::Duration;
+
+    #[test]
+    fn write_text_exclusive_creates_once() {
+        let dir = tempfile_dir("wx");
+        let path = dir.join("lock");
+        let path_str = path.to_string_lossy().into_owned();
+        write_text_exclusive(&path_str, "one").unwrap();
+        let err = write_text_exclusive(&path_str, "two").unwrap_err();
+        assert!(err.contains("EEXIST"));
+        assert_eq!(fs::read_to_string(&path).unwrap(), "one");
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn touch_path_updates_directory_mtime() {

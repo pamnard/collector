@@ -19,6 +19,7 @@ import {
   readItemFile,
   readItemRawMarkdown,
   readVaultMeta,
+  runEmptyVaultBootstrap,
   syncVaultIndexFromFilesystem,
   upsertItem,
   writeItemRawMarkdown,
@@ -603,31 +604,51 @@ const resolveActiveVaultShared = createSingleFlight(async () => {
   let vaultPath = selected?.path ?? "";
 
   if (!meta) {
-    const created = await createVault(ctx, dataDir, {
-      name: "Default Vault",
-      isDefault: true,
-    });
-    meta = created.meta;
-    vaultPath = created.path;
-
-    await upsertItem(ctx, vaultPath, meta.id, {
-      item: {
-        id: `${crypto.randomUUID()}.md`,
-        vault_id: meta.id,
-        title: "Welcome to Collector",
-        description: "First offline item stored on disk and indexed in SQLite.",
-        content_type: "note",
-        source_type: "manual",
-        metadata: {},
-        tag_ids: [],
-        collection_ids: [],
-        folder_path: "",
-        content_revision: 1,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+    const bootstrapped = await runEmptyVaultBootstrap(fs, root, {
+      tryResolveExisting: async () => {
+        const existingAfterLock = await listVaultEntries();
+        const selectedAfterLock = pickVaultEntry(existingAfterLock, storedVaultId);
+        if (!selectedAfterLock) {
+          return null;
+        }
+        await assertVaultTreeLayout(fs, selectedAfterLock.path);
+        return {
+          meta: selectedAfterLock.meta,
+          path: selectedAfterLock.path,
+        };
       },
-      content: "# Collector\n\nOffline vault is working.",
+      create: async () => {
+        const created = await createVault(ctx, dataDir, {
+          name: "Default Vault",
+          isDefault: true,
+        });
+
+        await upsertItem(ctx, created.path, created.meta.id, {
+          item: {
+            id: `${crypto.randomUUID()}.md`,
+            vault_id: created.meta.id,
+            title: "Welcome to Collector",
+            description:
+              "First offline item stored on disk and indexed in SQLite.",
+            content_type: "note",
+            source_type: "manual",
+            metadata: {},
+            tag_ids: [],
+            collection_ids: [],
+            folder_path: "",
+            content_revision: 1,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          content: "# Collector\n\nOffline vault is working.",
+        });
+
+        await updateAppSettings({ active_vault_id: created.meta.id });
+        return { meta: created.meta, path: created.path };
+      },
     });
+    meta = bootstrapped.meta;
+    vaultPath = bootstrapped.path;
   } else {
     await assertVaultTreeLayout(fs, vaultPath);
   }

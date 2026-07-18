@@ -158,6 +158,14 @@ export {
 } from "./vault/cover-operations.js";
 export { assertVaultTreeLayout } from "./vault/assert-vault-layout.js";
 
+export {
+  assertNoIncompleteVaultDirs,
+  listIncompleteVaultDirIds,
+  persistActiveVaultIdSetting,
+  runEmptyVaultBootstrap,
+  withVaultBootstrapLock,
+} from "./vault/bootstrap-vault.js";
+
 export { SqlVaultIndexAdapter, SqlVaultIndexStore } from "./index/sql-index.js";
 export type { SqlSelector } from "./index/sql-index.js";
 

@@ -45,6 +45,10 @@ class CountingFileSystemAdapter implements FileSystemAdapter {
     return this.inner.writeText(path, content);
   }
 
+  writeTextExclusive(path: string, content: string): Promise<void> {
+    return this.inner.writeTextExclusive(path, content);
+  }
+
   readBinary(path: string): Promise<Uint8Array> {
     return this.inner.readBinary(path);
   }
