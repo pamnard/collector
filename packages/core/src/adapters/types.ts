@@ -191,7 +191,11 @@ export interface IndexSyncProgress {
 export interface IndexSyncOptions {
   onProgress?: (progress: IndexSyncProgress) => void;
   onBatch?: (progress: IndexSyncProgress) => void;
-  /** Fired after Phase A (metadata) completes and before Phase B (content/FTS). */
+  /**
+   * Fired after Phase A (metadata) completes and before Phase B (content/FTS).
+   * Also fired on reconcile fast-path / missing-vault no-op so callers can clear
+   * "metadata not ready" UI without waiting for the whole sync promise.
+   */
   onMetadataComplete?: (
     progress: IndexSyncProgress,
   ) => void | Promise<void>;

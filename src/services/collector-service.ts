@@ -93,7 +93,7 @@ export interface VaultIndexSyncStatus {
   vaultId: string | null;
   status: "idle" | "rebuilding" | "running" | "done";
   progress: IndexSyncProgress | null;
-  /** True after Phase A (metadata) completes, or when sync finishes with nothing to reindex. */
+  /** True while metadata is queryable: optimistic at sync start, false only while Phase A work is confirmed in flight, then true again after onMetadataComplete / done. */
   metadataReady: boolean;
   /** True after Phase B (content/FTS) completes / sync done. */
   ftsReady: boolean;
@@ -435,7 +435,10 @@ function startVaultIndexSync(vaultId: string, vaultPath: string): Promise<void> 
     return inflight;
   }
 
-  let metadataReady = false;
+  // Optimistic: do not claim metadata is unavailable until reconcile confirms work.
+  // Banner gate is `running && !metadataReady` — start ready so no-op/fast-path
+  // never flashes a false indexing state.
+  let metadataReady = true;
   let ftsReady = false;
 
   setVaultIndexSyncStatus({
@@ -476,17 +479,29 @@ function startVaultIndexSync(vaultId: string, vaultPath: string): Promise<void> 
     });
   }, SYNC_STATUS_THROTTLE_MS);
 
+  const noteProgress = (progress: IndexSyncProgress) => {
+    latestProgress = progress;
+    if (
+      metadataReady &&
+      progress.phase === "metadata" &&
+      progress.processed < progress.total
+    ) {
+      metadataReady = false;
+      publishRunningStatus.flush();
+      return;
+    }
+    publishRunningStatus.schedule();
+  };
+
   const promise = (async () => {
     try {
       const report = await syncVaultIndexFromFilesystem(getContext(), vaultPath, {
         onProgress: (progress) => {
-          latestProgress = progress;
-          publishRunningStatus.schedule();
+          noteProgress(progress);
           emitVaultSyncEvent(vaultId, "progress", progress);
         },
         onBatch: (progress) => {
-          latestProgress = progress;
-          publishRunningStatus.schedule();
+          noteProgress(progress);
           emitVaultSyncEvent(vaultId, "batch", progress);
         },
         onMetadataComplete: (progress) => {
