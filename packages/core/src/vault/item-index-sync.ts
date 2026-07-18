@@ -16,12 +16,14 @@ import {
 import {
   itemFileFromDocumentMarkdown,
   loadTagMaps,
-  readItemContent,
-  readItemSourceRef,
   type TagMapsHolder,
 } from "./item-io.js";
+import { parseDocumentMarkdown } from "./frontmatter.js";
 import { listItemRelativePaths } from "./scan.js";
-import { readVaultItemMetaBatch } from "./vault-fs-batch.js";
+import {
+  readVaultItemMetaBatch,
+  readVaultItemSourceRefBatch,
+} from "./vault-fs-batch.js";
 
 function createEmptySyncReport(): SyncReport {
   return {
@@ -82,6 +84,7 @@ export async function syncIndexItemsFromFilesystem(
     itemId: string;
     diskMtimeMs: number;
     item?: ItemFile;
+    content?: string | null;
   }> = [];
   const mtimeHealFromContentIds: string[] = [];
 
@@ -142,7 +145,12 @@ export async function syncIndexItemsFromFilesystem(
           diskMtimeMs,
           tagMaps,
         );
-        reindexQueue.push({ itemId, diskMtimeMs, item });
+        reindexQueue.push({
+          itemId,
+          diskMtimeMs,
+          item,
+          content: parseDocumentMarkdown(documentMarkdown).body,
+        });
       } catch (error) {
         report.errors.push({
           itemId,
@@ -232,7 +240,12 @@ export async function syncIndexItemsFromFilesystem(
         continue;
       }
 
-      reindexQueue.push({ itemId, diskMtimeMs, item });
+      reindexQueue.push({
+        itemId,
+        diskMtimeMs,
+        item,
+        content: parseDocumentMarkdown(documentMarkdown).body,
+      });
     }
 
     for (
@@ -288,6 +301,7 @@ export async function syncIndexItemsFromFilesystem(
         work.diskMtimeMs,
         tagMaps,
       );
+      work.content = parseDocumentMarkdown(documentMarkdown).body;
     }
   }
 
@@ -329,6 +343,11 @@ export async function syncIndexItemsFromFilesystem(
     }
   }
 
+  const sourceRefs = await readVaultItemSourceRefBatch(
+    ctx.fs,
+    vaultPath,
+    reindexQueue.filter((work) => work.item).map((work) => work.itemId),
+  );
   for (let offset = 0; offset < reindexQueue.length; offset += INDEX_SYNC_WRITE_BATCH) {
     const workBatch = reindexQueue.slice(
       offset,
@@ -340,13 +359,18 @@ export async function syncIndexItemsFromFilesystem(
         continue;
       }
       try {
-        const content = await readItemContent(ctx.fs, vaultPath, work.itemId);
-        const sourceRef = await readItemSourceRef(ctx.fs, vaultPath, work.itemId);
+        if (work.content === undefined) {
+          throw new Error(`Missing content for ${work.itemId}`);
+        }
+        const sourceRef = sourceRefs.get(work.itemId);
+        if (sourceRef === undefined) {
+          throw new Error(`Missing source reference for ${work.itemId}`);
+        }
         inputs.push({
           itemId: work.item.id,
           title: work.item.title,
           description: work.item.description,
-          content,
+          content: work.content,
           sourceRef,
         });
       } catch (error) {

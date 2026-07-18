@@ -3,7 +3,7 @@ mod vault_watcher;
 
 use vault_fs::{
     fs_touch, fs_write_text_exclusive, resolve_item_thumbnail_paths, vault_items_read_meta,
-    vault_items_stat_meta,
+    vault_items_read_source_refs, vault_items_stat_meta,
 };
 use vault_watcher::{
     start_vault_items_watcher, stop_vault_items_watcher, VaultWatcherState,
@@ -21,6 +21,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             vault_items_stat_meta,
             vault_items_read_meta,
+            vault_items_read_source_refs,
             resolve_item_thumbnail_paths,
             fs_touch,
             fs_write_text_exclusive,

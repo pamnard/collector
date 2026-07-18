@@ -3,7 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
-import type { FileSystemAdapter, VaultItemMetaRead, VaultItemStatMeta } from "../adapters/types.js";
+import type {
+  FileSystemAdapter,
+  VaultItemMetaRead,
+  VaultItemSourceRefRead,
+  VaultItemStatMeta,
+} from "../adapters/types.js";
 import { createId } from "../util/ids.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
 import { createVault, syncIndexFromFilesystem, upsertItem } from "./operations.js";
@@ -174,6 +179,8 @@ describe("vault-fs-batch", () => {
 class CountingBatchAdapter implements FileSystemAdapter {
   statCalls = 0;
   readCalls = 0;
+  sourceRefReadCalls = 0;
+  markdownReadTextCalls = 0;
 
   constructor(private readonly inner: NodeFileSystemAdapter) {}
 
@@ -186,6 +193,9 @@ class CountingBatchAdapter implements FileSystemAdapter {
   }
 
   readText(path: string): Promise<string> {
+    if (path.endsWith(".md")) {
+      this.markdownReadTextCalls += 1;
+    }
     return this.inner.readText(path);
   }
 
@@ -241,6 +251,14 @@ class CountingBatchAdapter implements FileSystemAdapter {
     this.readCalls += 1;
     return this.inner.readVaultItemsMeta!(vaultPath, itemIds);
   }
+
+  async readVaultItemSourceRefs(
+    vaultPath: string,
+    itemIds: string[],
+  ): Promise<VaultItemSourceRefRead[]> {
+    this.sourceRefReadCalls += 1;
+    return this.inner.readVaultItemSourceRefs!(vaultPath, itemIds);
+  }
 }
 
 describe("vault-fs-batch perf guard", () => {
@@ -289,5 +307,41 @@ describe("vault-fs-batch perf guard", () => {
       Math.ceil(itemCount / VAULT_ITEM_READ_META_BATCH),
     );
     expect(fs.readCalls).toBeLessThan(itemCount / 4);
+  });
+
+  it("reuses batched markdown bodies and batch-reads source refs", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-batch-content-"));
+    const inner = new NodeFileSystemAdapter();
+    const fs = new CountingBatchAdapter(inner);
+    const ctx = { fs, index: new SqlVaultIndexStore(new MemorySqlAdapter()) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemCount = VAULT_ITEM_READ_META_BATCH + 3;
+    const timestamp = new Date().toISOString();
+
+    for (let i = 0; i < itemCount; i += 1) {
+      await writeItemFile(fs, path, {
+        id: `${createId()}.md`,
+        vault_id: meta.id,
+        title: `Content ${i}`,
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        created_at: timestamp,
+        updated_at: timestamp,
+      });
+    }
+
+    const report = await syncIndexFromFilesystem(ctx, path, meta.id);
+
+    expect(report.contentIndexed).toBe(itemCount);
+    expect(fs.markdownReadTextCalls).toBe(0);
+    expect(fs.sourceRefReadCalls).toBe(
+      Math.ceil(itemCount / VAULT_ITEM_READ_META_BATCH),
+    );
   });
 });

@@ -14,9 +14,10 @@ import { join } from "node:path";
 import type {
   FileSystemAdapter,
   VaultItemMetaRead,
+  VaultItemSourceRefRead,
   VaultItemStatMeta,
 } from "./types.js";
-import { itemMarkdownPath } from "../vault/paths.js";
+import { itemMarkdownPath, itemSourcePath } from "../vault/paths.js";
 import { listItemRelativePaths } from "../vault/scan.js";
 
 export class NodeFileSystemAdapter implements FileSystemAdapter {
@@ -111,6 +112,21 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
         documentMarkdown,
         mtimeMs: fileStat.mtimeMs,
       });
+    }
+    return results;
+  }
+
+  async readVaultItemSourceRefs(
+    vaultPath: string,
+    itemIds: string[],
+  ): Promise<VaultItemSourceRefRead[]> {
+    const results: VaultItemSourceRefRead[] = [];
+    for (const itemId of itemIds) {
+      const sourcePath = itemSourcePath(vaultPath, itemId);
+      const sourceJson = (await this.exists(sourcePath))
+        ? await this.readText(sourcePath)
+        : null;
+      results.push({ id: itemId, sourceJson });
     }
     return results;
   }
