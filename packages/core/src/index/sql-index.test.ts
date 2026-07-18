@@ -272,6 +272,46 @@ describe("listItemFilesByIds", () => {
     }
     expect(readTextCalls.filter((p) => p.endsWith("item.json"))).toEqual([]);
   });
+
+  it("skips a row with corrupt metadata_json without failing the batch", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-list-corrupt-meta-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    const ctx = { fs, index };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const firstId = `${createId()}.md`;
+    const secondId = `${createId()}.md`;
+    const timestamp = new Date().toISOString();
+
+    for (const itemId of [firstId, secondId]) {
+      await upsertItem(ctx, path, meta.id, {
+        item: {
+          id: itemId,
+          vault_id: meta.id,
+          title: itemId === firstId ? "First" : "Second",
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: { ok: true },
+          tag_ids: [],
+          collection_ids: [],
+          folder_path: "",
+          content_revision: 1,
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+      });
+    }
+
+    await db.execute("UPDATE items SET metadata_json = ? WHERE id = ?", [
+      "not-json",
+      firstId,
+    ]);
+
+    const loaded = await index.listItemFilesByIds(meta.id, [firstId, secondId]);
+    expect(loaded.map((item) => item.id)).toEqual([secondId]);
+  });
 });
 
 describe("upsertItemMetadata / upsertItemContent", () => {

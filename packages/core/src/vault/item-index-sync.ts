@@ -10,6 +10,10 @@ import { classifyItemSyncAction } from "./sync-classifier.js";
 import { readVaultReconcileFingerprint } from "./reconcile-fingerprint.js";
 import { itemMarkdownPath } from "./paths.js";
 import {
+  diskMtimeMsFromDocumentMarkdown,
+  recoverItemDiskMtimeMs,
+} from "./recover-item-mtime.js";
+import {
   itemFileFromDocumentMarkdown,
   readItemContent,
   readItemSourceRef,
@@ -71,10 +75,26 @@ export async function syncIndexItemsFromFilesystem(
     diskMtimeMs: number;
     item?: ItemFile;
   }> = [];
+  const mtimeHealFromContentIds: string[] = [];
 
   for (const itemId of existingIds) {
-    const fileStat = await ctx.fs.stat(itemMarkdownPath(vaultPath, itemId));
-    const diskMtimeMs = fileStat.mtimeMs ?? 0;
+    const docPath = itemMarkdownPath(vaultPath, itemId);
+    let diskMtimeMs: number | null;
+    try {
+      diskMtimeMs = await recoverItemDiskMtimeMs(ctx.fs, docPath);
+    } catch (error) {
+      report.errors.push({
+        itemId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      continue;
+    }
+
+    if (diskMtimeMs === null) {
+      mtimeHealFromContentIds.push(itemId);
+      continue;
+    }
+
     const meta = indexMeta.get(itemId);
 
     if (!meta) {
@@ -83,6 +103,44 @@ export async function syncIndexItemsFromFilesystem(
     }
 
     metadataReadQueue.push({ itemId, diskMtimeMs });
+  }
+
+  if (mtimeHealFromContentIds.length > 0) {
+    const healReads = await readVaultItemMetaBatch(
+      ctx.fs,
+      vaultPath,
+      mtimeHealFromContentIds,
+    );
+    const healMdById = new Map(
+      healReads.map((read) => [read.id, read.documentMarkdown]),
+    );
+    for (const itemId of mtimeHealFromContentIds) {
+      const documentMarkdown = healMdById.get(itemId);
+      if (!documentMarkdown) {
+        report.errors.push({
+          itemId,
+          message: `Missing document for ${itemId}`,
+        });
+        continue;
+      }
+      try {
+        const diskMtimeMs = diskMtimeMsFromDocumentMarkdown(documentMarkdown);
+        const item = await itemFileFromDocumentMarkdown(
+          ctx.fs,
+          vaultPath,
+          vaultId,
+          itemId,
+          documentMarkdown,
+          diskMtimeMs,
+        );
+        reindexQueue.push({ itemId, diskMtimeMs, item });
+      } catch (error) {
+        report.errors.push({
+          itemId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   }
 
   if (metadataReadQueue.length > 0) {
@@ -96,7 +154,10 @@ export async function syncIndexItemsFromFilesystem(
     );
 
     for (const itemId of metadataIds) {
-      const diskMtimeMs = metadataById.get(itemId) ?? 0;
+      const diskMtimeMs = metadataById.get(itemId);
+      if (diskMtimeMs === undefined) {
+        throw new Error(`Missing disk mtime for ${itemId}`);
+      }
       const documentMarkdown = readById.get(itemId);
       if (!documentMarkdown) {
         report.errors.push({

@@ -30,7 +30,7 @@ import {
 import { reportServiceError } from "../services/runtime-error";
 import { useVaultIndexSyncStatus } from "./useVaultIndexSyncStatus";
 
-export { DASHBOARD_PREFETCH_SIZE, DASHBOARD_BATCH_SIZE } from "../services/collector-service";
+export { DASHBOARD_PREFETCH_SIZE } from "../services/collector-service";
 
 interface UseDashboardItemsResult {
   items: ItemFile[];
@@ -57,10 +57,8 @@ function readWarmStartSeed(filter: NavFilter, searchQuery: string) {
 }
 
 function createInitialItemsByIdMap(
-  filter: NavFilter,
-  searchQuery: string,
+  warm: ReturnType<typeof readWarmStartSeed>,
 ): Map<string, ItemFile> {
-  const warm = readWarmStartSeed(filter, searchQuery);
   if (!warm) {
     return new Map();
   }
@@ -68,10 +66,8 @@ function createInitialItemsByIdMap(
 }
 
 function initialCommittedItems(
-  filter: NavFilter,
-  searchQuery: string,
+  warm: ReturnType<typeof readWarmStartSeed>,
 ): ItemFile[] {
-  const warm = readWarmStartSeed(filter, searchQuery);
   if (!warm) {
     return [];
   }
@@ -89,38 +85,26 @@ export function useDashboardItems(
 ): UseDashboardItemsResult {
   const { settings } = useAppSettings();
 
-  const [itemIds, setItemIds] = useState<string[]>(
-    () => readWarmStartSeed(filter, searchQuery)?.item_ids ?? [],
-  );
-  const [itemsById, setItemsById] = useState<Map<string, ItemFile>>(() => {
-    const warm = readWarmStartSeed(filter, searchQuery);
-    if (!warm) {
-      return new Map();
-    }
-    return new Map(warm.items.map((item) => [item.id, item]));
-  });
+  const [warm] = useState(() => readWarmStartSeed(filter, searchQuery));
+  const [itemIds, setItemIds] = useState(() => warm?.item_ids ?? []);
+  const [itemsById, setItemsById] = useState(() => createInitialItemsByIdMap(warm));
   const [streamEndOffset, setStreamEndOffset] = useState(
-    () => readWarmStartSeed(filter, searchQuery)?.stream_end_offset ?? 0,
+    () => warm?.stream_end_offset ?? 0,
   );
-  const [totalCount, setTotalCount] = useState(
-    () => readWarmStartSeed(filter, searchQuery)?.total_count ?? 0,
-  );
-  const [isLoading, setIsLoading] = useState(
-    () => readWarmStartSeed(filter, searchQuery) === null,
-  );
+  const [totalCount, setTotalCount] = useState(() => warm?.total_count ?? 0);
+  const [isLoading, setIsLoading] = useState(() => warm === null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [committedItems, setCommittedItems] = useState<ItemFile[]>(() =>
-    initialCommittedItems(filter, searchQuery),
+  const [committedItems, setCommittedItems] = useState(() =>
+    initialCommittedItems(warm),
   );
   const [committedThumbnailPaths, setCommittedThumbnailPaths] = useState<
     Map<string, string | null>
   >(() => new Map());
   const [committedTotalCount, setCommittedTotalCount] = useState(
-    () => readWarmStartSeed(filter, searchQuery)?.total_count ?? 0,
+    () => warm?.total_count ?? 0,
   );
   const [committedHasMore, setCommittedHasMore] = useState(() => {
-    const warm = readWarmStartSeed(filter, searchQuery);
     if (!warm) {
       return false;
     }
@@ -131,22 +115,14 @@ export function useDashboardItems(
 
   const indexSync = useVaultIndexSyncStatus();
   const requestVersionRef = useRef(0);
-  const streamEndOffsetRef = useRef(
-    readWarmStartSeed(filter, searchQuery)?.stream_end_offset ?? 0,
-  );
-  const itemIdsRef = useRef<string[]>(
-    readWarmStartSeed(filter, searchQuery)?.item_ids ?? [],
-  );
+  const streamEndOffsetRef = useRef(warm?.stream_end_offset ?? 0);
+  const itemIdsRef = useRef<string[]>(warm?.item_ids ?? []);
   const itemsByIdRef = useRef<Map<string, ItemFile>>(
-    createInitialItemsByIdMap(filter, searchQuery),
+    createInitialItemsByIdMap(warm),
   );
-  const totalCountRef = useRef(
-    readWarmStartSeed(filter, searchQuery)?.total_count ?? 0,
-  );
+  const totalCountRef = useRef(warm?.total_count ?? 0);
   const isRefreshingRef = useRef(false);
-  const hasCommittedOnceRef = useRef(
-    readWarmStartSeed(filter, searchQuery) !== null,
-  );
+  const hasCommittedOnceRef = useRef(warm !== null);
   const isFirstQueryRef = useRef(true);
   const streamAbortRef = useRef<AbortController | null>(null);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

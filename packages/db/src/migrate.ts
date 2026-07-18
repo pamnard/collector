@@ -69,11 +69,6 @@ export async function runMigrations(db: SqlMigrator): Promise<number[]> {
   return newlyApplied;
 }
 
-/** @deprecated use runMigrations */
-export async function applyInitialMigration(db: SqlMigrator): Promise<void> {
-  await runMigrations(db);
-}
-
 export function getInitialMigration(): string {
   return MIGRATION_001;
 }
