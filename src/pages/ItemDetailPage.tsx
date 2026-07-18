@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Eye, Form, Trash2 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { ItemFile } from "@collector/shared";
 import { MarkdownContent } from "../components/content/MarkdownContent";
@@ -14,6 +14,9 @@ import {
   updateItem,
 } from "../services/collector-service";
 import type { ItemFormValues } from "../types/item";
+
+/** Detail chrome mode. `source` (raw .md) is a follow-up task. */
+type ItemDetailMode = "view" | "form";
 
 function toFormValues(
   item: ItemFile,
@@ -30,6 +33,31 @@ function toFormValues(
   };
 }
 
+function sameTagIds(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  const sortedA = [...a].sort();
+  const sortedB = [...b].sort();
+  return sortedA.every((id, index) => id === sortedB[index]);
+}
+
+function isFormDirty(
+  form: ItemFormValues,
+  item: ItemFile,
+  content: string | null,
+): boolean {
+  return (
+    form.title.trim() !== item.title ||
+    form.description.trim() !== item.description ||
+    (form.url.trim() || null) !== (item.url ?? null) ||
+    form.content_type !== item.content_type ||
+    form.content.trim() !== (content ?? "").trim() ||
+    form.folder_path !== item.folder_path ||
+    !sameTagIds(form.tag_ids, item.tag_ids)
+  );
+}
+
 export function ItemDetailPage() {
   const params = useParams();
   const id = params["*"];
@@ -38,10 +66,11 @@ export function ItemDetailPage() {
   const [item, setItem] = useState<ItemFile | null>(null);
   const [content, setContent] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<ItemFormValues | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
+  const [mode, setMode] = useState<ItemDetailMode>("view");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isFormMode = mode === "form";
 
   const reloadItem = async (itemId: string) => {
     const { item: loadedItem, content: loadedContent } = await getItemById(itemId);
@@ -62,9 +91,13 @@ export function ItemDetailPage() {
     });
   }, [id]);
 
-  const handleSave = async () => {
-    if (!id || !formValues || !formValues.title.trim()) {
-      return;
+  const handleSave = async (): Promise<boolean> => {
+    if (!id || !formValues) {
+      return false;
+    }
+    if (!formValues.title.trim()) {
+      setError("Название обязательно");
+      return false;
     }
 
     setIsSaving(true);
@@ -84,13 +117,15 @@ export function ItemDetailPage() {
       setItem(updated);
       setContent(updatedContent);
       setFormValues(toFormValues(updated, updatedContent));
-      setIsEditing(false);
+      setMode("view");
       refreshVault();
       if (updated.id !== id) {
         navigate(`/item/${updated.id}`, { replace: true });
       }
+      return true;
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
+      return false;
     } finally {
       setIsSaving(false);
     }
@@ -115,11 +150,24 @@ export function ItemDetailPage() {
     }
   };
 
-  const handleCancelEdit = () => {
-    if (item) {
-      setFormValues(toFormValues(item, content));
+  const switchToView = () => {
+    if (mode === "view" || isSaving) {
+      return;
     }
-    setIsEditing(false);
+    if (!formValues || !item) {
+      setMode("view");
+      return;
+    }
+    if (!isFormDirty(formValues, item, content)) {
+      setMode("view");
+      setError(null);
+      return;
+    }
+    void handleSave();
+  };
+
+  const switchToForm = () => {
+    setMode("form");
     setError(null);
   };
 
@@ -136,51 +184,57 @@ export function ItemDetailPage() {
       <button
         type="button"
         onClick={() => navigate(-1)}
-        className="inline-flex items-center gap-2 text-secondary hover:text-primary transition-colors"
+        className="inline-flex items-center gap-2 rounded-lg bg-input/65 px-3 py-2 text-sm text-secondary backdrop-blur-md transition-colors hover:text-primary"
       >
-        <ArrowLeft size={18} />
+        <ArrowLeft size={20} />
         Назад
       </button>
 
-      {item && isEditing && formValues && (
-        <div className="flex items-center gap-2">
+      {item && (
+        <div
+          role="group"
+          aria-label="Режим страницы"
+          className="flex items-center rounded-lg border border-border bg-input/65 p-1 backdrop-blur-sm"
+        >
           <button
             type="button"
-            onClick={handleCancelEdit}
+            aria-label="Просмотр"
+            aria-pressed={mode === "view"}
+            title="Просмотр"
+            className={`rounded-md p-1.5 transition-all ${
+              mode === "view"
+                ? "bg-header/70 text-primary shadow-sm"
+                : "text-secondary hover:text-primary"
+            }`}
+            onClick={switchToView}
             disabled={isSaving}
-            className="px-3 py-1.5 rounded-lg border border-border hover:bg-input/40 transition-colors text-sm"
           >
-            Отмена
+            <Eye size={18} />
           </button>
           <button
             type="button"
-            onClick={() => void handleSave()}
-            disabled={isSaving || !formValues.title.trim()}
-            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors text-sm disabled:opacity-50"
+            aria-label="Редактирование формы"
+            aria-pressed={mode === "form"}
+            title="Редактирование формы"
+            className={`rounded-md p-1.5 transition-all ${
+              mode === "form"
+                ? "bg-header/70 text-primary shadow-sm"
+                : "text-secondary hover:text-primary"
+            }`}
+            onClick={switchToForm}
+            disabled={isSaving}
           >
-            {isSaving ? "Сохранение…" : "Сохранить"}
-          </button>
-        </div>
-      )}
-
-      {item && !isEditing && (
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setIsEditing(true)}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border hover:bg-input/40 transition-colors text-sm"
-          >
-            <Pencil size={16} />
-            Редактировать
+            <Form size={18} />
           </button>
           <button
             type="button"
+            aria-label="Удалить"
+            title="Удалить"
+            className="rounded-md p-1.5 text-red-400 transition-all hover:bg-red-500/10 hover:text-red-400"
             onClick={() => void handleDelete()}
-            disabled={isDeleting}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors text-sm disabled:opacity-50"
+            disabled={isDeleting || isSaving}
           >
-            <Trash2 size={16} />
-            {isDeleting ? "Удаление…" : "Удалить"}
+            <Trash2 size={18} />
           </button>
         </div>
       )}
@@ -195,17 +249,11 @@ export function ItemDetailPage() {
         </pre>
       )}
 
-      {(!item || isEditing) && (
+      {!item && (
         <div className="mx-auto mb-4 w-full max-w-[900px]">{toolbar}</div>
       )}
 
-      {item && isEditing && formValues && (
-        <div className="mx-auto w-full max-w-[900px]">
-          <ItemDetailInlineEditor values={formValues} onChange={setFormValues} />
-        </div>
-      )}
-
-      {item && !isEditing && (
+      {item && (
         <article className="grid grid-cols-1 gap-6 @[1100px]:grid-cols-12 @[1100px]:items-start @[1100px]:gap-8">
           <div className="min-w-0 @[1100px]:col-span-9">
             <div className="mx-auto w-full max-w-[900px]">{toolbar}</div>
@@ -213,24 +261,37 @@ export function ItemDetailPage() {
 
           <ItemDetailHero item={item} />
 
-          <header className="min-w-0 @[1100px]:col-span-9">
-            <div className="mx-auto w-full max-w-[900px]">
-              <h1 className="text-2xl font-semibold">{item.title}</h1>
-            </div>
-          </header>
-
           <aside className="min-w-0 @[1100px]:col-span-3 @[1100px]:col-start-10 @[1100px]:row-span-6 @[1100px]:row-start-1">
             <div className="mx-auto w-full max-w-[900px] @[1100px]:max-w-none @[1100px]:sticky @[1100px]:top-4">
               <ItemDetailMetadata item={item} />
             </div>
           </aside>
 
-          {content && (
-            <section className="min-w-0 @[1100px]:col-span-9">
-              <div className="mx-auto w-full max-w-[900px] rounded-xl border border-border bg-card p-4 md:p-6">
-                <MarkdownContent content={content} />
+          {isFormMode && formValues ? (
+            <div className="min-w-0 @[1100px]:col-span-9">
+              <div className="mx-auto w-full max-w-[900px]">
+                <ItemDetailInlineEditor
+                  values={formValues}
+                  onChange={setFormValues}
+                />
               </div>
-            </section>
+            </div>
+          ) : (
+            <>
+              <header className="min-w-0 @[1100px]:col-span-9">
+                <div className="mx-auto w-full max-w-[900px]">
+                  <h1 className="text-2xl font-semibold">{item.title}</h1>
+                </div>
+              </header>
+
+              {content && (
+                <section className="min-w-0 @[1100px]:col-span-9">
+                  <div className="mx-auto w-full max-w-[900px]">
+                    <MarkdownContent content={content} />
+                  </div>
+                </section>
+              )}
+            </>
           )}
 
           <div className="min-w-0 @[1100px]:col-span-9">

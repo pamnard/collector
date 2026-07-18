@@ -96,7 +96,7 @@ export function MediaGallery({ itemId, onUpdated }: MediaGalleryProps) {
           type="button"
           onClick={() => inputRef.current?.click()}
           disabled={isUploading}
-          className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-input/40 disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-input/65 disabled:opacity-50"
         >
           <ImagePlus size={16} />
           {isUploading ? "Загрузка…" : "Добавить"}
@@ -119,7 +119,7 @@ export function MediaGallery({ itemId, onUpdated }: MediaGalleryProps) {
           {files.map((file) => (
             <div
               key={file.id}
-              className="rounded-xl border border-border bg-card overflow-hidden"
+              className="rounded-lg border border-border bg-card overflow-hidden"
             >
               {file.media_type === "image" ? (
                 <img

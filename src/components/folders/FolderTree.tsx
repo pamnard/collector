@@ -65,7 +65,7 @@ function FolderTreeNodeView({
             <Folder size={16} className="shrink-0" />
             <span className="truncate">{node.name}</span>
           </span>
-          <span className="text-xs text-muted">{node.item_count}</span>
+          <span className="text-sm text-muted">{node.item_count}</span>
         </button>
       </div>
       {open &&
@@ -129,19 +129,19 @@ export function FolderTree({
           value={newFolder}
           onChange={(event) => setNewFolder(event.target.value)}
           placeholder="Work/Articles"
-          className="flex-1 rounded-lg border border-border bg-input/20 px-2 py-1.5 text-xs"
+          className="flex-1 rounded-lg border border-border bg-input/20 px-2 py-1.5 text-sm"
         />
         <button
           type="button"
           onClick={handleCreate}
           disabled={!newFolder.trim()}
-          className="rounded-lg border border-border p-1.5 text-secondary hover:bg-input/40 disabled:opacity-50"
+          className="rounded-lg border border-border p-1.5 text-secondary hover:bg-input/65 disabled:opacity-50"
           aria-label="Создать папку"
         >
           <FolderPlus size={16} />
         </button>
       </div>
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
       {tree.map((node) => (
         <FolderTreeNodeView
           key={node.path}

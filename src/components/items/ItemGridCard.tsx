@@ -136,8 +136,8 @@ export function ItemGridCard({
               key={tag.id}
               className={
                 overlayLayout
-                  ? "rounded-md border border-white/25 bg-white/15 px-2 py-1 text-xs text-white dark:border-neutral-900/20 dark:bg-neutral-900/10 dark:text-neutral-800"
-                  : "rounded-md border border-border bg-input px-2 py-1 text-xs text-secondary"
+                  ? "rounded-md border border-white/25 bg-white/15 px-2 py-1 text-sm text-white dark:border-neutral-900/20 dark:bg-neutral-900/10 dark:text-neutral-800"
+                  : "rounded-md border border-border bg-input px-2 py-1 text-sm text-secondary"
               }
               style={
                 !overlayLayout && tag.color ? { color: tag.color } : undefined
@@ -150,8 +150,8 @@ export function ItemGridCard({
             <span
               className={
                 overlayLayout
-                  ? "rounded-md border border-white/25 bg-white/15 px-2 py-1 text-xs text-white dark:border-neutral-900/20 dark:bg-neutral-900/10 dark:text-neutral-800"
-                  : "rounded-md border border-border bg-input px-2 py-1 text-xs text-secondary"
+                  ? "rounded-md border border-white/25 bg-white/15 px-2 py-1 text-sm text-white dark:border-neutral-900/20 dark:bg-neutral-900/10 dark:text-neutral-800"
+                  : "rounded-md border border-border bg-input px-2 py-1 text-sm text-secondary"
               }
             >
               +{tags.length - 3}
@@ -163,8 +163,8 @@ export function ItemGridCard({
       <div
         className={
           overlayLayout
-            ? "mt-4 flex items-center text-xs leading-none text-white/70 dark:text-neutral-600"
-            : "mt-4 flex items-center text-xs leading-none text-muted"
+            ? "mt-4 flex items-center text-sm leading-none text-white/70 dark:text-neutral-600"
+            : "mt-4 flex items-center text-sm leading-none text-muted"
         }
       >
         <div className="flex items-center gap-2">
@@ -194,8 +194,8 @@ export function ItemGridCard({
       }}
       className={
         overlayLayout
-          ? "group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-xl border border-border-card bg-card transition-all duration-300 hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/10 [content-visibility:auto] [contain-intrinsic-size:280px]"
-          : "group flex h-full cursor-pointer flex-col rounded-xl border border-border-card bg-card p-5 transition-all duration-300 hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/10 [content-visibility:auto] [contain-intrinsic-size:280px]"
+          ? "group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-lg border border-border-card bg-card transition-all duration-300 hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/10 [content-visibility:auto] [contain-intrinsic-size:280px]"
+          : "group flex h-full cursor-pointer flex-col rounded-lg border border-border-card bg-card p-5 transition-all duration-300 hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/10 [content-visibility:auto] [contain-intrinsic-size:280px]"
       }
     >
       {coverSrc && (
@@ -203,7 +203,7 @@ export function ItemGridCard({
           className={
             overlayLayout
               ? "relative overflow-hidden bg-input"
-              : "relative -mx-5 -mt-5 mb-4 overflow-hidden rounded-t-xl bg-input"
+              : "relative -mx-5 -mt-5 mb-4 overflow-hidden rounded-t-lg bg-input"
           }
         >
           {!isMediaLoaded && (

@@ -80,7 +80,7 @@ export function SettingsPage() {
         </pre>
       )}
 
-      <section className="rounded-xl border border-border bg-card divide-y divide-border">
+      <section className="rounded-lg border border-border bg-card divide-y divide-border">
         <div className="p-4 flex items-center justify-between gap-4">
           <div>
             <p className="font-medium">Тема</p>
@@ -91,7 +91,7 @@ export function SettingsPage() {
           <button
             type="button"
             onClick={toggleTheme}
-            className="px-3 py-1.5 rounded-lg border border-border hover:bg-input/40 transition-colors text-sm"
+            className="px-3 py-1.5 rounded-lg border border-border hover:bg-input/65 transition-colors text-sm"
           >
             Переключить
           </button>
@@ -167,7 +167,7 @@ export function SettingsPage() {
               type="button"
               onClick={checkForUpdates}
               disabled={progress.stage === "checking" || progress.stage === "downloading" || progress.stage === "installing"}
-              className="px-3 py-1.5 rounded-lg border border-border hover:bg-input/40 transition-colors text-sm disabled:opacity-50"
+              className="px-3 py-1.5 rounded-lg border border-border hover:bg-input/65 transition-colors text-sm disabled:opacity-50"
             >
               {progress.stage === "checking" ? "Проверка…" : "Проверить"}
             </button>
@@ -176,7 +176,7 @@ export function SettingsPage() {
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="font-medium text-sm">Проверять при запуске</p>
-              <p className="text-secondary text-xs mt-0.5">
+              <p className="text-secondary text-sm mt-0.5">
                 {checkUpdatesOnStart ? "Включено" : "Выключено"}
               </p>
             </div>
@@ -188,7 +188,7 @@ export function SettingsPage() {
               className={`inline-flex items-center justify-center rounded-lg border p-2 transition-colors ${
                 checkUpdatesOnStart
                   ? "border-indigo-500/40 bg-indigo-500/10 text-indigo-400"
-                  : "border-border text-secondary hover:bg-input/40 hover:text-primary"
+                  : "border-border text-secondary hover:bg-input/65 hover:text-primary"
               }`}
             >
               <RefreshCw size={18} />

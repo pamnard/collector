@@ -39,7 +39,7 @@ export function ItemDetailHero({ item }: ItemDetailHeroProps) {
         <img
           src={src}
           alt=""
-          className="h-auto w-full rounded-xl"
+          className="h-auto w-full rounded-lg"
         />
       </div>
     </div>

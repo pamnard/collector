@@ -50,7 +50,7 @@ export function Header({
           <button
             type="button"
             onClick={onToggleTheme}
-            className="rounded-lg p-2 text-secondary transition-colors hover:bg-input/40 hover:text-primary"
+            className="rounded-lg p-2 text-secondary transition-colors hover:bg-input/65 hover:text-primary"
             title={
               theme === "dark"
                 ? "Включить светлую тему"
@@ -60,7 +60,7 @@ export function Header({
             {theme === "dark" ? <Sun size={20} /> : <Moon size={20} />}
           </button>
 
-          <div className="flex items-center rounded-lg border border-border bg-input/40 p-1 backdrop-blur-sm">
+          <div className="flex items-center rounded-lg border border-border bg-input/65 p-1 backdrop-blur-sm">
             <button
               type="button"
               onClick={() => onViewModeChange("grid")}

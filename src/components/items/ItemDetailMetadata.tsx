@@ -22,10 +22,10 @@ export function ItemDetailMetadata({ item }: ItemDetailMetadataProps) {
   );
 
   return (
-    <section className="space-y-3 rounded-xl border border-border bg-card p-4">
+    <section className="space-y-3 rounded-lg border border-border bg-card p-4">
       <h2 className="text-sm font-medium">Метаданные</h2>
 
-      <dl className="grid gap-3 text-sm sm:grid-cols-2">
+      <dl className="grid gap-3 text-sm">
         <div>
           <dt className="text-secondary">Тип</dt>
           <dd className="mt-1">{item.content_type}</dd>
@@ -39,13 +39,13 @@ export function ItemDetailMetadata({ item }: ItemDetailMetadataProps) {
           <dd className="mt-1">{formatItemDate(item.updated_at)}</dd>
         </div>
         {item.folder_path && (
-          <div className="sm:col-span-2">
+          <div>
             <dt className="text-secondary">Папка</dt>
             <dd className="mt-1">{item.folder_path}</dd>
           </div>
         )}
         {item.url && (
-          <div className="sm:col-span-2">
+          <div>
             <dt className="text-secondary">URL</dt>
             <dd className="mt-1">
               <a

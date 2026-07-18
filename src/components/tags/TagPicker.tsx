@@ -109,10 +109,10 @@ export function TagPicker({ selectedTagIds, onChange }: TagPickerProps) {
               <button
                 type="button"
                 onClick={() => toggleTag(tag.id)}
-                className={`rounded-full px-3 py-1 text-xs border transition-colors ${
+                className={`rounded-full px-3 py-1 text-sm border transition-colors ${
                   selected
                     ? "border-indigo-500/50 bg-indigo-500/15 text-indigo-300"
-                    : "border-border text-secondary hover:bg-input/40"
+                    : "border-border text-secondary hover:bg-input/65"
                 }`}
                 style={
                   tag.color
@@ -125,7 +125,7 @@ export function TagPicker({ selectedTagIds, onChange }: TagPickerProps) {
               <button
                 type="button"
                 onClick={() => handleRenameTag(tag)}
-                className="text-muted hover:text-secondary text-xs px-1"
+                className="text-muted hover:text-secondary text-sm px-1"
                 aria-label={`Переименовать ${tag.name}`}
               >
                 ✎
@@ -133,7 +133,7 @@ export function TagPicker({ selectedTagIds, onChange }: TagPickerProps) {
               <button
                 type="button"
                 onClick={() => handleDeleteTag(tag.id)}
-                className="text-muted hover:text-red-400 text-xs px-1"
+                className="text-muted hover:text-red-400 text-sm px-1"
                 aria-label={`Удалить ${tag.name}`}
               >
                 ×
@@ -155,7 +155,7 @@ export function TagPicker({ selectedTagIds, onChange }: TagPickerProps) {
           type="button"
           onClick={handleCreateTag}
           disabled={!newTagName.trim()}
-          className="px-3 py-2 rounded-lg border border-border hover:bg-input/40 text-sm disabled:opacity-50"
+          className="px-3 py-2 rounded-lg border border-border hover:bg-input/65 text-sm disabled:opacity-50"
         >
           Добавить
         </button>

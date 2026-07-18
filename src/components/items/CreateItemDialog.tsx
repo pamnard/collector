@@ -51,14 +51,14 @@ export function CreateItemDialog({ onClose, onCreated }: CreateItemDialogProps) 
 
       <form
         onSubmit={handleSubmit}
-        className="relative z-10 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-xl"
+        className="relative z-10 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-lg border border-border bg-card p-6 shadow-xl"
       >
         <div className="mb-4 flex items-center justify-between gap-4">
           <h2 className="text-lg font-semibold">Новый элемент</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1 text-secondary hover:bg-input/40 hover:text-primary transition-colors"
+            className="rounded-lg p-1 text-secondary hover:bg-input/65 hover:text-primary transition-colors"
           >
             <X size={20} />
           </button>
@@ -77,7 +77,7 @@ export function CreateItemDialog({ onClose, onCreated }: CreateItemDialogProps) 
             type="button"
             onClick={onClose}
             disabled={isSaving}
-            className="px-4 py-2 rounded-lg border border-border hover:bg-input/40 transition-colors text-sm"
+            className="px-4 py-2 rounded-lg border border-border hover:bg-input/65 transition-colors text-sm"
           >
             Отмена
           </button>

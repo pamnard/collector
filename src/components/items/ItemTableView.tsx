@@ -36,7 +36,7 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
 
   return (
     <>
-      <div className="rounded-xl border border-border overflow-x-auto">
+      <div className="rounded-lg border border-border overflow-x-auto">
         <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-input/30 text-secondary">
             <tr>
@@ -63,7 +63,7 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
                 <td className="px-4 py-3">
                   <p className="font-medium truncate max-w-xs">{item.title}</p>
                   {item.description && (
-                    <p className="text-secondary text-xs mt-1 line-clamp-1">
+                    <p className="text-secondary text-sm mt-1 line-clamp-1">
                       {item.description}
                     </p>
                   )}
