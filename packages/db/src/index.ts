@@ -1,7 +1,6 @@
 export {
   CURRENT_SCHEMA_VERSION,
   MIGRATIONS,
-  applyInitialMigration,
   getInitialMigration,
   runMigrations,
   splitSqlMigration,

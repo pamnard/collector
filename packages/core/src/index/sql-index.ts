@@ -47,15 +47,11 @@ function serializeMetadata(metadata: Record<string, unknown>): string {
 }
 
 function parseMetadata(raw: string): Record<string, unknown> {
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-  } catch {
-    // fall through
+  const parsed: unknown = JSON.parse(raw);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`Invalid item metadata_json: expected object, got ${typeof parsed}`);
   }
-  return {};
+  return parsed as Record<string, unknown>;
 }
 
 function itemRowToFile(
@@ -601,13 +597,18 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
       if (!row) {
         continue;
       }
-      result.push(
-        itemRowToFile(
-          row,
-          tagsByItem.get(id) ?? [],
-          collectionsByItem.get(id) ?? [],
-        ),
-      );
+      try {
+        result.push(
+          itemRowToFile(
+            row,
+            tagsByItem.get(id) ?? [],
+            collectionsByItem.get(id) ?? [],
+          ),
+        );
+      } catch {
+        // Corrupt metadata_json (or other row shape): skip this id for this
+        // response; row stays in DB until filesystem sync re-upserts it.
+      }
     }
     return result;
   }

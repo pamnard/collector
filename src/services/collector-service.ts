@@ -401,11 +401,6 @@ export async function ensureCollectorDatabaseHealthy(): Promise<void> {
   await bootGate.ensureHealthy();
 }
 
-/** @deprecated Prefer {@link openCollectorDatabase} for boot; kept for mock callers. */
-export async function warmupCollector(): Promise<void> {
-  await openCollectorDatabase();
-}
-
 async function ensureInitialized(): Promise<void> {
   if (isDevMock()) {
     await devMockCollector.warmupCollector();
@@ -682,17 +677,6 @@ async function resolveActiveVault(): Promise<{ vault: VaultMeta; path: string }>
   return resolveActiveVaultShared();
 }
 
-/** @deprecated use ensureActiveVault */
-export async function bootstrapDevVault(): Promise<{
-  vault: VaultMeta;
-  path: string;
-  items: ItemFile[];
-}> {
-  const { vault, path } = await resolveActiveVault();
-  const items = await listItemsOnDisk(getContext(), path);
-  return { vault, path, items };
-}
-
 export async function ensureActiveVault(): Promise<{
   vault: VaultMeta;
   path: string;
@@ -727,8 +711,6 @@ export async function searchItems(
 }
 
 export const DASHBOARD_PREFETCH_SIZE = 60;
-/** @deprecated Use DASHBOARD_PREFETCH_SIZE — window size, not a concurrency limit. */
-export const DASHBOARD_BATCH_SIZE = DASHBOARD_PREFETCH_SIZE;
 
 export interface DashboardIndexPage {
   itemIds: string[];

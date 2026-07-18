@@ -44,6 +44,10 @@ import {
 } from "./paths.js";
 import { listItemRelativePaths } from "./scan.js";
 import {
+  diskMtimeMsFromDocumentMarkdown,
+  recoverItemDiskMtimeMs,
+} from "./recover-item-mtime.js";
+import {
   readVaultItemMetaBatch,
   statAllVaultItemMeta,
 } from "./vault-fs-batch.js";
@@ -286,29 +290,77 @@ export async function syncIndexFromFilesystem(
   if (diskStats.length > 0) {
     await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
   }
-  const stats = diskStats
-    .filter((entry) => diskItemIds.has(entry.id))
-    .map((entry) => ({
-      itemId: entry.id,
-      diskMtimeMs: entry.mtimeMs ?? 0,
-      error: null as unknown,
-    }));
+  const stats: Array<{ itemId: string; diskMtimeMs: number }> = [];
+  const mtimeHealFromContentIds: string[] = [];
+  for (const entry of diskStats) {
+    if (!diskItemIds.has(entry.id)) {
+      continue;
+    }
+    let diskMtimeMs = entry.mtimeMs;
+    if (diskMtimeMs === null) {
+      const docPath = itemMarkdownPath(vaultPath, entry.id);
+      try {
+        diskMtimeMs = await recoverItemDiskMtimeMs(ctx.fs, docPath);
+      } catch (error) {
+        report.errors.push({
+          itemId: entry.id,
+          message: error instanceof Error ? error.message : String(error),
+        });
+        continue;
+      }
+    }
+    if (diskMtimeMs === null) {
+      mtimeHealFromContentIds.push(entry.id);
+      continue;
+    }
+    stats.push({ itemId: entry.id, diskMtimeMs });
+  }
 
   const metadataReadQueue: Array<{ itemId: string; diskMtimeMs: number }> = [];
   const reindexQueue: ReindexWork[] = [];
   let classified = 0;
 
-  for (const stat of stats) {
-    if (stat.error) {
-      report.errors.push({
-        itemId: stat.itemId,
-        message:
-          stat.error instanceof Error ? stat.error.message : String(stat.error),
-      });
+  if (mtimeHealFromContentIds.length > 0) {
+    const healReads = await readVaultItemMetaBatch(
+      ctx.fs,
+      vaultPath,
+      mtimeHealFromContentIds,
+    );
+    const healMdById = new Map(
+      healReads.map((read) => [read.id, read.documentMarkdown]),
+    );
+    for (const itemId of mtimeHealFromContentIds) {
+      const documentMarkdown = healMdById.get(itemId);
+      if (!documentMarkdown) {
+        report.errors.push({
+          itemId,
+          message: `Missing document for ${itemId}`,
+        });
+        classified += 1;
+        continue;
+      }
+      try {
+        const diskMtimeMs = diskMtimeMsFromDocumentMarkdown(documentMarkdown);
+        const item = await itemFileFromDocumentMarkdown(
+          ctx.fs,
+          vaultPath,
+          vaultId,
+          itemId,
+          documentMarkdown,
+          diskMtimeMs,
+        );
+        reindexQueue.push({ itemId, diskMtimeMs, item });
+      } catch (error) {
+        report.errors.push({
+          itemId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
       classified += 1;
-      continue;
     }
+  }
 
+  for (const stat of stats) {
     const meta = indexMeta.get(stat.itemId);
     if (!meta) {
       reindexQueue.push({ itemId: stat.itemId, diskMtimeMs: stat.diskMtimeMs });
@@ -344,7 +396,10 @@ export async function syncIndexFromFilesystem(
       metadataReads = [];
       for (const itemId of metadataIds) {
         const documentMarkdown = readById.get(itemId);
-        const diskMtimeMs = metadataById.get(itemId) ?? 0;
+        const diskMtimeMs = metadataById.get(itemId);
+        if (diskMtimeMs === undefined) {
+          throw new Error(`Missing disk mtime for ${itemId}`);
+        }
         if (!documentMarkdown) {
           metadataReads.push({
             itemId,
@@ -379,12 +434,18 @@ export async function syncIndexFromFilesystem(
         }
       }
     } catch (error) {
-      metadataReads = metadataIds.map((itemId) => ({
-        itemId,
-        diskMtimeMs: metadataById.get(itemId) ?? 0,
-        item: null,
-        error,
-      }));
+      metadataReads = metadataIds.map((itemId) => {
+        const diskMtimeMs = metadataById.get(itemId);
+        if (diskMtimeMs === undefined) {
+          throw new Error(`Missing disk mtime for ${itemId}`);
+        }
+        return {
+          itemId,
+          diskMtimeMs,
+          item: null,
+          error,
+        };
+      });
     }
 
     for (const read of metadataReads) {
@@ -445,7 +506,6 @@ export async function syncIndexFromFilesystem(
     }
   }
 
-  // Skipped/errored/queued counts already in classified; pending work = reindexQueue.
   const processedBeforeReindex = classified - reindexQueue.length;
   phase = "metadata";
   emitProgress(processedBeforeReindex, total);
@@ -481,7 +541,6 @@ export async function syncIndexFromFilesystem(
     }
   }
 
-  // Phase A: metadata → list/filters queryable; FTS title/description only.
   for (let i = 0; i < reindexQueue.length; i += 1) {
     const work = reindexQueue[i]!;
     try {
@@ -646,14 +705,21 @@ export async function streamItemsByIds(
       let item: ItemFile | null = null;
       if (documentMarkdown) {
         try {
-          const fileStat = await ctx.fs.stat(itemMarkdownPath(vaultPath, itemId));
+          const docPath = itemMarkdownPath(vaultPath, itemId);
+          let diskMtimeMs = (await ctx.fs.stat(docPath)).mtimeMs;
+          if (diskMtimeMs === null) {
+            diskMtimeMs = await recoverItemDiskMtimeMs(ctx.fs, docPath);
+          }
+          if (diskMtimeMs === null) {
+            diskMtimeMs = diskMtimeMsFromDocumentMarkdown(documentMarkdown);
+          }
           item = await itemFileFromDocumentMarkdown(
             ctx.fs,
             vaultPath,
             vaultId,
             itemId,
             documentMarkdown,
-            fileStat.mtimeMs ?? 0,
+            diskMtimeMs,
           );
         } catch {
           item = null;

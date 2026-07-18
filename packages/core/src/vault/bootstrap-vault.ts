@@ -1,4 +1,5 @@
 import type { FileSystemAdapter } from "../adapters/types.js";
+import { yieldToEventLoop } from "../util/concurrency.js";
 import {
   createDefaultAppSettings,
   mergeAppSettings,
@@ -127,7 +128,7 @@ async function acquireVaultBootstrapLock(
           `Timed out waiting for vault bootstrap lock at ${lockPath}: ${detail}`,
         );
       }
-      await sleep(BOOTSTRAP_LOCK_POLL_MS);
+      await yieldToEventLoop(BOOTSTRAP_LOCK_POLL_MS);
     }
   }
 }
@@ -143,10 +144,4 @@ function isExclusiveCreateConflict(error: unknown): boolean {
   }
   const message = error instanceof Error ? error.message : String(error);
   return /EEXIST|already exists|file exists/i.test(message);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }
