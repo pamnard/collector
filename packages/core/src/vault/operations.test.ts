@@ -4,7 +4,11 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runMigrations } from "@collector/db";
 import { BetterSqliteMigrator } from "../../../db/src/testing/better-sqlite.js";
-import type { FileSystemAdapter } from "../adapters/types.js";
+import type {
+  FileSystemAdapter,
+  VaultItemMetaRead,
+  VaultItemStatMeta,
+} from "../adapters/types.js";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { createId } from "../util/ids.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
@@ -93,6 +97,35 @@ class CountingFileSystemAdapter implements FileSystemAdapter {
 
   rename(from: string, to: string): Promise<void> {
     return this.inner.rename(from, to);
+  }
+
+  async statVaultItemsMeta(vaultPath: string): Promise<VaultItemStatMeta[]> {
+    if (!this.inner.statVaultItemsMeta) {
+      throw new Error("inner adapter missing statVaultItemsMeta");
+    }
+    // Delegate: sync fingerprint tests count only adapter.stat, not batch IPC.
+    return this.inner.statVaultItemsMeta(vaultPath);
+  }
+
+  async readVaultItemsMeta(
+    vaultPath: string,
+    itemIds: string[],
+  ): Promise<VaultItemMetaRead[]> {
+    const results: VaultItemMetaRead[] = [];
+    for (const itemId of itemIds) {
+      const docPath = itemMarkdownPath(vaultPath, itemId);
+      if (!(await this.exists(docPath))) {
+        continue;
+      }
+      const documentMarkdown = await this.readText(docPath);
+      const fileStat = await this.stat(docPath);
+      results.push({
+        id: itemId,
+        documentMarkdown,
+        mtimeMs: fileStat.mtimeMs,
+      });
+    }
+    return results;
   }
 }
 
@@ -300,6 +333,52 @@ describe("vault operations", () => {
     });
 
     expect([...seen.keys()].sort()).toEqual([...itemIds].sort());
+  });
+
+  it("streamItemsByIds reuses batch mtime and shared tag maps (#195)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-stream-batch-"));
+    const countingFs = new CountingFileSystemAdapter(fs);
+    const ctx = { fs: countingFs, index: new SqlVaultIndexStore(new MemorySqlAdapter()) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemCount = 12;
+    const itemIds: string[] = [];
+    const timestamp = new Date().toISOString();
+
+    for (let i = 0; i < itemCount; i += 1) {
+      const itemId = `${createId()}.md`;
+      itemIds.push(itemId);
+      await upsertItem(ctx, path, meta.id, {
+        item: {
+          id: itemId,
+          vault_id: meta.id,
+          title: `Note ${i}`,
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          tag_ids: [],
+          collection_ids: [],
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+        content: `body ${i}`,
+      });
+    }
+
+    countingFs.statCount = 0;
+    countingFs.tagsJsonReadCount = 0;
+    const seen: ItemFile[] = [];
+    await streamItemsByIds(ctx, path, itemIds, {
+      onItem: ({ item }) => {
+        if (item) {
+          seen.push(item);
+        }
+      },
+    });
+
+    expect(seen).toHaveLength(itemCount);
+    expect(countingFs.tagsJsonReadCount).toBe(1);
+    expect(countingFs.statCount).toBe(itemCount);
   });
 
   it("rebuilds index from filesystem", async () => {

@@ -703,9 +703,7 @@ export async function streamItemsByIds(
 
   if (ctx.fs.readVaultItemsMeta) {
     const batchReads = await readVaultItemMetaBatch(ctx.fs, vaultPath, itemIds);
-    const readById = new Map(
-      batchReads.map((read) => [read.id, read.documentMarkdown]),
-    );
+    const readById = new Map(batchReads.map((read) => [read.id, read]));
     const tagMaps: TagMapsHolder = {
       maps: await loadTagMaps(ctx.fs, vaultPath),
     };
@@ -713,24 +711,23 @@ export async function streamItemsByIds(
       if (signal?.aborted) {
         return;
       }
-      const documentMarkdown = readById.get(itemId);
+      const batchRead = readById.get(itemId);
       let item: ItemFile | null = null;
-      if (documentMarkdown) {
+      if (batchRead) {
         try {
-          const docPath = itemMarkdownPath(vaultPath, itemId);
-          let diskMtimeMs = (await ctx.fs.stat(docPath)).mtimeMs;
+          let diskMtimeMs =
+            batchRead.mtimeMs === undefined ? null : batchRead.mtimeMs;
           if (diskMtimeMs === null) {
-            diskMtimeMs = await recoverItemDiskMtimeMs(ctx.fs, docPath);
-          }
-          if (diskMtimeMs === null) {
-            diskMtimeMs = diskMtimeMsFromDocumentMarkdown(documentMarkdown);
+            diskMtimeMs = diskMtimeMsFromDocumentMarkdown(
+              batchRead.documentMarkdown,
+            );
           }
           item = await itemFileFromDocumentMarkdown(
             ctx.fs,
             vaultPath,
             vaultId,
             itemId,
-            documentMarkdown,
+            batchRead.documentMarkdown,
             diskMtimeMs,
             tagMaps,
           );

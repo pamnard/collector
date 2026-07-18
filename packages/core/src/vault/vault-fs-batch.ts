@@ -68,7 +68,12 @@ export async function readVaultItemMetaBatch(
       continue;
     }
     const documentMarkdown = await fs.readText(docPath);
-    results.push({ id: itemId, documentMarkdown });
+    const fileStat = await fs.stat(docPath);
+    results.push({
+      id: itemId,
+      documentMarkdown,
+      mtimeMs: fileStat.mtimeMs,
+    });
     if ((i + 1) % VAULT_ITEM_READ_META_BATCH === 0 && i + 1 < itemIds.length) {
       await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
     }
