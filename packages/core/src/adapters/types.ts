@@ -46,12 +46,14 @@ export interface ItemSyncMeta {
   file_mtime_ms: number | null;
   updated_at: string;
   content_revision: number;
+  created_at: string;
 }
 
 export interface ItemSyncMetaPatch {
   fileMtimeMs: number;
   updatedAt: string;
   contentRevision: number;
+  createdAt: string;
 }
 
 export interface ReconcileFingerprint {

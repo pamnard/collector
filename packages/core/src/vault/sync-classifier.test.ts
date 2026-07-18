@@ -5,6 +5,7 @@ const base = {
   diskMtimeMs: 1_700_000_000_000,
   diskUpdatedAt: "2024-01-01T00:00:00.000Z",
   diskContentRevision: 1,
+  diskCreatedAt: "2020-01-01T00:00:00.000Z",
 };
 
 describe("classifyItemSyncAction", () => {
@@ -18,7 +19,7 @@ describe("classifyItemSyncAction", () => {
     ).toBe("reindex");
   });
 
-  it("skips when directory mtime matches the index", () => {
+  it("skips when mtime and created_at match the index", () => {
     expect(
       classifyItemSyncAction({
         ...base,
@@ -26,8 +27,22 @@ describe("classifyItemSyncAction", () => {
         dbMtimeMs: base.diskMtimeMs,
         dbUpdatedAt: base.diskUpdatedAt,
         dbContentRevision: base.diskContentRevision,
+        dbCreatedAt: base.diskCreatedAt,
       }),
     ).toBe("skip");
+  });
+
+  it("patches when mtime matches but created_at drifted", () => {
+    expect(
+      classifyItemSyncAction({
+        ...base,
+        indexed: true,
+        dbMtimeMs: base.diskMtimeMs,
+        dbUpdatedAt: base.diskUpdatedAt,
+        dbContentRevision: base.diskContentRevision,
+        dbCreatedAt: "1999-01-01T00:00:00.000Z",
+      }),
+    ).toBe("patch");
   });
 
   it("patches when mtime is unknown but metadata matches", () => {
@@ -38,6 +53,7 @@ describe("classifyItemSyncAction", () => {
         dbMtimeMs: null,
         dbUpdatedAt: base.diskUpdatedAt,
         dbContentRevision: base.diskContentRevision,
+        dbCreatedAt: base.diskCreatedAt,
       }),
     ).toBe("patch");
   });
@@ -50,6 +66,7 @@ describe("classifyItemSyncAction", () => {
         dbMtimeMs: 1,
         dbUpdatedAt: base.diskUpdatedAt,
         dbContentRevision: base.diskContentRevision,
+        dbCreatedAt: base.diskCreatedAt,
       }),
     ).toBe("patch");
   });
@@ -62,6 +79,7 @@ describe("classifyItemSyncAction", () => {
         dbMtimeMs: null,
         dbUpdatedAt: "2023-01-01T00:00:00.000Z",
         dbContentRevision: 1,
+        dbCreatedAt: base.diskCreatedAt,
       }),
     ).toBe("reindex");
   });
@@ -75,6 +93,7 @@ describe("classifyItemSyncAction", () => {
         dbMtimeMs: base.diskMtimeMs,
         dbUpdatedAt: base.diskUpdatedAt,
         dbContentRevision: 1,
+        dbCreatedAt: base.diskCreatedAt,
       }),
     ).toBe("reindex");
   });

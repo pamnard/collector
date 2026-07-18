@@ -384,6 +384,7 @@ describe("vault operations", () => {
       fileMtimeMs: 1,
       updatedAt: item.updated_at,
       contentRevision: item.content_revision,
+      createdAt: item.created_at,
     });
 
     const report = await syncIndexFromFilesystem(ctx, path, meta.id);

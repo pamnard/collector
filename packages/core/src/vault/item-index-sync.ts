@@ -82,11 +82,6 @@ export async function syncIndexItemsFromFilesystem(
       continue;
     }
 
-    if (meta.file_mtime_ms !== null && meta.file_mtime_ms === diskMtimeMs) {
-      report.skipped += 1;
-      continue;
-    }
-
     metadataReadQueue.push({ itemId, diskMtimeMs });
   }
 
@@ -136,8 +131,10 @@ export async function syncIndexItemsFromFilesystem(
         diskMtimeMs,
         dbUpdatedAt: meta?.updated_at,
         dbContentRevision: meta?.content_revision,
+        dbCreatedAt: meta?.created_at,
         diskUpdatedAt: item.updated_at,
         diskContentRevision: item.content_revision,
+        diskCreatedAt: item.created_at,
       });
 
       if (action === "skip") {
@@ -151,6 +148,7 @@ export async function syncIndexItemsFromFilesystem(
             fileMtimeMs: diskMtimeMs,
             updatedAt: item.updated_at,
             contentRevision: item.content_revision,
+            createdAt: item.created_at,
           });
           report.patched += 1;
         } catch (error) {
