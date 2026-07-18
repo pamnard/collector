@@ -99,8 +99,12 @@ export function AppLayout() {
   const showErrorAlert =
     dashboardError !== null && dashboardError !== dismissedError;
   const showDashboardLoading = dashboardCache.isLoading;
+  const showUpdateAlert = startupUpdateVersion !== null;
   const showAlertStack =
-    isMetadataIndexing || showErrorAlert || showDashboardLoading;
+    isMetadataIndexing ||
+    showErrorAlert ||
+    showDashboardLoading ||
+    showUpdateAlert;
 
   const mainColumn = (
     <main className="relative flex min-h-0 h-full flex-1 overflow-hidden bg-main transition-colors duration-200">
@@ -123,29 +127,6 @@ export function AppLayout() {
               onToggleTheme={toggleTheme}
               searchIndexBuilding={searchIndexBuilding}
             />
-
-            {startupUpdateVersion && (
-              <div className="flex items-center justify-between gap-3 border-b border-indigo-500/30 bg-indigo-500/10 px-4 py-2 text-sm">
-                <span>Доступно обновление {startupUpdateVersion}.</span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => navigate("/settings")}
-                    className="rounded-lg border border-indigo-500/40 px-3 py-1 hover:bg-indigo-500/10 transition-colors"
-                  >
-                    Настройки
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStartupUpdateVersion(null)}
-                    className="text-secondary hover:text-primary transition-colors"
-                    aria-label="Скрыть"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
@@ -227,6 +208,23 @@ export function AppLayout() {
               onDismiss={() => setDismissedError(dashboardError)}
             >
               {dashboardError}
+            </Alert>
+          )}
+          {showUpdateAlert && startupUpdateVersion !== null && (
+            <Alert
+              tone="info"
+              onDismiss={() => setStartupUpdateVersion(null)}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span>Доступно обновление {startupUpdateVersion}.</span>
+                <button
+                  type="button"
+                  onClick={() => navigate("/settings")}
+                  className="rounded-lg border border-indigo-500/40 px-3 py-1 hover:bg-indigo-500/10 transition-colors"
+                >
+                  Настройки
+                </button>
+              </div>
             </Alert>
           )}
         </AlertStack>
