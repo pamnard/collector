@@ -11,7 +11,9 @@ import { useAppSettings } from "../context/AppSettingsContext";
 import {
   isDashboardPrefetchWindowReady,
   itemIdsEqual,
+  mergeStreamedItemsById,
   orderDashboardItems,
+  shouldApplyDashboardStreamBatch,
 } from "../lib/dashboard-display";
 import { resolveDashboardCoverPaths } from "../lib/preload-dashboard-covers";
 import { navFilterKey, type NavFilter } from "../types/ui";
@@ -320,6 +322,7 @@ export function useDashboardItems(
       const controller = new AbortController();
       streamAbortRef.current = controller;
 
+      const pending = new Map<string, ItemFile>();
       await streamDashboardItems(
         ids,
         offset,
@@ -328,15 +331,26 @@ export function useDashboardItems(
           if (requestVersionRef.current !== requestVersion) {
             return;
           }
-          setItemsById((current) => {
-            const next = new Map(current);
-            next.set(item.id, item);
-            itemsByIdRef.current = next;
-            return next;
-          });
+          pending.set(item.id, item);
         },
         controller.signal,
       );
+
+      if (
+        !shouldApplyDashboardStreamBatch(
+          requestVersionRef.current,
+          requestVersion,
+          pending.size,
+        )
+      ) {
+        return;
+      }
+
+      setItemsById((current) => {
+        const next = mergeStreamedItemsById(current, pending);
+        itemsByIdRef.current = next;
+        return next;
+      });
     },
     [],
   );

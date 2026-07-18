@@ -45,3 +45,23 @@ export function itemIdsEqual(left: string[], right: string[]): boolean {
     left.length === right.length && left.every((id, index) => id === right[index])
   );
 }
+
+/** Merge a streamed chunk into itemsById with one Map clone. */
+export function mergeStreamedItemsById(
+  current: ReadonlyMap<string, ItemFile>,
+  pending: ReadonlyMap<string, ItemFile>,
+): Map<string, ItemFile> {
+  const next = new Map(current);
+  for (const [id, item] of pending) {
+    next.set(id, item);
+  }
+  return next;
+}
+
+export function shouldApplyDashboardStreamBatch(
+  currentRequestVersion: number,
+  batchRequestVersion: number,
+  pendingSize: number,
+): boolean {
+  return currentRequestVersion === batchRequestVersion && pendingSize > 0;
+}
