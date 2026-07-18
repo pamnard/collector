@@ -15,8 +15,10 @@ import {
 } from "./recover-item-mtime.js";
 import {
   itemFileFromDocumentMarkdown,
+  loadTagMaps,
   readItemContent,
   readItemSourceRef,
+  type TagMapsHolder,
 } from "./item-io.js";
 import { listItemRelativePaths } from "./scan.js";
 import { readVaultItemMetaBatch } from "./vault-fs-batch.js";
@@ -50,6 +52,9 @@ export async function syncIndexItemsFromFilesystem(
     uniqueItemIds,
   );
   const indexMeta = new Map(indexedItems.map((item) => [item.id, item]));
+  const tagMaps: TagMapsHolder = {
+    maps: await loadTagMaps(ctx.fs, vaultPath),
+  };
 
   const existingIds: string[] = [];
   const removedIds: string[] = [];
@@ -135,6 +140,7 @@ export async function syncIndexItemsFromFilesystem(
           itemId,
           documentMarkdown,
           diskMtimeMs,
+          tagMaps,
         );
         reindexQueue.push({ itemId, diskMtimeMs, item });
       } catch (error) {
@@ -179,6 +185,7 @@ export async function syncIndexItemsFromFilesystem(
           itemId,
           documentMarkdown,
           diskMtimeMs,
+          tagMaps,
         );
       } catch (error) {
         report.errors.push({
@@ -255,6 +262,7 @@ export async function syncIndexItemsFromFilesystem(
         work.itemId,
         documentMarkdown,
         work.diskMtimeMs,
+        tagMaps,
       );
     }
   }

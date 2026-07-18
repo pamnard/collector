@@ -22,12 +22,19 @@ import {
 import type { ItemFile } from "@collector/shared";
 import { readItemFile, readItemRawMarkdown, writeItemFile } from "../vault/item-io.js";
 import { itemMarkdownPath, joinSegments } from "../vault/paths.js";
+import { listTagsOnDisk } from "../vault/tag-io.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 
 class CountingFileSystemAdapter implements FileSystemAdapter {
   statCount = 0;
+  tagsJsonReadCount = 0;
+  tagsJsonWriteCount = 0;
 
   constructor(private readonly inner: FileSystemAdapter) {}
+
+  private isTagsJson(path: string): boolean {
+    return path.endsWith("tags.json");
+  }
 
   join(...parts: string[]): string {
     return this.inner.join(...parts);
@@ -37,11 +44,17 @@ class CountingFileSystemAdapter implements FileSystemAdapter {
     return this.inner.exists(path);
   }
 
-  readText(path: string): Promise<string> {
+  async readText(path: string): Promise<string> {
+    if (this.isTagsJson(path)) {
+      this.tagsJsonReadCount += 1;
+    }
     return this.inner.readText(path);
   }
 
-  writeText(path: string, content: string): Promise<void> {
+  async writeText(path: string, content: string): Promise<void> {
+    if (this.isTagsJson(path)) {
+      this.tagsJsonWriteCount += 1;
+    }
     return this.inner.writeText(path, content);
   }
 
@@ -843,5 +856,124 @@ describe("vault operations", () => {
     expect(report.indexed).toBe(1);
     expect(report.skipped).toBe(0);
     expect(await emptyCtx.index.getReconcileFingerprint(meta.id)).not.toBeNull();
+  });
+
+  it("reads tags.json once during cold full sync (#188)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-tags-once-"));
+    const countingFs = new CountingFileSystemAdapter(fs);
+    const diskCtx = {
+      fs: countingFs,
+      index: new SqlVaultIndexStore(new MemorySqlAdapter()),
+    };
+    const { meta, path } = await createVault(diskCtx, dataDir, { name: "Vault" });
+    const itemCount = 40;
+    const timestamp = new Date().toISOString();
+
+    for (let i = 0; i < itemCount; i += 1) {
+      await upsertItem(diskCtx, path, meta.id, {
+        item: {
+          id: `${createId()}.md`,
+          vault_id: meta.id,
+          title: `Note ${i}`,
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          tag_ids: [],
+          collection_ids: [],
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+        content: `body ${i}`,
+      });
+    }
+
+    const emptyCtx = {
+      fs: countingFs,
+      index: new SqlVaultIndexStore(new MemorySqlAdapter()),
+    };
+    await emptyCtx.index.upsertVault(meta, path);
+
+    countingFs.tagsJsonReadCount = 0;
+    countingFs.tagsJsonWriteCount = 0;
+    const report = await syncIndexFromFilesystem(emptyCtx, path, meta.id);
+    expect(report.indexed).toBe(itemCount);
+    expect(report.errors).toHaveLength(0);
+    expect(countingFs.tagsJsonReadCount).toBe(1);
+    expect(countingFs.tagsJsonWriteCount).toBe(0);
+  });
+
+  it("refreshes shared tag maps after mid-sync tag creation (#188)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-tags-create-"));
+    const countingFs = new CountingFileSystemAdapter(fs);
+    const diskCtx = {
+      fs: countingFs,
+      index: new SqlVaultIndexStore(new MemorySqlAdapter()),
+    };
+    const { meta, path } = await createVault(diskCtx, dataDir, { name: "Vault" });
+    const timestamp = new Date().toISOString();
+    const itemCount = 8;
+    const itemIds: string[] = [];
+
+    for (let i = 0; i < itemCount; i += 1) {
+      const itemId = `${createId()}.md`;
+      itemIds.push(itemId);
+      await upsertItem(diskCtx, path, meta.id, {
+        item: {
+          id: itemId,
+          vault_id: meta.id,
+          title: `Note ${i}`,
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          tag_ids: [],
+          collection_ids: [],
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+        content: `body ${i}`,
+      });
+      const raw = [
+        "---",
+        `title: Note ${i}`,
+        "description: \"\"",
+        "type: note",
+        "tags:",
+        "  - SharedNew",
+        `created: ${timestamp}`,
+        `updated: ${timestamp}`,
+        "---",
+        "",
+        `body ${i}`,
+        "",
+      ].join("\n");
+      await countingFs.writeText(itemMarkdownPath(path, itemId), raw);
+    }
+
+    const emptyCtx = {
+      fs: countingFs,
+      index: new SqlVaultIndexStore(new MemorySqlAdapter()),
+    };
+    await emptyCtx.index.upsertVault(meta, path);
+
+    countingFs.tagsJsonReadCount = 0;
+    countingFs.tagsJsonWriteCount = 0;
+    const report = await syncIndexFromFilesystem(emptyCtx, path, meta.id);
+    expect(report.indexed).toBe(itemCount);
+    expect(report.errors).toHaveLength(0);
+    expect(countingFs.tagsJsonReadCount).toBe(1);
+    expect(countingFs.tagsJsonWriteCount).toBe(1);
+
+    const tags = await listTagsOnDisk(countingFs, path);
+    expect(tags).toHaveLength(1);
+    expect(tags[0]?.name).toBe("SharedNew");
+
+    const indexed = await listItemsByIds(emptyCtx, path, itemIds);
+    expect(indexed).toHaveLength(itemCount);
+    const sharedTagId = tags[0]!.id;
+    for (const item of indexed) {
+      expect(item.tag_ids).toEqual([sharedTagId]);
+    }
   });
 });

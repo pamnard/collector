@@ -13,6 +13,7 @@ import { createId, nowIso } from "../util/ids.js";
 import { parseDocumentMarkdown } from "./frontmatter.js";
 import {
   itemFileFromDocumentMarkdown,
+  loadTagMaps,
   readItemContent,
   readItemFile,
   readItemSourceRef,
@@ -20,6 +21,7 @@ import {
   writeItemDocument,
   writeItemSourceRef,
   writeVaultMeta,
+  type TagMapsHolder,
 } from "./item-io.js";
 import { writeTagsFile } from "./tag-io.js";
 import {
@@ -286,6 +288,10 @@ export async function syncIndexFromFilesystem(
 
   emitProgress(0, total);
 
+  const tagMaps: TagMapsHolder = {
+    maps: await loadTagMaps(ctx.fs, vaultPath),
+  };
+
   const diskStats = await statAllVaultItemMeta(ctx.fs, vaultPath);
   if (diskStats.length > 0) {
     await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
@@ -348,6 +354,7 @@ export async function syncIndexFromFilesystem(
           itemId,
           documentMarkdown,
           diskMtimeMs,
+          tagMaps,
         );
         reindexQueue.push({ itemId, diskMtimeMs, item });
       } catch (error) {
@@ -417,6 +424,7 @@ export async function syncIndexFromFilesystem(
             itemId,
             documentMarkdown,
             diskMtimeMs,
+            tagMaps,
           );
           metadataReads.push({
             itemId,
@@ -537,6 +545,7 @@ export async function syncIndexFromFilesystem(
         work.itemId,
         documentMarkdown,
         work.diskMtimeMs,
+        tagMaps,
       );
     }
   }
@@ -697,6 +706,9 @@ export async function streamItemsByIds(
     const readById = new Map(
       batchReads.map((read) => [read.id, read.documentMarkdown]),
     );
+    const tagMaps: TagMapsHolder = {
+      maps: await loadTagMaps(ctx.fs, vaultPath),
+    };
     for (const [index, itemId] of itemIds.entries()) {
       if (signal?.aborted) {
         return;
@@ -720,6 +732,7 @@ export async function streamItemsByIds(
             itemId,
             documentMarkdown,
             diskMtimeMs,
+            tagMaps,
           );
         } catch {
           item = null;
