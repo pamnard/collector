@@ -7,7 +7,10 @@ export function DashboardPage() {
 
   return (
     <div className="p-4 pb-20 md:p-8">
-      {dashboard.totalCount === 0 && !dashboard.error && !dashboard.isLoading && (
+      {dashboard.totalCount === 0 &&
+        !dashboard.error &&
+        !dashboard.isLoading &&
+        !dashboard.isRefreshing && (
         <p className="text-secondary">Ничего не найдено.</p>
       )}
 

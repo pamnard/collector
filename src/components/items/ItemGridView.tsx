@@ -4,6 +4,7 @@ import Masonry from "react-masonry-css";
 import type { ItemFile } from "@collector/shared";
 import type { TagWithCount } from "@collector/core";
 import { ItemGridCard } from "./ItemGridCard";
+import { DashboardItemsTransition } from "./DashboardItemsTransition";
 import { MASONRY_BREAKPOINTS } from "./masonry-breakpoints";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
 import { useShell } from "../layout/AppLayout";
@@ -32,9 +33,10 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
     [dashboard.items],
   );
   const sentinelRef = useInfiniteScroll({
-    enabled: true,
+    enabled: !dashboard.isRefreshing,
     hasMore: dashboard.hasMore,
-    isLoading: dashboard.isLoading || dashboard.isLoadingMore,
+    isLoading:
+      dashboard.isLoading || dashboard.isLoadingMore || dashboard.isRefreshing,
     onLoadMore: dashboard.loadMore,
   });
 
@@ -52,16 +54,32 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
       };
     }
 
-    void resolveItemThumbnailPaths(dashboard.items).then((paths) => {
-      if (!cancelled) {
-        setThumbnailPaths(paths);
+    const missing = dashboard.items.filter(
+      (item) => !dashboard.thumbnailPaths.has(item.id),
+    );
+    if (missing.length === 0) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void resolveItemThumbnailPaths(missing).then((paths) => {
+      if (cancelled) {
+        return;
       }
+      setThumbnailPaths((current) => {
+        const next = new Map(current);
+        for (const [id, path] of paths) {
+          next.set(id, path);
+        }
+        return next;
+      });
     });
 
     return () => {
       cancelled = true;
     };
-  }, [thumbnailBatchKey, dashboard.items]);
+  }, [thumbnailBatchKey, dashboard.items, dashboard.thumbnailPaths]);
 
   const tagsById = useMemo(
     () => new Map(tags.map((tag) => [tag.id, tag])),
@@ -76,8 +94,21 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
     );
   }
 
+  const resolveThumbnailPath = (itemId: string): string | null | undefined => {
+    if (dashboard.thumbnailPaths.has(itemId)) {
+      return dashboard.thumbnailPaths.get(itemId) ?? null;
+    }
+    if (thumbnailPaths.has(itemId)) {
+      return thumbnailPaths.get(itemId) ?? null;
+    }
+    return undefined;
+  };
+
   return (
-    <>
+    <DashboardItemsTransition
+      isRefreshing={dashboard.isRefreshing}
+      transitionEpoch={dashboard.transitionEpoch}
+    >
       <Masonry
         breakpointCols={MASONRY_BREAKPOINTS}
         className="my-masonry-grid"
@@ -87,11 +118,7 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
           <div key={item.id}>
             <ItemGridCard
               item={item}
-              thumbnailPath={
-                thumbnailPaths.has(item.id)
-                  ? thumbnailPaths.get(item.id) ?? null
-                  : undefined
-              }
+              thumbnailPath={resolveThumbnailPath(item.id)}
               tagsById={tagsById}
               onOpen={(itemId) => navigate(`/item/${itemId}`)}
             />
@@ -104,6 +131,6 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
           {dashboard.isLoadingMore ? "Загрузка…" : "Прокрутите для следующих элементов"}
         </div>
       )}
-    </>
+    </DashboardItemsTransition>
   );
 }

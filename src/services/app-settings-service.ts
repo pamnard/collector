@@ -118,14 +118,16 @@ export async function updateAppSettings(
   const current = await ensureAppSettings();
   cache = mergeAppSettings(current, patch);
 
+  // Notify React immediately (match mock path) so nav_filter / dashboard
+  // do not wait on settings.json disk I/O (#176).
+  notify(cache);
+
   if (isDevMock()) {
     writeDevMockSettings(cache);
-    notify(cache);
     return cache;
   }
 
   await writeAppSettings(fs, await ensureConfigDir(), cache);
-  notify(cache);
   return cache;
 }
 
