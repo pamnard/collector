@@ -11,6 +11,7 @@ export interface VaultItemMetaRead {
   /** Vault-relative posix path of the markdown item (e.g. `Inbox/note.md`). */
   id: string;
   documentMarkdown: string;
+  mtimeMs?: number | null;
 }
 
 export interface FileSystemAdapter {

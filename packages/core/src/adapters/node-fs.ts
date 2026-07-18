@@ -105,7 +105,12 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
         continue;
       }
       const documentMarkdown = await this.readText(docPath);
-      results.push({ id: itemId, documentMarkdown });
+      const fileStat = await this.stat(docPath);
+      results.push({
+        id: itemId,
+        documentMarkdown,
+        mtimeMs: fileStat.mtimeMs,
+      });
     }
     return results;
   }

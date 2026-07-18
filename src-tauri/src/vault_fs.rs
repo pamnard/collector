@@ -31,6 +31,7 @@ pub struct VaultItemStatMeta {
 pub struct VaultItemMetaRead {
     pub id: String,
     pub document_markdown: String,
+    pub mtime_ms: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -193,9 +194,11 @@ pub fn vault_items_read_meta(
 
         let document_markdown =
             fs::read_to_string(&doc_path).map_err(|error| format!("{id}: {error}"))?;
+        let mtime_ms = mtime_ms(&doc_path);
         results.push(VaultItemMetaRead {
             id,
             document_markdown,
+            mtime_ms,
         });
     }
 
