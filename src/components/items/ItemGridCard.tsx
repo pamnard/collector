@@ -66,14 +66,12 @@ export function ItemGridCard({
   tagsById,
   onOpen,
 }: ItemGridCardProps) {
+  const optimisticPortrait =
+    item.content_type === "image" || item.content_type === "video";
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
   const [isMediaLoaded, setIsMediaLoaded] = useState(false);
-  const [isPortraitCover, setIsPortraitCover] = useState(false);
-  /** False until path known and (no cover | cover decoded | cover failed). */
-  const [isReady, setIsReady] = useState(false);
-  const [isRevealed, setIsRevealed] = useState(false);
+  const [isPortraitCover, setIsPortraitCover] = useState(optimisticPortrait);
   const coverSrcRef = useRef(coverSrc);
-  const isReadyRef = useRef(isReady);
 
   const tags = useMemo(
     () =>
@@ -83,32 +81,32 @@ export function ItemGridCard({
     [item.tag_ids, tagsById],
   );
 
+  const expectedCoverSrc =
+    thumbnailPath === undefined
+      ? null
+      : resolveCoverSrc(thumbnailPath, item.url ?? undefined);
+  const coverPending = Boolean(expectedCoverSrc) && !isMediaLoaded;
+
   useEffect(() => {
     coverSrcRef.current = coverSrc;
   }, [coverSrc]);
 
   useEffect(() => {
-    isReadyRef.current = isReady;
-  }, [isReady]);
-
-  useEffect(() => {
+    // Path still resolving — wait; do not tear down chrome once path is known.
     if (thumbnailPath === undefined) {
       return;
     }
 
     const src = resolveCoverSrc(thumbnailPath, item.url ?? undefined);
-    if (src === coverSrcRef.current && isReadyRef.current) {
+    if (src === coverSrcRef.current) {
       return;
     }
 
     setCoverSrc(null);
     setIsMediaLoaded(false);
-    setIsPortraitCover(false);
-    setIsReady(false);
-    setIsRevealed(false);
+    setIsPortraitCover(optimisticPortrait);
 
     if (!src) {
-      setIsReady(true);
       return;
     }
 
@@ -128,7 +126,6 @@ export function ItemGridCard({
       setCoverSrc(next.src);
       setIsMediaLoaded(next.loaded);
       setIsPortraitCover(next.portrait);
-      setIsReady(true);
     };
     const timer = setTimeout(() => {
       console.warn("[ItemGridCard] cover decode timed out", { src });
@@ -152,21 +149,11 @@ export function ItemGridCard({
       img.onload = null;
       img.onerror = null;
     };
-  }, [item.url, thumbnailPath]);
+  }, [item.url, optimisticPortrait, thumbnailPath]);
 
-  useEffect(() => {
-    if (!isReady) {
-      setIsRevealed(false);
-      return;
-    }
-    const frame = requestAnimationFrame(() => {
-      setIsRevealed(true);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [isReady]);
-
-  // Keep the masonry slot (sort order + stable height). Fade content in when ready.
-  if (!isReady) {
+  // Only while dashboard paths are unresolved. Once path is known, keep card chrome
+  // mounted — pulse→fade was the second ms-blink on image-heavy folder switches.
+  if (thumbnailPath === undefined) {
     return (
       <div
         aria-hidden
@@ -175,7 +162,10 @@ export function ItemGridCard({
     );
   }
 
-  const overlayLayout = Boolean(coverSrc && isPortraitCover && isMediaLoaded);
+  const showCover = Boolean(coverSrc && isMediaLoaded);
+  const overlayLayout = Boolean(
+    (showCover && isPortraitCover) || (coverPending && optimisticPortrait),
+  );
 
   const meta = (
     <>
@@ -266,15 +256,11 @@ export function ItemGridCard({
       }}
       className={
         overlayLayout
-          ? `group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-lg border border-border-card bg-card transition-opacity duration-300 ease-out hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/10 [content-visibility:auto] [contain-intrinsic-size:280px] ${
-              isRevealed ? "opacity-100" : "opacity-0"
-            }`
-          : `group flex h-full cursor-pointer flex-col rounded-lg border border-border-card bg-card p-5 transition-opacity duration-300 ease-out hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/10 [content-visibility:auto] [contain-intrinsic-size:280px] ${
-              isRevealed ? "opacity-100" : "opacity-0"
-            }`
+          ? "group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-lg border border-border-card bg-card hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/10 [content-visibility:auto] [contain-intrinsic-size:280px]"
+          : "group flex h-full cursor-pointer flex-col rounded-lg border border-border-card bg-card p-5 hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/10 [content-visibility:auto] [contain-intrinsic-size:280px]"
       }
     >
-      {coverSrc && isMediaLoaded && (
+      {(showCover || coverPending) && (
         <div
           className={
             overlayLayout
@@ -282,13 +268,24 @@ export function ItemGridCard({
               : "relative -mx-5 -mt-5 mb-4 overflow-hidden rounded-t-lg bg-input"
           }
         >
-          <img
-            src={coverSrc}
-            alt=""
-            className="h-auto w-full opacity-100 transition-transform duration-500 group-hover:scale-105"
-            loading="eager"
-            decoding="async"
-          />
+          {showCover ? (
+            <img
+              src={coverSrc!}
+              alt=""
+              className="h-auto w-full transition-transform duration-500 group-hover:scale-105"
+              loading="eager"
+              decoding="async"
+            />
+          ) : (
+            <div
+              aria-hidden
+              className={
+                overlayLayout
+                  ? "aspect-[3/4] w-full animate-pulse bg-input"
+                  : "aspect-video w-full animate-pulse bg-input"
+              }
+            />
+          )}
           {overlayLayout && (
             <div className="absolute inset-x-0 bottom-0 flex flex-col bg-gradient-to-t from-neutral-950/95 via-neutral-950/75 to-transparent p-5 pt-16 dark:from-white/95 dark:via-white/75 dark:to-transparent">
               {meta}

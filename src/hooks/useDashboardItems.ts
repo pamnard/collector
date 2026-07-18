@@ -258,15 +258,20 @@ export function useDashboardItems(
       }
 
       const ordered = orderDashboardItems(ids, byId, end);
+      const prevItems = committedItemsRef.current;
+      const nextTotal = totalCountRef.current;
+      // Aborted/incomplete stream must not blank a held previous paint.
+      if (ordered.length === 0 && prevItems.length > 0 && nextTotal > 0) {
+        return;
+      }
+
       const paths = await resolveDashboardCoverPaths(ordered);
       if (requestVersionRef.current !== requestVersion) {
         return;
       }
 
-      const prevItems = committedItemsRef.current;
       const prevPaths = committedThumbnailPathsRef.current;
       const prevTotal = committedTotalCountRef.current;
-      const nextTotal = totalCountRef.current;
       const idsMatch = itemIdsEqual(orderedIds(prevItems), orderedIds(ordered));
       const unchanged =
         idsMatch &&
@@ -404,6 +409,16 @@ export function useDashboardItems(
         setItemsById(kept);
         setStreamWindowEnd(preservedEnd);
         await streamSlice(page.itemIds, 0, preservedEnd, requestVersion);
+        if (
+          !isDashboardPrefetchWindowReady(
+            itemIdsRef.current,
+            itemsByIdRef.current,
+            streamEndOffsetRef.current,
+          )
+        ) {
+          // First stream often races with effect abort on query switch — retry once.
+          await streamSlice(page.itemIds, 0, preservedEnd, requestVersion);
+        }
         return;
       }
 
@@ -413,6 +428,15 @@ export function useDashboardItems(
         .some((id) => !itemsByIdRef.current.has(id));
       if (needsStream) {
         await streamSlice(page.itemIds, 0, preservedEnd, requestVersion);
+        if (
+          !isDashboardPrefetchWindowReady(
+            itemIdsRef.current,
+            itemsByIdRef.current,
+            streamEndOffsetRef.current,
+          )
+        ) {
+          await streamSlice(page.itemIds, 0, preservedEnd, requestVersion);
+        }
       }
     },
     [setLoadedItemIds, setStreamWindowEnd, streamSlice],
@@ -428,6 +452,7 @@ export function useDashboardItems(
     if (queryKeyRef.current === queryKey) {
       return;
     }
+    const prevCommitted = committedItemsRef.current.length;
     queryKeyRef.current = queryKey;
 
     const cached = getDashboardQueryCache(queryKey);
@@ -438,6 +463,19 @@ export function useDashboardItems(
       return;
     }
 
+    if (vaultId) {
+      const warm = peekMatchingDashboardSnapshot(vaultId, filter, searchQuery);
+      if (warm) {
+        const entry = snapshotToCacheEntry(warm);
+        setDashboardQueryCache(queryKey, entry);
+        applyCacheEntryToState(entry);
+        setIsLoading(false);
+        return;
+      }
+    }
+
+    // Keep committed paint until the new query commits — clearing here forces
+    // grid-skeleton blank flash on every cold folder switch.
     itemIdsRef.current = [];
     itemsByIdRef.current = new Map();
     streamEndOffsetRef.current = 0;
@@ -446,15 +484,17 @@ export function useDashboardItems(
     setItemsById(new Map());
     setStreamEndOffset(0);
     setTotalCount(0);
-    setCommittedItems([]);
-    setCommittedThumbnailPaths(new Map());
-    setCommittedTotalCount(0);
-    setCommittedHasMore(false);
-    committedItemsRef.current = [];
-    committedThumbnailPathsRef.current = new Map();
-    committedTotalCountRef.current = 0;
+    if (prevCommitted === 0) {
+      setCommittedItems([]);
+      setCommittedThumbnailPaths(new Map());
+      setCommittedTotalCount(0);
+      setCommittedHasMore(false);
+      committedItemsRef.current = [];
+      committedThumbnailPathsRef.current = new Map();
+      committedTotalCountRef.current = 0;
+    }
     setIsLoading(true);
-  }, [applyCacheEntryToState, queryKey]);
+  }, [applyCacheEntryToState, filter, queryKey, searchQuery, vaultId]);
 
   useEffect(() => {
     const requestVersion = requestVersionRef.current + 1;
@@ -493,6 +533,14 @@ export function useDashboardItems(
         return;
       }
       try {
+        const ready = isDashboardPrefetchWindowReady(
+          itemIdsRef.current,
+          itemsByIdRef.current,
+          streamEndOffsetRef.current,
+        );
+        if (!ready && totalCountRef.current > 0) {
+          return;
+        }
         await commitWorkingToDisplay(requestVersion);
       } catch (err: unknown) {
         if (requestVersionRef.current !== requestVersion) {
@@ -502,8 +550,15 @@ export function useDashboardItems(
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         if (requestVersionRef.current === requestVersion) {
-          setIsLoading(false);
-          queryBusyRef.current = false;
+          const ready = isDashboardPrefetchWindowReady(
+            itemIdsRef.current,
+            itemsByIdRef.current,
+            streamEndOffsetRef.current,
+          );
+          if (ready || totalCountRef.current === 0) {
+            setIsLoading(false);
+            queryBusyRef.current = false;
+          }
         }
       }
     };
@@ -570,6 +625,14 @@ export function useDashboardItems(
 
   useEffect(() => {
     if (isLoading || queryBusyRef.current) {
+      return;
+    }
+    // Do not sync an empty working window over held cards (cold-miss flash).
+    if (
+      workingItems.length === 0 &&
+      committedItemsRef.current.length > 0 &&
+      totalCount > 0
+    ) {
       return;
     }
     // load-more / in-place stream growth after offset-0 commit settled
