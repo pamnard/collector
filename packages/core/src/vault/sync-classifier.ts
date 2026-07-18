@@ -6,8 +6,10 @@ export interface ItemSyncClassificationInput {
   diskMtimeMs: number;
   dbUpdatedAt?: string;
   dbContentRevision?: number;
+  dbCreatedAt?: string;
   diskUpdatedAt: string;
   diskContentRevision: number;
+  diskCreatedAt: string;
 }
 
 export function classifyItemSyncAction(input: ItemSyncClassificationInput): ItemSyncAction {
@@ -15,20 +17,23 @@ export function classifyItemSyncAction(input: ItemSyncClassificationInput): Item
     return "reindex";
   }
 
+  const metadataMatches =
+    input.dbUpdatedAt === input.diskUpdatedAt &&
+    input.dbContentRevision === input.diskContentRevision;
+  const createdAtMatches = input.dbCreatedAt === input.diskCreatedAt;
+
   if (input.dbMtimeMs !== null && input.dbMtimeMs === input.diskMtimeMs) {
-    if (
-      input.dbUpdatedAt === input.diskUpdatedAt &&
-      input.dbContentRevision === input.diskContentRevision
-    ) {
+    if (metadataMatches && createdAtMatches) {
       return "skip";
+    }
+    if (metadataMatches) {
+      // mtime + list metadata match, but created_at drifted — cheap patch.
+      return "patch";
     }
     return "reindex";
   }
 
-  if (
-    input.dbUpdatedAt === input.diskUpdatedAt &&
-    input.dbContentRevision === input.diskContentRevision
-  ) {
+  if (metadataMatches) {
     return "patch";
   }
 

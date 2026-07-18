@@ -249,6 +249,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
         metadata_json = excluded.metadata_json,
         thumbnail_path = excluded.thumbnail_path,
         folder_path = excluded.folder_path,
+        created_at = excluded.created_at,
         updated_at = excluded.updated_at,
         file_mtime_ms = excluded.file_mtime_ms,
         content_revision = excluded.content_revision`,
@@ -441,13 +442,24 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
 
   async patchItemSyncMeta(
     itemId: string,
-    meta: { fileMtimeMs: number; updatedAt: string; contentRevision: number },
+    meta: {
+      fileMtimeMs: number;
+      updatedAt: string;
+      contentRevision: number;
+      createdAt: string;
+    },
   ): Promise<void> {
     await this.db.execute(
       `UPDATE items
-       SET file_mtime_ms = ?, updated_at = ?, content_revision = ?
+       SET file_mtime_ms = ?, updated_at = ?, content_revision = ?, created_at = ?
        WHERE id = ?`,
-      [meta.fileMtimeMs, meta.updatedAt, meta.contentRevision, itemId],
+      [
+        meta.fileMtimeMs,
+        meta.updatedAt,
+        meta.contentRevision,
+        meta.createdAt,
+        itemId,
+      ],
     );
   }
 
@@ -475,6 +487,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
       file_mtime_ms: number | null;
       updated_at: string;
       content_revision: number;
+      created_at: string;
     }>
   > {
     throw new Error(
@@ -605,6 +618,7 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
       file_mtime_ms: number | null;
       updated_at: string;
       content_revision: number;
+      created_at: string;
     }>
   > {
     const rows = await this.selector.select<{
@@ -612,8 +626,9 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
       file_mtime_ms: number | null;
       updated_at: string;
       content_revision: number;
+      created_at: string;
     }>(
-      `SELECT id, file_mtime_ms, updated_at, content_revision
+      `SELECT id, file_mtime_ms, updated_at, content_revision, created_at
        FROM items WHERE vault_id = ?`,
       [vaultId],
     );

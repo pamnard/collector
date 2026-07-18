@@ -510,4 +510,47 @@ describe("upsertItemMetadata / upsertItemContent", () => {
     );
     expect(clearedCollections).toEqual([]);
   });
+
+  it("updates created_at on metadata upsert conflict", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-upsert-created-at-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    const ctx = { fs, index };
+    const { meta } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    const itemId = createId();
+    const firstCreated = "2020-01-01T00:00:00.000Z";
+    const secondCreated = "2024-06-15T12:00:00.000Z";
+    const updatedAt = "2024-06-15T12:00:00.000Z";
+    const base = {
+      id: itemId,
+      vault_id: meta.id,
+      title: "Note",
+      description: "",
+      content_type: "note" as const,
+      source_type: "manual" as const,
+      metadata: {},
+      tag_ids: [] as string[],
+      collection_ids: [] as string[],
+      folder_path: "",
+      content_revision: 1,
+      updated_at: updatedAt,
+    };
+
+    await index.upsertItemMetadata(
+      { item: { ...base, created_at: firstCreated }, fileMtimeMs: 1 },
+      meta.id,
+    );
+    await index.upsertItemMetadata(
+      { item: { ...base, created_at: secondCreated }, fileMtimeMs: 1 },
+      meta.id,
+    );
+
+    const rows = await db.select<{ created_at: string }>(
+      "SELECT created_at FROM items WHERE id = ?",
+      [itemId],
+    );
+    expect(rows[0]?.created_at).toBe(secondCreated);
+  });
 });

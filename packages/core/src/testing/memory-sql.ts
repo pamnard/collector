@@ -219,7 +219,7 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
 
     if (
       normalized.startsWith(
-        "SELECT id, file_mtime_ms, updated_at, content_revision FROM items WHERE vault_id = ?",
+        "SELECT id, file_mtime_ms, updated_at, content_revision, created_at FROM items WHERE vault_id = ?",
       )
     ) {
       const vaultId = bindValues[0];
@@ -230,6 +230,7 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
         file_mtime_ms: row.file_mtime_ms ?? null,
         updated_at: row.updated_at,
         content_revision: row.content_revision ?? 1,
+        created_at: row.created_at,
       })) as T[];
     }
 
@@ -369,7 +370,8 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
     const fileMtimeMs = bindValues[0];
     const updatedAt = bindValues[1];
     const contentRevision = bindValues[2];
-    const itemId = String(bindValues[3]);
+    const createdAt = bindValues[3];
+    const itemId = String(bindValues[4]);
     const row = table.get(itemId);
     if (!row) {
       return 0;
@@ -379,6 +381,7 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       file_mtime_ms: fileMtimeMs,
       updated_at: updatedAt,
       content_revision: contentRevision,
+      created_at: createdAt,
     });
     return 1;
   }
