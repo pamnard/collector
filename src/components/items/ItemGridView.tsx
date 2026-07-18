@@ -1,19 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import Masonry from "react-masonry-css";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ItemFile } from "@collector/shared";
 import type { TagWithCount } from "@collector/core";
 import { ItemGridCard } from "./ItemGridCard";
 import { DashboardGridSkeleton } from "./DashboardListSkeleton";
-import { MASONRY_BREAKPOINTS } from "./masonry-breakpoints";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
+import { useMainScrollElement } from "../../hooks/useMainScrollElement";
 import { useShell } from "../layout/AppLayout";
+import { dashboardGridColumnCount } from "../../lib/dashboard-column-count";
 import { listTags, resolveItemThumbnailPaths } from "../../services/collector-service";
 import type { useDashboardItems } from "../../hooks/useDashboardItems";
 
 interface ItemGridViewProps {
   dashboard: ReturnType<typeof useDashboardItems>;
 }
+
+const GRID_ROW_ESTIMATE_PX = 320;
+const GRID_ROW_OVERSCAN = 3;
 
 function itemThumbnailBatchKey(items: ItemFile[]): string {
   return items
@@ -28,6 +32,12 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
   const [thumbnailPaths, setThumbnailPaths] = useState<
     Map<string, string | null>
   >(() => new Map());
+  const [columnCount, setColumnCount] = useState(() =>
+    dashboardGridColumnCount(window.innerWidth),
+  );
+  const scrollElement = useMainScrollElement();
+  const gridTopRef = useRef<HTMLDivElement>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
   const thumbnailBatchKey = useMemo(
     () => itemThumbnailBatchKey(dashboard.items),
     [dashboard.items],
@@ -42,6 +52,21 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
   useEffect(() => {
     void listTags().then(setTags);
   }, [vaultRevision]);
+
+  useEffect(() => {
+    const onResize = () => {
+      setColumnCount(dashboardGridColumnCount(window.innerWidth));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!gridTopRef.current || !scrollElement) {
+      return;
+    }
+    setScrollMargin(gridTopRef.current.offsetTop);
+  }, [scrollElement, dashboard.items.length, columnCount]);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,6 +110,16 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
     [tags],
   );
 
+  const rowCount = Math.ceil(dashboard.items.length / columnCount) || 0;
+
+  const virtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => scrollElement,
+    estimateSize: () => GRID_ROW_ESTIMATE_PX,
+    overscan: GRID_ROW_OVERSCAN,
+    scrollMargin,
+  });
+
   if (dashboard.isLoading) {
     return <DashboardGridSkeleton />;
   }
@@ -99,24 +134,51 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
     return undefined;
   };
 
+  const virtualRows = virtualizer.getVirtualItems();
+
   return (
     <>
-      <Masonry
-        breakpointCols={MASONRY_BREAKPOINTS}
-        className="my-masonry-grid"
-        columnClassName="my-masonry-grid_column"
+      <div
+        ref={gridTopRef}
+        className="relative w-full"
+        style={{ height: virtualizer.getTotalSize() }}
       >
-        {dashboard.items.map((item) => (
-          <div key={item.id}>
-            <ItemGridCard
-              item={item}
-              thumbnailPath={resolveThumbnailPath(item.id)}
-              tagsById={tagsById}
-              onOpen={(itemId) => navigate(`/item/${itemId}`)}
-            />
-          </div>
-        ))}
-      </Masonry>
+        {virtualRows.map((virtualRow) => {
+          const startIndex = virtualRow.index * columnCount;
+          const rowItems = dashboard.items.slice(
+            startIndex,
+            startIndex + columnCount,
+          );
+          return (
+            <div
+              key={virtualRow.key}
+              data-index={virtualRow.index}
+              ref={virtualizer.measureElement}
+              className="absolute left-0 w-full"
+              style={{
+                transform: `translateY(${virtualRow.start - scrollMargin}px)`,
+              }}
+            >
+              <div
+                className="grid gap-4"
+                style={{
+                  gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+                }}
+              >
+                {rowItems.map((item) => (
+                  <ItemGridCard
+                    key={item.id}
+                    item={item}
+                    thumbnailPath={resolveThumbnailPath(item.id)}
+                    tagsById={tagsById}
+                    onOpen={(itemId) => navigate(`/item/${itemId}`)}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
       {dashboard.hasMore && (
         <div ref={sentinelRef} className="py-8 text-center text-secondary text-sm">
