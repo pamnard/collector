@@ -244,7 +244,9 @@ export async function syncIndexFromFilesystem(
   };
 
   if (!(await ctx.fs.exists(vaultPath))) {
+    const emptyProgress = toSyncProgress(report, 0, 0, phase);
     emitProgress(0, 0);
+    await onMetadataComplete?.(emptyProgress);
     return report;
   }
 
@@ -271,8 +273,10 @@ export async function syncIndexFromFilesystem(
     })
   ) {
     report.skipped = total;
+    const fastPathProgress = toSyncProgress(report, total, total, phase);
     emitProgress(total, total);
-    onBatch?.(toSyncProgress(report, total, total, phase));
+    await onMetadataComplete?.(fastPathProgress);
+    onBatch?.(fastPathProgress);
     return report;
   }
 

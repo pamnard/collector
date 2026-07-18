@@ -736,12 +736,35 @@ describe("vault operations", () => {
     expect(await ctx.index.getReconcileFingerprint(meta.id)).not.toBeNull();
 
     countingFs.statCount = 0;
-    const report = await syncIndexFromFilesystem(ctx, path, meta.id);
+    let metadataCompleteCount = 0;
+    let sawMetadataWorkInFlight = false;
+    // Mirrors collector-service banner gate: only `processed < total` before
+    // onMetadataComplete would flip metadataReady to false.
+    let metadataReady = true;
+    const report = await syncIndexFromFilesystem(ctx, path, meta.id, {
+      onProgress: (progress) => {
+        if (
+          metadataReady &&
+          progress.phase === "metadata" &&
+          progress.processed < progress.total
+        ) {
+          metadataReady = false;
+          sawMetadataWorkInFlight = true;
+        }
+      },
+      onMetadataComplete: () => {
+        metadataCompleteCount += 1;
+        metadataReady = true;
+      },
+    });
     expect(report.skipped).toBe(itemCount);
     expect(report.indexed).toBe(0);
     expect(report.patched).toBe(0);
     expect(report.errors).toHaveLength(0);
     expect(countingFs.statCount).toBe(1);
+    expect(metadataCompleteCount).toBe(1);
+    expect(sawMetadataWorkInFlight).toBe(false);
+    expect(metadataReady).toBe(true);
   });
 
   it("runs slow reconcile on fingerprint mismatch", async () => {
