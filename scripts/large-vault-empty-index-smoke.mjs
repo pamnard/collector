@@ -42,6 +42,7 @@ try {
     upsertItemContent: async () => {},
     upsertItemContentBatch: async () => {},
     deleteItem: async () => {},
+    rewriteItemIds: async () => {},
     upsertMedia: async () => {},
     deleteMedia: async () => {},
     deleteMediaForItem: async () => {},
@@ -51,6 +52,7 @@ try {
     listItemIdsByTag: async () => [],
     listItemIdsByFolderPrefix: async () => [],
     listItemIdsByNavFilter: async () => [],
+    countItemIdsByNavFilter: async () => 0,
     listFolderItemCounts: async () => [],
     listVaultItemIds: async () => [],
     listItemFilesByIds: async () => [],
@@ -61,6 +63,7 @@ try {
     getReconcileFingerprint: async () => null,
     setReconcileFingerprint: async () => {},
     searchItemIds: async () => [],
+    countSearchItemIds: async () => 0,
   };
 
   const diskCtx = { fs, index: noopIndex };

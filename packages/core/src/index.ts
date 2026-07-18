@@ -7,6 +7,7 @@ export type {
   IndexSyncPhase,
   IndexSyncProgress,
   ItemContentUpsert,
+  ItemIdRewriteMapping,
   SyncReport,
   UpsertItemInput,
   VaultContext,

@@ -1,5 +1,9 @@
 import type { ItemFile } from "@collector/shared";
-import { isValidFolderPath, normalizeFolderPath } from "@collector/shared";
+import {
+  folderPathFromItemPath,
+  isValidFolderPath,
+  normalizeFolderPath,
+} from "@collector/shared";
 import type { VaultContext } from "../adapters/types.js";
 import { nowIso } from "../util/ids.js";
 import { buildFolderTree, renameFolderPath, type FolderTreeNode } from "./folder-tree.js";
@@ -88,8 +92,8 @@ export async function createFolder(
 
 /**
  * Rename a real FS folder. Item ids embed their path, so every item under
- * the old prefix gets a new id; the index rows are dropped and re-added
- * under the new id (disk files already moved via the directory rename).
+ * the old prefix gets a new id; the index rewrites those PKs in SQL without
+ * re-reading markdown from disk.
  */
 export async function renameFolder(
   ctx: VaultContext,
@@ -121,22 +125,18 @@ export async function renameFolder(
   await ctx.fs.rename(fromAbs, toAbs);
   await ctx.fs.touch(vaultPath);
 
-  for (const oldId of itemIds) {
-    await ctx.index.deleteItem(oldId);
-    const newId = renameFolderPath(oldId, from, to);
-    if (newId === oldId || !(await ctx.fs.exists(itemMarkdownPath(vaultPath, newId)))) {
-      continue;
-    }
+  const mappings = itemIds
+    .map((oldId) => {
+      const newId = renameFolderPath(oldId, from, to);
+      return {
+        oldId,
+        newId,
+        folderPath: folderPathFromItemPath(newId),
+      };
+    })
+    .filter((mapping) => mapping.newId !== mapping.oldId);
 
-    const item = await readItemFile(ctx.fs, vaultPath, newId, vaultId);
-    const content = await readItemContent(ctx.fs, vaultPath, newId);
-    const sourceRef = await readItemSourceRef(ctx.fs, vaultPath, newId);
-    const fileStat = await ctx.fs.stat(itemMarkdownPath(vaultPath, newId));
-    await ctx.index.upsertItem(
-      { item, content, sourceRef, fileMtimeMs: fileStat.mtimeMs },
-      vaultId,
-    );
-  }
+  await ctx.index.rewriteItemIds(mappings);
 
   return to;
 }

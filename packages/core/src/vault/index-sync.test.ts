@@ -23,6 +23,7 @@ function createNoopVaultIndex(): VaultIndexAdapter {
     upsertItemContent: noop,
     upsertItemContentBatch: noop,
     deleteItem: noop,
+    rewriteItemIds: noop,
     upsertMedia: noop,
     deleteMedia: noop,
     deleteMediaForItem: noop,
