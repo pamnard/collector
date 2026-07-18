@@ -17,9 +17,10 @@ import {
   streamItemsByIds,
   syncIndexFromFilesystem,
   upsertItem,
+  writeItemRawMarkdown,
 } from "../vault/operations.js";
 import type { ItemFile } from "@collector/shared";
-import { readItemFile, writeItemFile } from "../vault/item-io.js";
+import { readItemFile, readItemRawMarkdown, writeItemFile } from "../vault/item-io.js";
 import { itemMarkdownPath, joinSegments } from "../vault/paths.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 
@@ -135,6 +136,66 @@ describe("vault operations", () => {
 
     await deleteItem(ctx, path, itemId);
     expect(await listItemsOnDisk(ctx, path)).toHaveLength(0);
+  });
+
+  it("writes raw markdown as-is and reindexes from parse", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-raw-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, {
+      name: "Vault",
+    });
+
+    const itemId = `${createId()}.md`;
+    const created = "2024-01-01T00:00:00.000Z";
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Original",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        tag_ids: [],
+        collection_ids: [],
+        created_at: created,
+        updated_at: created,
+      },
+      content: "old body",
+    });
+
+    const raw = [
+      "---",
+      "title: From source",
+      "description: edited raw",
+      "type: note",
+      `created: ${created}`,
+      `updated: ${created}`,
+      "---",
+      "",
+      "# Source body",
+      "",
+      "kept verbatim spacing  ",
+      "",
+    ].join("\n");
+
+    const updated = await writeItemRawMarkdown(
+      ctx,
+      path,
+      meta.id,
+      itemId,
+      raw,
+    );
+    expect(updated.title).toBe("From source");
+    expect(updated.description).toBe("edited raw");
+
+    const onDisk = await readItemRawMarkdown(fs, path, itemId);
+    expect(onDisk).toBe(raw);
+
+    const indexed = await listItemsByIds(ctx, path, [itemId]);
+    expect(indexed[0]?.title).toBe("From source");
+    expect(indexed[0]?.description).toBe("edited raw");
   });
 
   it("listItemsByIds preserves order and skips missing items", async () => {

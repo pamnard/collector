@@ -96,7 +96,7 @@ export function ItemDetailInlineEditor({
           onChange={(event) => update("content", event.target.value)}
           rows={16}
           placeholder="Markdown…"
-          className="mt-2 w-full rounded-lg border border-border bg-input/20 px-4 py-3 text-sm font-mono leading-relaxed resize-y min-h-[320px]"
+          className="mt-2 w-full bg-transparent px-0 py-0 text-sm font-mono leading-relaxed resize-y min-h-[320px] outline-none"
         />
       </label>
     </article>

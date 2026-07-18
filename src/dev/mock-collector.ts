@@ -1,9 +1,13 @@
 import type { FolderTreeNode, MediaWithPath, TagWithCount } from "@collector/core";
 import {
+  buildCanonicalFrontmatter,
+  contentTypeFromFrontmatter,
   itemMediaManifestPath,
   mediaFilePath,
   parseDocumentMarkdown,
+  parseKnownFrontmatter,
   resolveItemThumbnailAbsolutePath,
+  serializeDocumentMarkdown,
 } from "@collector/core";
 import { mediaManifestSchema, type ItemFile, type VaultMeta } from "@collector/shared";
 import type { NavFilter } from "../types/ui";
@@ -180,6 +184,64 @@ export async function getItemById(
   const raw = await fetchDevVaultText(devVaultFsUrl(itemId));
   const content = raw === null ? null : parseDocumentMarkdown(raw).body;
   return { item, content };
+}
+
+export async function getItemSource(itemId: string): Promise<string> {
+  ensureWarmedUp();
+  const item = mockStore.getItemById(itemId);
+  if (!item) {
+    throw new Error(`Item not found: ${itemId}`);
+  }
+
+  if (mockStore.isDiskVault()) {
+    const raw = await fetchDevVaultText(devVaultFsUrl(itemId));
+    if (raw === null) {
+      throw new Error(`Item not found: ${itemId}`);
+    }
+    return raw;
+  }
+
+  const frontmatter = buildCanonicalFrontmatter({
+    title: item.title,
+    description: item.description,
+    url: item.url,
+    content_type: item.content_type,
+    source_type: item.source_type,
+    source_id: item.source_id,
+    tags: [],
+    thumbnail: item.thumbnail,
+    content_revision: item.content_revision,
+    created: item.created_at,
+    updated: item.updated_at,
+    metadata: item.metadata,
+  });
+  return serializeDocumentMarkdown(frontmatter, "");
+}
+
+export async function updateItemSource(
+  itemId: string,
+  rawMarkdown: string,
+): Promise<ItemFile> {
+  ensureWarmedUp();
+  const existing = mockStore.getItemById(itemId);
+  if (!existing) {
+    throw new Error(`Item not found: ${itemId}`);
+  }
+  if (mockStore.isDiskVault()) {
+    throw new Error(
+      "Updating item source is not supported in the web mock vault",
+    );
+  }
+
+  const parsed = parseDocumentMarkdown(rawMarkdown);
+  const known = parseKnownFrontmatter(parsed.frontmatter);
+  return mockStore.updateItem(itemId, {
+    title: known.title ?? existing.title,
+    description: known.description ?? existing.description,
+    url: known.url !== undefined ? known.url : existing.url,
+    content_type:
+      contentTypeFromFrontmatter(known) ?? existing.content_type,
+  });
 }
 
 export async function listItemMedia(itemId: string): Promise<MediaWithPath[]> {

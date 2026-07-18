@@ -49,6 +49,7 @@ export {
   readItemContent,
   readItemDocument,
   readItemFile,
+  readItemRawMarkdown,
   readItemSourceRef,
   readVaultMeta,
   writeItemContent,
@@ -83,6 +84,7 @@ export {
   streamItemsByIds,
   syncIndexFromFilesystem,
   upsertItem,
+  writeItemRawMarkdown,
 } from "./vault/operations.js";
 export type { StreamedItemRead, StreamItemsByIdsOptions } from "./vault/operations.js";
 
