@@ -366,7 +366,7 @@ describe("upsertItemMetadata / upsertItemContent", () => {
       "SELECT content FROM items_fts WHERE item_id = ?",
       [itemId],
     );
-    expect(ftsMeta[0]?.content).toBe("");
+    expect(ftsMeta).toEqual([]);
 
     await index.upsertItemContent({
       itemId,
@@ -389,7 +389,7 @@ describe("upsertItemMetadata / upsertItemContent", () => {
     expect(ftsContent[0]?.content).toBe("full body text");
   });
 
-  it("metadata FTS query matches title but not content-only tokens", async () => {
+  it("writes FTS tokens only after the content phase", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "collector-metadata-fts-search-"));
     db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
     await runMigrations(db);
@@ -421,9 +421,7 @@ describe("upsertItemMetadata / upsertItemContent", () => {
     const contentQuery = buildMetadataFtsMatchQuery(contentToken);
     expect(titleQuery).not.toBeNull();
     expect(contentQuery).not.toBeNull();
-    expect(await index.searchItemIds(meta.id, titleQuery!, "all")).toEqual([
-      itemId,
-    ]);
+    expect(await index.searchItemIds(meta.id, titleQuery!, "all")).toEqual([]);
     expect(await index.searchItemIds(meta.id, contentQuery!, "all")).toEqual(
       [],
     );
@@ -442,6 +440,46 @@ describe("upsertItemMetadata / upsertItemContent", () => {
       [itemId],
     );
     expect(await index.searchItemIds(meta.id, contentQuery!, "all")).toEqual([]);
+  });
+
+  it("uses constant SQL executes for a metadata batch", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-metadata-batch-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    const ctx = { fs, index };
+    const { meta } = await createVault(ctx, dataDir, { name: "Vault" });
+    const timestamp = new Date().toISOString();
+    const records = Array.from({ length: 32 }, () => ({
+      item: {
+        id: createId(),
+        vault_id: meta.id,
+        title: "Batch item",
+        description: "",
+        content_type: "note" as const,
+        source_type: "manual" as const,
+        metadata: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      fileMtimeMs: 1,
+    }));
+
+    let executeCalls = 0;
+    const underlying = db.execute.bind(db);
+    db.execute = async (query: string, bindValues?: unknown[]) => {
+      executeCalls += 1;
+      return underlying(query, bindValues);
+    };
+
+    await index.upsertItemMetadataBatch(records, meta.id);
+
+    expect(executeCalls).toBe(3);
+    expect(executeCalls).toBeLessThan(records.length * 3);
   });
 
   it("batch-inserts tags and collections in O(1) SQL round-trips per relation", async () => {
@@ -493,8 +531,8 @@ describe("upsertItemMetadata / upsertItemContent", () => {
     );
 
     // items upsert + delete tags + batch insert tags + delete collections +
-    // batch stub collections + batch item_collections + delete fts + insert fts
-    expect(executeCalls).toBe(8);
+    // batch stub collections + batch item_collections
+    expect(executeCalls).toBe(6);
 
     const tagRows = await db.select<{ tag_id: string }>(
       "SELECT tag_id FROM item_tags WHERE item_id = ? ORDER BY tag_id",
@@ -535,8 +573,8 @@ describe("upsertItemMetadata / upsertItemContent", () => {
       meta.id,
     );
 
-    // empty collection_ids skips batch collection inserts
-    expect(executeCalls).toBe(6);
+    // Empty relation lists skip relation inserts.
+    expect(executeCalls).toBe(4);
 
     const replacedTags = await db.select<{ tag_id: string }>(
       "SELECT tag_id FROM item_tags WHERE item_id = ?",

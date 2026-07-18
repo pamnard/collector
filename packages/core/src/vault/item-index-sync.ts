@@ -162,6 +162,14 @@ export async function syncIndexItemsFromFilesystem(
       batchReads.map((read) => [read.id, read.documentMarkdown]),
     );
 
+    const syncMetaPatches: Array<{
+      itemId: string;
+      fileMtimeMs: number;
+      updatedAt: string;
+      contentRevision: number;
+      createdAt: string;
+    }> = [];
+
     for (const itemId of metadataIds) {
       const diskMtimeMs = metadataById.get(itemId);
       if (diskMtimeMs === undefined) {
@@ -214,24 +222,40 @@ export async function syncIndexItemsFromFilesystem(
       }
 
       if (action === "patch") {
-        try {
-          await ctx.index.patchItemSyncMeta(itemId, {
-            fileMtimeMs: diskMtimeMs,
-            updatedAt: item.updated_at,
-            contentRevision: item.content_revision,
-            createdAt: item.created_at,
-          });
-          report.patched += 1;
-        } catch (error) {
-          report.errors.push({
-            itemId,
-            message: error instanceof Error ? error.message : String(error),
-          });
-        }
+        syncMetaPatches.push({
+          itemId,
+          fileMtimeMs: diskMtimeMs,
+          updatedAt: item.updated_at,
+          contentRevision: item.content_revision,
+          createdAt: item.created_at,
+        });
         continue;
       }
 
       reindexQueue.push({ itemId, diskMtimeMs, item });
+    }
+
+    for (
+      let offset = 0;
+      offset < syncMetaPatches.length;
+      offset += INDEX_SYNC_WRITE_BATCH
+    ) {
+      const patches = syncMetaPatches.slice(
+        offset,
+        offset + INDEX_SYNC_WRITE_BATCH,
+      );
+      try {
+        await ctx.index.patchItemSyncMetaBatch(patches);
+        report.patched += patches.length;
+      } catch (error) {
+        for (const patch of patches) {
+          report.errors.push({
+            itemId: patch.itemId,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
     }
   }
 
@@ -267,53 +291,87 @@ export async function syncIndexItemsFromFilesystem(
     }
   }
 
-  for (let i = 0; i < reindexQueue.length; i += 1) {
-    const work = reindexQueue[i]!;
-    try {
+  for (let offset = 0; offset < reindexQueue.length; offset += INDEX_SYNC_WRITE_BATCH) {
+    const workBatch = reindexQueue.slice(
+      offset,
+      offset + INDEX_SYNC_WRITE_BATCH,
+    );
+    const records: Array<{ item: ItemFile; fileMtimeMs: number }> = [];
+    const workByRecord: typeof reindexQueue = [];
+    for (const work of workBatch) {
       if (!work.item) {
-        throw new Error(`Missing document for ${work.itemId}`);
+        report.errors.push({
+          itemId: work.itemId,
+          message: `Missing document for ${work.itemId}`,
+        });
+        continue;
       }
-      await ctx.index.upsertItemMetadata(
-        { item: work.item, fileMtimeMs: work.diskMtimeMs },
-        vaultId,
-      );
-      report.indexed += 1;
-    } catch (error) {
-      report.errors.push({
-        itemId: work.itemId,
-        message: error instanceof Error ? error.message : String(error),
-      });
+      records.push({ item: work.item, fileMtimeMs: work.diskMtimeMs });
+      workByRecord.push(work);
     }
 
-    if ((i + 1) % INDEX_SYNC_WRITE_BATCH === 0) {
+    try {
+      if (records.length > 0) {
+        await ctx.index.upsertItemMetadataBatch(records, vaultId);
+        report.indexed += records.length;
+      }
+    } catch (error) {
+      for (const work of workByRecord) {
+        report.errors.push({
+          itemId: work.itemId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    if (offset + workBatch.length < reindexQueue.length) {
       await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
     }
   }
 
-  for (let i = 0; i < reindexQueue.length; i += 1) {
-    const work = reindexQueue[i]!;
-    if (!work.item) {
-      continue;
-    }
-    try {
-      const content = await readItemContent(ctx.fs, vaultPath, work.itemId);
-      const sourceRef = await readItemSourceRef(ctx.fs, vaultPath, work.itemId);
-      await ctx.index.upsertItemContent({
-        itemId: work.item.id,
-        title: work.item.title,
-        description: work.item.description,
-        content,
-        sourceRef,
-      });
-      report.contentIndexed += 1;
-    } catch (error) {
-      report.errors.push({
-        itemId: work.itemId,
-        message: error instanceof Error ? error.message : String(error),
-      });
+  for (let offset = 0; offset < reindexQueue.length; offset += INDEX_SYNC_WRITE_BATCH) {
+    const workBatch = reindexQueue.slice(
+      offset,
+      offset + INDEX_SYNC_WRITE_BATCH,
+    );
+    const inputs = [];
+    for (const work of workBatch) {
+      if (!work.item) {
+        continue;
+      }
+      try {
+        const content = await readItemContent(ctx.fs, vaultPath, work.itemId);
+        const sourceRef = await readItemSourceRef(ctx.fs, vaultPath, work.itemId);
+        inputs.push({
+          itemId: work.item.id,
+          title: work.item.title,
+          description: work.item.description,
+          content,
+          sourceRef,
+        });
+      } catch (error) {
+        report.errors.push({
+          itemId: work.itemId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
-    if ((i + 1) % INDEX_SYNC_WRITE_BATCH === 0) {
+    try {
+      if (inputs.length > 0) {
+        await ctx.index.upsertItemContentBatch(inputs);
+        report.contentIndexed += inputs.length;
+      }
+    } catch (error) {
+      for (const input of inputs) {
+        report.errors.push({
+          itemId: input.itemId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    if (offset + workBatch.length < reindexQueue.length) {
       await yieldToEventLoop(INDEX_SYNC_CONTENT_YIELD_MS);
     }
   }

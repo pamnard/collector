@@ -641,7 +641,7 @@ describe("vault operations", () => {
     expect(metadataSnapshot).not.toBeNull();
     expect(metadataSnapshot!.contentIndexed).toBe(0);
     expect(metadataSnapshot!.ids).toEqual([itemId]);
-    expect(metadataSnapshot!.titleHits).toEqual([itemId]);
+    expect(metadataSnapshot!.titleHits).toEqual([]);
     expect(metadataSnapshot!.contentHits).toEqual([]);
 
     expect(report.indexed).toBe(1);

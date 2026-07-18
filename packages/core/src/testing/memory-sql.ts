@@ -19,6 +19,10 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       return this.patchItemSyncMeta(bindValues);
     }
 
+    if (normalized.startsWith("UPDATE items SET file_mtime_ms = CASE id")) {
+      return this.patchItemSyncMetaBatch(bindValues);
+    }
+
     if (normalized.startsWith("UPDATE vaults SET reconcile_fingerprint_json = ?")) {
       return this.setReconcileFingerprint(bindValues);
     }
@@ -27,11 +31,18 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       return this.patchItemHasContentFile(bindValues);
     }
 
+    if (normalized.startsWith("UPDATE items SET has_content_file = CASE id")) {
+      return this.patchItemHasContentFileBatch(bindValues);
+    }
+
     if (normalized.startsWith("INSERT INTO items_fts")) {
       return this.insertFts(bindValues);
     }
 
     if (normalized.startsWith("DELETE FROM items_fts")) {
+      if (normalized.includes(" IN (")) {
+        return this.deleteByFieldValues("items_fts", "item_id", bindValues);
+      }
       return this.deleteByField("items_fts", "item_id", bindValues[0]);
     }
 
@@ -40,14 +51,30 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
     }
 
     if (normalized.startsWith("DELETE FROM item_tags")) {
+      if (normalized.includes(" IN (")) {
+        return this.deleteByFieldValues("item_tags", "item_id", bindValues);
+      }
       return this.deleteByField("item_tags", "item_id", bindValues[0]);
     }
 
     if (normalized.startsWith("DELETE FROM item_collections")) {
+      if (normalized.includes(" IN (")) {
+        return this.deleteByFieldValues(
+          "item_collections",
+          "item_id",
+          bindValues,
+        );
+      }
       return this.deleteByField("item_collections", "item_id", bindValues[0]);
     }
 
     if (normalized.startsWith("DELETE FROM source_refs")) {
+      if (normalized.includes("(plugin_id, external_id) IN")) {
+        return this.deleteSourceRefsByExternalIds(bindValues);
+      }
+      if (normalized.includes(" IN (")) {
+        return this.deleteByFieldValues("source_refs", "item_id", bindValues);
+      }
       return this.deleteByField("source_refs", "item_id", bindValues[0]);
     }
 
@@ -128,14 +155,18 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
     }
 
     if (normalized.startsWith("INSERT INTO source_refs")) {
-      return this.insertRow("source_refs", {
-        id: bindValues[0],
-        item_id: bindValues[1],
-        plugin_id: bindValues[2],
-        external_id: bindValues[3],
-        synced_at: bindValues[4],
-        metadata_json: bindValues[5],
-      });
+      let inserted = 0;
+      for (let i = 0; i < bindValues.length; i += 6) {
+        inserted += this.insertRow("source_refs", {
+          id: bindValues[i],
+          item_id: bindValues[i + 1],
+          plugin_id: bindValues[i + 2],
+          external_id: bindValues[i + 3],
+          synced_at: bindValues[i + 4],
+          metadata_json: bindValues[i + 5],
+        });
+      }
+      return inserted;
     }
 
     if (normalized.startsWith("INSERT INTO vaults")) {
@@ -323,14 +354,18 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
 
   private insertFts(bindValues: unknown[]): number {
     const table = this.getTable("items_fts");
-    const itemId = String(bindValues[0]);
-    table.set(itemId, {
-      item_id: itemId,
-      title: bindValues[1],
-      description: bindValues[2],
-      content: bindValues[3],
-    });
-    return 1;
+    let inserted = 0;
+    for (let i = 0; i < bindValues.length; i += 4) {
+      const itemId = String(bindValues[i]);
+      table.set(itemId, {
+        item_id: itemId,
+        title: bindValues[i + 1],
+        description: bindValues[i + 2],
+        content: bindValues[i + 3],
+      });
+      inserted += 1;
+    }
+    return inserted;
   }
 
   private upsertVault(bindValues: unknown[]): number {
@@ -386,6 +421,28 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
     return 1;
   }
 
+  private patchItemSyncMetaBatch(bindValues: unknown[]): number {
+    const patchCount = bindValues.length / 9;
+    const table = this.getTable("items");
+    let updated = 0;
+    for (let i = 0; i < patchCount; i += 1) {
+      const itemId = String(bindValues[patchCount * 8 + i]);
+      const row = table.get(itemId);
+      if (!row) {
+        continue;
+      }
+      table.set(itemId, {
+        ...row,
+        file_mtime_ms: bindValues[i * 2 + 1],
+        updated_at: bindValues[patchCount * 2 + i * 2 + 1],
+        content_revision: bindValues[patchCount * 4 + i * 2 + 1],
+        created_at: bindValues[patchCount * 6 + i * 2 + 1],
+      });
+      updated += 1;
+    }
+    return updated;
+  }
+
   private patchItemHasContentFile(bindValues: unknown[]): number {
     const table = this.getTable("items");
     const hasContentFile = bindValues[0];
@@ -401,28 +458,52 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
     return 1;
   }
 
+  private patchItemHasContentFileBatch(bindValues: unknown[]): number {
+    const inputCount = bindValues.length / 3;
+    const table = this.getTable("items");
+    let updated = 0;
+    for (let i = 0; i < inputCount; i += 1) {
+      const itemId = String(bindValues[inputCount * 2 + i]);
+      const row = table.get(itemId);
+      if (!row) {
+        continue;
+      }
+      table.set(itemId, {
+        ...row,
+        has_content_file: bindValues[i * 2 + 1],
+      });
+      updated += 1;
+    }
+    return updated;
+  }
+
   private upsertItem(bindValues: unknown[]): number {
     const table = this.getTable("items");
-    const id = String(bindValues[0]);
-    table.set(id, {
-      id,
-      vault_id: bindValues[1],
-      title: bindValues[2],
-      description: bindValues[3],
-      url: bindValues[4],
-      content_type: bindValues[5],
-      source_type: bindValues[6],
-      source_id: bindValues[7],
-      metadata_json: bindValues[8],
-      thumbnail_path: bindValues[9],
-      has_content_file: bindValues[10],
-      folder_path: bindValues[11],
-      created_at: bindValues[12],
-      updated_at: bindValues[13],
-      file_mtime_ms: bindValues[14],
-      content_revision: bindValues[15],
-    });
-    return 1;
+    let upserted = 0;
+    for (let i = 0; i < bindValues.length; i += 16) {
+      const id = String(bindValues[i]);
+      const existing = table.get(id);
+      table.set(id, {
+        id,
+        vault_id: bindValues[i + 1],
+        title: bindValues[i + 2],
+        description: bindValues[i + 3],
+        url: bindValues[i + 4],
+        content_type: bindValues[i + 5],
+        source_type: bindValues[i + 6],
+        source_id: bindValues[i + 7],
+        metadata_json: bindValues[i + 8],
+        thumbnail_path: bindValues[i + 9],
+        has_content_file: existing?.has_content_file ?? bindValues[i + 10],
+        folder_path: bindValues[i + 11],
+        created_at: bindValues[i + 12],
+        updated_at: bindValues[i + 13],
+        file_mtime_ms: bindValues[i + 14],
+        content_revision: bindValues[i + 15],
+      });
+      upserted += 1;
+    }
+    return upserted;
   }
 
   private insertRow(tableName: string, row: Record<string, unknown>): number {
@@ -437,6 +518,39 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
     let removed = 0;
     for (const [key, row] of table.entries()) {
       if (row[field] === value) {
+        table.delete(key);
+        removed += 1;
+      }
+    }
+    return removed;
+  }
+
+  private deleteByFieldValues(
+    tableName: string,
+    field: string,
+    values: unknown[],
+  ): number {
+    const expected = new Set(values);
+    const table = this.getTable(tableName);
+    let removed = 0;
+    for (const [key, row] of table.entries()) {
+      if (expected.has(row[field])) {
+        table.delete(key);
+        removed += 1;
+      }
+    }
+    return removed;
+  }
+
+  private deleteSourceRefsByExternalIds(bindValues: unknown[]): number {
+    const externalRefs = new Set<string>();
+    for (let i = 0; i < bindValues.length; i += 2) {
+      externalRefs.add(`${bindValues[i]}\u0000${bindValues[i + 1]}`);
+    }
+    const table = this.getTable("source_refs");
+    let removed = 0;
+    for (const [key, row] of table.entries()) {
+      if (externalRefs.has(`${row.plugin_id}\u0000${row.external_id}`)) {
         table.delete(key);
         removed += 1;
       }
