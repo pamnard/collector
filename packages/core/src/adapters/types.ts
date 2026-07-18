@@ -123,6 +123,10 @@ export interface VaultIndexAdapter {
   listVaultItemIds(vaultId: string): Promise<string[]>;
   listItemFilesByIds(vaultId: string, itemIds: string[]): Promise<ItemFile[]>;
   listVaultItemSyncMeta(vaultId: string): Promise<ItemSyncMeta[]>;
+  listItemSyncMetaByIds(
+    vaultId: string,
+    itemIds: string[],
+  ): Promise<ItemSyncMeta[]>;
   patchItemSyncMeta(itemId: string, meta: ItemSyncMetaPatch): Promise<void>;
   getReconcileFingerprint(vaultId: string): Promise<ReconcileFingerprint | null>;
   setReconcileFingerprint(

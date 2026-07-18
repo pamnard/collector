@@ -338,4 +338,57 @@ describe("syncIndexItemsFromFilesystem", () => {
       fs.touch = originalTouch;
     }
   });
+
+  it("loads sync-meta only for requested ids (#193)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-watch-meta-by-ids-"));
+    const sql = new MemorySqlAdapter();
+    const index = new SqlVaultIndexStore(sql);
+    const ctx = { fs, index };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const timestamp = new Date().toISOString();
+    const itemIds = [`${createId()}.md`, `${createId()}.md`, `${createId()}.md`];
+
+    for (const itemId of itemIds) {
+      await upsertItem(ctx, path, meta.id, {
+        item: {
+          id: itemId,
+          vault_id: meta.id,
+          title: itemId,
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          tag_ids: [],
+          collection_ids: [],
+          folder_path: "",
+          content_revision: 1,
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+        content: "body",
+      });
+    }
+    await syncIndexFromFilesystem(ctx, path, meta.id);
+
+    let fullListCalls = 0;
+    let byIdsCalls: string[][] = [];
+    const originalFull = index.listVaultItemSyncMeta.bind(index);
+    const originalByIds = index.listItemSyncMetaByIds.bind(index);
+    index.listVaultItemSyncMeta = async (vaultId) => {
+      fullListCalls += 1;
+      return originalFull(vaultId);
+    };
+    index.listItemSyncMetaByIds = async (vaultId, ids) => {
+      byIdsCalls.push([...ids]);
+      return originalByIds(vaultId, ids);
+    };
+
+    const targetId = itemIds[1]!;
+    const report = await syncIndexItemsFromFilesystem(ctx, path, meta.id, [
+      targetId,
+    ]);
+    expect(report.errors).toHaveLength(0);
+    expect(fullListCalls).toBe(0);
+    expect(byIdsCalls).toEqual([[targetId]]);
+  });
 });

@@ -594,3 +594,63 @@ describe("upsertItemMetadata / upsertItemContent", () => {
     expect(rows[0]?.created_at).toBe(secondCreated);
   });
 });
+
+describe("listItemSyncMetaByIds", () => {
+  let dataDir = "";
+  const fs = new NodeFileSystemAdapter();
+  let db: BetterSqliteMigrator | null = null;
+
+  afterEach(async () => {
+    db?.close();
+    db = null;
+    if (dataDir) {
+      await rm(dataDir, { recursive: true, force: true });
+      dataDir = "";
+    }
+  });
+
+  it("returns only requested ids and empty for empty input", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-sync-meta-by-ids-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    const ctx = { fs, index };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const timestamp = new Date().toISOString();
+    const firstId = `${createId()}.md`;
+    const secondId = `${createId()}.md`;
+    const thirdId = `${createId()}.md`;
+
+    for (const itemId of [firstId, secondId, thirdId]) {
+      await upsertItem(ctx, path, meta.id, {
+        item: {
+          id: itemId,
+          vault_id: meta.id,
+          title: itemId,
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          tag_ids: [],
+          collection_ids: [],
+          content_revision: 1,
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+        content: "body",
+      });
+    }
+
+    expect(await index.listItemSyncMetaByIds(meta.id, [])).toEqual([]);
+
+    const subset = await index.listItemSyncMetaByIds(meta.id, [
+      secondId,
+      `${createId()}.md`,
+      firstId,
+    ]);
+    expect(subset.map((row) => row.id).sort()).toEqual(
+      [firstId, secondId].sort(),
+    );
+    expect(subset.every((row) => typeof row.updated_at === "string")).toBe(true);
+  });
+});
