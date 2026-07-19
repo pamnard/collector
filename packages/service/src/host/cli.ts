@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 /**
- * CLI entry for out-of-band Collector service host (#151/#152).
+ * CLI entry for Collector service domain host (#151/#152/#237).
  *
  * Usage:
  *   node packages/service/dist/host/cli.js serve --data-dir <dir> [--port 0] [--host 127.0.0.1] [--ipc-path <path>|--no-ipc]
  *
  * Prints `COLLECTOR_SERVICE_READY {...}` when listening, then waits for SIGINT/SIGTERM.
- * Not started by the Tauri app.
+ * Out-of-band smokes call this directly. The Tauri sidecar `collector-service serve`
+ * also launches this Node entry when supervise is enabled (#166/#237). Default app
+ * path still does not spawn it until cutover (#170).
  */
 
 import { startServiceHost, formatServiceHostReadyLine } from "./service-host.js";

@@ -1,7 +1,10 @@
 /**
- * Out-of-band Collector service host (#151/#152/#155+):
+ * Collector service domain host (#151/#152/#155+/#237):
  * open index DB + HTTP health/ping + local IPC with domain handlers.
- * Must not be started by the Tauri app lifecycle (dual-writer risk).
+ *
+ * Default desktop path stays in-process until cutover (#170). Supervise may
+ * start this host behind COLLECTOR_ENABLE_SERVICE_SUPERVISE with an isolated
+ * `--data-dir` so it does not share SQLite with the UI writer.
  */
 
 import { createServer, type Server } from "node:http";

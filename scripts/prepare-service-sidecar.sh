@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
 # Build the Collector service sidecar binary into src-tauri/binaries/ for Tauri
 # externalBin packaging (#165). Does not start the sidecar (see #166).
+# Also ensures the Node domain host CLI is built (#237) — Rust serve launches it.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+
+echo "==> build @collector/service domain host CLI"
+npm run build --workspace @collector/service
+HOST_CLI="packages/service/dist/host/cli.js"
+if [[ ! -f "$HOST_CLI" ]]; then
+  echo "FAIL: missing domain host CLI at $HOST_CLI" >&2
+  exit 1
+fi
 
 TRIPLE="$(rustc --print host-tuple 2>/dev/null || true)"
 if [[ -z "$TRIPLE" ]]; then
