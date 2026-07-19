@@ -41,6 +41,13 @@ export interface CollectorIpcClient extends CollectorServiceApi {
   ping(options?: ServiceIpcRequestOptions): Promise<{ ok: true; pong: true }>;
   health(options?: ServiceIpcRequestOptions): Promise<ServiceIpcHealthResult>;
   close(): Promise<void>;
+  /** Host watcher orchestration (#164) — not part of the in-process UI facade. */
+  startVaultFilesystemWatcher(
+    vaultId: string,
+    vaultPath: string,
+  ): Promise<void>;
+  stopVaultFilesystemWatcher(): Promise<void>;
+  isVaultFilesystemWatcherActive(): Promise<boolean>;
 }
 
 function unimplemented(method: string): never {
@@ -71,6 +78,24 @@ export function createCollectorIpcClient(
     ping: (options) => transport.ping(options),
     health: (options) => transport.health(options),
     close: () => transport.close(),
+    startVaultFilesystemWatcher: async (
+      vaultId: string,
+      vaultPath: string,
+    ): Promise<void> => {
+      await transport.request("startVaultFilesystemWatcher", {
+        vaultId,
+        vaultPath,
+      });
+    },
+    stopVaultFilesystemWatcher: async (): Promise<void> => {
+      await transport.request("stopVaultFilesystemWatcher");
+    },
+    isVaultFilesystemWatcherActive: async (): Promise<boolean> => {
+      const result = (await transport.request(
+        "isVaultFilesystemWatcherActive",
+      )) as { active: boolean };
+      return result.active;
+    },
 
     // Boot / DB (#162)
     openCollectorDatabase: async (): Promise<void> => {

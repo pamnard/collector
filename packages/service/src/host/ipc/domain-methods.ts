@@ -56,6 +56,10 @@ export const DOMAIN_IPC_METHODS = {
   buildDashboardSnapshot: "buildDashboardSnapshot",
   // #163 sync status
   getVaultIndexSyncStatus: "getVaultIndexSyncStatus",
+  // #164 watcher
+  startVaultFilesystemWatcher: "startVaultFilesystemWatcher",
+  stopVaultFilesystemWatcher: "stopVaultFilesystemWatcher",
+  isVaultFilesystemWatcherActive: "isVaultFilesystemWatcherActive",
 } as const;
 
 export type DomainIpcMethod =
