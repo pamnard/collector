@@ -18,6 +18,11 @@
       "@collector/source": "./src/host-entry.ts",
       "types": "./dist/host-entry.d.ts",
       "import": "./dist/host-entry.js"
+    },
+    "./ipc": {
+      "@collector/source": "./src/ipc-entry.ts",
+      "types": "./dist/ipc-entry.d.ts",
+      "import": "./dist/ipc-entry.js"
     }
   },
   "scripts": {

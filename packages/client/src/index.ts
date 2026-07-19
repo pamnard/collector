@@ -1,11 +1,15 @@
 /**
- * @collector/client — IPC client skeleton matching CollectorServiceApi (#154).
- * Not used by the Tauri in-process production path.
+ * @collector/client — browser-safe IPC CollectorClient factory (#154/#240).
+ * Injectable transport only — no Node dialer in this entry.
  */
 
 export {
   createCollectorIpcClient,
-  connectCollectorIpcClient,
   type CollectorIpcClient,
   type ServiceIpcHealthResult,
 } from "./ipc-collector-client.js";
+
+export type {
+  ServiceIpcClient,
+  ServiceIpcRequestOptions,
+} from "@collector/service/ipc";

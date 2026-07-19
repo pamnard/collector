@@ -47,6 +47,10 @@ export {
   type ServiceIpcRequestOptions,
 } from "./host/ipc/client.js";
 
+export type {
+  ServiceIpcClient as ServiceIpcTransport,
+} from "./host/ipc/transport-types.js";
+
 export {
   ServiceIpcError,
   getCollectorApiError,

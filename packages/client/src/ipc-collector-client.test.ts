@@ -14,10 +14,8 @@ import {
   type ServiceIpcClient,
 } from "@collector/service/host";
 import type { VaultIndexSyncStatus } from "@collector/api";
-import {
-  connectCollectorIpcClient,
-  createCollectorIpcClient,
-} from "./ipc-collector-client.js";
+import { createCollectorIpcClient } from "./ipc-collector-client.js";
+import { connectCollectorIpcClient } from "./ipc-collector-client-node.js";
 
 /** Legacy incomplete schema — migrate leaves it unhealthy until rebuild. */
 async function writeLegacyBrokenIndexDb(dbPath: string): Promise<void> {

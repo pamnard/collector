@@ -3,7 +3,7 @@
  *
  * Until host domain handlers exist, every method except transport health/ping
  * fails with validation `unimplemented` — no silent defaults / empty results.
- * Not wired into the Tauri UI (production stays in-process).
+ * Browser-safe with injectable transport (#240). Node dialer: `./node`. Production UI stays LocalAdapter until #170.
  */
 
 import type {
@@ -26,13 +26,11 @@ import type {
 import type { AppSettings, DashboardSnapshot, ItemFile, MediaFileMeta, Tag, VaultMeta } from "@collector/shared";
 import {
   SERVICE_IPC_EVENTS,
-  connectServiceIpc,
   serviceIpcError,
   type ServiceIpcClient,
-  type ServiceIpcClientOptions,
   type ServiceIpcHealthResult,
   type ServiceIpcRequestOptions,
-} from "@collector/service/host";
+} from "@collector/service/ipc";
 
 export type { ServiceIpcHealthResult };
 
@@ -369,11 +367,3 @@ export function createCollectorIpcClient(
   };
 }
 
-/** Dial the out-of-band service host and return the API-shaped IPC client. */
-export async function connectCollectorIpcClient(
-  path: string,
-  options?: ServiceIpcClientOptions,
-): Promise<CollectorIpcClient> {
-  const transport = await connectServiceIpc(path, options);
-  return createCollectorIpcClient(transport);
-}
