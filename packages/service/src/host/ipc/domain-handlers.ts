@@ -11,11 +11,13 @@ import { buildFoldersHandlers } from "./handlers/folders.js";
 import { buildMediaHandlers } from "./handlers/media.js";
 import { buildVaultsHandlers } from "./handlers/vaults.js";
 import { buildSettingsSnapshotHandlers } from "./handlers/settings-snapshot.js";
+import { buildIndexBootHandlers } from "./handlers/index-boot.js";
 
 export function buildDomainIpcHandlers(
   runtime: ServiceDomainRuntime,
 ): DomainIpcHandlerMap {
   return {
+    ...buildIndexBootHandlers(runtime),
     ...buildItemsReadHandlers(runtime),
     ...buildItemsWriteHandlers(runtime),
     ...buildTagsHandlers(runtime),

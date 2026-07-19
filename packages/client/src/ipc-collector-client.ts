@@ -63,10 +63,13 @@ export function createCollectorIpcClient(
     health: (options) => transport.health(options),
     close: () => transport.close(),
 
-    // Boot / DB
-    openCollectorDatabase: async () => unimplemented("openCollectorDatabase"),
-    ensureCollectorDatabaseHealthy: async () =>
-      unimplemented("ensureCollectorDatabaseHealthy"),
+    // Boot / DB (#162)
+    openCollectorDatabase: async (): Promise<void> => {
+      await transport.request("openCollectorDatabase");
+    },
+    ensureCollectorDatabaseHealthy: async (): Promise<void> => {
+      await transport.request("ensureCollectorDatabaseHealthy");
+    },
     ensureActiveVault: async (): Promise<ActiveVaultResult> =>
       transport.request("ensureActiveVault") as Promise<ActiveVaultResult>,
     getDataDirectory: async (): Promise<string> =>

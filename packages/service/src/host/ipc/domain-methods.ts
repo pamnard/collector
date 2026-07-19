@@ -3,6 +3,9 @@
  */
 
 export const DOMAIN_IPC_METHODS = {
+  // #162 index boot
+  openCollectorDatabase: "openCollectorDatabase",
+  ensureCollectorDatabaseHealthy: "ensureCollectorDatabaseHealthy",
   // #155 reads
   listItems: "listItems",
   searchItems: "searchItems",
