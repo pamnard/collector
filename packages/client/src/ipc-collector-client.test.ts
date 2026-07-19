@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   NodeSqliteExecutor,
-  ServiceIpcError,
   buildDomainIpcHandlers,
   createDomainIpcDispatcher,
   createServiceDomainRuntime,
@@ -13,7 +12,8 @@ import {
   startServiceIpcServer,
   type ServiceIpcClient,
 } from "@collector/service/host";
-import type { VaultIndexSyncStatus } from "@collector/api";
+import type { DashboardIndexPage, VaultIndexSyncStatus } from "@collector/api";
+import type { AppSettings } from "@collector/shared";
 import { createCollectorIpcClient } from "./ipc-collector-client.js";
 import { connectCollectorIpcClient } from "./ipc-collector-client-node.js";
 
@@ -511,50 +511,67 @@ describe("CollectorIpcClient", () => {
     }
   });
 
-  it("unimplemented domain methods fail fast without inventing defaults", async () => {
-    const transport = {
-      ping: async () => ({ ok: true as const, pong: true as const }),
-      health: async () => ({
-        ok: true,
-        status: "healthy" as const,
-        open: true,
-        healthy: true,
-      }),
-      request: async () => {
-        throw new Error("should not be called for unimplemented stubs");
-      },
-      onEvent: () => () => {},
-      close: async () => {},
-    } satisfies ServiceIpcClient;
+  it("settings subscribe + dashboard load work over IPC (#241)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-ipc-ui-surface-"));
+    dirs.push(dataDir);
+    const host = await startServiceHost({ dataDir, port: 0 });
+    try {
+      const client = await connectCollectorIpcClient(host.ipcPath!);
+      try {
+        const settings = await client.ensureAppSettings();
+        expect(client.getAppSettingsSync()).toEqual(settings);
 
-    const client = createCollectorIpcClient(transport);
+        let subscribed: AppSettings | null = null;
+        const unsub = client.subscribeAppSettings((next) => {
+          subscribed = next;
+        });
+        const deadline = Date.now() + 5_000;
+        while (subscribed === null && Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        unsub();
+        expect(subscribed).toEqual(settings);
 
-    expect(() => client.getAppSettingsSync()).toThrow(ServiceIpcError);
-    expect(() => client.getAppSettingsSync()).toThrow(/getAppSettingsSync/);
+        const active = await client.ensureActiveVault();
+        let page: DashboardIndexPage | null = null;
+        let complete = false;
+        client.subscribeDashboardLoad("all", "", {
+          onIndexPage: (next) => {
+            page = next;
+          },
+          onLoadComplete: () => {
+            complete = true;
+          },
+        });
+        const loadDeadline = Date.now() + 5_000;
+        while ((!page || !complete) && Date.now() < loadDeadline) {
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        expect(complete).toBe(true);
+        expect(page).toBeTruthy();
+        expect(page!.totalCount).toBeGreaterThanOrEqual(0);
 
-    expect(() => client.subscribeAppSettings(() => {})).toThrow(
-      /not implemented/,
-    );
-
-    // Sync snapshot helpers stay unimplemented (async IPC siblings exist).
-    expect(() =>
-      client.peekMatchingDashboardSnapshot({
-        vaultId: "v",
-        filter: "all",
-        search: "",
-      }),
-    ).toThrow(ServiceIpcError);
-
-    expect(() =>
-      client.buildDashboardSnapshot({
-        vaultId: "v",
-        filter: "all",
-        search: "",
-        itemIds: [],
-        items: [],
-        totalCount: 0,
-        streamEndOffset: 0,
-      }),
-    ).toThrow(/not implemented/);
+        const snap = client.buildDashboardSnapshot({
+          vaultId: active.vault.id,
+          filter: "all",
+          search: "",
+          itemIds: page!.itemIds,
+          items: [],
+          totalCount: page!.totalCount,
+          streamEndOffset: 0,
+        });
+        expect(snap.vault_id).toBe(active.vault.id);
+        expect(snap.nav_filter).toBe("all");
+        expect(client.peekMatchingDashboardSnapshot({
+          vaultId: active.vault.id,
+          filter: "all",
+          search: "",
+        })).toBeNull();
+      } finally {
+        await client.close();
+      }
+    } finally {
+      await host.close();
+    }
   });
 });

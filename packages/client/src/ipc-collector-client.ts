@@ -1,9 +1,9 @@
 /**
  * IPC Collector client (#154): mirrors {@link CollectorServiceApi}.
  *
- * Until host domain handlers exist, every method except transport health/ping
- * fails with validation `unimplemented` — no silent defaults / empty results.
- * Browser-safe with injectable transport (#240). Node dialer: `./node`. Production UI stays LocalAdapter until #170.
+ * Browser-safe with injectable transport (#240/#241). Node dialer: `./node`.
+ * UI subscribe/stream/settings helpers orchestrate host RPCs.
+ * Production UI stays LocalAdapter until #170.
  */
 
 import type {
@@ -23,10 +23,10 @@ import type {
   UpdateItemInput,
   VaultIndexSyncStatus,
 } from "@collector/api";
+import { DASHBOARD_PREFETCH_SIZE } from "@collector/api";
 import type { AppSettings, DashboardSnapshot, ItemFile, MediaFileMeta, Tag, VaultMeta } from "@collector/shared";
 import {
   SERVICE_IPC_EVENTS,
-  serviceIpcError,
   type ServiceIpcClient,
   type ServiceIpcHealthResult,
   type ServiceIpcRequestOptions,
@@ -48,17 +48,26 @@ export interface CollectorIpcClient extends CollectorServiceApi {
   isVaultFilesystemWatcherActive(): Promise<boolean>;
 }
 
-function unimplemented(method: string): never {
-  throw serviceIpcError({
-    layer: "validation",
-    code: "unimplemented",
-    message: `IPC method not implemented on host yet: ${method}`,
-  });
+function navFilterToSetting(
+  filter: NavFilter,
+):
+  | "all"
+  | { type: "tag"; tag_id: string }
+  | { type: "folder"; folder_path: string } {
+  if (typeof filter === "object" && filter !== null && "type" in filter) {
+    if (filter.type === "tag" && "tagId" in filter) {
+      return { type: "tag", tag_id: String(filter.tagId) };
+    }
+    if (filter.type === "folder" && "folderPath" in filter) {
+      return { type: "folder", folder_path: String(filter.folderPath) };
+    }
+  }
+  return "all";
 }
 
+
 /**
- * Wrap a low-level IPC transport as the frozen Collector API surface.
- * Domain methods fail fast; only `ping` / `health` hit the host.
+ * Wrap a low-level IPC transport as the frozen Collector API surface (#241).
  */
 export function createCollectorIpcClient(
   transport: ServiceIpcClient,
@@ -70,6 +79,7 @@ export function createCollectorIpcClient(
     metadataReady: true,
     ftsReady: true,
   };
+  let settingsCache: AppSettings | null = null;
 
   return {
     // Transport (host-backed)
@@ -140,20 +150,52 @@ export function createCollectorIpcClient(
       };
     },
     subscribeDashboardLoad(
-      _filter: NavFilter,
-      _query: string,
-      _handlers: DashboardLoadHandlers,
-      _signal?: AbortSignal,
+      filter: NavFilter,
+      query: string,
+      handlers: DashboardLoadHandlers,
+      signal?: AbortSignal,
     ): void {
-      unimplemented("subscribeDashboardLoad");
+      void (async () => {
+        try {
+          if (signal?.aborted) {
+            return;
+          }
+          const page = (await transport.request("fetchDashboardIndexPage", {
+            filter,
+            query,
+            page: { limit: DASHBOARD_PREFETCH_SIZE, offset: 0 },
+          })) as DashboardIndexPage;
+          if (signal?.aborted) {
+            return;
+          }
+          handlers.onIndexPage(page);
+          handlers.onLoadComplete?.();
+        } catch (error: unknown) {
+          if (!signal?.aborted) {
+            handlers.onError?.("dashboard load", error);
+          }
+        }
+      })();
     },
     streamDashboardItems: async (
-      _itemIds: string[],
-      _offset: number,
-      _limit: number,
-      _onItem: (item: ItemFile) => void,
-      _signal?: AbortSignal,
-    ): Promise<void> => unimplemented("streamDashboardItems"),
+      itemIds: string[],
+      offset: number,
+      limit: number,
+      onItem: (item: ItemFile) => void,
+      signal?: AbortSignal,
+    ): Promise<void> => {
+      const items = (await transport.request("loadDashboardItems", {
+        itemIds,
+        offset,
+        limit,
+      })) as ItemFile[];
+      for (const item of items) {
+        if (signal?.aborted) {
+          return;
+        }
+        onItem(item);
+      }
+    },
     loadDashboardItems: async (
       itemIds: string[],
       offset: number,
@@ -189,11 +231,22 @@ export function createCollectorIpcClient(
 
     // Tags
     subscribeTags(
-      _onUpdate: (tags: TagWithCount[]) => void,
-      _handlers?: ServiceSubscribeHandlers,
-      _signal?: AbortSignal,
+      onUpdate: (tags: TagWithCount[]) => void,
+      handlers?: ServiceSubscribeHandlers,
+      signal?: AbortSignal,
     ): void {
-      unimplemented("subscribeTags");
+      void (async () => {
+        try {
+          if (signal?.aborted) {
+            return;
+          }
+          onUpdate((await transport.request("listTags")) as TagWithCount[]);
+        } catch (error: unknown) {
+          if (!signal?.aborted) {
+            handlers?.onError?.("tags", error);
+          }
+        }
+      })();
     },
     listTags: async (): Promise<TagWithCount[]> =>
       transport.request("listTags") as Promise<TagWithCount[]>,
@@ -213,11 +266,22 @@ export function createCollectorIpcClient(
 
     // Folders
     subscribeFolderTree(
-      _onUpdate: (tree: FolderTreeNode[]) => void,
-      _handlers?: ServiceSubscribeHandlers,
-      _signal?: AbortSignal,
+      onUpdate: (tree: FolderTreeNode[]) => void,
+      handlers?: ServiceSubscribeHandlers,
+      signal?: AbortSignal,
     ): void {
-      unimplemented("subscribeFolderTree");
+      void (async () => {
+        try {
+          if (signal?.aborted) {
+            return;
+          }
+          onUpdate((await transport.request("listFolderTree")) as FolderTreeNode[]);
+        } catch (error: unknown) {
+          if (!signal?.aborted) {
+            handlers?.onError?.("folder tree", error);
+          }
+        }
+      })();
     },
     listFolderTree: async (): Promise<FolderTreeNode[]> =>
       transport.request("listFolderTree") as Promise<FolderTreeNode[]>,
@@ -318,19 +382,44 @@ export function createCollectorIpcClient(
     },
 
     // Settings
-    ensureAppSettings: async (): Promise<AppSettings> =>
-      transport.request("ensureAppSettings") as Promise<AppSettings>,
+    ensureAppSettings: async (): Promise<AppSettings> => {
+      settingsCache = (await transport.request(
+        "ensureAppSettings",
+      )) as AppSettings;
+      return settingsCache;
+    },
     getAppSettingsSync(): AppSettings | null {
-      unimplemented("getAppSettingsSync");
+      return settingsCache;
     },
     updateAppSettings: async (
       patch: Partial<AppSettings>,
-    ): Promise<AppSettings> =>
-      transport.request("updateAppSettings", { patch }) as Promise<AppSettings>,
+    ): Promise<AppSettings> => {
+      settingsCache = (await transport.request("updateAppSettings", {
+        patch,
+      })) as AppSettings;
+      return settingsCache;
+    },
     subscribeAppSettings(
-      _onUpdate: (settings: AppSettings) => void,
+      onUpdate: (settings: AppSettings) => void,
     ): () => void {
-      unimplemented("subscribeAppSettings");
+      let cancelled = false;
+      const tick = async () => {
+        while (!cancelled) {
+          try {
+            settingsCache = (await transport.request(
+              "ensureAppSettings",
+            )) as AppSettings;
+            onUpdate(settingsCache);
+          } catch {
+            // Keep last cache; next tick retries.
+          }
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      };
+      void tick();
+      return () => {
+        cancelled = true;
+      };
     },
     getAppConfigDirectory: async (): Promise<string> =>
       transport.request("getAppConfigDirectory") as Promise<string>,
@@ -343,7 +432,8 @@ export function createCollectorIpcClient(
       filter: NavFilter;
       search: string;
     }): DashboardSnapshot | null {
-      unimplemented("peekMatchingDashboardSnapshot");
+      // Sync peek has no IPC equivalent; async ensureDashboardSnapshot is the host path.
+      return null;
     },
     persistDashboardSnapshot: async (
       snapshot: DashboardSnapshot,
@@ -353,7 +443,7 @@ export function createCollectorIpcClient(
     clearDashboardSnapshot: async (): Promise<void> => {
       await transport.request("clearDashboardSnapshot");
     },
-    buildDashboardSnapshot(_input: {
+    buildDashboardSnapshot(input: {
       vaultId: string;
       filter: NavFilter;
       search: string;
@@ -362,7 +452,17 @@ export function createCollectorIpcClient(
       totalCount: number;
       streamEndOffset: number;
     }): DashboardSnapshot {
-      unimplemented("buildDashboardSnapshot");
+      return {
+        schema_version: 1,
+        vault_id: input.vaultId,
+        nav_filter: navFilterToSetting(input.filter),
+        search: input.search,
+        item_ids: input.itemIds,
+        items: input.items,
+        total_count: input.totalCount,
+        stream_end_offset: input.streamEndOffset,
+        saved_at: new Date().toISOString(),
+      };
     },
   };
 }
