@@ -6,7 +6,7 @@ import {
   ServiceIpcError,
   startServiceHost,
   type ServiceIpcClient,
-} from "@collector/service";
+} from "@collector/service/host";
 import {
   connectCollectorIpcClient,
   createCollectorIpcClient,

@@ -6,13 +6,13 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  NodeFileSystemAdapter,
   SqlVaultIndexStore,
   buildFtsMatchQuery,
   buildMetadataFtsMatchQuery,
   syncVaultIndexFromFilesystem,
   type IndexSyncProgress,
 } from "@collector/core";
+import { NodeFileSystemAdapter } from "@collector/core/node";
 import { createAppSettingsService } from "../app-settings.js";
 import { createCollectorIndexBoot } from "../index-boot.js";
 import { createDashboardSnapshotService } from "../dashboard-snapshot.js";

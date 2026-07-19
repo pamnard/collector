@@ -17,8 +17,6 @@ export type {
   VaultItemStatMeta,
 } from "./adapters/types.js";
 
-export { NodeFileSystemAdapter } from "./adapters/node-fs.js";
-
 export {
   basename,
   dirname,

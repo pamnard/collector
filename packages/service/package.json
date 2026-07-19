@@ -13,6 +13,11 @@
       "@collector/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./host": {
+      "@collector/source": "./src/host-entry.ts",
+      "types": "./dist/host-entry.d.ts",
+      "import": "./dist/host-entry.js"
     }
   },
   "scripts": {

@@ -31,7 +31,7 @@ import {
   type ServiceIpcClientOptions,
   type ServiceIpcHealthResult,
   type ServiceIpcRequestOptions,
-} from "@collector/service";
+} from "@collector/service/host";
 
 export type { ServiceIpcHealthResult };
 
