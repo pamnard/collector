@@ -7,6 +7,10 @@ import {
   createItemsSearchService,
   createTagsFoldersService,
   createMediaCoverService,
+  createVaultIndexSyncStatusStore,
+  createVaultsService,
+  type VaultIndexSyncStatus,
+  type VaultsService,
 } from "@collector/service";
 import type {
   DashboardIndexPage,
@@ -18,17 +22,7 @@ import {
   SqlVaultIndexStore,
   buildFtsMatchQuery,
   buildMetadataFtsMatchQuery,
-  createSingleFlight,
-  createVault,
-  assertVaultTreeLayout,
-  readVaultMeta,
-  runEmptyVaultBootstrap,
   syncVaultIndexFromFilesystem,
-  upsertItem,
-  vaultMetaPath,
-  vaultRoot,
-  vaultsRoot,
-  writeVaultMeta,
 } from "@collector/core";
 import type {
   FolderTreeNode,
@@ -57,17 +51,20 @@ import {
 import { isDevMock } from "../dev/is-dev-mock";
 import * as devMockCollector from "../dev/mock-collector";
 
+export type { VaultIndexSyncStatus };
+
 let dataDir = "";
-let activeVault: { meta: VaultMeta; path: string } | null = null;
 const syncedVaultIds = new Set<string>();
 const vaultSyncPromises = new Map<string, Promise<void>>();
 /** Watcher start/runtime failure: fall back to reconcile once, do not loop start→fail→resync. */
 const watcherDisabledVaultIds = new Set<string>();
 const fs = new TauriFileSystemAdapter();
 
+const vaultsHolder: { current: VaultsService | null } = { current: null };
+
 configureVaultFilesystemWatcher({
   getContext,
-  getActiveVaultId: () => activeVault?.meta.id ?? null,
+  getActiveVaultId: () => vaultsHolder.current?.getActiveVaultEntry()?.meta.id ?? null,
   onItemsSynced: (vaultId) => {
     emitVaultSyncEvent(vaultId, "complete");
   },
@@ -76,16 +73,6 @@ configureVaultFilesystemWatcher({
   },
 });
 
-export interface VaultIndexSyncStatus {
-  vaultId: string | null;
-  status: "idle" | "rebuilding" | "running" | "done";
-  progress: IndexSyncProgress | null;
-  /** True while metadata is queryable: optimistic at sync start, false only while Phase A work is confirmed in flight, then true again after onMetadataComplete / done. */
-  metadataReady: boolean;
-  /** True after Phase B (content/FTS) completes / sync done. */
-  ftsReady: boolean;
-}
-
 type VaultSyncListener = {
   onProgress?: (progress: IndexSyncProgress) => void;
   onBatch?: (progress: IndexSyncProgress) => void;
@@ -93,20 +80,10 @@ type VaultSyncListener = {
 };
 
 const vaultSyncListeners = new Map<string, Set<VaultSyncListener>>();
-const syncStatusListeners = new Set<(status: VaultIndexSyncStatus) => void>();
-let vaultIndexSyncStatus: VaultIndexSyncStatus = {
-  vaultId: null,
-  status: "idle",
-  progress: null,
-  metadataReady: true,
-  ftsReady: true,
-};
+const vaultIndexSyncStatusStore = createVaultIndexSyncStatusStore();
 
 function setVaultIndexSyncStatus(next: VaultIndexSyncStatus): void {
-  vaultIndexSyncStatus = next;
-  for (const listener of syncStatusListeners) {
-    listener(next);
-  }
+  vaultIndexSyncStatusStore.set(next);
 }
 
 const SYNC_STATUS_THROTTLE_MS = 200;
@@ -204,15 +181,11 @@ function addVaultSyncListener(
 export function subscribeVaultIndexSyncStatus(
   onUpdate: (status: VaultIndexSyncStatus) => void,
 ): () => void {
-  onUpdate(vaultIndexSyncStatus);
-  syncStatusListeners.add(onUpdate);
-  return () => {
-    syncStatusListeners.delete(onUpdate);
-  };
+  return vaultIndexSyncStatusStore.subscribe(onUpdate);
 }
 
 export function getVaultIndexSyncStatus(): VaultIndexSyncStatus {
-  return vaultIndexSyncStatus;
+  return vaultIndexSyncStatusStore.get();
 }
 
 function isVaultFtsReady(vaultId: string): boolean {
@@ -235,36 +208,6 @@ function buildSearchFtsQuery(userQuery: string, vaultId: string): string | null 
     return buildFtsMatchQuery(trimmed);
   }
   return buildMetadataFtsMatchQuery(trimmed);
-}
-
-type VaultEntry = { meta: VaultMeta; path: string };
-
-/** Vault dirs are UUID folders only — skip backups / stray names under vaults/. */
-const VAULT_DIR_ID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-async function listVaultEntries(): Promise<VaultEntry[]> {
-  await ensureInitialized();
-  const root = vaultsRoot(dataDir);
-  if (!(await fs.exists(root))) {
-    return [];
-  }
-
-  const entries: VaultEntry[] = [];
-  for (const vaultId of await fs.readDir(root)) {
-    if (!VAULT_DIR_ID_RE.test(vaultId)) {
-      continue;
-    }
-    const path = vaultRoot(root, vaultId);
-    if (await fs.exists(vaultMetaPath(path))) {
-      // Do not assert layout here: orphan/legacy neighbors must not block listing
-      // or opening a healthy active vault. Assert only when selecting a vault.
-      const meta = await readVaultMeta(fs, path);
-      entries.push({ meta, path });
-    }
-  }
-
-  return entries.sort((a, b) => a.meta.name.localeCompare(b.meta.name));
 }
 
 async function removeLegacyIndexDatabaseFiles(): Promise<void> {
@@ -297,11 +240,11 @@ const indexBoot = createCollectorIndexBoot<TauriSqlAdapter>({
     syncedVaultIds.clear();
     vaultSyncPromises.clear();
     watcherDisabledVaultIds.clear();
-    activeVault = null;
+    vaultsHolder.current?.clearActiveVault();
     await stopVaultFilesystemWatcher();
   },
   onUnhealthyRebuildFinally: () => {
-    if (vaultIndexSyncStatus.status === "rebuilding") {
+    if (vaultIndexSyncStatusStore.get().status === "rebuilding") {
       setVaultIndexSyncStatus({
         vaultId: null,
         status: "idle",
@@ -513,104 +456,22 @@ function forceVaultIndexResync(
   kickoffVaultIndexSync(vaultId, vaultPath);
 }
 
-function pickVaultEntry(
-  entries: VaultEntry[],
-  preferredId: string | null,
-): VaultEntry | null {
-  if (preferredId) {
-    const stored = entries.find((entry) => entry.meta.id === preferredId);
-    if (stored) {
-      return stored;
-    }
-  }
-
-  const defaultVault = entries.find((entry) => entry.meta.is_default);
-  if (defaultVault) {
-    return defaultVault;
-  }
-
-  return entries[0] ?? null;
-}
-
-const resolveActiveVaultShared = createSingleFlight(async () => {
-  if (activeVault) {
-    return { vault: activeVault.meta, path: activeVault.path };
-  }
-
-  const ctx = getContext();
-  const root = vaultsRoot(dataDir);
-  await fs.mkdir(root);
-
-  const settings = await ensureAppSettings();
-  const storedVaultId = settings.active_vault_id ?? null;
-  const existing = await listVaultEntries();
-  const selected = pickVaultEntry(existing, storedVaultId);
-
-  let meta: VaultMeta | null = selected?.meta ?? null;
-  let vaultPath = selected?.path ?? "";
-
-  if (!meta) {
-    const bootstrapped = await runEmptyVaultBootstrap(fs, root, {
-      tryResolveExisting: async () => {
-        const existingAfterLock = await listVaultEntries();
-        const selectedAfterLock = pickVaultEntry(existingAfterLock, storedVaultId);
-        if (!selectedAfterLock) {
-          return null;
-        }
-        await assertVaultTreeLayout(fs, selectedAfterLock.path);
-        return {
-          meta: selectedAfterLock.meta,
-          path: selectedAfterLock.path,
-        };
-      },
-      create: async () => {
-        const created = await createVault(ctx, dataDir, {
-          name: "Default Vault",
-          isDefault: true,
-        });
-
-        await upsertItem(ctx, created.path, created.meta.id, {
-          item: {
-            id: `${crypto.randomUUID()}.md`,
-            vault_id: created.meta.id,
-            title: "Welcome to Collector",
-            description:
-              "First offline item stored on disk and indexed in SQLite.",
-            content_type: "note",
-            source_type: "manual",
-            metadata: {},
-            tag_ids: [],
-            collection_ids: [],
-            folder_path: "",
-            content_revision: 1,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-          content: "# Collector\n\nOffline vault is working.",
-        });
-
-        await updateAppSettings({ active_vault_id: created.meta.id });
-        return { meta: created.meta, path: created.path };
-      },
-    });
-    meta = bootstrapped.meta;
-    vaultPath = bootstrapped.path;
-  } else {
-    await assertVaultTreeLayout(fs, vaultPath);
-  }
-
-  activeVault = { meta, path: vaultPath };
-  return { vault: meta, path: vaultPath };
+const vaults = createVaultsService({
+  ensureInitialized,
+  getDataDir: () => dataDir,
+  getContext,
+  ensureAppSettings,
+  updateAppSettings,
+  clearDashboardSnapshot,
+  stopVaultFilesystemWatcher,
+  enableVaultWatcher: (vaultId) => {
+    watcherDisabledVaultIds.delete(vaultId);
+  },
 });
+vaultsHolder.current = vaults;
 
 async function resolveActiveVault(): Promise<{ vault: VaultMeta; path: string }> {
-  await ensureInitialized();
-
-  if (activeVault) {
-    return { vault: activeVault.meta, path: activeVault.path };
-  }
-
-  return resolveActiveVaultShared();
+  return vaults.resolveActiveVault();
 }
 
 export async function ensureActiveVault(): Promise<{
@@ -620,7 +481,7 @@ export async function ensureActiveVault(): Promise<{
   if (isDevMock()) {
     return devMockCollector.ensureActiveVault();
   }
-  return resolveActiveVault();
+  return vaults.ensureActiveVault();
 }
 
 const itemsSearch = createItemsSearchService({
@@ -810,59 +671,19 @@ export async function getDataDirectory(): Promise<string> {
 }
 
 export async function listVaults(): Promise<VaultMeta[]> {
-  const entries = await listVaultEntries();
-  return entries.map((entry) => entry.meta);
+  return vaults.listVaults();
 }
 
 export async function getActiveVaultMeta(): Promise<VaultMeta> {
-  const { vault } = await resolveActiveVault();
-  return vault;
+  return vaults.getActiveVaultMeta();
 }
 
 export async function switchVault(vaultId: string): Promise<VaultMeta> {
-  const entries = await listVaultEntries();
-  const selected = entries.find((entry) => entry.meta.id === vaultId);
-  if (!selected) {
-    throw new Error(`Vault not found: ${vaultId}`);
-  }
-
-  await assertVaultTreeLayout(fs, selected.path);
-
-  activeVault = selected;
-  watcherDisabledVaultIds.delete(vaultId);
-  await stopVaultFilesystemWatcher();
-  await clearDashboardSnapshot();
-  await updateAppSettings({ active_vault_id: vaultId });
-  return selected.meta;
+  return vaults.switchVault(vaultId);
 }
 
 export async function setDefaultVault(vaultId: string): Promise<void> {
-  const ctx = getContext();
-  const entries = await listVaultEntries();
-  const selected = entries.find((entry) => entry.meta.id === vaultId);
-  if (!selected) {
-    throw new Error(`Vault not found: ${vaultId}`);
-  }
-
-  const timestamp = new Date().toISOString();
-  for (const entry of entries) {
-    const isDefault = entry.meta.id === vaultId;
-    if (entry.meta.is_default === isDefault) {
-      continue;
-    }
-
-    const updated: VaultMeta = {
-      ...entry.meta,
-      is_default: isDefault,
-      updated_at: timestamp,
-    };
-    await writeVaultMeta(fs, entry.path, updated);
-    await ctx.index.upsertVault(updated, entry.path);
-
-    if (activeVault?.meta.id === entry.meta.id) {
-      activeVault = { meta: updated, path: entry.path };
-    }
-  }
+  return vaults.setDefaultVault(vaultId);
 }
 
 export function subscribeTags(

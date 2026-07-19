@@ -35,3 +35,28 @@ export {
   type MediaCoverServiceDeps,
   type ResolveThumbnailPathsBatch,
 } from "./media-cover.js";
+
+export {
+  createVaultIndexSyncStatusStore,
+  type VaultIndexSyncStatus,
+  type VaultIndexSyncStatusStore,
+} from "./sync-status.js";
+
+export {
+  createAppSettingsService,
+  type AppSettingsService,
+  type AppSettingsServiceDeps,
+} from "./app-settings.js";
+
+export {
+  createDashboardSnapshotService,
+  type DashboardSnapshotService,
+  type DashboardSnapshotServiceDeps,
+} from "./dashboard-snapshot.js";
+
+export {
+  createVaultsService,
+  type VaultEntry,
+  type VaultsService,
+  type VaultsServiceDeps,
+} from "./vaults.js";
