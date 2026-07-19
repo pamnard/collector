@@ -1,22 +1,21 @@
-//! Packaged Collector service sidecar entry (#165–#168 / epic #142).
+//! Packaged Collector service sidecar entry (#165–#168 / #237 / epic #142).
 //!
 //! Bundled into the desktop installer via Tauri `externalBin`.
 //! The app does **not** spawn this on the default path (#166 flag is OFF).
 //!
-//! `serve` holds the process until the OS delivers SIGTERM/SIGINT/SIGKILL and
-//! opens **no** SQLite — supervise smokes cannot create a dual-writer.
-//! Real domain host remains the Node CLI until cutover.
+//! `serve` acquires the sole-writer lock, then launches the real Node domain
+//! host (`packages/service` CLI): that child opens SQLite and serves HTTP +
+//! local IPC. READY is forwarded from the host (includes `ipcPath` / `baseUrl`).
 //!
 //! Sole-writer lock (#167): `serve` acquires `{data-dir}/collector-service.lock`.
 //! Logs (#168): `{data-dir}/logs/collector-service.log` (also via supervise stdio redirect).
 
+use collector_lib::service_domain_host::run_domain_host_serve;
 use collector_lib::service_lock::{acquire_service_lock, LockError};
 use collector_lib::service_logs::{
     append_service_log_line, service_log_path, verbose_enabled,
 };
 use std::path::Path;
-use std::thread;
-use std::time::Duration;
 
 fn usage() -> ! {
     eprintln!(
@@ -24,7 +23,8 @@ fn usage() -> ! {
          This binary is an internal app sidecar (not a user-facing daemon).\n\
          Default Collector runs still use the in-process index path.\n\
          App supervise spawn is behind COLLECTOR_ENABLE_SERVICE_SUPERVISE=1 (#166).\n\
-         Supervised logs: {{data-dir}}/logs/collector-service.log (#168)."
+         Supervised logs: {{data-dir}}/logs/collector-service.log (#168).\n\
+         Domain host CLI: set COLLECTOR_SERVICE_NODE_CLI if auto-resolve fails (#237)."
     );
     std::process::exit(2);
 }
@@ -32,22 +32,6 @@ fn usage() -> ! {
 fn read_arg<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     let idx = args.iter().position(|a| a == name)?;
     args.get(idx + 1).map(String::as_str)
-}
-
-fn json_string(value: &str) -> String {
-    let mut out = String::from('"');
-    for ch in value.chars() {
-        match ch {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
 }
 
 fn serve(args: &[String]) -> ! {
@@ -68,31 +52,36 @@ fn serve(args: &[String]) -> ! {
         }
     };
 
-    // Idle placeholder: keep process alive for supervise tests. No DB open.
     let log_path = service_log_path(Path::new(data_dir));
     let _ = append_service_log_line(
         Path::new(data_dir),
         &format!(
-            "collector-service: idle serve start pid={} data_dir={data_dir} verbose={}",
+            "collector-service: domain host serve start pid={} data_dir={data_dir} verbose={}",
             std::process::id(),
             verbose_enabled()
         ),
     );
     eprintln!(
-        "collector-service: idle serve placeholder (data-dir={data_dir}, no SQLite, log={})",
+        "collector-service: launching domain host (data-dir={data_dir}, log={})",
         log_path.display()
     );
     if verbose_enabled() {
-        eprintln!("collector-service: verbose diagnostics on; tail -f {}", log_path.display());
+        eprintln!(
+            "collector-service: verbose diagnostics on; tail -f {}",
+            log_path.display()
+        );
     }
-    println!(
-        "COLLECTOR_SERVICE_READY {{\"ok\":true,\"mode\":\"idle-placeholder\",\"dataDir\":{},\"logPath\":{}}}",
-        json_string(data_dir),
-        json_string(&log_path.to_string_lossy())
-    );
 
-    loop {
-        thread::sleep(Duration::from_secs(3600));
+    match run_domain_host_serve(Path::new(data_dir)) {
+        Ok(code) => std::process::exit(code),
+        Err(err) => {
+            eprintln!("collector-service: domain host failed: {err}");
+            let _ = append_service_log_line(
+                Path::new(data_dir),
+                &format!("collector-service: domain host failed: {err}"),
+            );
+            std::process::exit(1);
+        }
     }
 }
 

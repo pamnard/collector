@@ -369,7 +369,7 @@ mod tests {
             .spawn()
             .expect("spawn service");
 
-        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
         while std::time::Instant::now() < deadline {
             if let Some(info) = read_lock(&dir).expect("read") {
                 if info.service_pid == child.id() {
@@ -393,7 +393,15 @@ mod tests {
             }
         );
 
-        let _ = child.kill();
+        // SIGTERM so sidecar forwards to Node domain host (#237).
+        #[cfg(unix)]
+        {
+            let _ = unsafe { libc_kill(child.id() as i32, 15) };
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = child.kill();
+        }
         let _ = child.wait();
         let _ = remove_lock(&dir);
         let _ = fs::remove_dir_all(dir);
@@ -428,7 +436,7 @@ mod tests {
             .spawn()
             .expect("spawn service");
 
-        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
         while std::time::Instant::now() < deadline {
             if read_lock(&dir).expect("read").is_some() {
                 break;

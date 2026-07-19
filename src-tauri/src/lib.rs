@@ -1,5 +1,6 @@
 mod vault_fs;
 mod vault_watcher;
+pub mod service_domain_host;
 pub mod service_lock;
 pub mod service_logs;
 pub mod service_supervise;

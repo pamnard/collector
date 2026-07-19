@@ -1,4 +1,4 @@
-//! Service process supervise helpers (#166 / #167 / #168 / epic #142).
+//! Service process supervise helpers (#166 / #167 / #168 / #237 / epic #142).
 //!
 //! Dead by default: [`supervise_enabled`] is false unless
 //! `COLLECTOR_ENABLE_SERVICE_SUPERVISE=1`. Callers must check the flag before
@@ -7,6 +7,7 @@
 //!
 //! Spawn runs orphan cleanup (#167) and refuses when a live lock holder remains.
 //! Child stdout/stderr append to `{data-dir}/logs/collector-service.log` (#168).
+//! The sidecar launches the real Node domain host (#237); READY includes IPC endpoint.
 
 use crate::service_lock::{
     cleanup_orphans, CleanupOutcome, SUPERVISOR_PID_ENV,
@@ -211,6 +212,38 @@ mod tests {
         root.join(format!("binaries/collector-service-{triple}"))
     }
 
+    fn wait_for_ready_log(log: &Path, timeout: Duration) -> String {
+        let deadline = Instant::now() + timeout;
+        let mut body = String::new();
+        while Instant::now() < deadline {
+            if log.is_file() {
+                body = std::fs::read_to_string(log).unwrap_or_default();
+                if body.contains("COLLECTOR_SERVICE_READY ")
+                    && body.contains("\"ipcPath\"")
+                    && body.contains("\"baseUrl\"")
+                {
+                    return body;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        body
+    }
+
+    fn parse_ready_base_url(log_body: &str) -> Option<String> {
+        for line in log_body.lines() {
+            let Some(json) = line.strip_prefix("COLLECTOR_SERVICE_READY ") else {
+                continue;
+            };
+            let value: serde_json::Value = serde_json::from_str(json).ok()?;
+            return value
+                .get("baseUrl")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+        }
+        None
+    }
+
     #[test]
     fn spawn_refuses_when_flag_off() {
         std::env::remove_var(SUPERVISE_ENABLE_ENV);
@@ -231,8 +264,13 @@ mod tests {
             std::process::id()
         ));
         let mut sup = ServiceSupervisor::spawn(&sidecar, &dir).expect("spawn");
+        let body = wait_for_ready_log(&sup.log_path(), Duration::from_secs(20));
+        assert!(
+            body.contains("COLLECTOR_SERVICE_READY ") && body.contains("\"ipcPath\""),
+            "expected domain host READY, got: {body:?}"
+        );
         assert!(sup.is_running().expect("running"));
-        sup.stop(Duration::from_secs(3)).expect("stop");
+        sup.stop(Duration::from_secs(10)).expect("stop");
         assert!(!sup.is_running().unwrap_or(false));
         let _ = std::fs::remove_dir_all(dir);
         std::env::remove_var(SUPERVISE_ENABLE_ENV);
@@ -251,6 +289,7 @@ mod tests {
             std::process::id()
         ));
         let mut first = ServiceSupervisor::spawn(&sidecar, &dir).expect("first spawn");
+        let _ = wait_for_ready_log(&first.log_path(), Duration::from_secs(20));
         assert!(first.is_running().expect("running"));
 
         // Wait until child writes the lock so cleanup sees a live holder.
@@ -269,7 +308,7 @@ mod tests {
         let err = ServiceSupervisor::spawn(&sidecar, &dir).expect_err("second must fail");
         assert!(matches!(err, SuperviseError::AlreadyLocked { .. }));
 
-        first.stop(Duration::from_secs(3)).expect("stop");
+        first.stop(Duration::from_secs(10)).expect("stop");
         let _ = std::fs::remove_dir_all(dir);
         std::env::remove_var(SUPERVISE_ENABLE_ENV);
     }
@@ -288,26 +327,58 @@ mod tests {
         ));
         let mut sup = ServiceSupervisor::spawn(&sidecar, &dir).expect("spawn");
         let log = service_log_path(&dir);
-        let deadline = Instant::now() + Duration::from_secs(3);
-        let mut body = String::new();
-        while Instant::now() < deadline {
-            if log.is_file() {
-                body = std::fs::read_to_string(&log).unwrap_or_default();
-                if body.contains("COLLECTOR_SERVICE_READY")
-                    || body.contains("idle serve")
-                {
-                    break;
-                }
-            }
-            std::thread::sleep(Duration::from_millis(25));
-        }
+        let body = wait_for_ready_log(&log, Duration::from_secs(20));
         assert!(log.is_file(), "expected log at {}", log.display());
         assert!(
-            body.contains("COLLECTOR_SERVICE_READY") || body.contains("idle serve"),
+            body.contains("COLLECTOR_SERVICE_READY ") && body.contains("\"baseUrl\""),
             "log body: {body:?}"
         );
         assert_eq!(sup.log_path(), log);
-        sup.stop(Duration::from_secs(3)).expect("stop");
+        sup.stop(Duration::from_secs(10)).expect("stop");
+        let _ = std::fs::remove_dir_all(dir);
+        std::env::remove_var(SUPERVISE_ENABLE_ENV);
+    }
+
+    #[test]
+    fn spawn_domain_host_answers_http_ping() {
+        let sidecar = sidecar_path();
+        if !sidecar.is_file() {
+            eprintln!("skip: sidecar missing at {}", sidecar.display());
+            return;
+        }
+        std::env::set_var(SUPERVISE_ENABLE_ENV, "1");
+        let dir = std::env::temp_dir().join(format!(
+            "collector-supervise-ping-{}",
+            std::process::id()
+        ));
+        let mut sup = ServiceSupervisor::spawn(&sidecar, &dir).expect("spawn");
+        let body = wait_for_ready_log(&sup.log_path(), Duration::from_secs(20));
+        let base_url = parse_ready_base_url(&body).expect(&format!(
+            "READY baseUrl missing in log: {body:?}"
+        ));
+        let ping_url = format!("{base_url}/ping");
+        let out = Command::new("curl")
+            .args(["-fsS", "--max-time", "5", &ping_url])
+            .output()
+            .expect("curl");
+        assert!(
+            out.status.success(),
+            "curl ping failed: status={} stderr={}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            text.contains("\"pong\":true") || text.contains("\"ok\":true"),
+            "unexpected ping body: {text}"
+        );
+        // Index DB must exist under the supervised data-dir (sole writer).
+        assert!(
+            dir.join("collector.db").is_file(),
+            "expected index DB at {}",
+            dir.join("collector.db").display()
+        );
+        sup.stop(Duration::from_secs(10)).expect("stop");
         let _ = std::fs::remove_dir_all(dir);
         std::env::remove_var(SUPERVISE_ENABLE_ENV);
     }
