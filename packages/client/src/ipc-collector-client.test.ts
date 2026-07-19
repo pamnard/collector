@@ -260,6 +260,50 @@ describe("CollectorIpcClient", () => {
     }
   });
 
+  it("settings + dashboard snapshot work over IPC (#161)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-ipc-settings-"));
+    dirs.push(dataDir);
+    const host = await startServiceHost({ dataDir, port: 0 });
+    try {
+      const client = await connectCollectorIpcClient(host.ipcPath!);
+      try {
+        const settings = await client.ensureAppSettings();
+        expect(settings).toBeTruthy();
+
+        const updated = await client.updateAppSettings({
+          theme: settings.theme === "dark" ? "light" : "dark",
+        });
+        expect(updated.theme).not.toBe(settings.theme);
+
+        const configDir = await client.getAppConfigDirectory();
+        expect(configDir).toContain(dataDir);
+
+        await client.clearDashboardSnapshot();
+        expect(await client.ensureDashboardSnapshot()).toBeNull();
+
+        const active = await client.ensureActiveVault();
+        const snapshot = {
+          schema_version: 1 as const,
+          vault_id: active.vault.id,
+          nav_filter: "all" as const,
+          search: "",
+          item_ids: [] as string[],
+          items: [] as [],
+          total_count: 0,
+          stream_end_offset: 0,
+          saved_at: new Date().toISOString(),
+        };
+        await client.persistDashboardSnapshot(snapshot);
+        const loaded = await client.ensureDashboardSnapshot();
+        expect(loaded?.vault_id).toBe(active.vault.id);
+      } finally {
+        await client.close();
+      }
+    } finally {
+      await host.close();
+    }
+  });
+
   it("unimplemented domain methods fail fast without inventing defaults", async () => {
     const transport = {
       ping: async () => ({ ok: true as const, pong: true as const }),
@@ -277,7 +321,7 @@ describe("CollectorIpcClient", () => {
 
     const client = createCollectorIpcClient(transport);
 
-    await expect(client.ensureAppSettings()).rejects.toMatchObject({
+    await expect(client.openCollectorDatabase()).rejects.toMatchObject({
       name: "ServiceIpcError",
       layer: "validation",
       code: "unimplemented",

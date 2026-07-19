@@ -267,24 +267,25 @@ export function createCollectorIpcClient(
 
     // Settings
     ensureAppSettings: async (): Promise<AppSettings> =>
-      unimplemented("ensureAppSettings"),
+      transport.request("ensureAppSettings") as Promise<AppSettings>,
     getAppSettingsSync(): AppSettings | null {
       unimplemented("getAppSettingsSync");
     },
     updateAppSettings: async (
-      _patch: Partial<AppSettings>,
-    ): Promise<AppSettings> => unimplemented("updateAppSettings"),
+      patch: Partial<AppSettings>,
+    ): Promise<AppSettings> =>
+      transport.request("updateAppSettings", { patch }) as Promise<AppSettings>,
     subscribeAppSettings(
       _onUpdate: (settings: AppSettings) => void,
     ): () => void {
       unimplemented("subscribeAppSettings");
     },
     getAppConfigDirectory: async (): Promise<string> =>
-      unimplemented("getAppConfigDirectory"),
+      transport.request("getAppConfigDirectory") as Promise<string>,
 
     // Dashboard snapshot
     ensureDashboardSnapshot: async (): Promise<DashboardSnapshot | null> =>
-      unimplemented("ensureDashboardSnapshot"),
+      transport.request("ensureDashboardSnapshot") as Promise<DashboardSnapshot | null>,
     peekMatchingDashboardSnapshot(_input: {
       vaultId: string;
       filter: NavFilter;
@@ -293,10 +294,13 @@ export function createCollectorIpcClient(
       unimplemented("peekMatchingDashboardSnapshot");
     },
     persistDashboardSnapshot: async (
-      _snapshot: DashboardSnapshot,
-    ): Promise<void> => unimplemented("persistDashboardSnapshot"),
-    clearDashboardSnapshot: async (): Promise<void> =>
-      unimplemented("clearDashboardSnapshot"),
+      snapshot: DashboardSnapshot,
+    ): Promise<void> => {
+      await transport.request("persistDashboardSnapshot", { snapshot });
+    },
+    clearDashboardSnapshot: async (): Promise<void> => {
+      await transport.request("clearDashboardSnapshot");
+    },
     buildDashboardSnapshot(_input: {
       vaultId: string;
       filter: NavFilter;

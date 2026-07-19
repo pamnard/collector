@@ -10,6 +10,7 @@ import { buildTagsHandlers } from "./handlers/tags.js";
 import { buildFoldersHandlers } from "./handlers/folders.js";
 import { buildMediaHandlers } from "./handlers/media.js";
 import { buildVaultsHandlers } from "./handlers/vaults.js";
+import { buildSettingsSnapshotHandlers } from "./handlers/settings-snapshot.js";
 
 export function buildDomainIpcHandlers(
   runtime: ServiceDomainRuntime,
@@ -21,6 +22,7 @@ export function buildDomainIpcHandlers(
     ...buildFoldersHandlers(runtime),
     ...buildMediaHandlers(runtime),
     ...buildVaultsHandlers(runtime),
+    ...buildSettingsSnapshotHandlers(runtime),
   };
 }
 
