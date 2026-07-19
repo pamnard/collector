@@ -15,6 +15,7 @@ export { NodeSqliteExecutor } from "./host/node-sql.js";
 
 export {
   SERVICE_IPC_PROTOCOL_VERSION,
+  SERVICE_IPC_EVENTS,
   ServiceIpcFrameReader,
   ServiceIpcFramingError,
   encodeServiceIpcFrame,
@@ -25,6 +26,7 @@ export {
   type ServiceIpcRequest,
   type ServiceIpcResponse,
   type ServiceIpcErrorResponse,
+  type ServiceIpcEvent,
 } from "./host/ipc/framing.js";
 
 export {

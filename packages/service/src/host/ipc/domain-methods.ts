@@ -54,6 +54,8 @@ export const DOMAIN_IPC_METHODS = {
   clearDashboardSnapshot: "clearDashboardSnapshot",
   peekMatchingDashboardSnapshot: "peekMatchingDashboardSnapshot",
   buildDashboardSnapshot: "buildDashboardSnapshot",
+  // #163 sync status
+  getVaultIndexSyncStatus: "getVaultIndexSyncStatus",
 } as const;
 
 export type DomainIpcMethod =

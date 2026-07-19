@@ -12,6 +12,7 @@ import { buildMediaHandlers } from "./handlers/media.js";
 import { buildVaultsHandlers } from "./handlers/vaults.js";
 import { buildSettingsSnapshotHandlers } from "./handlers/settings-snapshot.js";
 import { buildIndexBootHandlers } from "./handlers/index-boot.js";
+import { buildSyncStatusHandlers } from "./handlers/sync-status.js";
 
 export function buildDomainIpcHandlers(
   runtime: ServiceDomainRuntime,
@@ -25,6 +26,7 @@ export function buildDomainIpcHandlers(
     ...buildMediaHandlers(runtime),
     ...buildVaultsHandlers(runtime),
     ...buildSettingsSnapshotHandlers(runtime),
+    ...buildSyncStatusHandlers(runtime),
   };
 }
 

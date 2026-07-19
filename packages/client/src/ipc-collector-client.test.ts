@@ -12,6 +12,7 @@ import {
   startServiceIpcServer,
   type ServiceIpcClient,
 } from "@collector/service/host";
+import type { VaultIndexSyncStatus } from "@collector/api";
 import {
   connectCollectorIpcClient,
   createCollectorIpcClient,
@@ -369,6 +370,8 @@ describe("CollectorIpcClient", () => {
 
         const active = await client.ensureActiveVault();
         expect(active.vault.id).toBeTruthy();
+        // Await filesystem sync before teardown (kickoff is fire-and-forget).
+        await client.listDashboardItemIds("all");
         const items = await client.listItems();
         expect(Array.isArray(items)).toBe(true);
       } finally {
@@ -424,6 +427,44 @@ describe("CollectorIpcClient", () => {
     }
   });
 
+  it("filesystem sync status get/subscribe work over IPC (#163)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-ipc-sync-"));
+    dirs.push(dataDir);
+    const host = await startServiceHost({ dataDir, port: 0 });
+    try {
+      const client = await connectCollectorIpcClient(host.ipcPath!);
+      try {
+        const seen: VaultIndexSyncStatus[] = [];
+        const unsub = client.subscribeVaultIndexSyncStatus((status) => {
+          seen.push(status);
+        });
+
+        // Await filesystem sync; status should move through running/done.
+        await client.listDashboardItemIds("all");
+
+        const deadline = Date.now() + 5_000;
+        while (
+          Date.now() < deadline &&
+          client.getVaultIndexSyncStatus().status !== "done"
+        ) {
+          await new Promise((r) => setTimeout(r, 25));
+        }
+
+        const latest = client.getVaultIndexSyncStatus();
+        expect(latest.status).toBe("done");
+        expect(latest.vaultId).toBeTruthy();
+        expect(seen.some((s) => s.status === "done" || s.status === "running")).toBe(
+          true,
+        );
+        unsub();
+      } finally {
+        await client.close();
+      }
+    } finally {
+      await host.close();
+    }
+  });
+
   it("unimplemented domain methods fail fast without inventing defaults", async () => {
     const transport = {
       ping: async () => ({ ok: true as const, pong: true as const }),
@@ -436,6 +477,7 @@ describe("CollectorIpcClient", () => {
       request: async () => {
         throw new Error("should not be called for unimplemented stubs");
       },
+      onEvent: () => () => {},
       close: async () => {},
     } satisfies ServiceIpcClient;
 
@@ -444,7 +486,9 @@ describe("CollectorIpcClient", () => {
     expect(() => client.getAppSettingsSync()).toThrow(ServiceIpcError);
     expect(() => client.getAppSettingsSync()).toThrow(/getAppSettingsSync/);
 
-    expect(() => client.getVaultIndexSyncStatus()).toThrow(/not implemented/);
+    expect(() => client.subscribeAppSettings(() => {})).toThrow(
+      /not implemented/,
+    );
 
     // Sync snapshot helpers stay unimplemented (async IPC siblings exist).
     expect(() =>

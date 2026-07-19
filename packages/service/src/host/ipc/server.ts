@@ -13,6 +13,7 @@ import {
   assertProtocolVersion,
   encodeServiceIpcFrame,
   type ServiceIpcErrorResponse,
+  type ServiceIpcEvent,
   type ServiceIpcHealthResult,
   type ServiceIpcMessage,
   type ServiceIpcRequest,
@@ -39,6 +40,8 @@ export interface ServiceIpcHandler {
 
 export interface ServiceIpcServer {
   path: string;
+  /** Push an event frame to every connected client (#163). */
+  broadcastEvent: (event: string, payload: unknown) => void;
   close: () => Promise<void>;
 }
 
@@ -199,6 +202,18 @@ export async function startServiceIpcServer(
   let closed = false;
   return {
     path,
+    broadcastEvent(event: string, payload: unknown) {
+      const message: ServiceIpcEvent = {
+        v: SERVICE_IPC_PROTOCOL_VERSION,
+        id: "evt",
+        type: "evt",
+        event,
+        payload,
+      };
+      for (const socket of sockets) {
+        writeMessage(socket, message);
+      }
+    },
     async close() {
       if (closed) {
         return;
