@@ -11,6 +11,7 @@ import {
 } from "./ipc/domain-handlers.js";
 import { startServiceIpcServer, type ServiceIpcServer } from "./ipc/server.js";
 import { createServiceDomainRuntime } from "./domain-runtime.js";
+import { SERVICE_IPC_EVENTS } from "./ipc/framing.js";
 
 export const SERVICE_HOST_READY_PREFIX = "COLLECTOR_SERVICE_READY ";
 
@@ -107,6 +108,7 @@ export async function startServiceHost(
   }
 
   let ipc: ServiceIpcServer | null = null;
+  let stopSyncStatusBroadcast: (() => void) | null = null;
   if (options.ipcPath !== false) {
     ipc = await startServiceIpcServer({
       dataDir: options.dataDir,
@@ -117,6 +119,11 @@ export async function startServiceHost(
         request: domainDispatch,
       },
     });
+    stopSyncStatusBroadcast = runtime.vaultIndexSyncStatus.subscribe(
+      (status) => {
+        ipc?.broadcastEvent(SERVICE_IPC_EVENTS.vaultIndexSyncStatus, status);
+      },
+    );
   }
 
   let closed = false;
@@ -125,6 +132,8 @@ export async function startServiceHost(
       return;
     }
     closed = true;
+    stopSyncStatusBroadcast?.();
+    stopSyncStatusBroadcast = null;
     if (ipc) {
       await ipc.close();
       ipc = null;

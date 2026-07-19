@@ -25,6 +25,19 @@ describe("IPC framing", () => {
     expect(messages).toEqual([req]);
   });
 
+  it("round-trips event frames", () => {
+    const evt = {
+      v: SERVICE_IPC_PROTOCOL_VERSION,
+      id: "evt",
+      type: "evt" as const,
+      event: "vaultIndexSyncStatus",
+      payload: { status: "running" },
+    };
+    const frame = encodeServiceIpcFrame(evt);
+    const reader = new ServiceIpcFrameReader();
+    expect(reader.push(frame)).toEqual([evt]);
+  });
+
   it("rejects oversized frames", () => {
     const header = Buffer.allocUnsafe(4);
     header.writeUInt32BE(2 * 1024 * 1024, 0);

@@ -20,7 +20,60 @@ import { createItemsSearchService } from "../items-search.js";
 import { createMediaCoverService } from "../media-cover.js";
 import { createTagsFoldersService } from "../tags-folders.js";
 import { createVaultsService } from "../vaults.js";
+import {
+  createVaultIndexSyncStatusStore,
+  type VaultIndexSyncStatusStore,
+} from "../sync-status.js";
 import { NodeSqliteExecutor } from "./node-sql.js";
+
+const SYNC_STATUS_THROTTLE_MS = 200;
+
+function createThrottledPublisher(
+  fn: () => void,
+  intervalMs: number,
+): { schedule: () => void; flush: () => void; cancel: () => void } {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let lastRun = 0;
+
+  const run = () => {
+    lastRun = Date.now();
+    fn();
+  };
+
+  return {
+    schedule() {
+      const elapsed = Date.now() - lastRun;
+      if (elapsed >= intervalMs) {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        run();
+        return;
+      }
+      if (timer) {
+        return;
+      }
+      timer = setTimeout(() => {
+        timer = null;
+        run();
+      }, intervalMs - elapsed);
+    },
+    flush() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      run();
+    },
+    cancel() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    },
+  };
+}
 
 export interface ServiceDomainRuntime {
   dataDir: string;
@@ -28,6 +81,7 @@ export interface ServiceDomainRuntime {
   ensureInitialized: () => Promise<void>;
   isHealthy: () => boolean;
   close: () => Promise<void>;
+  vaultIndexSyncStatus: VaultIndexSyncStatusStore;
   itemsSearch: ReturnType<typeof createItemsSearchService>;
   tagsFolders: ReturnType<typeof createTagsFoldersService>;
   mediaCover: ReturnType<typeof createMediaCoverService>;
@@ -52,6 +106,7 @@ export function createServiceDomainRuntime(
       onComplete?: () => void;
     }>
   >();
+  const vaultIndexSyncStatus = createVaultIndexSyncStatusStore();
 
   const appSettings = createAppSettingsService({
     fs,
@@ -94,7 +149,25 @@ export function createServiceDomainRuntime(
       vaultSyncPromises.clear();
       vaultSyncListeners.clear();
       vaultsHolder.current?.clearActiveVault();
+      vaultIndexSyncStatus.set({
+        vaultId: null,
+        status: "rebuilding",
+        progress: null,
+        metadataReady: false,
+        ftsReady: false,
+      });
       await dashboardSnapshot.clearDashboardSnapshot();
+    },
+    onUnhealthyRebuildFinally: () => {
+      if (vaultIndexSyncStatus.get().status === "rebuilding") {
+        vaultIndexSyncStatus.set({
+          vaultId: null,
+          status: "idle",
+          progress: null,
+          metadataReady: false,
+          ftsReady: false,
+        });
+      }
     },
   });
 
@@ -154,10 +227,125 @@ export function createServiceDomainRuntime(
     if (inflight) {
       return inflight;
     }
+
+    let metadataReady = true;
+    let ftsReady = false;
+
+    vaultIndexSyncStatus.set({
+      vaultId,
+      status: "running",
+      progress: {
+        phase: "metadata",
+        processed: 0,
+        total: 0,
+        skipped: 0,
+        patched: 0,
+        indexed: 0,
+        contentIndexed: 0,
+        removed: 0,
+      },
+      metadataReady,
+      ftsReady,
+    });
+
+    let latestProgress: IndexSyncProgress = {
+      phase: "metadata",
+      processed: 0,
+      total: 0,
+      skipped: 0,
+      patched: 0,
+      indexed: 0,
+      contentIndexed: 0,
+      removed: 0,
+    };
+
+    const publishRunningStatus = createThrottledPublisher(() => {
+      vaultIndexSyncStatus.set({
+        vaultId,
+        status: "running",
+        progress: latestProgress,
+        metadataReady,
+        ftsReady,
+      });
+    }, SYNC_STATUS_THROTTLE_MS);
+
+    const noteProgress = (progress: IndexSyncProgress) => {
+      latestProgress = progress;
+      if (
+        metadataReady &&
+        progress.phase === "metadata" &&
+        progress.processed < progress.total
+      ) {
+        metadataReady = false;
+        publishRunningStatus.flush();
+        return;
+      }
+      publishRunningStatus.schedule();
+    };
+
     const promise = (async () => {
-      await syncVaultIndexFromFilesystem(getContext(), vaultPath);
-      syncedVaultIds.add(vaultId);
-      emitComplete(vaultId);
+      try {
+        const report = await syncVaultIndexFromFilesystem(
+          getContext(),
+          vaultPath,
+          {
+            onProgress: (progress) => {
+              noteProgress(progress);
+            },
+            onBatch: (progress) => {
+              noteProgress(progress);
+              const set = vaultSyncListeners.get(vaultId);
+              if (set) {
+                for (const listener of set) {
+                  listener.onBatch?.(progress);
+                }
+              }
+            },
+            onMetadataComplete: (progress) => {
+              latestProgress = progress;
+              metadataReady = true;
+              publishRunningStatus.flush();
+            },
+          },
+        );
+        if (report.vaultId !== vaultId) {
+          throw new Error(
+            `Vault id mismatch during index sync: expected ${vaultId}, got ${report.vaultId}`,
+          );
+        }
+        syncedVaultIds.add(vaultId);
+        metadataReady = true;
+        ftsReady = true;
+        const finalProgress: IndexSyncProgress = {
+          phase: "content",
+          processed: report.indexed + report.patched + report.skipped,
+          total: report.indexed + report.patched + report.skipped,
+          skipped: report.skipped,
+          patched: report.patched,
+          indexed: report.indexed,
+          contentIndexed: report.contentIndexed,
+          removed: report.removed,
+        };
+        publishRunningStatus.cancel();
+        vaultIndexSyncStatus.set({
+          vaultId,
+          status: "done",
+          progress: finalProgress,
+          metadataReady,
+          ftsReady,
+        });
+        emitComplete(vaultId);
+      } catch (error) {
+        publishRunningStatus.cancel();
+        vaultIndexSyncStatus.set({
+          vaultId,
+          status: "idle",
+          progress: null,
+          metadataReady: false,
+          ftsReady: false,
+        });
+        throw error;
+      }
     })().finally(() => {
       vaultSyncPromises.delete(vaultId);
     });
@@ -166,7 +354,9 @@ export function createServiceDomainRuntime(
   }
 
   function kickoffVaultIndexSync(vaultId: string, vaultPath: string): void {
-    void startVaultIndexSync(vaultId, vaultPath);
+    void startVaultIndexSync(vaultId, vaultPath).catch((error: unknown) => {
+      console.error("[collector] index sync failed:", error);
+    });
   }
 
   function isVaultFtsReady(vaultId: string): boolean {
@@ -232,6 +422,7 @@ export function createServiceDomainRuntime(
         await sql.close();
       }
     },
+    vaultIndexSyncStatus,
     itemsSearch,
     tagsFolders,
     mediaCover,

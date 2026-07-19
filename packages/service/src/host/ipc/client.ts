@@ -12,6 +12,7 @@ import {
   ServiceIpcFramingError,
   encodeServiceIpcFrame,
   type ServiceIpcErrorResponse,
+  type ServiceIpcEvent,
   type ServiceIpcHealthResult,
   type ServiceIpcRequest,
   type ServiceIpcResponse,
@@ -46,6 +47,8 @@ export interface ServiceIpcClient {
   ): Promise<unknown>;
   ping(options?: ServiceIpcRequestOptions): Promise<{ ok: true; pong: true }>;
   health(options?: ServiceIpcRequestOptions): Promise<ServiceIpcHealthResult>;
+  /** Subscribe to host→client event frames (#163). Returns unsubscribe. */
+  onEvent(event: string, handler: (payload: unknown) => void): () => void;
   close(): Promise<void>;
 }
 
@@ -100,6 +103,7 @@ export async function connectServiceIpc(
 
   const reader = new ServiceIpcFrameReader();
   const pending = new Map<string, Pending>();
+  const eventHandlers = new Map<string, Set<(payload: unknown) => void>>();
   let nextId = 1;
   let closed = false;
   let closing = false;
@@ -136,6 +140,16 @@ export async function connectServiceIpc(
 
     for (const message of messages) {
       if (message.type === "req") {
+        continue;
+      }
+      if (message.type === "evt") {
+        const evt = message as ServiceIpcEvent;
+        const handlers = eventHandlers.get(evt.event);
+        if (handlers) {
+          for (const handler of handlers) {
+            handler(evt.payload);
+          }
+        }
         continue;
       }
       const wait = pending.get(message.id);
@@ -299,12 +313,27 @@ export async function connectServiceIpc(
         requestOptions,
       )) as ServiceIpcHealthResult;
     },
+    onEvent(event, handler) {
+      let set = eventHandlers.get(event);
+      if (!set) {
+        set = new Set();
+        eventHandlers.set(event, set);
+      }
+      set.add(handler);
+      return () => {
+        set!.delete(handler);
+        if (set!.size === 0) {
+          eventHandlers.delete(event);
+        }
+      };
+    },
     async close() {
       if (closed) {
         return;
       }
       closing = true;
       closed = true;
+      eventHandlers.clear();
       await new Promise<void>((resolve) => {
         socket.end(() => resolve());
       });

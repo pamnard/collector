@@ -40,10 +40,25 @@ export interface ServiceIpcErrorResponse {
   error: CollectorApiError;
 }
 
+/** Host→client push (e.g. vault index sync status) (#163). */
+export interface ServiceIpcEvent {
+  v: typeof SERVICE_IPC_PROTOCOL_VERSION;
+  id: string;
+  type: "evt";
+  event: string;
+  payload: unknown;
+}
+
 export type ServiceIpcMessage =
   | ServiceIpcRequest
   | ServiceIpcResponse
-  | ServiceIpcErrorResponse;
+  | ServiceIpcErrorResponse
+  | ServiceIpcEvent;
+
+/** Well-known host→client event names. */
+export const SERVICE_IPC_EVENTS = {
+  vaultIndexSyncStatus: "vaultIndexSyncStatus",
+} as const;
 
 const MAX_FRAME_BYTES = 1024 * 1024;
 
@@ -119,8 +134,18 @@ function decodeServiceIpcBody(body: Buffer): ServiceIpcMessage {
   if (typeof msg.id !== "string" || msg.id.length === 0) {
     throw new ServiceIpcFramingError("missing message `id`");
   }
-  if (msg.type !== "req" && msg.type !== "res" && msg.type !== "err") {
+  if (
+    msg.type !== "req" &&
+    msg.type !== "res" &&
+    msg.type !== "err" &&
+    msg.type !== "evt"
+  ) {
     throw new ServiceIpcFramingError(`invalid message type: ${String(msg.type)}`);
+  }
+  if (msg.type === "evt") {
+    if (typeof msg.event !== "string" || msg.event.length === 0) {
+      throw new ServiceIpcFramingError("evt frame missing event name");
+    }
   }
 
   return parsed as ServiceIpcMessage;

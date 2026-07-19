@@ -25,6 +25,7 @@ import type {
 } from "@collector/api";
 import type { AppSettings, DashboardSnapshot, ItemFile, MediaFileMeta, Tag, VaultMeta } from "@collector/shared";
 import {
+  SERVICE_IPC_EVENTS,
   connectServiceIpc,
   serviceIpcError,
   type ServiceIpcClient,
@@ -57,6 +58,14 @@ function unimplemented(method: string): never {
 export function createCollectorIpcClient(
   transport: ServiceIpcClient,
 ): CollectorIpcClient {
+  let cachedSyncStatus: VaultIndexSyncStatus = {
+    vaultId: null,
+    status: "idle",
+    progress: null,
+    metadataReady: true,
+    ftsReady: true,
+  };
+
   return {
     // Transport (host-backed)
     ping: (options) => transport.ping(options),
@@ -258,14 +267,31 @@ export function createCollectorIpcClient(
       await transport.request("setDefaultVault", { vaultId });
     },
 
-    // Sync / status
+    // Sync / status (#163)
     subscribeVaultIndexSyncStatus(
-      _onUpdate: (status: VaultIndexSyncStatus) => void,
+      onUpdate: (status: VaultIndexSyncStatus) => void,
     ): () => void {
-      unimplemented("subscribeVaultIndexSyncStatus");
+      onUpdate(cachedSyncStatus);
+      const unsubEvent = transport.onEvent(
+        SERVICE_IPC_EVENTS.vaultIndexSyncStatus,
+        (payload) => {
+          cachedSyncStatus = payload as VaultIndexSyncStatus;
+          onUpdate(cachedSyncStatus);
+        },
+      );
+      void transport
+        .request("getVaultIndexSyncStatus")
+        .then((status) => {
+          cachedSyncStatus = status as VaultIndexSyncStatus;
+          onUpdate(cachedSyncStatus);
+        })
+        .catch(() => {
+          // Subscribe still receives push events; seed fetch is best-effort.
+        });
+      return unsubEvent;
     },
     getVaultIndexSyncStatus(): VaultIndexSyncStatus {
-      unimplemented("getVaultIndexSyncStatus");
+      return cachedSyncStatus;
     },
 
     // Settings
