@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ItemFile } from "@collector/shared";
-import { resolveItemThumbnailPath } from "../../services/collector-service";
 import { toDisplayAssetSrc } from "../../utils/asset-src";
+import { getCollectorClient } from "../../services/collector-client";
 
 interface ItemDetailHeroProps {
   item: ItemFile;
@@ -15,7 +15,7 @@ export function ItemDetailHero({ item }: ItemDetailHeroProps) {
     let cancelled = false;
     setSrc(null);
 
-    void resolveItemThumbnailPath(item)
+    void getCollectorClient().resolveItemThumbnailPath(item)
       .catch(() => null)
       .then((path) => {
         if (cancelled || !path) {

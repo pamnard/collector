@@ -1,12 +1,7 @@
 import { useEffect, useState } from "react";
 import type { TagWithCount } from "@collector/core";
 import type { Tag } from "@collector/shared";
-import {
-  createTag,
-  deleteTag,
-  listTags,
-  updateTagRecord,
-} from "../../services/collector-service";
+import { getCollectorClient } from "../../services/collector-client";
 
 interface TagPickerProps {
   selectedTagIds: string[];
@@ -19,7 +14,7 @@ export function TagPicker({ selectedTagIds, onChange }: TagPickerProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    listTags()
+    getCollectorClient().listTags()
       .then(setTags)
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : String(err));
@@ -42,7 +37,7 @@ export function TagPicker({ selectedTagIds, onChange }: TagPickerProps) {
 
     setError(null);
     try {
-      const tag: Tag = await createTag({ name });
+      const tag: Tag = await getCollectorClient().createTag({ name });
       setTags((current) =>
         [...current, { ...tag, item_count: 0 }].sort((a, b) =>
           a.name.localeCompare(b.name),
@@ -62,7 +57,7 @@ export function TagPicker({ selectedTagIds, onChange }: TagPickerProps) {
 
     setError(null);
     try {
-      await deleteTag(tagId);
+      await getCollectorClient().deleteTag(tagId);
       setTags((current) => current.filter((tag) => tag.id !== tagId));
       onChange(selectedTagIds.filter((id) => id !== tagId));
     } catch (err: unknown) {
@@ -78,7 +73,7 @@ export function TagPicker({ selectedTagIds, onChange }: TagPickerProps) {
 
     setError(null);
     try {
-      const updated = await updateTagRecord(tag.id, { name: nextName });
+      const updated = await getCollectorClient().updateTagRecord(tag.id, { name: nextName });
       setTags((current) =>
         current
           .map((entry) =>

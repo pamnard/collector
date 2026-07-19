@@ -9,14 +9,8 @@ import { ItemDetailMetadata } from "../components/items/ItemDetailMetadata";
 import { ItemDetailSourceEditor } from "../components/items/ItemDetailSourceEditor";
 import { MediaGallery } from "../components/media/MediaGallery";
 import { useShell } from "../components/layout/AppLayout";
-import {
-  deleteItem,
-  getItemById,
-  getItemSource,
-  updateItem,
-  updateItemSource,
-} from "../services/collector-service";
 import type { ItemFormValues } from "../types/item";
+import { getCollectorClient } from "../services/collector-client";
 
 type ItemDetailMode = "view" | "form" | "source";
 
@@ -82,7 +76,7 @@ export function ItemDetailPage() {
     sourceText !== sourceBaseline;
 
   const reloadItem = async (itemId: string) => {
-    const { item: loadedItem, content: loadedContent } = await getItemById(itemId);
+    const { item: loadedItem, content: loadedContent } = await getCollectorClient().getItemById(itemId);
     setItem(loadedItem);
     setContent(loadedContent);
     setFormValues(toFormValues(loadedItem, loadedContent));
@@ -113,7 +107,7 @@ export function ItemDetailPage() {
     setError(null);
 
     try {
-      const updated = await updateItem(id, {
+      const updated = await getCollectorClient().updateItem(id, {
         title: formValues.title.trim(),
         description: formValues.description.trim(),
         url: formValues.url.trim() || null,
@@ -149,7 +143,7 @@ export function ItemDetailPage() {
     setError(null);
 
     try {
-      const updated = await updateItemSource(id, sourceText);
+      const updated = await getCollectorClient().updateItemSource(id, sourceText);
       await reloadItem(updated.id);
       setSourceText(null);
       setSourceBaseline(null);
@@ -176,7 +170,7 @@ export function ItemDetailPage() {
     setError(null);
 
     try {
-      await deleteItem(id);
+      await getCollectorClient().deleteItem(id);
       refreshVault();
       navigate("/");
     } catch (err: unknown) {
@@ -259,7 +253,7 @@ export function ItemDetailPage() {
       setIsSaving(true);
       setError(null);
       try {
-        const raw = await getItemSource(id);
+        const raw = await getCollectorClient().getItemSource(id);
         setSourceText(raw);
         setSourceBaseline(raw);
         setMode("source");

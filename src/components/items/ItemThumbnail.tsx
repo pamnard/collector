@@ -1,9 +1,9 @@
 import { ImageIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ItemFile } from "@collector/shared";
-import { resolveItemThumbnailPath } from "../../services/collector-service";
 import { toDisplayAssetSrc } from "../../utils/asset-src";
 import { getYouTubeThumbnail } from "../../utils/youtube-thumbnail";
+import { getCollectorClient } from "../../services/collector-client";
 
 interface ItemThumbnailProps {
   item: ItemFile;
@@ -28,7 +28,7 @@ export function ItemThumbnail({
     setSrc(null);
 
     void (async () => {
-      const path = await resolveItemThumbnailPath(item).catch(() => null);
+      const path = await getCollectorClient().resolveItemThumbnailPath(item).catch(() => null);
       if (cancelled) {
         return;
       }

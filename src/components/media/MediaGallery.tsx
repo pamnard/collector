@@ -1,13 +1,8 @@
 import { ImagePlus, Star, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MediaWithPath } from "@collector/core";
-import {
-  attachMediaFiles,
-  deleteItemMedia,
-  listItemMedia,
-  setItemCoverFromMedia,
-} from "../../services/collector-service";
 import { toDisplayAssetSrc } from "../../utils/asset-src";
+import { getCollectorClient } from "../../services/collector-client";
 
 interface MediaGalleryProps {
   itemId: string;
@@ -24,7 +19,7 @@ export function MediaGallery({ itemId, onUpdated }: MediaGalleryProps) {
   const loadMedia = useCallback(async () => {
     setError(null);
     try {
-      setFiles(await listItemMedia(itemId));
+      setFiles(await getCollectorClient().listItemMedia(itemId));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -49,7 +44,7 @@ export function MediaGallery({ itemId, onUpdated }: MediaGalleryProps) {
           data: new Uint8Array(await file.arrayBuffer()),
         })),
       );
-      await attachMediaFiles(itemId, payload);
+      await getCollectorClient().attachMediaFiles(itemId, payload);
       await loadMedia();
       onUpdated?.();
     } catch (err: unknown) {
@@ -67,7 +62,7 @@ export function MediaGallery({ itemId, onUpdated }: MediaGalleryProps) {
 
     setError(null);
     try {
-      await deleteItemMedia(itemId, mediaId);
+      await getCollectorClient().deleteItemMedia(itemId, mediaId);
       await loadMedia();
       onUpdated?.();
     } catch (err: unknown) {
@@ -79,7 +74,7 @@ export function MediaGallery({ itemId, onUpdated }: MediaGalleryProps) {
     setCoverMediaId(mediaId);
     setError(null);
     try {
-      await setItemCoverFromMedia(itemId, mediaId);
+      await getCollectorClient().setItemCoverFromMedia(itemId, mediaId);
       onUpdated?.();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
