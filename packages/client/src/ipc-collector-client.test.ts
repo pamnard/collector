@@ -74,9 +74,8 @@ describe("CollectorIpcClient", () => {
         expect(typeof source).toBe("string");
         expect(source.length).toBeGreaterThan(0);
 
-        await expect(client.listTags()).rejects.toMatchObject({
-          code: "unimplemented",
-        });
+        const tags = await client.listTags();
+        expect(Array.isArray(tags)).toBe(true);
       } finally {
         await client.close();
       }
@@ -120,6 +119,35 @@ describe("CollectorIpcClient", () => {
     }
   });
 
+  it("tags list/CRUD work over IPC (#157)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-ipc-tags-"));
+    dirs.push(dataDir);
+    const host = await startServiceHost({ dataDir, port: 0 });
+    try {
+      const client = await connectCollectorIpcClient(host.ipcPath!);
+      try {
+        const created = await client.createTag({ name: "ipc-tag" });
+        expect(created.name).toBe("ipc-tag");
+
+        const listed = await client.listTags();
+        expect(listed.some((t) => t.id === created.id)).toBe(true);
+
+        const updated = await client.updateTagRecord(created.id, {
+          name: "ipc-tag-2",
+        });
+        expect(updated.name).toBe("ipc-tag-2");
+
+        await client.deleteTag(created.id);
+        const after = await client.listTags();
+        expect(after.some((t) => t.id === created.id)).toBe(false);
+      } finally {
+        await client.close();
+      }
+    } finally {
+      await host.close();
+    }
+  });
+
   it("unimplemented domain methods fail fast without inventing defaults", async () => {
     const transport = {
       ping: async () => ({ ok: true as const, pong: true as const }),
@@ -137,7 +165,7 @@ describe("CollectorIpcClient", () => {
 
     const client = createCollectorIpcClient(transport);
 
-    await expect(client.listTags()).rejects.toMatchObject({
+    await expect(client.listFolderTree()).rejects.toMatchObject({
       name: "ServiceIpcError",
       layer: "validation",
       code: "unimplemented",
