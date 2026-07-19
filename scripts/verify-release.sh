@@ -273,6 +273,9 @@ npm test
 step "startup index smoke"
 npm run test:startup
 
+step "service host health smoke (out-of-band)"
+npm run test:service-host
+
 step "large empty-index smoke"
 npm run test:large-empty-index
 

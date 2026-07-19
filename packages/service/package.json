@@ -5,6 +5,9 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "collector-service": "./dist/host/cli.js"
+  },
   "exports": {
     ".": {
       "@collector/source": "./src/index.ts",
@@ -15,15 +18,18 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "serve": "node ./dist/host/cli.js serve"
   },
   "dependencies": {
     "@collector/api": "*",
     "@collector/core": "*",
     "@collector/db": "*",
-    "@collector/shared": "*"
+    "@collector/shared": "*",
+    "better-sqlite3": "^11.9.1"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "typescript": "~5.8.3",
     "vitest": "^3.0.9"
   }

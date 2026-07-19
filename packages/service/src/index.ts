@@ -60,3 +60,13 @@ export {
   type VaultsService,
   type VaultsServiceDeps,
 } from "./vaults.js";
+
+export {
+  startServiceHost,
+  formatServiceHostReadyLine,
+  SERVICE_HOST_READY_PREFIX,
+  type ServiceHost,
+  type ServiceHostOptions,
+} from "./host/service-host.js";
+
+export { NodeSqliteExecutor } from "./host/node-sql.js";
