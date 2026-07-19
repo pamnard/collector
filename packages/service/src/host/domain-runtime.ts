@@ -4,15 +4,16 @@
  */
 
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import {
   SqlVaultIndexStore,
   buildFtsMatchQuery,
   buildMetadataFtsMatchQuery,
+  migrateLegacyUnifiedProfileLayout,
   syncVaultIndexFromFilesystem,
   type IndexSyncProgress,
 } from "@collector/core";
 import { NodeFileSystemAdapter } from "@collector/core/node";
+import type { CollectorProfileLayout } from "@collector/shared";
 import { createAppSettingsService } from "../app-settings.js";
 import { createCollectorIndexBoot } from "../index-boot.js";
 import { createDashboardSnapshotService } from "../dashboard-snapshot.js";
@@ -98,11 +99,10 @@ export interface ServiceDomainRuntime {
 }
 
 export function createServiceDomainRuntime(
-  dataDir: string,
+  layout: CollectorProfileLayout,
 ): ServiceDomainRuntime {
   const fs = new NodeFileSystemAdapter();
-  const configDir = join(dataDir, "config");
-  const dbPath = join(dataDir, "collector.db");
+  const { dataDir, configDir, indexDbPath: dbPath } = layout;
 
   const syncedVaultIds = new Set<string>();
   const vaultSyncPromises = new Map<string, Promise<void>>();
@@ -171,6 +171,8 @@ export function createServiceDomainRuntime(
   const indexBoot = createCollectorIndexBoot({
     prepareEnvironment: async () => {
       await mkdir(dataDir, { recursive: true });
+      await mkdir(configDir, { recursive: true });
+      await migrateLegacyUnifiedProfileLayout(fs, layout);
     },
     openSql: async () => NodeSqliteExecutor.open(dbPath),
     onUnhealthyRebuildStart: async () => {

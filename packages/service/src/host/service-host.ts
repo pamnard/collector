@@ -1,13 +1,19 @@
 /**
- * Collector service domain host (#151/#152/#155+/#237):
+ * Collector service domain host (#151/#152/#155+/#237/#238):
  * open index DB + HTTP health/ping + local IPC with domain handlers.
  *
- * Default desktop path stays in-process until cutover (#170). Supervise may
- * start this host behind COLLECTOR_ENABLE_SERVICE_SUPERVISE with an isolated
- * `--data-dir` so it does not share SQLite with the UI writer.
+ * Uses the canonical profile layout (#238). Default desktop path stays
+ * in-process until cutover (#170). Supervise may start this host behind
+ * COLLECTOR_ENABLE_SERVICE_SUPERVISE with an isolated `--data-dir`
+ * (self-contained layout) so it does not share SQLite with the UI writer.
  */
 
 import { createServer, type Server } from "node:http";
+import type { CollectorProfileLayout } from "@collector/shared";
+import {
+  resolveCollectorProfileLayout,
+  selfContainedCollectorProfileLayout,
+} from "@collector/shared";
 import {
   createDomainIpcDispatcher,
   buildDomainIpcHandlers,
@@ -19,8 +25,16 @@ import { SERVICE_IPC_EVENTS } from "./ipc/framing.js";
 export const SERVICE_HOST_READY_PREFIX = "COLLECTOR_SERVICE_READY ";
 
 export interface ServiceHostOptions {
-  /** Isolated data directory; index DB is `<dataDir>/collector.db`. */
+  /**
+   * Vault files parent (`…/collector`). When `configDir` is omitted, uses the
+   * self-contained layout (`{dataDir}/config` + `{dataDir}/collector.db`).
+   */
   dataDir: string;
+  /**
+   * Settings directory (`…/collector` under appConfig in production).
+   * Omit only for self-contained smoke profiles.
+   */
+  configDir?: string;
   /** Bind address (default 127.0.0.1). */
   host?: string;
   /** TCP port; 0 = ephemeral (default). */
@@ -38,9 +52,21 @@ export interface ServiceHost {
   baseUrl: string;
   /** Local IPC endpoint (Unix socket or Windows named pipe), if enabled. */
   ipcPath: string | null;
+  /** Resolved profile layout used by this host. */
+  layout: CollectorProfileLayout;
   /** Open + healthy index session. */
   isHealthy: () => boolean;
   close: () => Promise<void>;
+}
+
+function resolveHostLayout(options: ServiceHostOptions): CollectorProfileLayout {
+  if (options.configDir !== undefined) {
+    return resolveCollectorProfileLayout({
+      dataDir: options.dataDir,
+      configDir: options.configDir,
+    });
+  }
+  return selfContainedCollectorProfileLayout(options.dataDir);
 }
 
 function json(
@@ -64,8 +90,9 @@ export async function startServiceHost(
 ): Promise<ServiceHost> {
   const listenHost = options.host ?? "127.0.0.1";
   const listenPort = options.port ?? 0;
+  const layout = resolveHostLayout(options);
 
-  const runtime = createServiceDomainRuntime(options.dataDir);
+  const runtime = createServiceDomainRuntime(layout);
   await runtime.open();
   await runtime.ensureInitialized();
   // Ensure default vault + welcome item exist for host smokes/tests.
@@ -114,7 +141,7 @@ export async function startServiceHost(
   let stopSyncStatusBroadcast: (() => void) | null = null;
   if (options.ipcPath !== false) {
     ipc = await startServiceIpcServer({
-      dataDir: options.dataDir,
+      dataDir: layout.dataDir,
       path: typeof options.ipcPath === "string" ? options.ipcPath : undefined,
       handler: {
         ping: () => ({ ok: true, pong: true }),
@@ -152,6 +179,7 @@ export async function startServiceHost(
     port: address.port,
     baseUrl: `http://${listenHost}:${address.port}`,
     ipcPath: ipc?.path ?? null,
+    layout,
     isHealthy: () => runtime.isHealthy(),
     close,
   };
@@ -164,5 +192,8 @@ export function formatServiceHostReadyLine(host: ServiceHost): string {
     port: host.port,
     baseUrl: host.baseUrl,
     ipcPath: host.ipcPath,
+    dataDir: host.layout.dataDir,
+    configDir: host.layout.configDir,
+    indexDbPath: host.layout.indexDbPath,
   })}`;
 }
