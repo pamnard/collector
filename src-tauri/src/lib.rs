@@ -4,6 +4,7 @@ pub mod service_domain_host;
 pub mod service_lock;
 pub mod service_logs;
 pub mod service_supervise;
+pub mod service_ipc;
 
 use service_supervise::{supervise_enabled, ServiceSupervisor, SUPERVISE_ENABLE_ENV};
 use std::path::PathBuf;
@@ -119,6 +120,51 @@ fn service_supervise_kill(
     Ok(())
 }
 
+
+use service_ipc::{ServiceIpcClient, ServiceIpcState};
+use std::sync::Arc;
+
+#[tauri::command]
+fn service_ipc_connect(
+    ipc_state: tauri::State<'_, ServiceIpcState>,
+    ipc_path: String,
+) -> Result<String, String> {
+    let path = PathBuf::from(&ipc_path);
+    let client = ServiceIpcClient::connect(&path, Duration::from_secs(15))
+        .map_err(|e| e.to_string())?;
+    let mut guard = ipc_state.client.lock().map_err(|e| e.to_string())?;
+    if let Some(existing) = guard.take() {
+        let _ = existing.close();
+    }
+    *guard = Some(Arc::new(client));
+    *ipc_state.ipc_path.lock().map_err(|e| e.to_string())? = Some(path.clone());
+    Ok(path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+fn service_ipc_request(
+    ipc_state: tauri::State<'_, ServiceIpcState>,
+    method: String,
+    params: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let guard = ipc_state.client.lock().map_err(|e| e.to_string())?;
+    let client = guard
+        .as_ref()
+        .ok_or("service IPC not connected (call service_ipc_connect)")?;
+    client.request(&method, params).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn service_ipc_disconnect(
+    ipc_state: tauri::State<'_, ServiceIpcState>,
+) -> Result<(), String> {
+    if let Some(client) = ipc_state.client.lock().map_err(|e| e.to_string())?.take() {
+        let _ = client.close();
+    }
+    *ipc_state.ipc_path.lock().map_err(|e| e.to_string())? = None;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Default path: never spawn the service sidecar (flag OFF → no dual writer).
@@ -127,6 +173,7 @@ pub fn run() {
         .manage(ServiceSuperviseState {
             supervisor: Mutex::new(None),
         })
+        .manage(ServiceIpcState::new())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
@@ -145,6 +192,9 @@ pub fn run() {
             service_supervise_spawn,
             service_supervise_stop,
             service_supervise_kill,
+            service_ipc_connect,
+            service_ipc_request,
+            service_ipc_disconnect,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
