@@ -1,10 +1,15 @@
-//! Service process supervise helpers (#166 / epic #142).
+//! Service process supervise helpers (#166 / #167 / epic #142).
 //!
 //! Dead by default: [`supervise_enabled`] is false unless
 //! `COLLECTOR_ENABLE_SERVICE_SUPERVISE=1`. Callers must check the flag before
 //! spawn — the desktop app startup path must not call spawn when disabled
 //! (no second SQLite writer / no dual process).
+//!
+//! Spawn runs orphan cleanup (#167) and refuses when a live lock holder remains.
 
+use crate::service_lock::{
+    cleanup_orphans, CleanupOutcome, SUPERVISOR_PID_ENV,
+};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -29,6 +34,7 @@ pub struct ServiceSupervisor {
 #[derive(Debug)]
 pub enum SuperviseError {
     Disabled,
+    AlreadyLocked { service_pid: u32 },
     Io(io::Error),
     NotRunning,
     TimedOut,
@@ -41,6 +47,9 @@ impl std::fmt::Display for SuperviseError {
                 f,
                 "service supervise disabled (set {SUPERVISE_ENABLE_ENV}=1 to enable)"
             ),
+            Self::AlreadyLocked { service_pid } => {
+                write!(f, "service lock already held by pid {service_pid}")
+            }
             Self::Io(err) => write!(f, "service supervise I/O: {err}"),
             Self::NotRunning => write!(f, "service process is not running"),
             Self::TimedOut => write!(f, "timed out waiting for service process"),
@@ -58,6 +67,8 @@ impl From<io::Error> for SuperviseError {
 
 impl ServiceSupervisor {
     /// Spawn `collector-service serve --data-dir …`. Refuses when flag is OFF.
+    ///
+    /// Runs [`cleanup_orphans`] first; a live lock holder blocks spawn.
     pub fn spawn(sidecar_bin: &Path, data_dir: &Path) -> Result<Self, SuperviseError> {
         if !supervise_enabled() {
             return Err(SuperviseError::Disabled);
@@ -69,10 +80,19 @@ impl ServiceSupervisor {
             )));
         }
         std::fs::create_dir_all(data_dir)?;
+        match cleanup_orphans(data_dir)? {
+            CleanupOutcome::LiveHolder { service_pid, .. } => {
+                return Err(SuperviseError::AlreadyLocked { service_pid });
+            }
+            CleanupOutcome::NoLock
+            | CleanupOutcome::RemovedStale
+            | CleanupOutcome::CleanedOrphan { .. } => {}
+        }
         let child = Command::new(sidecar_bin)
             .arg("serve")
             .arg("--data-dir")
             .arg(data_dir)
+            .env(SUPERVISOR_PID_ENV, std::process::id().to_string())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -193,6 +213,42 @@ mod tests {
         assert!(sup.is_running().expect("running"));
         sup.stop(Duration::from_secs(3)).expect("stop");
         assert!(!sup.is_running().unwrap_or(false));
+        let _ = std::fs::remove_dir_all(dir);
+        std::env::remove_var(SUPERVISE_ENABLE_ENV);
+    }
+
+    #[test]
+    fn spawn_refuses_when_live_lock_held() {
+        let sidecar = sidecar_path();
+        if !sidecar.is_file() {
+            eprintln!("skip: sidecar missing at {}", sidecar.display());
+            return;
+        }
+        std::env::set_var(SUPERVISE_ENABLE_ENV, "1");
+        let dir = std::env::temp_dir().join(format!(
+            "collector-supervise-locked-{}",
+            std::process::id()
+        ));
+        let mut first = ServiceSupervisor::spawn(&sidecar, &dir).expect("first spawn");
+        assert!(first.is_running().expect("running"));
+
+        // Wait until child writes the lock so cleanup sees a live holder.
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < deadline {
+            if crate::service_lock::read_lock(&dir)
+                .ok()
+                .and_then(|v| v)
+                .is_some()
+            {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+
+        let err = ServiceSupervisor::spawn(&sidecar, &dir).expect_err("second must fail");
+        assert!(matches!(err, SuperviseError::AlreadyLocked { .. }));
+
+        first.stop(Duration::from_secs(3)).expect("stop");
         let _ = std::fs::remove_dir_all(dir);
         std::env::remove_var(SUPERVISE_ENABLE_ENV);
     }
