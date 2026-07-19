@@ -13,7 +13,6 @@ import {
   encodeServiceIpcFrame,
   type ServiceIpcErrorResponse,
   type ServiceIpcHealthResult,
-  type ServiceIpcMethod,
   type ServiceIpcRequest,
   type ServiceIpcResponse,
 } from "./framing.js";
@@ -41,7 +40,7 @@ export interface ServiceIpcClientOptions {
 
 export interface ServiceIpcClient {
   request(
-    method: ServiceIpcMethod,
+    method: string,
     params?: unknown,
     options?: ServiceIpcRequestOptions,
   ): Promise<unknown>;
@@ -178,7 +177,7 @@ export async function connectServiceIpc(
   });
 
   const request = (
-    method: ServiceIpcMethod,
+    method: string,
     params?: unknown,
     requestOptions: ServiceIpcRequestOptions = {},
   ): Promise<unknown> => {

@@ -6,10 +6,10 @@
 import type { CollectorApiError } from "@collector/api";
 import { serviceIpcError } from "./errors.js";
 
+export type { ServiceIpcMethod } from "./domain-methods.js";
+
 /** Bump only with a coordinated client/host change. */
 export const SERVICE_IPC_PROTOCOL_VERSION = 1;
-
-export type ServiceIpcMethod = "ping" | "health";
 
 export interface ServiceIpcHealthResult {
   ok: boolean;
@@ -22,7 +22,7 @@ export interface ServiceIpcRequest {
   v: typeof SERVICE_IPC_PROTOCOL_VERSION;
   id: string;
   type: "req";
-  method: ServiceIpcMethod;
+  method: string;
   params?: unknown;
 }
 

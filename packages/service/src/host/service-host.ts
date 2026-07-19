@@ -1,15 +1,16 @@
 /**
- * Out-of-band Collector service host (#151/#152):
- * open index DB + HTTP health/ping + local IPC (Unix socket / Windows pipe).
+ * Out-of-band Collector service host (#151/#152/#155+):
+ * open index DB + HTTP health/ping + local IPC with domain handlers.
  * Must not be started by the Tauri app lifecycle (dual-writer risk).
  */
 
-import { mkdir } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
-import { join } from "node:path";
-import { createCollectorIndexBoot } from "../index-boot.js";
-import { NodeSqliteExecutor } from "./node-sql.js";
+import {
+  createDomainIpcDispatcher,
+  buildDomainIpcHandlers,
+} from "./ipc/domain-handlers.js";
 import { startServiceIpcServer, type ServiceIpcServer } from "./ipc/server.js";
+import { createServiceDomainRuntime } from "./domain-runtime.js";
 
 export const SERVICE_HOST_READY_PREFIX = "COLLECTOR_SERVICE_READY ";
 
@@ -39,7 +40,10 @@ export interface ServiceHost {
 }
 
 function json(
-  res: { writeHead: (code: number, headers: Record<string, string>) => void; end: (body: string) => void },
+  res: {
+    writeHead: (code: number, headers: Record<string, string>) => void;
+    end: (body: string) => void;
+  },
   code: number,
   body: unknown,
 ): void {
@@ -56,27 +60,26 @@ export async function startServiceHost(
 ): Promise<ServiceHost> {
   const listenHost = options.host ?? "127.0.0.1";
   const listenPort = options.port ?? 0;
-  const dbPath = join(options.dataDir, "collector.db");
 
-  const boot = createCollectorIndexBoot({
-    prepareEnvironment: async () => {
-      await mkdir(options.dataDir, { recursive: true });
-    },
-    openSql: async () => NodeSqliteExecutor.open(dbPath),
-  });
-
-  await boot.open();
-  await boot.ensureHealthy();
+  const runtime = createServiceDomainRuntime(options.dataDir);
+  await runtime.open();
+  await runtime.ensureInitialized();
+  // Ensure default vault + welcome item exist for host smokes/tests.
+  await runtime.vaults.ensureActiveVault();
 
   const healthPayload = () => {
-    const healthy = boot.isHealthy();
+    const healthy = runtime.isHealthy();
     return {
       ok: healthy,
       status: healthy ? ("healthy" as const) : ("unhealthy" as const),
-      open: boot.isOpen(),
+      open: true,
       healthy,
     };
   };
+
+  const domainDispatch = createDomainIpcDispatcher(
+    buildDomainIpcHandlers(runtime),
+  );
 
   const server: Server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", `http://${listenHost}`);
@@ -111,6 +114,7 @@ export async function startServiceHost(
       handler: {
         ping: () => ({ ok: true, pong: true }),
         health: healthPayload,
+        request: domainDispatch,
       },
     });
   }
@@ -128,10 +132,7 @@ export async function startServiceHost(
     await new Promise<void>((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
     });
-    const sql = boot.getSql();
-    if (sql) {
-      await sql.close();
-    }
+    await runtime.close();
   };
 
   return {
@@ -139,7 +140,7 @@ export async function startServiceHost(
     port: address.port,
     baseUrl: `http://${listenHost}:${address.port}`,
     ipcPath: ipc?.path ?? null,
-    isHealthy: () => boot.isHealthy(),
+    isHealthy: () => runtime.isHealthy(),
     close,
   };
 }

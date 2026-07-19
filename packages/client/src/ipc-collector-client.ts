@@ -71,21 +71,38 @@ export function createCollectorIpcClient(
       unimplemented("ensureActiveVault"),
     getDataDirectory: async () => unimplemented("getDataDirectory"),
 
-    // Items / search / dashboard
-    listItems: async (): Promise<ItemFile[]> => unimplemented("listItems"),
+    // Items / search / dashboard reads (#155)
+    listItems: async (): Promise<ItemFile[]> =>
+      transport.request("listItems") as Promise<ItemFile[]>,
     searchItems: async (
-      _query: string,
-      _filter: NavFilter,
-    ): Promise<ItemFile[]> => unimplemented("searchItems"),
+      query: string,
+      filter: NavFilter,
+    ): Promise<ItemFile[]> =>
+      transport.request("searchItems", { query, filter }) as Promise<ItemFile[]>,
     fetchDashboardIndexPage: async (
-      _filter: NavFilter,
-      _query: string | undefined,
-      _page: { limit: number; offset: number },
-    ): Promise<DashboardIndexPage> => unimplemented("fetchDashboardIndexPage"),
+      filter: NavFilter,
+      query: string | undefined,
+      page: { limit: number; offset: number },
+    ): Promise<DashboardIndexPage> =>
+      transport.request("fetchDashboardIndexPage", {
+        filter,
+        query,
+        page,
+      }) as Promise<DashboardIndexPage>,
     listDashboardItemIds: async (
-      _filter: NavFilter,
-      _query?: string,
-    ): Promise<DashboardItemIdsResult> => unimplemented("listDashboardItemIds"),
+      filter: NavFilter,
+      query?: string,
+    ): Promise<DashboardItemIdsResult> => {
+      const result = (await transport.request("listDashboardItemIds", {
+        filter,
+        query,
+      })) as { itemIds: string[]; totalCount: number };
+      return {
+        itemIds: result.itemIds,
+        totalCount: result.totalCount,
+        indexSync: Promise.resolve(),
+      };
+    },
     subscribeDashboardLoad(
       _filter: NavFilter,
       _query: string,
@@ -102,14 +119,19 @@ export function createCollectorIpcClient(
       _signal?: AbortSignal,
     ): Promise<void> => unimplemented("streamDashboardItems"),
     loadDashboardItems: async (
-      _itemIds: string[],
-      _offset: number,
-      _limit?: number,
-    ): Promise<ItemFile[]> => unimplemented("loadDashboardItems"),
-    getItemById: async (_itemId: string): Promise<GetItemResult> =>
-      unimplemented("getItemById"),
-    getItemSource: async (_itemId: string): Promise<string> =>
-      unimplemented("getItemSource"),
+      itemIds: string[],
+      offset: number,
+      limit?: number,
+    ): Promise<ItemFile[]> =>
+      transport.request("loadDashboardItems", {
+        itemIds,
+        offset,
+        limit,
+      }) as Promise<ItemFile[]>,
+    getItemById: async (itemId: string): Promise<GetItemResult> =>
+      transport.request("getItemById", { itemId }) as Promise<GetItemResult>,
+    getItemSource: async (itemId: string): Promise<string> =>
+      transport.request("getItemSource", { itemId }) as Promise<string>,
     updateItemSource: async (
       _itemId: string,
       _rawMarkdown: string,
