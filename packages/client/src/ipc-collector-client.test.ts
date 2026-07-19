@@ -230,6 +230,36 @@ describe("CollectorIpcClient", () => {
     }
   });
 
+  it("vaults list/switch/ensure work over IPC (#160)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-ipc-vaults-"));
+    dirs.push(dataDir);
+    const host = await startServiceHost({ dataDir, port: 0 });
+    try {
+      const client = await connectCollectorIpcClient(host.ipcPath!);
+      try {
+        expect(await client.getDataDirectory()).toBe(dataDir);
+
+        const active = await client.ensureActiveVault();
+        expect(active.vault.id).toBeTruthy();
+        expect(typeof active.path).toBe("string");
+
+        const listed = await client.listVaults();
+        expect(listed.some((v) => v.id === active.vault.id)).toBe(true);
+
+        const meta = await client.getActiveVaultMeta();
+        expect(meta.id).toBe(active.vault.id);
+
+        await client.setDefaultVault(active.vault.id);
+        const switched = await client.switchVault(active.vault.id);
+        expect(switched.id).toBe(active.vault.id);
+      } finally {
+        await client.close();
+      }
+    } finally {
+      await host.close();
+    }
+  });
+
   it("unimplemented domain methods fail fast without inventing defaults", async () => {
     const transport = {
       ping: async () => ({ ok: true as const, pong: true as const }),
@@ -247,7 +277,7 @@ describe("CollectorIpcClient", () => {
 
     const client = createCollectorIpcClient(transport);
 
-    await expect(client.listVaults()).rejects.toMatchObject({
+    await expect(client.ensureAppSettings()).rejects.toMatchObject({
       name: "ServiceIpcError",
       layer: "validation",
       code: "unimplemented",
@@ -258,7 +288,7 @@ describe("CollectorIpcClient", () => {
 
     expect(() => client.getVaultIndexSyncStatus()).toThrow(/not implemented/);
 
-    await expect(client.ensureActiveVault()).rejects.toMatchObject({
+    await expect(client.openCollectorDatabase()).rejects.toMatchObject({
       code: "unimplemented",
     });
 

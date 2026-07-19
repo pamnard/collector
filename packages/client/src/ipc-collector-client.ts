@@ -68,8 +68,9 @@ export function createCollectorIpcClient(
     ensureCollectorDatabaseHealthy: async () =>
       unimplemented("ensureCollectorDatabaseHealthy"),
     ensureActiveVault: async (): Promise<ActiveVaultResult> =>
-      unimplemented("ensureActiveVault"),
-    getDataDirectory: async () => unimplemented("getDataDirectory"),
+      transport.request("ensureActiveVault") as Promise<ActiveVaultResult>,
+    getDataDirectory: async (): Promise<string> =>
+      transport.request("getDataDirectory") as Promise<string>,
 
     // Items / search / dashboard reads (#155)
     listItems: async (): Promise<ItemFile[]> =>
@@ -244,13 +245,15 @@ export function createCollectorIpcClient(
     },
 
     // Vaults
-    listVaults: async (): Promise<VaultMeta[]> => unimplemented("listVaults"),
+    listVaults: async (): Promise<VaultMeta[]> =>
+      transport.request("listVaults") as Promise<VaultMeta[]>,
     getActiveVaultMeta: async (): Promise<VaultMeta> =>
-      unimplemented("getActiveVaultMeta"),
-    switchVault: async (_vaultId: string): Promise<VaultMeta> =>
-      unimplemented("switchVault"),
-    setDefaultVault: async (_vaultId: string): Promise<void> =>
-      unimplemented("setDefaultVault"),
+      transport.request("getActiveVaultMeta") as Promise<VaultMeta>,
+    switchVault: async (vaultId: string): Promise<VaultMeta> =>
+      transport.request("switchVault", { vaultId }) as Promise<VaultMeta>,
+    setDefaultVault: async (vaultId: string): Promise<void> => {
+      await transport.request("setDefaultVault", { vaultId });
+    },
 
     // Sync / status
     subscribeVaultIndexSyncStatus(
