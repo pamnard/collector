@@ -9,13 +9,7 @@ import {
 } from "react";
 import type { AppSettings } from "@collector/shared";
 import { DEFAULT_APP_SETTINGS } from "@collector/shared";
-import { appDataDir, join } from "@tauri-apps/api/path";
-import { getCollectorClient, setCollectorClient } from "../services/collector-client";
-import {
-  bootstrapServiceMode,
-  createTauriIpcAdapter,
-  isServiceModeEnabled,
-} from "../services/tauri-ipc-adapter";
+import { getCollectorClient } from "../services/collector-client";
 import { StartupErrorScreen } from "../components/startup/StartupErrorScreen";
 import { StartupLoadingScreen } from "../components/startup/StartupLoadingScreen";
 import type { NavFilter, ViewMode } from "../types/ui";
@@ -48,21 +42,14 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    const unsubRef: { current: (() => void) | null } = { current: null };
+    const client = getCollectorClient();
 
-    void (async () => {
-      try {
-        if (await isServiceModeEnabled()) {
-          const dataDir = await join(await appDataDir(), "collector");
-          await bootstrapServiceMode(dataDir);
-          setCollectorClient(createTauriIpcAdapter());
-        }
-        const client = getCollectorClient();
-        const [loaded] = await Promise.all([
-          client.ensureAppSettings(),
-          client.openCollectorDatabase(),
-          client.ensureDashboardSnapshot(),
-        ]);
+    Promise.all([
+      client.ensureAppSettings(),
+      client.openCollectorDatabase(),
+      client.ensureDashboardSnapshot(),
+    ])
+      .then(([loaded]) => {
         if (cancelled) {
           return;
         }
@@ -78,13 +65,8 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
             });
           }
         });
-
-        unsubRef.current = client.subscribeAppSettings((next) => {
-          if (!cancelled) {
-            setSettings(next);
-          }
-        });
-      } catch (err) {
+      })
+      .catch((err) => {
         console.error("[collector] startup failed:", err);
         if (!cancelled) {
           setStartupState({
@@ -92,13 +74,13 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
             message: err instanceof Error ? err.message : String(err),
           });
         }
-      }
-    })();
+      });
 
-    return () => {
-      cancelled = true;
-      unsubRef.current?.();
-    };
+    return client.subscribeAppSettings((next) => {
+      if (!cancelled) {
+        setSettings(next);
+      }
+    });
   }, []);
 
   const patch = useCallback(async (partial: Partial<AppSettings>) => {
