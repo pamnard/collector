@@ -3,14 +3,56 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  NodeSqliteExecutor,
   ServiceIpcError,
+  buildDomainIpcHandlers,
+  createDomainIpcDispatcher,
+  createServiceDomainRuntime,
   startServiceHost,
+  startServiceIpcServer,
   type ServiceIpcClient,
 } from "@collector/service/host";
 import {
   connectCollectorIpcClient,
   createCollectorIpcClient,
 } from "./ipc-collector-client.js";
+
+/** Legacy incomplete schema — migrate leaves it unhealthy until rebuild. */
+async function writeLegacyBrokenIndexDb(dbPath: string): Promise<void> {
+  const db = NodeSqliteExecutor.open(dbPath);
+  await db.execute(`CREATE TABLE schema_migrations (
+    version INTEGER PRIMARY KEY,
+    applied_at TEXT NOT NULL
+  )`);
+  await db.execute(
+    "INSERT INTO schema_migrations(version, applied_at) VALUES (1, datetime('now'))",
+  );
+  await db.execute(`CREATE TABLE items (
+    id TEXT PRIMARY KEY,
+    vault_id TEXT NOT NULL,
+    title TEXT NOT NULL
+  )`);
+  await db.execute(`CREATE VIRTUAL TABLE items_fts USING fts5(
+    item_id UNINDEXED,
+    title,
+    description,
+    content,
+    tokenize = 'unicode61'
+  )`);
+  await db.execute(`CREATE TABLE tags (
+    id TEXT PRIMARY KEY,
+    vault_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    color TEXT,
+    created_at TEXT NOT NULL
+  )`);
+  await db.execute(`CREATE TABLE item_tags (
+    item_id TEXT NOT NULL,
+    tag_id TEXT NOT NULL,
+    PRIMARY KEY (item_id, tag_id)
+  )`);
+  await db.close();
+}
 
 describe("CollectorIpcClient", () => {
   const dirs: string[] = [];
@@ -260,6 +302,84 @@ describe("CollectorIpcClient", () => {
     }
   });
 
+  it("index boot open/ensureHealthy work over IPC (#162)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-ipc-boot-"));
+    dirs.push(dataDir);
+    const host = await startServiceHost({ dataDir, port: 0 });
+    try {
+      const client = await connectCollectorIpcClient(host.ipcPath!);
+      try {
+        // Host already opened + healed on start; methods are idempotent.
+        await client.openCollectorDatabase();
+        await client.ensureCollectorDatabaseHealthy();
+        expect(await client.health()).toMatchObject({
+          ok: true,
+          healthy: true,
+          status: "healthy",
+        });
+        const active = await client.ensureActiveVault();
+        expect(active.vault.id).toBeTruthy();
+      } finally {
+        await client.close();
+      }
+    } finally {
+      await host.close();
+    }
+  });
+
+  it("ensureHealthy rebuilds an unhealthy index over IPC (#162)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-ipc-rebuild-"));
+    dirs.push(dataDir);
+    await writeLegacyBrokenIndexDb(join(dataDir, "collector.db"));
+
+    // IPC-only host: do not auto-heal so the client path exercises rebuild.
+    const runtime = createServiceDomainRuntime(dataDir);
+    const ipc = await startServiceIpcServer({
+      dataDir,
+      handler: {
+        ping: () => ({ ok: true, pong: true }),
+        health: () => {
+          const healthy = runtime.isHealthy();
+          return {
+            ok: healthy,
+            status: healthy ? ("healthy" as const) : ("unhealthy" as const),
+            open: true,
+            healthy,
+          };
+        },
+        request: createDomainIpcDispatcher(buildDomainIpcHandlers(runtime)),
+      },
+    });
+
+    try {
+      const client = await connectCollectorIpcClient(ipc.path);
+      try {
+        await client.openCollectorDatabase();
+        expect(await client.health()).toMatchObject({
+          healthy: false,
+          status: "unhealthy",
+        });
+
+        await client.ensureCollectorDatabaseHealthy();
+        expect(await client.health()).toMatchObject({
+          ok: true,
+          healthy: true,
+          status: "healthy",
+        });
+
+        const active = await client.ensureActiveVault();
+        expect(active.vault.id).toBeTruthy();
+        const items = await client.listItems();
+        expect(Array.isArray(items)).toBe(true);
+      } finally {
+        await client.close();
+      }
+    } finally {
+      await ipc.close();
+      await runtime.close();
+    }
+  });
+
   it("settings + dashboard snapshot work over IPC (#161)", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "collector-ipc-settings-"));
     dirs.push(dataDir);
@@ -321,22 +441,12 @@ describe("CollectorIpcClient", () => {
 
     const client = createCollectorIpcClient(transport);
 
-    await expect(client.openCollectorDatabase()).rejects.toMatchObject({
-      name: "ServiceIpcError",
-      layer: "validation",
-      code: "unimplemented",
-    });
-
     expect(() => client.getAppSettingsSync()).toThrow(ServiceIpcError);
     expect(() => client.getAppSettingsSync()).toThrow(/getAppSettingsSync/);
 
     expect(() => client.getVaultIndexSyncStatus()).toThrow(/not implemented/);
 
-    await expect(client.openCollectorDatabase()).rejects.toMatchObject({
-      code: "unimplemented",
-    });
-
-    // Must not return null / [] / empty snapshot as a stand-in.
+    // Sync snapshot helpers stay unimplemented (async IPC siblings exist).
     expect(() =>
       client.peekMatchingDashboardSnapshot({
         vaultId: "v",
@@ -344,5 +454,17 @@ describe("CollectorIpcClient", () => {
         search: "",
       }),
     ).toThrow(ServiceIpcError);
+
+    expect(() =>
+      client.buildDashboardSnapshot({
+        vaultId: "v",
+        filter: "all",
+        search: "",
+        itemIds: [],
+        items: [],
+        totalCount: 0,
+        streamEndOffset: 0,
+      }),
+    ).toThrow(/not implemented/);
   });
 });
