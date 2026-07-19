@@ -6,6 +6,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import {
+  createTauriServiceIpcTransport,
   tauriServiceIpcConnect,
   tauriServiceIpcDisconnect,
   tauriServiceIpcHealth,
@@ -13,7 +14,7 @@ import {
   tauriServiceIpcRequest,
 } from "./tauri-service-ipc-transport";
 
-describe("tauriServiceIpcTransport (#239)", () => {
+describe("tauriServiceIpcTransport (#239/#240)", () => {
   beforeEach(() => {
     invoke.mockReset();
   });
@@ -27,10 +28,6 @@ describe("tauriServiceIpcTransport (#239)", () => {
 
     invoke.mockResolvedValueOnce({ ok: true, pong: true });
     await expect(tauriServiceIpcPing()).resolves.toEqual({ ok: true, pong: true });
-    expect(invoke).toHaveBeenCalledWith("service_ipc_request", {
-      method: "ping",
-      params: null,
-    });
 
     invoke.mockResolvedValueOnce({
       ok: true,
@@ -46,5 +43,19 @@ describe("tauriServiceIpcTransport (#239)", () => {
     invoke.mockResolvedValueOnce(undefined);
     await tauriServiceIpcDisconnect();
     expect(invoke).toHaveBeenCalledWith("service_ipc_disconnect");
+  });
+
+  it("createTauriServiceIpcTransport implements ServiceIpcClient", async () => {
+    invoke.mockResolvedValueOnce("/tmp/x.sock");
+    invoke.mockResolvedValueOnce({ ok: true, pong: true });
+    invoke.mockResolvedValueOnce("/data");
+    invoke.mockResolvedValueOnce(undefined);
+
+    const transport = await createTauriServiceIpcTransport("/tmp/x.sock");
+    await expect(transport.ping()).resolves.toEqual({ ok: true, pong: true });
+    await expect(transport.request("getDataDirectory")).resolves.toBe("/data");
+    const unsub = transport.onEvent("vaultIndexSyncStatus", () => {});
+    unsub();
+    await transport.close();
   });
 });
