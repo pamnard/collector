@@ -1,8 +1,8 @@
 /**
- * In-process LocalAdapter for the UI CollectorClient (#169 / epic #142).
+ * In-process LocalAdapter for web/dev-mock and unit tests (#169 / #171).
  *
- * Delegates to the existing facade modules. Default product path stays
- * in-process; IPC cutover is #170.
+ * Desktop Tauri default path uses IPC (#170). Opening the index via this
+ * adapter throws — UI in-process SQLite was removed (#171).
  */
 
 import type { CollectorServiceApi, NavFilter as ApiNavFilter } from "@collector/api";
