@@ -74,7 +74,11 @@ impl ServiceSupervisor {
     /// Spawn `collector-service serve --data-dir …`. Refuses when flag is OFF.
     ///
     /// Runs [`cleanup_orphans`] first; a live lock holder blocks spawn.
-    pub fn spawn(sidecar_bin: &Path, data_dir: &Path) -> Result<Self, SuperviseError> {
+    pub fn spawn(
+        sidecar_bin: &Path,
+        data_dir: &Path,
+        config_dir: Option<&Path>,
+    ) -> Result<Self, SuperviseError> {
         if !supervise_enabled() {
             return Err(SuperviseError::Disabled);
         }
@@ -106,8 +110,11 @@ impl ServiceSupervisor {
         let mut cmd = Command::new(sidecar_bin);
         cmd.arg("serve")
             .arg("--data-dir")
-            .arg(data_dir)
-            .env(SUPERVISOR_PID_ENV, std::process::id().to_string())
+            .arg(data_dir);
+        if let Some(config_dir) = config_dir {
+            cmd.arg("--config-dir").arg(config_dir);
+        }
+        cmd.env(SUPERVISOR_PID_ENV, std::process::id().to_string())
             .stdin(Stdio::null())
             .stdout(Stdio::from(log_file))
             .stderr(Stdio::from(log_file_err));
@@ -127,6 +134,29 @@ impl ServiceSupervisor {
 
     pub fn data_dir(&self) -> &Path {
         &self.data_dir
+    }
+
+    /// Block until the service log contains a READY line with `ipcPath`.
+    pub fn wait_for_ready_ipc_path(
+        &self,
+        timeout: Duration,
+    ) -> Result<PathBuf, SuperviseError> {
+        let log = service_log_path(&self.data_dir);
+        let deadline = Instant::now() + timeout;
+        loop {
+            if log.is_file() {
+                let body = std::fs::read_to_string(&log).unwrap_or_default();
+                for line in body.lines() {
+                    if let Some(path) = crate::service_ipc::parse_ready_ipc_path(line) {
+                        return Ok(path);
+                    }
+                }
+            }
+            if Instant::now() >= deadline {
+                return Err(SuperviseError::TimedOut);
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
     }
 
     pub fn pid(&self) -> u32 {
@@ -247,7 +277,7 @@ mod tests {
     #[test]
     fn spawn_refuses_when_flag_off() {
         std::env::remove_var(SUPERVISE_ENABLE_ENV);
-        let err = ServiceSupervisor::spawn(Path::new("/bin/true"), Path::new("/tmp")).unwrap_err();
+        let err = ServiceSupervisor::spawn(Path::new("/bin/true"), Path::new("/tmp"), None).unwrap_err();
         assert!(matches!(err, SuperviseError::Disabled));
     }
 
@@ -263,7 +293,7 @@ mod tests {
             "collector-supervise-{}",
             std::process::id()
         ));
-        let mut sup = ServiceSupervisor::spawn(&sidecar, &dir).expect("spawn");
+        let mut sup = ServiceSupervisor::spawn(&sidecar, &dir, None).expect("spawn");
         let body = wait_for_ready_log(&sup.log_path(), Duration::from_secs(20));
         assert!(
             body.contains("COLLECTOR_SERVICE_READY ") && body.contains("\"ipcPath\""),
@@ -288,7 +318,7 @@ mod tests {
             "collector-supervise-locked-{}",
             std::process::id()
         ));
-        let mut first = ServiceSupervisor::spawn(&sidecar, &dir).expect("first spawn");
+        let mut first = ServiceSupervisor::spawn(&sidecar, &dir, None).expect("first spawn");
         let _ = wait_for_ready_log(&first.log_path(), Duration::from_secs(20));
         assert!(first.is_running().expect("running"));
 
@@ -305,7 +335,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(25));
         }
 
-        let err = ServiceSupervisor::spawn(&sidecar, &dir).expect_err("second must fail");
+        let err = ServiceSupervisor::spawn(&sidecar, &dir, None).expect_err("second must fail");
         assert!(matches!(err, SuperviseError::AlreadyLocked { .. }));
 
         first.stop(Duration::from_secs(10)).expect("stop");
@@ -325,7 +355,7 @@ mod tests {
             "collector-supervise-logs-{}",
             std::process::id()
         ));
-        let mut sup = ServiceSupervisor::spawn(&sidecar, &dir).expect("spawn");
+        let mut sup = ServiceSupervisor::spawn(&sidecar, &dir, None).expect("spawn");
         let log = service_log_path(&dir);
         let body = wait_for_ready_log(&log, Duration::from_secs(20));
         assert!(log.is_file(), "expected log at {}", log.display());
@@ -351,7 +381,7 @@ mod tests {
             "collector-supervise-ping-{}",
             std::process::id()
         ));
-        let mut sup = ServiceSupervisor::spawn(&sidecar, &dir).expect("spawn");
+        let mut sup = ServiceSupervisor::spawn(&sidecar, &dir, None).expect("spawn");
         let body = wait_for_ready_log(&sup.log_path(), Duration::from_secs(20));
         let base_url = parse_ready_base_url(&body).expect(&format!(
             "READY baseUrl missing in log: {body:?}"

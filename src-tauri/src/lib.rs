@@ -4,6 +4,7 @@ pub mod service_domain_host;
 pub mod service_lock;
 pub mod service_logs;
 pub mod service_supervise;
+pub mod service_mode;
 pub mod service_ipc;
 
 use service_supervise::{supervise_enabled, ServiceSupervisor, SUPERVISE_ENABLE_ENV};
@@ -87,7 +88,7 @@ fn service_supervise_spawn(
             return Ok(existing.pid());
         }
     }
-    let sup = ServiceSupervisor::spawn(&sidecar, PathBuf::from(data_dir).as_path())
+    let sup = ServiceSupervisor::spawn(&sidecar, PathBuf::from(data_dir).as_path(), None)
         .map_err(|e| e.to_string())?;
     let pid = sup.pid();
     *guard = Some(sup);
@@ -165,9 +166,35 @@ fn service_ipc_disconnect(
     Ok(())
 }
 
+
+use service_mode::{bootstrap_service_mode, service_mode_enabled};
+
+#[tauri::command]
+fn service_mode_is_enabled() -> bool {
+    service_mode_enabled()
+}
+
+#[tauri::command]
+fn service_mode_bootstrap(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, ServiceSuperviseState>,
+    data_dir: String,
+    config_dir: String,
+) -> Result<String, String> {
+    let sidecar = resolve_sidecar_bin(&app)?;
+    let mut guard = state.supervisor.lock().map_err(|e| e.to_string())?;
+    let ipc = bootstrap_service_mode(
+        &sidecar,
+        PathBuf::from(data_dir).as_path(),
+        PathBuf::from(config_dir).as_path(),
+        &mut guard,
+    )?;
+    Ok(ipc.to_string_lossy().into_owned())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Default path: never spawn the service sidecar (flag OFF → no dual writer).
+    // Cutover (#170): service mode default-ON; opt out with COLLECTOR_SERVICE_MODE=0.
     tauri::Builder::default()
         .manage(VaultWatcherState::new())
         .manage(ServiceSuperviseState {
@@ -195,6 +222,8 @@ pub fn run() {
             service_ipc_connect,
             service_ipc_request,
             service_ipc_disconnect,
+            service_mode_is_enabled,
+            service_mode_bootstrap,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,10 +1,10 @@
 /**
  * UI CollectorClient singleton (#169 / epic #142).
  *
- * Default implementation is {@link createLocalAdapter} (in-process).
- * Call sites should use {@link getCollectorClient} — not `collector-service`
- * / settings / snapshot modules directly. Swap via {@link setCollectorClient}
- * at cutover (#170).
+ * Default: LocalAdapter (web / service mode off).
+ * Tauri cutover (#170) swaps to IPC via {@link setCollectorClient} in
+ * `bootstrapServiceModeCutover` before React mounts.
+ * Call sites should use {@link getCollectorClient}.
  */
 
 import type { CollectorServiceApi } from "@collector/api";
