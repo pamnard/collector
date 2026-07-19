@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run build && npm run prepare:service-sidecar",
     "frontendDist": "../dist"
   },
   "app": {
@@ -39,6 +39,7 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
+    "externalBin": ["binaries/collector-service"],
     "shortDescription": "Offline-first desktop vault for saved content",
     "longDescription": "Collector is an offline-first desktop app for saving and organizing articles, images, videos, notes, bookmarks, and more. Files on disk are the source of truth; SQLite powers search and filters.",
     "publisher": "pamnard",

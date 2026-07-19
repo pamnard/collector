@@ -18,6 +18,7 @@
     "test:large-empty-index": "npm run build:packages && node scripts/large-vault-empty-index-smoke.mjs",
     "test:service-host": "npm run build:packages && node scripts/service-host-health-smoke.mjs",
     "test:service-ipc": "npm run build:packages && node scripts/service-ipc-health-smoke.mjs",
+    "prepare:service-sidecar": "bash scripts/prepare-service-sidecar.sh",
     "verify:release": "bash scripts/verify-release.sh",
     "tauri": "tauri",
     "tauri:dev": "bash scripts/tauri-dev.sh"
