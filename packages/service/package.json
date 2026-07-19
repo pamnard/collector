@@ -18,6 +18,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@collector/api": "*",
     "@collector/core": "*",
     "@collector/db": "*",
     "@collector/shared": "*"
