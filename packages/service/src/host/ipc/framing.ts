@@ -4,6 +4,7 @@
  */
 
 import type { CollectorApiError } from "@collector/api";
+import { serviceIpcError } from "./errors.js";
 
 /** Bump only with a coordinated client/host change. */
 export const SERVICE_IPC_PROTOCOL_VERSION = 1;
@@ -127,11 +128,10 @@ function decodeServiceIpcBody(body: Buffer): ServiceIpcMessage {
 
 export function assertProtocolVersion(v: number): void {
   if (v !== SERVICE_IPC_PROTOCOL_VERSION) {
-    const err: CollectorApiError = {
+    throw serviceIpcError({
       layer: "transport",
       code: "protocol_mismatch",
       message: `unsupported IPC protocol version ${v}; expected ${SERVICE_IPC_PROTOCOL_VERSION}`,
-    };
-    throw Object.assign(new Error(err.message), { collectorError: err });
+    });
   }
 }

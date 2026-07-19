@@ -99,4 +99,15 @@ export {
 export {
   connectServiceIpc,
   type ServiceIpcClient,
+  type ServiceIpcClientOptions,
+  type ServiceIpcRequestOptions,
 } from "./host/ipc/client.js";
+
+export {
+  ServiceIpcError,
+  getCollectorApiError,
+  isServiceIpcError,
+  mapHandlerThrownToApiError,
+  mapNodeIpcErrno,
+  serviceIpcError,
+} from "./host/ipc/errors.js";
