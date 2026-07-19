@@ -1,15 +1,14 @@
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { invoke } from "@tauri-apps/api/core";
-import { ensureHealthyIndex, runMigrations, resetIndexSchema } from "@collector/db";
 import type { ItemFile, VaultMeta } from "@collector/shared";
 import type { MediaFileMeta } from "@collector/shared";
+import { createCollectorIndexBoot } from "@collector/service";
 import { removeItemIdFromDashboardQueryCache } from "./dashboard-query-cache";
 import {
   SqlVaultIndexStore,
   buildFtsMatchQuery,
   buildMetadataFtsMatchQuery,
   createSingleFlight,
-  createTwoPhaseBootGate,
   createVault,
   deleteItem as deleteItemOnDisk,
   itemMarkdownPath,
@@ -71,7 +70,6 @@ import { isDevMock } from "../dev/is-dev-mock";
 import * as devMockCollector from "../dev/mock-collector";
 
 let dataDir = "";
-let sql: TauriSqlAdapter | null = null;
 let activeVault: { meta: VaultMeta; path: string } | null = null;
 const syncedVaultIds = new Set<string>();
 const vaultSyncPromises = new Map<string, Promise<void>>();
@@ -292,57 +290,29 @@ async function removeLegacyIndexDatabaseFiles(): Promise<void> {
   }
 }
 
-async function rebuildIndexDatabase(): Promise<void> {
-  if (!sql) {
-    throw new Error("Collector database is not initialized");
-  }
-
-  syncedVaultIds.clear();
-  vaultSyncPromises.clear();
-  watcherDisabledVaultIds.clear();
-  activeVault = null;
-  await stopVaultFilesystemWatcher();
-  await resetIndexSchema(sql);
-  await runMigrations(sql);
-}
-
-async function runIndexHealthChecks(): Promise<void> {
-  if (!sql) {
-    throw new Error("Collector database is not initialized");
-  }
-
-  let health = await ensureHealthyIndex(sql);
-  if (health.ok) {
-    return;
-  }
-
-  console.warn(
-    "[collector] SQLite index unhealthy, rebuilding from vault files:",
-    health.errors,
-  );
-  setVaultIndexSyncStatus({
-    vaultId: null,
-    status: "rebuilding",
-    progress: null,
-    metadataReady: false,
-    ftsReady: false,
-  });
-
-  try {
+const indexBoot = createCollectorIndexBoot<TauriSqlAdapter>({
+  prepareEnvironment: async () => {
+    dataDir = await join(await appDataDir(), "collector");
+    await fs.mkdir(dataDir);
+    await removeLegacyIndexDatabaseFiles();
+  },
+  openSql: () => TauriSqlAdapter.open(),
+  onUnhealthyRebuildStart: async () => {
+    setVaultIndexSyncStatus({
+      vaultId: null,
+      status: "rebuilding",
+      progress: null,
+      metadataReady: false,
+      ftsReady: false,
+    });
     await clearDashboardSnapshot();
-    await rebuildIndexDatabase();
-
-    if (!sql) {
-      throw new Error("Collector database rebuild failed to reopen");
-    }
-
-    health = await ensureHealthyIndex(sql);
-    if (!health.ok) {
-      throw new Error(
-        `Index database failed startup checks: ${health.errors.join("; ")}`,
-      );
-    }
-  } finally {
+    syncedVaultIds.clear();
+    vaultSyncPromises.clear();
+    watcherDisabledVaultIds.clear();
+    activeVault = null;
+    await stopVaultFilesystemWatcher();
+  },
+  onUnhealthyRebuildFinally: () => {
     if (vaultIndexSyncStatus.status === "rebuilding") {
       setVaultIndexSyncStatus({
         vaultId: null,
@@ -352,31 +322,7 @@ async function runIndexHealthChecks(): Promise<void> {
         ftsReady: false,
       });
     }
-  }
-}
-
-async function openCollectorDatabaseInternal(): Promise<void> {
-  let opened: TauriSqlAdapter | null = null;
-
-  try {
-    dataDir = await join(await appDataDir(), "collector");
-    await fs.mkdir(dataDir);
-    await removeLegacyIndexDatabaseFiles();
-    opened = await TauriSqlAdapter.open();
-    sql = opened;
-    await runMigrations(sql);
-  } catch (err) {
-    if (opened) {
-      await opened.close().catch(() => {});
-      sql = null;
-    }
-    throw err instanceof Error ? err : new Error(String(err));
-  }
-}
-
-const bootGate = createTwoPhaseBootGate({
-  open: openCollectorDatabaseInternal,
-  health: runIndexHealthChecks,
+  },
 });
 
 /**
@@ -388,7 +334,7 @@ export async function openCollectorDatabase(): Promise<void> {
   if (isDevMock()) {
     return devMockCollector.warmupCollector();
   }
-  await bootGate.open();
+  await indexBoot.open();
 }
 
 /**
@@ -399,7 +345,7 @@ export async function ensureCollectorDatabaseHealthy(): Promise<void> {
   if (isDevMock()) {
     return;
   }
-  await bootGate.ensureHealthy();
+  await indexBoot.ensureHealthy();
 }
 
 async function ensureInitialized(): Promise<void> {
@@ -407,14 +353,15 @@ async function ensureInitialized(): Promise<void> {
     await devMockCollector.warmupCollector();
     return;
   }
-  await bootGate.ensureHealthy();
+  await indexBoot.ensureHealthy();
 }
 
 function getIndex(): SqlVaultIndexStore {
-  if (!sql || !bootGate.isHealthy()) {
+  const session = indexBoot.getSql();
+  if (!session || !indexBoot.isHealthy()) {
     throw new Error("Collector database is not initialized");
   }
-  return new SqlVaultIndexStore(sql);
+  return new SqlVaultIndexStore(session);
 }
 
 function getContext() {
