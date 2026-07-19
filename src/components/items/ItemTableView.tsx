@@ -8,9 +8,9 @@ import { DashboardTableSkeleton } from "./DashboardListSkeleton";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
 import { useMainScrollElement } from "../../hooks/useMainScrollElement";
 import { useShell } from "../layout/AppLayout";
-import { listTags } from "../../services/collector-service";
 import type { useDashboardItems } from "../../hooks/useDashboardItems";
 import { formatItemDate } from "../../utils/formatItemDate";
+import { getCollectorClient } from "../../services/collector-client";
 
 interface ItemTableViewProps {
   dashboard: ReturnType<typeof useDashboardItems>;
@@ -35,7 +35,7 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
   });
 
   useEffect(() => {
-    void listTags().then(setTags);
+    void getCollectorClient().listTags().then(setTags);
   }, [vaultRevision]);
 
   useLayoutEffect(() => {

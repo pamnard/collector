@@ -8,17 +8,8 @@ import {
   type ReactNode,
 } from "react";
 import type { AppSettings } from "@collector/shared";
-import {
-  DEFAULT_APP_SETTINGS,
-  ensureAppSettings,
-  subscribeAppSettings,
-  updateAppSettings,
-} from "../services/app-settings-service";
-import {
-  ensureCollectorDatabaseHealthy,
-  openCollectorDatabase,
-} from "../services/collector-service";
-import { ensureDashboardSnapshot } from "../services/dashboard-snapshot-service";
+import { DEFAULT_APP_SETTINGS } from "@collector/shared";
+import { getCollectorClient } from "../services/collector-client";
 import { StartupErrorScreen } from "../components/startup/StartupErrorScreen";
 import { StartupLoadingScreen } from "../components/startup/StartupLoadingScreen";
 import type { NavFilter, ViewMode } from "../types/ui";
@@ -51,11 +42,12 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    const client = getCollectorClient();
 
     Promise.all([
-      ensureAppSettings(),
-      openCollectorDatabase(),
-      ensureDashboardSnapshot(),
+      client.ensureAppSettings(),
+      client.openCollectorDatabase(),
+      client.ensureDashboardSnapshot(),
     ])
       .then(([loaded]) => {
         if (cancelled) {
@@ -64,7 +56,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         setSettings(loaded);
         setStartupState({ status: "ready", settings: loaded });
 
-        void ensureCollectorDatabaseHealthy().catch((err) => {
+        void client.ensureCollectorDatabaseHealthy().catch((err) => {
           console.error("[collector] index health check failed:", err);
           if (!cancelled) {
             setStartupState({
@@ -84,7 +76,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         }
       });
 
-    return subscribeAppSettings((next) => {
+    return client.subscribeAppSettings((next) => {
       if (!cancelled) {
         setSettings(next);
       }
@@ -92,7 +84,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const patch = useCallback(async (partial: Partial<AppSettings>) => {
-    const next = await updateAppSettings(partial);
+    const next = await getCollectorClient().updateAppSettings(partial);
     setSettings(next);
   }, []);
 

@@ -8,8 +8,8 @@ import { DashboardGridSkeleton } from "./DashboardListSkeleton";
 import { MASONRY_BREAKPOINTS } from "./masonry-breakpoints";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
 import { useShell } from "../layout/AppLayout";
-import { listTags, resolveItemThumbnailPaths } from "../../services/collector-service";
 import type { useDashboardItems } from "../../hooks/useDashboardItems";
+import { getCollectorClient } from "../../services/collector-client";
 
 interface ItemGridViewProps {
   dashboard: ReturnType<typeof useDashboardItems>;
@@ -40,7 +40,7 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
   });
 
   useEffect(() => {
-    void listTags().then(setTags);
+    void getCollectorClient().listTags().then(setTags);
   }, [vaultRevision]);
 
   useEffect(() => {
@@ -62,7 +62,7 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
       };
     }
 
-    void resolveItemThumbnailPaths(missing).then((paths) => {
+    void getCollectorClient().resolveItemThumbnailPaths(missing).then((paths) => {
       if (cancelled) {
         return;
       }

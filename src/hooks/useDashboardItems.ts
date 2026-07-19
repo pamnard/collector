@@ -19,16 +19,8 @@ import { resolveDashboardCoverPaths } from "../lib/preload-dashboard-covers";
 import { navFilterKey, type NavFilter } from "../types/ui";
 import {
   DASHBOARD_PREFETCH_SIZE,
-  fetchDashboardIndexPage,
-  streamDashboardItems,
-  subscribeDashboardLoad,
-} from "../services/collector-service";
-import { getAppSettingsSync } from "../services/app-settings-service";
-import {
-  buildDashboardSnapshot,
-  peekMatchingDashboardSnapshot,
-  persistDashboardSnapshot,
-} from "../services/dashboard-snapshot-service";
+  getCollectorClient,
+} from "../services/collector-client";
 import {
   dashboardQueryCacheKey,
   getDashboardQueryCache,
@@ -38,7 +30,7 @@ import {
 import { reportServiceError } from "../services/runtime-error";
 import { useVaultIndexSyncStatus } from "./useVaultIndexSyncStatus";
 
-export { DASHBOARD_PREFETCH_SIZE } from "../services/collector-service";
+export { DASHBOARD_PREFETCH_SIZE } from "../services/collector-client";
 
 interface UseDashboardItemsResult {
   items: ItemFile[];
@@ -75,11 +67,11 @@ function readInitialCacheEntry(
     return cached;
   }
 
-  const vaultId = getAppSettingsSync()?.active_vault_id;
+  const vaultId = getCollectorClient().getAppSettingsSync()?.active_vault_id;
   if (!vaultId) {
     return null;
   }
-  const warm = peekMatchingDashboardSnapshot(vaultId, filter, searchQuery);
+  const warm = getCollectorClient().peekMatchingDashboardSnapshot({ vaultId, filter, search: searchQuery });
   if (!warm) {
     return null;
   }
@@ -333,7 +325,7 @@ export function useDashboardItems(
       streamAbortRef.current = controller;
 
       const pending = new Map<string, ItemFile>();
-      await streamDashboardItems(
+      await getCollectorClient().streamDashboardItems(
         ids,
         offset,
         limit,
@@ -469,7 +461,7 @@ export function useDashboardItems(
     }
 
     if (vaultId) {
-      const warm = peekMatchingDashboardSnapshot(vaultId, filter, searchQuery);
+      const warm = getCollectorClient().peekMatchingDashboardSnapshot({ vaultId, filter, search: searchQuery });
       if (warm) {
         const entry = snapshotToCacheEntry(warm);
         setDashboardQueryCache(queryKey, entry);
@@ -553,7 +545,7 @@ export function useDashboardItems(
       }
     };
 
-    subscribeDashboardLoad(
+    getCollectorClient().subscribeDashboardLoad(
       filter,
       searchQuery,
       {
@@ -639,8 +631,8 @@ export function useDashboardItems(
     }
 
     persistTimerRef.current = setTimeout(() => {
-      void persistDashboardSnapshot(
-        buildDashboardSnapshot({
+      void getCollectorClient().persistDashboardSnapshot(
+        getCollectorClient().buildDashboardSnapshot({
           vaultId,
           filter,
           search: searchQuery,
@@ -716,7 +708,7 @@ export function useDashboardItems(
     };
 
     if (needsMoreIds && hasUnloadedIds) {
-      void fetchDashboardIndexPage(filter, searchQuery, {
+      void getCollectorClient().fetchDashboardIndexPage(filter, searchQuery, {
         offset: loadedCount,
         limit: DASHBOARD_PREFETCH_SIZE,
       })

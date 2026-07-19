@@ -1,6 +1,6 @@
 import { Trash2 } from "lucide-react";
 import { useState } from "react";
-import { deleteItem } from "../../services/collector-service";
+import { getCollectorClient } from "../../services/collector-client";
 
 interface ItemRowActionsProps {
   itemId: string;
@@ -20,7 +20,7 @@ export function ItemRowActions({
 
     setIsDeleting(true);
     try {
-      await deleteItem(itemId);
+      await getCollectorClient().deleteItem(itemId);
       onUpdated?.();
     } finally {
       setIsDeleting(false);

@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import { Hash, Settings, X } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { TagWithCount } from "@collector/core";
-import { subscribeTags } from "../../services/collector-service";
 import type { NavFilter } from "../../types/ui";
 import { navFilterKey } from "../../types/ui";
 import { Logo } from "./Logo";
 import { SidebarCollections } from "./SidebarCollections";
 import { SidebarMenu } from "./SidebarMenu";
+import { getCollectorClient } from "../../services/collector-client";
 
 interface SidebarProps {
   variant?: "drawer" | "docked";
@@ -34,7 +34,7 @@ export function Sidebar({
 
   useEffect(() => {
     const controller = new AbortController();
-    subscribeTags(setTags, undefined, controller.signal);
+    getCollectorClient().subscribeTags(setTags, undefined, controller.signal);
     return () => {
       controller.abort();
     };

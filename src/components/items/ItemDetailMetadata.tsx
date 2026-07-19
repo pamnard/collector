@@ -3,8 +3,8 @@ import type { ItemFile } from "@collector/shared";
 import type { TagWithCount } from "@collector/core";
 import { ExternalAnchor } from "../content/ExternalAnchor";
 import { ItemTagBadges } from "../items/ItemTagBadges";
-import { listTags } from "../../services/collector-service";
 import { formatItemDate } from "../../utils/formatItemDate";
+import { getCollectorClient } from "../../services/collector-client";
 
 interface ItemDetailMetadataProps {
   item: ItemFile;
@@ -14,7 +14,7 @@ export function ItemDetailMetadata({ item }: ItemDetailMetadataProps) {
   const [tags, setTags] = useState<TagWithCount[]>([]);
 
   useEffect(() => {
-    void listTags().then(setTags);
+    void getCollectorClient().listTags().then(setTags);
   }, [item.tag_ids.join(",")]);
 
   const tagsById = useMemo(

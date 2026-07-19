@@ -1,13 +1,10 @@
 import { ChevronDown, ChevronRight, Folder, FolderPlus } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FolderTreeNode } from "@collector/core";
-import {
-  createFolder,
-  listFolderTree,
-} from "../../services/collector-service";
 import { useFolderTree } from "../../hooks/useFolderTree";
 import type { NavFilter } from "../../types/ui";
 import { navFilterKey } from "../../types/ui";
+import { getCollectorClient } from "../../services/collector-client";
 
 interface FolderTreeProps {
   activeFilter: NavFilter;
@@ -113,9 +110,9 @@ export function FolderTree({
 
     setError(null);
     try {
-      await createFolder(path);
+      await getCollectorClient().createFolder(path);
       setNewFolder("");
-      setTree(await listFolderTree());
+      setTree(await getCollectorClient().listFolderTree());
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     }
