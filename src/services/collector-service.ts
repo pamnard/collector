@@ -6,6 +6,7 @@ import {
   createCollectorIndexBoot,
   createItemsSearchService,
   createTagsFoldersService,
+  createMediaCoverService,
 } from "@collector/service";
 import type {
   DashboardIndexPage,
@@ -28,11 +29,6 @@ import {
   vaultRoot,
   vaultsRoot,
   writeVaultMeta,
-  attachMediaFile,
-  deleteMediaFile,
-  listItemMediaWithPaths,
-  applyItemCover,
-  clearItemCover,
 } from "@collector/core";
 import type {
   FolderTreeNode,
@@ -647,6 +643,20 @@ const tagsFolders = createTagsFoldersService({
   syncRepublishThrottleMs: SYNC_REPUBLISH_THROTTLE_MS,
 });
 
+const mediaCover = createMediaCoverService({
+  resolveActiveVault,
+  getContext,
+  generateCoverFromMedia,
+  resolveThumbnailPathsBatch: async (vaultPath, items) =>
+    invoke<Array<{ id: string; path: string | null }>>(
+      "resolve_item_thumbnail_paths",
+      {
+        vaultPath,
+        items,
+      },
+    ),
+});
+
 export { DASHBOARD_PREFETCH_SIZE };
 export type { DashboardIndexPage, DashboardItemIdsResult };
 
@@ -957,59 +967,19 @@ export async function listItemMedia(itemId: string): Promise<MediaWithPath[]> {
   if (isDevMock()) {
     return devMockCollector.listItemMedia(itemId);
   }
-
-  const { path } = await resolveActiveVault();
-  return listItemMediaWithPaths(getContext(), path, itemId);
-}
-
-async function syncItemCover(itemId: string): Promise<void> {
-  const { vault, path } = await resolveActiveVault();
-  const ctx = getContext();
-  const media = await listItemMediaWithPaths(ctx, path, itemId);
-  const candidate =
-    media.find((file) => file.media_type === "image") ??
-    media.find((file) => file.media_type === "video");
-
-  if (!candidate) {
-    await clearItemCover(ctx, path, vault.id, itemId);
-    return;
-  }
-
-  const data = await fs.readBinary(candidate.absolute_path);
-  const cover = await generateCoverFromMedia(
-    data,
-    candidate.filename,
-    candidate.media_type,
-  );
-
-  if (cover) {
-    await applyItemCover(ctx, path, vault.id, itemId, cover);
-  } else {
-    await clearItemCover(ctx, path, vault.id, itemId);
-  }
+  return mediaCover.listItemMedia(itemId);
 }
 
 export async function resolveItemThumbnailPath(item: ItemFile): Promise<string | null> {
-  const paths = await resolveItemThumbnailPaths([item]);
-  return paths.get(item.id) ?? null;
+  if (isDevMock()) {
+    return devMockCollector.resolveItemThumbnailPath(item);
+  }
+  return mediaCover.resolveItemThumbnailPath(item);
 }
 
-const itemThumbnailPathCache = new Map<
-  string,
-  { cacheKey: string; path: string | null }
->();
-
-function itemThumbnailCacheKey(item: ItemFile): string {
-  return `${item.thumbnail ?? ""}:${item.updated_at}`;
-}
-
-async function resolveItemThumbnailPathsUncached(
+export async function resolveItemThumbnailPaths(
   items: ItemFile[],
 ): Promise<Map<string, string | null>> {
-  if (!items.length) {
-    return new Map();
-  }
-
   if (isDevMock()) {
     const resolved = new Map<string, string | null>();
     for (const item of items) {
@@ -1017,116 +987,26 @@ async function resolveItemThumbnailPathsUncached(
     }
     return resolved;
   }
-
-  const { path } = await resolveActiveVault();
-  const rows = await invoke<Array<{ id: string; path: string | null }>>(
-    "resolve_item_thumbnail_paths",
-    {
-      vaultPath: path,
-      items: items.map((item) => ({
-        id: item.id,
-        thumbnail: item.thumbnail ?? null,
-      })),
-    },
-  );
-
-  const resolved = new Map<string, string | null>();
-  for (const row of rows) {
-    resolved.set(row.id, row.path);
-  }
-  return resolved;
-}
-
-export async function resolveItemThumbnailPaths(
-  items: ItemFile[],
-): Promise<Map<string, string | null>> {
-  if (!items.length) {
-    return new Map();
-  }
-
-  const uncached: ItemFile[] = [];
-  const resolved = new Map<string, string | null>();
-
-  for (const item of items) {
-    const cacheKey = itemThumbnailCacheKey(item);
-    const cached = itemThumbnailPathCache.get(item.id);
-    if (cached && cached.cacheKey === cacheKey) {
-      resolved.set(item.id, cached.path);
-      continue;
-    }
-    uncached.push(item);
-  }
-
-  if (uncached.length) {
-    const fresh = await resolveItemThumbnailPathsUncached(uncached);
-    for (const item of uncached) {
-      const path = fresh.get(item.id) ?? null;
-      itemThumbnailPathCache.set(item.id, {
-        cacheKey: itemThumbnailCacheKey(item),
-        path,
-      });
-      resolved.set(item.id, path);
-    }
-  }
-
-  return resolved;
+  return mediaCover.resolveItemThumbnailPaths(items);
 }
 
 export async function setItemCoverFromMedia(
   itemId: string,
   mediaId: string,
 ): Promise<ItemFile> {
-  const { vault, path } = await resolveActiveVault();
-  const ctx = getContext();
-  const media = await listItemMediaWithPaths(ctx, path, itemId);
-  const file = media.find((entry) => entry.id === mediaId);
-
-  if (!file) {
-    throw new Error(`Media not found: ${mediaId}`);
-  }
-
-  if (file.media_type !== "image" && file.media_type !== "video") {
-    throw new Error("Cover can only be set from image or video files");
-  }
-
-  const data = await fs.readBinary(file.absolute_path);
-  const cover = await generateCoverFromMedia(
-    data,
-    file.filename,
-    file.media_type,
-  );
-
-  if (!cover) {
-    throw new Error("Failed to generate cover from media");
-  }
-
-  return applyItemCover(ctx, path, vault.id, itemId, cover);
+  return mediaCover.setItemCoverFromMedia(itemId, mediaId);
 }
 
 export async function attachMediaFiles(
   itemId: string,
   files: Array<{ filename: string; data: Uint8Array }>,
 ): Promise<MediaFileMeta[]> {
-  const { path } = await resolveActiveVault();
-  const ctx = getContext();
-  const attached: MediaFileMeta[] = [];
-  for (const file of files) {
-    attached.push(
-      await attachMediaFile(ctx, path, itemId, {
-        filename: file.filename,
-        data: file.data,
-      }),
-    );
-  }
-  await syncItemCover(itemId);
-  return attached;
+  return mediaCover.attachMediaFiles(itemId, files);
 }
 
 export async function deleteItemMedia(
   itemId: string,
   mediaId: string,
 ): Promise<void> {
-  const { path } = await resolveActiveVault();
-  await deleteMediaFile(getContext(), path, itemId, mediaId);
-  await syncItemCover(itemId);
+  return mediaCover.deleteItemMedia(itemId, mediaId);
 }
