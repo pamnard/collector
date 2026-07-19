@@ -573,18 +573,30 @@ export function subscribeDashboardLoad(
   signal?: AbortSignal,
 ): void {
   if (isDevMock()) {
-    void devMockCollector
-      .fetchDashboardIndexPage(filter, query, {
-        limit: DASHBOARD_PREFETCH_SIZE,
-        offset: 0,
-      })
-      .then((page) => {
+    void (async () => {
+      try {
+        if (signal?.aborted) {
+          return;
+        }
+        const page = await devMockCollector.fetchDashboardIndexPage(
+          filter,
+          query,
+          {
+            limit: DASHBOARD_PREFETCH_SIZE,
+            offset: 0,
+          },
+        );
+        if (signal?.aborted) {
+          return;
+        }
         handlers.onIndexPage(page);
         handlers.onLoadComplete?.();
-      })
-      .catch((error: unknown) => {
-        handlers.onError?.("dashboard load", error);
-      });
+      } catch (error: unknown) {
+        if (!signal?.aborted) {
+          handlers.onError?.("dashboard load", error);
+        }
+      }
+    })();
     return;
   }
   itemsSearch.subscribeDashboardLoad(filter, query, handlers, signal);

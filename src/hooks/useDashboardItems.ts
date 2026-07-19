@@ -319,6 +319,11 @@ export function useDashboardItems(
       limit: number,
       requestVersion: number,
     ): Promise<void> => {
+      // Stale callers (Strict Mode / superseded query) must not abort the
+      // in-flight stream owned by a newer requestVersion.
+      if (requestVersion !== requestVersionRef.current) {
+        return;
+      }
       if (!ids.length || offset >= ids.length || limit <= 0) {
         return;
       }
@@ -533,14 +538,6 @@ export function useDashboardItems(
         return;
       }
       try {
-        const ready = isDashboardPrefetchWindowReady(
-          itemIdsRef.current,
-          itemsByIdRef.current,
-          streamEndOffsetRef.current,
-        );
-        if (!ready && totalCountRef.current > 0) {
-          return;
-        }
         await commitWorkingToDisplay(requestVersion);
       } catch (err: unknown) {
         if (requestVersionRef.current !== requestVersion) {
@@ -550,15 +547,8 @@ export function useDashboardItems(
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         if (requestVersionRef.current === requestVersion) {
-          const ready = isDashboardPrefetchWindowReady(
-            itemIdsRef.current,
-            itemsByIdRef.current,
-            streamEndOffsetRef.current,
-          );
-          if (ready || totalCountRef.current === 0) {
-            setIsLoading(false);
-            queryBusyRef.current = false;
-          }
+          setIsLoading(false);
+          queryBusyRef.current = false;
         }
       }
     };
