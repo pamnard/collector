@@ -55,6 +55,10 @@ npm run tauri:dev
 
 `tauri:dev` uses bundle identifier `com.collector.app.dev` — a **separate data directory** from the installed release (`com.collector.app`). Dev and production vaults cannot collide unless you manually point at the same path.
 
+### Service sidecar (internal)
+
+Release builds package a `collector-service` sidecar binary (`bundle.externalBin`). It is an **internal** detail of the desktop app — not a user-facing daemon to install or configure. The default app path still uses the in-process index; the sidecar is not spawned on start yet.
+
 ### Linux dev quirks
 
 `npm run tauri:dev` runs `scripts/tauri-dev.sh`, which frees stale Vite on port **1420** and raises the soft `ulimit -n` to **4096** when it is lower (avoids Tauri CLI panics from file watchers in this monorepo).

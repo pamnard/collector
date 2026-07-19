@@ -1,3 +1,6 @@
+# Sidecar binaries are produced by `npm run prepare:service-sidecar` / tauri beforeBuild
+src-tauri/binaries/collector-service-*
+
 # Logs
 logs
 *.log

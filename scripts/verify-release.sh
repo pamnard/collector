@@ -264,6 +264,17 @@ maybe_fail_tauri_log_inotify_emfile() {
   fail "tauri build hit inotify/EMFILE-class failure (see $TAURI_LOG). See #104."
 }
 
+step "prepare service sidecar (#165)"
+npm run prepare:service-sidecar
+SIDECAR_TRIPLE="$(rustc --print host-tuple 2>/dev/null || rustc -vV | sed -n 's/^host: //p')"
+SIDECAR_EXT=""
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) SIDECAR_EXT=".exe" ;;
+esac
+SIDECAR_BIN="$ROOT/src-tauri/binaries/collector-service-${SIDECAR_TRIPLE}${SIDECAR_EXT}"
+[[ -f "$SIDECAR_BIN" ]] || fail "service sidecar missing at $SIDECAR_BIN (run prepare:service-sidecar)"
+"$SIDECAR_BIN" --version | grep -q collector-service || fail "service sidecar --version failed"
+
 step "typecheck"
 npm run typecheck
 

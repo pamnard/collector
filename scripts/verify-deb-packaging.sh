@@ -31,4 +31,11 @@ if dpkg-deb -c "$DEB" | grep -qE '\.(local/share|Library/Application Support|App
   exit 1
 fi
 
-echo "OK: $DEB — no maintainer scripts, no bundled user data"
+# Packaged sidecar (#165): present in the installer, not spawned by default (#166).
+if ! dpkg-deb -c "$DEB" | grep -q 'collector-service'; then
+  echo "FAIL: .deb missing collector-service sidecar binary (#165)" >&2
+  dpkg-deb -c "$DEB" | head -50 >&2
+  exit 1
+fi
+
+echo "OK: $DEB — no maintainer scripts, no bundled user data, sidecar present"
