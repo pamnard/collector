@@ -27,3 +27,11 @@ export {
   type TagsFoldersService,
   type TagsFoldersServiceDeps,
 } from "./tags-folders.js";
+
+export {
+  createMediaCoverService,
+  type GenerateCoverFromMedia,
+  type MediaCoverService,
+  type MediaCoverServiceDeps,
+  type ResolveThumbnailPathsBatch,
+} from "./media-cover.js";
