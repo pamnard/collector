@@ -159,17 +159,21 @@ export function createCollectorIpcClient(
     ): void {
       unimplemented("subscribeTags");
     },
-    listTags: async (): Promise<TagWithCount[]> => unimplemented("listTags"),
-    createTag: async (_input: {
+    listTags: async (): Promise<TagWithCount[]> =>
+      transport.request("listTags") as Promise<TagWithCount[]>,
+    createTag: async (input: {
       name: string;
       color?: string | null;
-    }): Promise<Tag> => unimplemented("createTag"),
+    }): Promise<Tag> =>
+      transport.request("createTag", input as unknown as Record<string, unknown>) as Promise<Tag>,
     updateTagRecord: async (
-      _tagId: string,
-      _input: { name?: string; color?: string | null },
-    ): Promise<Tag> => unimplemented("updateTagRecord"),
-    deleteTag: async (_tagId: string): Promise<void> =>
-      unimplemented("deleteTag"),
+      tagId: string,
+      input: { name?: string; color?: string | null },
+    ): Promise<Tag> =>
+      transport.request("updateTagRecord", { tagId, input }) as Promise<Tag>,
+    deleteTag: async (tagId: string): Promise<void> => {
+      await transport.request("deleteTag", { tagId });
+    },
 
     // Folders
     subscribeFolderTree(
