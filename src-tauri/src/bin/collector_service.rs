@@ -1,4 +1,4 @@
-//! Packaged Collector service sidecar entry (#165 / #166 / epic #142).
+//! Packaged Collector service sidecar entry (#165 / #166 / #167 / epic #142).
 //!
 //! Bundled into the desktop installer via Tauri `externalBin`.
 //! The app does **not** spawn this on the default path (#166 flag is OFF).
@@ -6,7 +6,11 @@
 //! `serve` holds the process until the OS delivers SIGTERM/SIGINT/SIGKILL and
 //! opens **no** SQLite — supervise smokes cannot create a dual-writer.
 //! Real domain host remains the Node CLI until cutover.
+//!
+//! Sole-writer lock (#167): `serve` acquires `{data-dir}/collector-service.lock`.
 
+use collector_lib::service_lock::{acquire_service_lock, LockError};
+use std::path::Path;
 use std::thread;
 use std::time::Duration;
 
@@ -45,6 +49,18 @@ fn serve(args: &[String]) -> ! {
     let Some(data_dir) = read_arg(args, "--data-dir") else {
         eprintln!("missing --data-dir");
         usage();
+    };
+
+    let _lock = match acquire_service_lock(Path::new(data_dir)) {
+        Ok(guard) => guard,
+        Err(LockError::AlreadyLocked { service_pid }) => {
+            eprintln!("collector-service: lock held by pid {service_pid}");
+            std::process::exit(3);
+        }
+        Err(LockError::Io(err)) => {
+            eprintln!("collector-service: lock I/O: {err}");
+            std::process::exit(1);
+        }
     };
 
     // Idle placeholder: keep process alive for supervise tests. No DB open.
