@@ -7,6 +7,7 @@ import type { DomainIpcHandlerMap } from "./domain-methods.js";
 import { buildItemsReadHandlers } from "./handlers/items-read.js";
 import { buildItemsWriteHandlers } from "./handlers/items-write.js";
 import { buildTagsHandlers } from "./handlers/tags.js";
+import { buildFoldersHandlers } from "./handlers/folders.js";
 
 export function buildDomainIpcHandlers(
   runtime: ServiceDomainRuntime,
@@ -15,6 +16,7 @@ export function buildDomainIpcHandlers(
     ...buildItemsReadHandlers(runtime),
     ...buildItemsWriteHandlers(runtime),
     ...buildTagsHandlers(runtime),
+    ...buildFoldersHandlers(runtime),
   };
 }
 

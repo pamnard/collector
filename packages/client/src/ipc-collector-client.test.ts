@@ -148,6 +148,41 @@ describe("CollectorIpcClient", () => {
     }
   });
 
+  it("folders + move item work over IPC (#158)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-ipc-folders-"));
+    dirs.push(dataDir);
+    const host = await startServiceHost({ dataDir, port: 0 });
+    try {
+      const client = await connectCollectorIpcClient(host.ipcPath!);
+      try {
+        const createdPath = await client.createFolder("ipc-folder");
+        expect(createdPath).toBe("ipc-folder");
+
+        // Index tree may lag FS until sync; still exercise list/load RPC.
+        expect(Array.isArray(await client.listFolderTree())).toBe(true);
+        expect(Array.isArray(await client.loadFolderTree())).toBe(true);
+
+        const renamed = await client.renameFolder(createdPath, "ipc-folder-renamed");
+        expect(renamed).toBe("ipc-folder-renamed");
+
+        const item = await client.createItem({
+          title: "Folder move note",
+          content_type: "note",
+          content: "x",
+        });
+        const moved = await client.moveItemToFolderPath(item.id, renamed);
+        expect(moved.folder_path).toBe(renamed);
+
+        await client.deleteItem(moved.id);
+        await client.deleteFolder(renamed);
+      } finally {
+        await client.close();
+      }
+    } finally {
+      await host.close();
+    }
+  });
+
   it("unimplemented domain methods fail fast without inventing defaults", async () => {
     const transport = {
       ping: async () => ({ ok: true as const, pong: true as const }),
@@ -165,7 +200,7 @@ describe("CollectorIpcClient", () => {
 
     const client = createCollectorIpcClient(transport);
 
-    await expect(client.listFolderTree()).rejects.toMatchObject({
+    await expect(client.listItemMedia("x")).rejects.toMatchObject({
       name: "ServiceIpcError",
       layer: "validation",
       code: "unimplemented",

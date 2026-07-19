@@ -163,7 +163,7 @@ export async function deleteFolder(
     throw new Error(`Folder is not empty: ${normalized}`);
   }
 
-  await ctx.fs.remove(abs);
+  await ctx.fs.remove(abs, { recursive: true });
   await ctx.fs.touch(vaultPath);
 }
 

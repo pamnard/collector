@@ -184,21 +184,24 @@ export function createCollectorIpcClient(
       unimplemented("subscribeFolderTree");
     },
     listFolderTree: async (): Promise<FolderTreeNode[]> =>
-      unimplemented("listFolderTree"),
+      transport.request("listFolderTree") as Promise<FolderTreeNode[]>,
     loadFolderTree: async (): Promise<FolderTreeNode[]> =>
-      unimplemented("loadFolderTree"),
-    createFolder: async (_folderPath: string): Promise<string> =>
-      unimplemented("createFolder"),
-    renameFolder: async (
-      _oldPath: string,
-      _newPath: string,
-    ): Promise<string> => unimplemented("renameFolder"),
-    deleteFolder: async (_folderPath: string): Promise<void> =>
-      unimplemented("deleteFolder"),
+      transport.request("loadFolderTree") as Promise<FolderTreeNode[]>,
+    createFolder: async (folderPath: string): Promise<string> =>
+      transport.request("createFolder", { folderPath }) as Promise<string>,
+    renameFolder: async (oldPath: string, newPath: string): Promise<string> =>
+      transport.request("renameFolder", { oldPath, newPath }) as Promise<string>,
+    deleteFolder: async (folderPath: string): Promise<void> => {
+      await transport.request("deleteFolder", { folderPath });
+    },
     moveItemToFolderPath: async (
-      _itemId: string,
-      _folderPath: string,
-    ): Promise<ItemFile> => unimplemented("moveItemToFolderPath"),
+      itemId: string,
+      folderPath: string,
+    ): Promise<ItemFile> =>
+      transport.request("moveItemToFolderPath", {
+        itemId,
+        folderPath,
+      }) as Promise<ItemFile>,
 
     // Media / cover
     listItemMedia: async (_itemId: string): Promise<MediaWithPath[]> =>
