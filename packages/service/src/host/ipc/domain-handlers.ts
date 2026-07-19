@@ -9,6 +9,7 @@ import { buildItemsWriteHandlers } from "./handlers/items-write.js";
 import { buildTagsHandlers } from "./handlers/tags.js";
 import { buildFoldersHandlers } from "./handlers/folders.js";
 import { buildMediaHandlers } from "./handlers/media.js";
+import { buildVaultsHandlers } from "./handlers/vaults.js";
 
 export function buildDomainIpcHandlers(
   runtime: ServiceDomainRuntime,
@@ -19,6 +20,7 @@ export function buildDomainIpcHandlers(
     ...buildTagsHandlers(runtime),
     ...buildFoldersHandlers(runtime),
     ...buildMediaHandlers(runtime),
+    ...buildVaultsHandlers(runtime),
   };
 }
 
