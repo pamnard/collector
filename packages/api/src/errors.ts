@@ -18,6 +18,7 @@ export interface CollectorApiTransportError extends CollectorApiErrorBase {
     | "not_connected"
     | "disconnected"
     | "timeout"
+    | "cancelled"
     | "framing"
     | "protocol_mismatch";
 }

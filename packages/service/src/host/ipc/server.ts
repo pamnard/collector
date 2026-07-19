@@ -1,5 +1,6 @@
 /**
- * Service host IPC listener (#152): Unix socket / Windows named pipe.
+ * Service host IPC listener (#152/#153): Unix socket / Windows named pipe.
+ * Handler failures map to wire `CollectorApiError` shapes (see `./errors.ts`).
  */
 
 import { unlink } from "node:fs/promises";
@@ -18,13 +19,16 @@ import {
   type ServiceIpcRequest,
   type ServiceIpcResponse,
 } from "./framing.js";
+import { mapHandlerThrownToApiError, serviceIpcError } from "./errors.js";
 import { defaultServiceIpcPath, isWindowsNamedPipePath } from "./paths.js";
 
 export type { ServiceIpcHealthResult } from "./framing.js";
 
 export interface ServiceIpcHandler {
-  ping: () => { ok: true; pong: true };
-  health: () => ServiceIpcHealthResult;
+  ping: () =>
+    | { ok: true; pong: true }
+    | Promise<{ ok: true; pong: true }>;
+  health: () => ServiceIpcHealthResult | Promise<ServiceIpcHealthResult>;
 }
 
 export interface ServiceIpcServer {
@@ -44,10 +48,10 @@ function errorResponse(
   };
 }
 
-function handleRequest(
+async function handleRequest(
   message: ServiceIpcRequest,
   handler: ServiceIpcHandler,
-): ServiceIpcResponse | ServiceIpcErrorResponse {
+): Promise<ServiceIpcResponse | ServiceIpcErrorResponse> {
   assertProtocolVersion(message.v);
 
   const method = message.method as ServiceIpcMethod;
@@ -56,7 +60,7 @@ function handleRequest(
       v: SERVICE_IPC_PROTOCOL_VERSION,
       id: message.id,
       type: "res",
-      result: handler.ping(),
+      result: await handler.ping(),
     };
   }
   if (method === "health") {
@@ -64,7 +68,7 @@ function handleRequest(
       v: SERVICE_IPC_PROTOCOL_VERSION,
       id: message.id,
       type: "res",
-      result: handler.health(),
+      result: await handler.health(),
     };
   }
 
@@ -76,6 +80,9 @@ function handleRequest(
 }
 
 function writeMessage(socket: Socket, message: ServiceIpcMessage): void {
+  if (socket.destroyed) {
+    return;
+  }
   socket.write(encodeServiceIpcFrame(message));
 }
 
@@ -104,62 +111,58 @@ export async function startServiceIpcServer(
   const server: Server = createServer((socket) => {
     sockets.add(socket);
     const reader = new ServiceIpcFrameReader();
+    let queue: Promise<void> = Promise.resolve();
 
     socket.on("data", (chunk) => {
-      let messages: ServiceIpcMessage[];
-      try {
-        messages = reader.push(chunk);
-      } catch (error) {
-        const framing: CollectorApiError = {
-          layer: "transport",
-          code: "framing",
-          message:
-            error instanceof ServiceIpcFramingError
-              ? error.message
-              : "framing error",
-        };
-        writeMessage(socket, errorResponse("0", framing));
-        socket.destroy();
-        return;
-      }
-
-      for (const message of messages) {
-        if (message.type !== "req") {
-          writeMessage(
-            socket,
-            errorResponse(
-              "id" in message && typeof message.id === "string"
-                ? message.id
-                : "0",
-              {
-                layer: "validation",
-                code: "bad_request",
-                message: "server only accepts type=req frames",
-              },
-            ),
-          );
-          continue;
-        }
-
+      queue = queue.then(async () => {
+        let messages: ServiceIpcMessage[];
         try {
-          writeMessage(socket, handleRequest(message, options.handler));
+          messages = reader.push(chunk);
         } catch (error) {
-          const collectorError = (error as { collectorError?: CollectorApiError })
-            .collectorError;
-          writeMessage(
-            socket,
-            errorResponse(
-              message.id,
-              collectorError ?? {
-                layer: "domain",
-                code: "failed",
-                message:
-                  error instanceof Error ? error.message : String(error),
-              },
-            ),
-          );
+          const framing: CollectorApiError = {
+            layer: "transport",
+            code: "framing",
+            message:
+              error instanceof ServiceIpcFramingError
+                ? error.message
+                : "framing error",
+          };
+          writeMessage(socket, errorResponse("0", framing));
+          socket.destroy();
+          return;
         }
-      }
+
+        for (const message of messages) {
+          if (message.type !== "req") {
+            writeMessage(
+              socket,
+              errorResponse(
+                "id" in message && typeof message.id === "string"
+                  ? message.id
+                  : "0",
+                {
+                  layer: "validation",
+                  code: "bad_request",
+                  message: "server only accepts type=req frames",
+                },
+              ),
+            );
+            continue;
+          }
+
+          try {
+            writeMessage(
+              socket,
+              await handleRequest(message, options.handler),
+            );
+          } catch (error) {
+            writeMessage(
+              socket,
+              errorResponse(message.id, mapHandlerThrownToApiError(error)),
+            );
+          }
+        }
+      });
     });
 
     socket.on("close", () => {
@@ -194,3 +197,5 @@ export async function startServiceIpcServer(
     },
   };
 }
+
+export { serviceIpcError };
