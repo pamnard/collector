@@ -2,7 +2,12 @@ import { appDataDir, join } from "@tauri-apps/api/path";
 import { invoke } from "@tauri-apps/api/core";
 import type { ItemFile, VaultMeta } from "@collector/shared";
 import type { MediaFileMeta } from "@collector/shared";
-import { createCollectorIndexBoot } from "@collector/service";
+import { createCollectorIndexBoot, createItemsSearchService } from "@collector/service";
+import type {
+  DashboardIndexPage,
+  DashboardItemIdsResult,
+} from "@collector/service";
+import { DASHBOARD_PREFETCH_SIZE } from "@collector/service";
 import { removeItemIdFromDashboardQueryCache } from "./dashboard-query-cache";
 import {
   SqlVaultIndexStore,
@@ -10,19 +15,11 @@ import {
   buildMetadataFtsMatchQuery,
   createSingleFlight,
   createVault,
-  deleteItem as deleteItemOnDisk,
-  itemMarkdownPath,
-  listItemsByIds,
-  listItemsOnDisk,
   assertVaultTreeLayout,
-  readItemContent,
-  readItemFile,
-  readItemRawMarkdown,
   readVaultMeta,
   runEmptyVaultBootstrap,
   syncVaultIndexFromFilesystem,
   upsertItem,
-  writeItemRawMarkdown,
   vaultMetaPath,
   vaultRoot,
   vaultsRoot,
@@ -635,73 +632,30 @@ export async function ensureActiveVault(): Promise<{
   return resolveActiveVault();
 }
 
+const itemsSearch = createItemsSearchService({
+  resolveActiveVault,
+  getContext,
+  getIndex,
+  kickoffVaultIndexSync,
+  startVaultIndexSync,
+  buildSearchFtsQuery,
+  addVaultSyncListener,
+  onItemDeleted: removeItemIdFromDashboardQueryCache,
+  syncRepublishThrottleMs: SYNC_REPUBLISH_THROTTLE_MS,
+});
+
+export { DASHBOARD_PREFETCH_SIZE };
+export type { DashboardIndexPage, DashboardItemIdsResult };
+
 export async function listItems(): Promise<ItemFile[]> {
-  const { vault, path } = await resolveActiveVault();
-  kickoffVaultIndexSync(vault.id, path);
-  return listItemsOnDisk(getContext(), path);
+  return itemsSearch.listItems();
 }
 
 export async function searchItems(
   query: string,
   filter: NavFilter,
 ): Promise<ItemFile[]> {
-  const { vault, path } = await resolveActiveVault();
-  kickoffVaultIndexSync(vault.id, path);
-
-  const ftsQuery = buildSearchFtsQuery(query, vault.id);
-  if (!ftsQuery) {
-    const itemIds = await getIndex().listItemIdsByNavFilter(vault.id, filter);
-    return listItemsByIds(getContext(), path, itemIds);
-  }
-
-  const itemIds = await getIndex().searchItemIds(vault.id, ftsQuery, filter);
-  return listItemsByIds(getContext(), path, itemIds);
-}
-
-export const DASHBOARD_PREFETCH_SIZE = 60;
-
-export interface DashboardIndexPage {
-  itemIds: string[];
-  totalCount: number;
-  offset: number;
-}
-
-export interface DashboardItemIdsResult {
-  itemIds: string[];
-  totalCount: number;
-  indexSync: Promise<void>;
-}
-
-async function queryDashboardIndexPage(
-  vaultId: string,
-  filter: NavFilter,
-  query: string,
-  page: { limit: number; offset: number },
-): Promise<DashboardIndexPage> {
-  const trimmedSearch = query.trim();
-
-  if (!trimmedSearch) {
-    const [itemIds, totalCount] = await Promise.all([
-      getIndex().listItemIdsByNavFilter(vaultId, filter, page),
-      getIndex().countItemIdsByNavFilter(vaultId, filter),
-    ]);
-    return { itemIds, totalCount, offset: page.offset };
-  }
-
-  const ftsQuery = buildSearchFtsQuery(trimmedSearch, vaultId);
-  if (!ftsQuery) {
-    const [itemIds, totalCount] = await Promise.all([
-      getIndex().listItemIdsByNavFilter(vaultId, filter, page),
-      getIndex().countItemIdsByNavFilter(vaultId, filter),
-    ]);
-    return { itemIds, totalCount, offset: page.offset };
-  }
-
-  const [itemIds, totalCount] = await Promise.all([
-    getIndex().searchItemIds(vaultId, ftsQuery, filter, page),
-    getIndex().countSearchItemIds(vaultId, ftsQuery, filter),
-  ]);
-  return { itemIds, totalCount, offset: page.offset };
+  return itemsSearch.searchItems(query, filter);
 }
 
 export async function fetchDashboardIndexPage(
@@ -712,30 +666,25 @@ export async function fetchDashboardIndexPage(
   if (isDevMock()) {
     return devMockCollector.fetchDashboardIndexPage(filter, query, page);
   }
-
-  const { vault } = await resolveActiveVault();
-  return queryDashboardIndexPage(vault.id, filter, query, page);
+  return itemsSearch.fetchDashboardIndexPage(filter, query, page);
 }
 
 export async function listDashboardItemIds(
   filter: NavFilter,
   query = "",
 ): Promise<DashboardItemIdsResult> {
-  const page = await fetchDashboardIndexPage(filter, query, {
-    limit: DASHBOARD_PREFETCH_SIZE,
-    offset: 0,
-  });
   if (isDevMock()) {
+    const page = await fetchDashboardIndexPage(filter, query, {
+      limit: DASHBOARD_PREFETCH_SIZE,
+      offset: 0,
+    });
     return {
       itemIds: page.itemIds,
       totalCount: page.totalCount,
       indexSync: Promise.resolve(),
     };
   }
-
-  const { vault, path } = await resolveActiveVault();
-  const indexSync = startVaultIndexSync(vault.id, path);
-  return { itemIds: page.itemIds, totalCount: page.totalCount, indexSync };
+  return itemsSearch.listDashboardItemIds(filter, query);
 }
 
 export function subscribeDashboardLoad(
@@ -764,66 +713,7 @@ export function subscribeDashboardLoad(
       });
     return;
   }
-
-  void (async () => {
-    const { vault, path } = await resolveActiveVault();
-    if (signal?.aborted) {
-      return;
-    }
-
-    const publishPage = async (pageRequest: { limit: number; offset: number }) => {
-      try {
-        const page = await queryDashboardIndexPage(
-          vault.id,
-          filter,
-          query,
-          pageRequest,
-        );
-        if (!signal?.aborted) {
-          handlers.onIndexPage(page);
-        }
-      } catch (error: unknown) {
-        handlers.onError?.("dashboard index page", error);
-        if (!signal?.aborted) {
-          handlers.onIndexPage({ itemIds: [], totalCount: 0, offset: 0 });
-        }
-      }
-    };
-
-    const republish = createThrottledPublisher(() => {
-      const loaded = handlers.getLoadedIdCount?.() ?? DASHBOARD_PREFETCH_SIZE;
-      void publishPage({
-        offset: 0,
-        limit: Math.max(loaded, DASHBOARD_PREFETCH_SIZE),
-      });
-    }, SYNC_REPUBLISH_THROTTLE_MS);
-
-    const unsub = addVaultSyncListener(vault.id, {
-      onBatch: () => {
-        republish.schedule();
-      },
-      onComplete: () => {
-        republish.flush();
-      },
-    });
-
-    const onAbort = () => {
-      republish.cancel();
-      unsub();
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-
-    // Start the single in-flight reindex before the first SQL page query so the
-    // dashboard never falls back to a parallel full-vault disk metadata stream (#74).
-    kickoffVaultIndexSync(vault.id, path);
-
-    await publishPage({ offset: 0, limit: DASHBOARD_PREFETCH_SIZE });
-    if (!signal?.aborted) {
-      handlers.onLoadComplete?.();
-    }
-  })().catch((error: unknown) => {
-    handlers.onError?.("dashboard load", error);
-  });
+  itemsSearch.subscribeDashboardLoad(filter, query, handlers, signal);
 }
 
 export async function streamDashboardItems(
@@ -843,29 +733,7 @@ export async function streamDashboardItems(
     );
     return;
   }
-
-  if (!itemIds.length || offset >= itemIds.length || limit <= 0) {
-    return;
-  }
-
-  if (signal?.aborted) {
-    return;
-  }
-
-  const { vault } = await resolveActiveVault();
-  if (signal?.aborted) {
-    return;
-  }
-
-  const batchIds = itemIds.slice(offset, offset + limit);
-  const items = await getIndex().listItemFilesByIds(vault.id, batchIds);
-
-  for (const item of items) {
-    if (signal?.aborted) {
-      return;
-    }
-    onItem(item);
-  }
+  return itemsSearch.streamDashboardItems(itemIds, offset, limit, onItem, signal);
 }
 
 export async function loadDashboardItems(
@@ -876,16 +744,7 @@ export async function loadDashboardItems(
   if (isDevMock()) {
     return devMockCollector.loadDashboardItems(itemIds, offset, limit);
   }
-
-  if (!itemIds.length || offset >= itemIds.length) {
-    return [];
-  }
-
-  const items: ItemFile[] = [];
-  await streamDashboardItems(itemIds, offset, limit, (item) => {
-    items.push(item);
-  });
-  return items;
+  return itemsSearch.loadDashboardItems(itemIds, offset, limit);
 }
 
 export async function getItemById(
@@ -894,28 +753,14 @@ export async function getItemById(
   if (isDevMock()) {
     return devMockCollector.getItemById(itemId);
   }
-
-  const { path, vault } = await resolveActiveVault();
-
-  if (!(await fs.exists(itemMarkdownPath(path, itemId)))) {
-    throw new Error(`Item not found: ${itemId}`);
-  }
-
-  const item = await readItemFile(fs, path, itemId, vault.id);
-  const content = await readItemContent(fs, path, itemId);
-  return { item, content };
+  return itemsSearch.getItemById(itemId);
 }
 
 export async function getItemSource(itemId: string): Promise<string> {
   if (isDevMock()) {
     return devMockCollector.getItemSource(itemId);
   }
-
-  const { path } = await resolveActiveVault();
-  if (!(await fs.exists(itemMarkdownPath(path, itemId)))) {
-    throw new Error(`Item not found: ${itemId}`);
-  }
-  return readItemRawMarkdown(fs, path, itemId);
+  return itemsSearch.getItemSource(itemId);
 }
 
 export async function updateItemSource(
@@ -925,47 +770,11 @@ export async function updateItemSource(
   if (isDevMock()) {
     return devMockCollector.updateItemSource(itemId, rawMarkdown);
   }
-
-  const { vault, path } = await resolveActiveVault();
-  return writeItemRawMarkdown(
-    getContext(),
-    path,
-    vault.id,
-    itemId,
-    rawMarkdown,
-  );
+  return itemsSearch.updateItemSource(itemId, rawMarkdown);
 }
 
 export async function createItem(input: CreateItemInput): Promise<ItemFile> {
-  const { vault, path } = await resolveActiveVault();
-  const timestamp = new Date().toISOString();
-  const folderPath = input.folder_path?.trim() ?? "";
-  const fileName = `${crypto.randomUUID()}.md`;
-  const id = folderPath ? `${folderPath}/${fileName}` : fileName;
-
-  if (folderPath) {
-    await createFolderOnVault(getContext(), path, folderPath);
-  }
-
-  return upsertItem(getContext(), path, vault.id, {
-    item: {
-      id,
-      vault_id: vault.id,
-      title: input.title,
-      description: input.description ?? "",
-      url: input.url ?? null,
-      content_type: input.content_type,
-      source_type: "manual",
-      metadata: {},
-      tag_ids: [],
-      collection_ids: [],
-      folder_path: folderPath,
-      content_revision: 1,
-      created_at: timestamp,
-      updated_at: timestamp,
-    },
-    content: input.content ?? null,
-  });
+  return itemsSearch.createItem(input);
 }
 
 export async function updateItem(
@@ -975,44 +784,11 @@ export async function updateItem(
   if (isDevMock()) {
     return devMockCollector.updateItem(itemId, input);
   }
-
-  const { vault, path } = await resolveActiveVault();
-  const { item: existing, content: existingContent } = await getItemById(itemId);
-  const ctx = getContext();
-
-  let current = existing;
-  let currentContent = existingContent;
-  if (
-    input.folder_path !== undefined &&
-    input.folder_path !== existing.folder_path
-  ) {
-    current = await moveItemToFolder(
-      ctx,
-      path,
-      vault.id,
-      existing.id,
-      input.folder_path,
-    );
-    currentContent = await readItemContent(fs, path, current.id);
-  }
-
-  return upsertItem(ctx, path, vault.id, {
-    item: {
-      ...current,
-      title: input.title ?? current.title,
-      description: input.description ?? current.description,
-      url: input.url !== undefined ? input.url : current.url,
-      content_type: input.content_type ?? current.content_type,
-      tag_ids: input.tag_ids ?? current.tag_ids,
-    },
-    content: input.content !== undefined ? input.content : currentContent,
-  });
+  return itemsSearch.updateItem(itemId, input);
 }
 
 export async function deleteItem(itemId: string): Promise<void> {
-  const { path } = await resolveActiveVault();
-  await deleteItemOnDisk(getContext(), path, itemId);
-  removeItemIdFromDashboardQueryCache(itemId);
+  return itemsSearch.deleteItem(itemId);
 }
 
 export async function getDataDirectory(): Promise<string> {
