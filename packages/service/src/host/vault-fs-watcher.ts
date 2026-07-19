@@ -3,7 +3,7 @@
  * Drives targeted index updates in the host process (not the UI).
  */
 
-import { existsSync, watch, type FSWatcher } from "node:fs";
+import { watch, type FSWatcher } from "node:fs";
 import {
   createVaultWatchBatcher,
   parseVaultItemWatchPath,
