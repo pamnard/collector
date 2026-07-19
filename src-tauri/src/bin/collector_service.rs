@@ -1,22 +1,67 @@
-//! Packaged Collector service sidecar entry (#165 / epic #142).
+//! Packaged Collector service sidecar entry (#165 / #166 / epic #142).
 //!
 //! Bundled into the desktop installer via Tauri `externalBin`.
-//! The app does **not** spawn this process on the default path yet (#166).
-//! Out-of-band Node host smokes remain `packages/service` CLI until cutover.
+//! The app does **not** spawn this on the default path (#166 flag is OFF).
+//!
+//! `serve` holds the process until the OS delivers SIGTERM/SIGINT/SIGKILL and
+//! opens **no** SQLite — supervise smokes cannot create a dual-writer.
+//! Real domain host remains the Node CLI until cutover.
+
+use std::thread;
+use std::time::Duration;
 
 fn usage() -> ! {
     eprintln!(
         "Usage:\n  collector-service --version\n  collector-service serve --data-dir <path> [options]\n\n\
          This binary is an internal app sidecar (not a user-facing daemon).\n\
          Default Collector runs still use the in-process index path.\n\
-         Spawning from the app is wired in a later epic child (#166)."
+         App supervise spawn is behind COLLECTOR_ENABLE_SERVICE_SUPERVISE=1 (#166)."
     );
     std::process::exit(2);
 }
 
+fn read_arg<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
+    let idx = args.iter().position(|a| a == name)?;
+    args.get(idx + 1).map(String::as_str)
+}
+
+fn json_string(value: &str) -> String {
+    let mut out = String::from('"');
+    for ch in value.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+fn serve(args: &[String]) -> ! {
+    let Some(data_dir) = read_arg(args, "--data-dir") else {
+        eprintln!("missing --data-dir");
+        usage();
+    };
+
+    // Idle placeholder: keep process alive for supervise tests. No DB open.
+    eprintln!("collector-service: idle serve placeholder (data-dir={data_dir}, no SQLite)");
+    println!(
+        "COLLECTOR_SERVICE_READY {{\"ok\":true,\"mode\":\"idle-placeholder\",\"dataDir\":{}}}",
+        json_string(data_dir)
+    );
+
+    loop {
+        thread::sleep(Duration::from_secs(3600));
+    }
+}
+
 fn main() {
-    let mut args = std::env::args().skip(1);
-    let Some(command) = args.next() else {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let Some(command) = args.first() else {
         usage();
     };
 
@@ -24,14 +69,7 @@ fn main() {
         "--version" | "-V" | "version" => {
             println!("collector-service {}", env!("CARGO_PKG_VERSION"));
         }
-        "serve" => {
-            // Fail fast: packaging only in #165. Runtime supervise/spawn is #166.
-            eprintln!(
-                "collector-service: serve is not activated in the packaged sidecar yet (see #166).\n\
-                 For out-of-band host development use the Node CLI (`@collector/service`)."
-            );
-            std::process::exit(2);
-        }
+        "serve" => serve(&args),
         "--help" | "-h" | "help" => usage(),
         other => {
             eprintln!("unknown command: {other}");
