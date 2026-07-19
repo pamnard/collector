@@ -5,7 +5,7 @@
 import { DOMAIN_IPC_METHODS } from "../domain-methods.js";
 import type { DomainIpcHandlerMap } from "../domain-methods.js";
 import type { ServiceDomainRuntime } from "../../domain-runtime.js";
-import { asObject, badRequest, requireString } from "./params.js";
+import { asObject, requireString } from "./params.js";
 
 export function buildWatcherHandlers(
   runtime: ServiceDomainRuntime,

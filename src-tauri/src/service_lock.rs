@@ -146,6 +146,8 @@ pub fn looks_like_collector_service(pid: u32) -> bool {
                 .and_then(|s| s.to_str())
                 .unwrap_or(part);
             base.starts_with("collector-service")
+                || part.contains("host/cli.js")
+                || part.contains("packages/service/dist/host")
         })
     }
     #[cfg(not(target_os = "linux"))]
