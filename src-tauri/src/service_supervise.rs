@@ -1,4 +1,4 @@
-//! Service process supervise helpers (#166 / #167 / epic #142).
+//! Service process supervise helpers (#166 / #167 / #168 / epic #142).
 //!
 //! Dead by default: [`supervise_enabled`] is false unless
 //! `COLLECTOR_ENABLE_SERVICE_SUPERVISE=1`. Callers must check the flag before
@@ -6,9 +6,13 @@
 //! (no second SQLite writer / no dual process).
 //!
 //! Spawn runs orphan cleanup (#167) and refuses when a live lock holder remains.
+//! Child stdout/stderr append to `{data-dir}/logs/collector-service.log` (#168).
 
 use crate::service_lock::{
     cleanup_orphans, CleanupOutcome, SUPERVISOR_PID_ENV,
+};
+use crate::service_logs::{
+    open_service_log_append, service_log_path, verbose_enabled, VERBOSE_ENV,
 };
 use std::io;
 use std::path::{Path, PathBuf};
@@ -88,19 +92,36 @@ impl ServiceSupervisor {
             | CleanupOutcome::RemovedStale
             | CleanupOutcome::CleanedOrphan { .. } => {}
         }
-        let child = Command::new(sidecar_bin)
-            .arg("serve")
+        let (log_path, log_file) = open_service_log_append(data_dir)?;
+        let log_file_err = log_file
+            .try_clone()
+            .map_err(|e| SuperviseError::Io(e))?;
+        if verbose_enabled() {
+            eprintln!(
+                "collector supervise: service log → {} (set {VERBOSE_ENV}=0 to silence)",
+                log_path.display()
+            );
+        }
+        let mut cmd = Command::new(sidecar_bin);
+        cmd.arg("serve")
             .arg("--data-dir")
             .arg(data_dir)
             .env(SUPERVISOR_PID_ENV, std::process::id().to_string())
             .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+            .stdout(Stdio::from(log_file))
+            .stderr(Stdio::from(log_file_err));
+        if verbose_enabled() {
+            cmd.env(VERBOSE_ENV, "1");
+        }
+        let child = cmd.spawn()?;
         Ok(Self {
             child,
             data_dir: data_dir.to_path_buf(),
         })
+    }
+
+    pub fn log_path(&self) -> PathBuf {
+        service_log_path(&self.data_dir)
     }
 
     pub fn data_dir(&self) -> &Path {
@@ -249,6 +270,44 @@ mod tests {
         assert!(matches!(err, SuperviseError::AlreadyLocked { .. }));
 
         first.stop(Duration::from_secs(3)).expect("stop");
+        let _ = std::fs::remove_dir_all(dir);
+        std::env::remove_var(SUPERVISE_ENABLE_ENV);
+    }
+
+    #[test]
+    fn spawn_writes_service_log_file() {
+        let sidecar = sidecar_path();
+        if !sidecar.is_file() {
+            eprintln!("skip: sidecar missing at {}", sidecar.display());
+            return;
+        }
+        std::env::set_var(SUPERVISE_ENABLE_ENV, "1");
+        let dir = std::env::temp_dir().join(format!(
+            "collector-supervise-logs-{}",
+            std::process::id()
+        ));
+        let mut sup = ServiceSupervisor::spawn(&sidecar, &dir).expect("spawn");
+        let log = service_log_path(&dir);
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut body = String::new();
+        while Instant::now() < deadline {
+            if log.is_file() {
+                body = std::fs::read_to_string(&log).unwrap_or_default();
+                if body.contains("COLLECTOR_SERVICE_READY")
+                    || body.contains("idle serve")
+                {
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        assert!(log.is_file(), "expected log at {}", log.display());
+        assert!(
+            body.contains("COLLECTOR_SERVICE_READY") || body.contains("idle serve"),
+            "log body: {body:?}"
+        );
+        assert_eq!(sup.log_path(), log);
+        sup.stop(Duration::from_secs(3)).expect("stop");
         let _ = std::fs::remove_dir_all(dir);
         std::env::remove_var(SUPERVISE_ENABLE_ENV);
     }
