@@ -1,19 +1,12 @@
 import { appConfigDir, join } from "@tauri-apps/api/path";
 import {
-  dashboardSnapshotMatchesQuery,
-  dashboardSnapshotSchema,
   navFilterSettingKey,
   type DashboardSnapshot,
 } from "@collector/shared";
-import {
-  clearDashboardSnapshot as clearDashboardSnapshotFile,
-  readDashboardSnapshot,
-  writeDashboardSnapshot,
-} from "@collector/core";
+import { createDashboardSnapshotService } from "@collector/service";
 import { TauriFileSystemAdapter } from "../adapters/tauri-fs";
 import { isDevMock } from "../dev/is-dev-mock";
 import type { NavFilter } from "../types/ui";
-import { navFilterToSetting } from "../types/ui";
 import {
   dashboardQueryCacheKey,
   getDashboardQueryCache,
@@ -23,8 +16,6 @@ import {
 const DEV_MOCK_SNAPSHOT_KEY = "collector-dev-mock-dashboard-snapshot";
 
 let configDir = "";
-let cache: DashboardSnapshot | null = null;
-let cacheLoaded = false;
 const fs = new TauriFileSystemAdapter();
 
 async function ensureConfigDir(): Promise<string> {
@@ -68,26 +59,17 @@ function seedQueryCacheFromSnapshot(snapshot: DashboardSnapshot): void {
   });
 }
 
+const dashboardSnapshot = createDashboardSnapshotService({
+  fs,
+  ensureConfigDir,
+  isDevMock,
+  readDevMockSnapshot,
+  writeDevMockSnapshot,
+  onSnapshotLoaded: seedQueryCacheFromSnapshot,
+});
+
 export async function ensureDashboardSnapshot(): Promise<DashboardSnapshot | null> {
-  if (cacheLoaded) {
-    return cache;
-  }
-
-  if (isDevMock()) {
-    cache = readDevMockSnapshot();
-    cacheLoaded = true;
-    if (cache) {
-      seedQueryCacheFromSnapshot(cache);
-    }
-    return cache;
-  }
-
-  cache = await readDashboardSnapshot(fs, await ensureConfigDir());
-  cacheLoaded = true;
-  if (cache) {
-    seedQueryCacheFromSnapshot(cache);
-  }
-  return cache;
+  return dashboardSnapshot.ensureDashboardSnapshot();
 }
 
 export function peekMatchingDashboardSnapshot(
@@ -95,47 +77,21 @@ export function peekMatchingDashboardSnapshot(
   filter: NavFilter,
   search: string,
 ): DashboardSnapshot | null {
-  if (!cacheLoaded || !cache) {
-    return null;
-  }
-
-  if (
-    !dashboardSnapshotMatchesQuery(cache, {
-      vaultId,
-      navFilter: navFilterToSetting(filter),
-      search,
-    })
-  ) {
-    return null;
-  }
-
-  return cache;
+  return dashboardSnapshot.peekMatchingDashboardSnapshot({
+    vaultId,
+    filter,
+    search,
+  });
 }
 
 export async function persistDashboardSnapshot(
   snapshot: DashboardSnapshot,
 ): Promise<void> {
-  cache = snapshot;
-  cacheLoaded = true;
-
-  if (isDevMock()) {
-    writeDevMockSnapshot(snapshot);
-    return;
-  }
-
-  await writeDashboardSnapshot(fs, await ensureConfigDir(), snapshot);
+  return dashboardSnapshot.persistDashboardSnapshot(snapshot);
 }
 
 export async function clearDashboardSnapshot(): Promise<void> {
-  cache = null;
-  cacheLoaded = true;
-
-  if (isDevMock()) {
-    writeDevMockSnapshot(null);
-    return;
-  }
-
-  await clearDashboardSnapshotFile(fs, await ensureConfigDir());
+  return dashboardSnapshot.clearDashboardSnapshot();
 }
 
 export function buildDashboardSnapshot(input: {
@@ -147,15 +103,5 @@ export function buildDashboardSnapshot(input: {
   totalCount: number;
   streamEndOffset: number;
 }): DashboardSnapshot {
-  return dashboardSnapshotSchema.parse({
-    schema_version: 1,
-    vault_id: input.vaultId,
-    nav_filter: navFilterToSetting(input.filter),
-    search: input.search,
-    item_ids: input.itemIds,
-    items: input.items,
-    total_count: input.totalCount,
-    stream_end_offset: input.streamEndOffset,
-    saved_at: new Date().toISOString(),
-  });
+  return dashboardSnapshot.buildDashboardSnapshot(input);
 }

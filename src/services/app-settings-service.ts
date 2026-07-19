@@ -3,12 +3,8 @@ import {
   DEFAULT_APP_SETTINGS,
   type AppSettings,
 } from "@collector/shared";
-import {
-  createDefaultAppSettings,
-  mergeAppSettings,
-  readAppSettings,
-  writeAppSettings,
-} from "@collector/core";
+import { mergeAppSettings } from "@collector/core";
+import { createAppSettingsService } from "@collector/service";
 import { TauriFileSystemAdapter } from "../adapters/tauri-fs";
 import { isDevMock } from "../dev/is-dev-mock";
 
@@ -22,16 +18,8 @@ const LEGACY_KEYS = {
 } as const;
 
 let configDir = "";
-let cache: AppSettings | null = null;
 const fs = new TauriFileSystemAdapter();
-const listeners = new Set<(settings: AppSettings) => void>();
 const DEV_MOCK_SETTINGS_KEY = "collector-dev-mock-settings";
-
-function notify(settings: AppSettings): void {
-  for (const listener of listeners) {
-    listener(settings);
-  }
-}
 
 async function ensureConfigDir(): Promise<string> {
   if (!configDir) {
@@ -74,72 +62,19 @@ function writeDevMockSettings(settings: AppSettings): void {
   localStorage.setItem(DEV_MOCK_SETTINGS_KEY, JSON.stringify(settings));
 }
 
-export async function ensureAppSettings(): Promise<AppSettings> {
-  if (isDevMock()) {
-    if (cache) {
-      return cache;
-    }
+const appSettings = createAppSettingsService({
+  fs,
+  ensureConfigDir,
+  isDevMock,
+  readLegacySettings,
+  readDevMockSettings,
+  writeDevMockSettings,
+});
 
-    const stored = readDevMockSettings();
-    if (stored) {
-      cache = stored;
-      return cache;
-    }
-
-    cache = mergeAppSettings(createDefaultAppSettings(), readLegacySettings());
-    writeDevMockSettings(cache);
-    return cache;
-  }
-
-  if (cache) {
-    return cache;
-  }
-
-  const dir = await ensureConfigDir();
-  const stored = await readAppSettings(fs, dir);
-  if (stored) {
-    cache = stored;
-    return cache;
-  }
-
-  const legacy = readLegacySettings();
-  cache = mergeAppSettings(createDefaultAppSettings(), legacy);
-  await writeAppSettings(fs, dir, cache);
-  return cache;
-}
-
-export function getAppSettingsSync(): AppSettings | null {
-  return cache;
-}
-
-export async function updateAppSettings(
-  patch: Partial<AppSettings>,
-): Promise<AppSettings> {
-  const current = await ensureAppSettings();
-  cache = mergeAppSettings(current, patch);
-
-  // Notify React immediately (match mock path) so nav_filter / dashboard
-  // do not wait on settings.json disk I/O (#176).
-  notify(cache);
-
-  if (isDevMock()) {
-    writeDevMockSettings(cache);
-    return cache;
-  }
-
-  await writeAppSettings(fs, await ensureConfigDir(), cache);
-  return cache;
-}
-
-export function subscribeAppSettings(
-  listener: (settings: AppSettings) => void,
-): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-export async function getAppConfigDirectory(): Promise<string> {
-  return ensureConfigDir();
-}
+export const ensureAppSettings = appSettings.ensureAppSettings;
+export const getAppSettingsSync = appSettings.getAppSettingsSync;
+export const updateAppSettings = appSettings.updateAppSettings;
+export const subscribeAppSettings = appSettings.subscribeAppSettings;
+export const getAppConfigDirectory = appSettings.getAppConfigDirectory;
 
 export { DEFAULT_APP_SETTINGS };
