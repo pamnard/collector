@@ -1,4 +1,3 @@
-import { appConfigDir, join } from "@tauri-apps/api/path";
 import {
   navFilterSettingKey,
   type DashboardSnapshot,
@@ -12,6 +11,7 @@ import {
   getDashboardQueryCache,
   setDashboardQueryCache,
 } from "./dashboard-query-cache";
+import { getCollectorProfileLayout } from "./profile-layout";
 
 const DEV_MOCK_SNAPSHOT_KEY = "collector-dev-mock-dashboard-snapshot";
 
@@ -20,7 +20,7 @@ const fs = new TauriFileSystemAdapter();
 
 async function ensureConfigDir(): Promise<string> {
   if (!configDir) {
-    configDir = await join(await appConfigDir(), "collector");
+    configDir = (await getCollectorProfileLayout()).configDir;
   }
   return configDir;
 }

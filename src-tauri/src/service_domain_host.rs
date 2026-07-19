@@ -143,7 +143,10 @@ fn spawn_stderr_forward(stderr: impl io::Read + Send + 'static) {
 }
 
 /// Run Node `serve --data-dir …`, forward READY/stdio, wait until exit.
-pub fn run_domain_host_serve(data_dir: &Path) -> Result<i32, DomainHostLaunchError> {
+pub fn run_domain_host_serve(
+    data_dir: &Path,
+    config_dir: Option<&Path>,
+) -> Result<i32, DomainHostLaunchError> {
     let cli = resolve_host_cli()?;
     let node = resolve_node_bin();
 
@@ -151,8 +154,11 @@ pub fn run_domain_host_serve(data_dir: &Path) -> Result<i32, DomainHostLaunchErr
     cmd.arg(&cli)
         .arg("serve")
         .arg("--data-dir")
-        .arg(data_dir)
-        .stdin(Stdio::null())
+        .arg(data_dir);
+    if let Some(config_dir) = config_dir {
+        cmd.arg("--config-dir").arg(config_dir);
+    }
+    cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 

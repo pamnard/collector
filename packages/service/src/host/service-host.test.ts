@@ -56,6 +56,9 @@ describe("startServiceHost", () => {
         port: host.port,
         baseUrl: host.baseUrl,
         ipcPath: host.ipcPath,
+        dataDir: host.layout.dataDir,
+        configDir: host.layout.configDir,
+        indexDbPath: host.layout.indexDbPath,
       });
     } finally {
       await host.close();

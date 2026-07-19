@@ -1,10 +1,12 @@
-import { appConfigDir, appDataDir, join } from "@tauri-apps/api/path";
+import { appDataDir, join } from "@tauri-apps/api/path";
+import { getCollectorProfileLayout } from "./profile-layout";
 
 /** Matches tauri-plugin-sql: `Database.load("sqlite:collector.db")` → appConfigDir. */
 export const INDEX_DB_URI = "sqlite:collector.db";
 
 export async function getIndexDatabasePath(): Promise<string> {
-  return join(await appConfigDir(), "collector.db");
+  const layout = await getCollectorProfileLayout();
+  return layout.indexDbPath;
 }
 
 /** Wrong paths from earlier builds — delete so they cannot shadow the real index. */

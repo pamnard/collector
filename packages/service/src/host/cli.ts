@@ -3,7 +3,10 @@
  * CLI entry for Collector service domain host (#151/#152/#237).
  *
  * Usage:
- *   node packages/service/dist/host/cli.js serve --data-dir <dir> [--port 0] [--host 127.0.0.1] [--ipc-path <path>|--no-ipc]
+ *   node packages/service/dist/host/cli.js serve --data-dir <dir> [--config-dir <dir>] [--port 0] [--host 127.0.0.1] [--ipc-path <path>|--no-ipc]
+ *
+ * Layout (#238): production passes --config-dir (Tauri appConfig …/collector).
+ * Omitting --config-dir uses self-contained `{dataDir}/config` + `{dataDir}/collector.db`.
  *
  * Prints `COLLECTOR_SERVICE_READY {...}` when listening, then waits for SIGINT/SIGTERM.
  * Out-of-band smokes call this directly. The Tauri sidecar `collector-service serve`
@@ -15,7 +18,7 @@ import { startServiceHost, formatServiceHostReadyLine } from "./service-host.js"
 
 function usage(): never {
   console.error(
-    "Usage: collector-service serve --data-dir <path> [--port 0] [--host 127.0.0.1] [--ipc-path <path>|--no-ipc]",
+    "Usage: collector-service serve --data-dir <path> [--config-dir <path>] [--port 0] [--host 127.0.0.1] [--ipc-path <path>|--no-ipc]",
   );
   process.exit(2);
 }
@@ -42,6 +45,7 @@ async function main(argv: string[]): Promise<void> {
   if (!dataDir) {
     usage();
   }
+  const configDir = readArg(rest, "--config-dir");
 
   const portRaw = readArg(rest, "--port");
   const host = readArg(rest, "--host") ?? "127.0.0.1";
@@ -63,7 +67,13 @@ async function main(argv: string[]): Promise<void> {
     ipcPath = value;
   }
 
-  const service = await startServiceHost({ dataDir, host, port, ipcPath });
+  const service = await startServiceHost({
+    dataDir,
+    ...(configDir === undefined ? {} : { configDir }),
+    host,
+    port,
+    ipcPath,
+  });
   console.log(formatServiceHostReadyLine(service));
 
   const shutdown = async (signal: string) => {

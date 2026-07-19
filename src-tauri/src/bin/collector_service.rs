@@ -24,7 +24,8 @@ fn usage() -> ! {
          Default Collector runs still use the in-process index path.\n\
          App supervise spawn is behind COLLECTOR_ENABLE_SERVICE_SUPERVISE=1 (#166).\n\
          Supervised logs: {{data-dir}}/logs/collector-service.log (#168).\n\
-         Domain host CLI: set COLLECTOR_SERVICE_NODE_CLI if auto-resolve fails (#237)."
+         Domain host CLI: set COLLECTOR_SERVICE_NODE_CLI if auto-resolve fails (#237).
+         Optional --config-dir: production settings root (#238); omit for self-contained profile."
     );
     std::process::exit(2);
 }
@@ -72,7 +73,8 @@ fn serve(args: &[String]) -> ! {
         );
     }
 
-    match run_domain_host_serve(Path::new(data_dir)) {
+    let config_dir = read_arg(args, "--config-dir").map(Path::new);
+    match run_domain_host_serve(Path::new(data_dir), config_dir) {
         Ok(code) => std::process::exit(code),
         Err(err) => {
             eprintln!("collector-service: domain host failed: {err}");

@@ -183,6 +183,11 @@ export {
 } from "./settings/app-settings-io.js";
 
 export {
+  migrateLegacyUnifiedProfileLayout,
+} from "./settings/profile-layout-migrate.js";
+export type { ProfileLayoutMigrationResult } from "./settings/profile-layout-migrate.js";
+
+export {
   clearDashboardSnapshot,
   dashboardSnapshotPath,
   readDashboardSnapshot,

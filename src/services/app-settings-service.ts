@@ -1,4 +1,3 @@
-import { appConfigDir, join } from "@tauri-apps/api/path";
 import {
   DEFAULT_APP_SETTINGS,
   type AppSettings,
@@ -7,6 +6,7 @@ import { mergeAppSettings } from "@collector/core";
 import { createAppSettingsService } from "@collector/service";
 import { TauriFileSystemAdapter } from "../adapters/tauri-fs";
 import { isDevMock } from "../dev/is-dev-mock";
+import { getCollectorProfileLayout } from "./profile-layout";
 
 const LEGACY_KEYS = {
   theme: "theme",
@@ -23,7 +23,7 @@ const DEV_MOCK_SETTINGS_KEY = "collector-dev-mock-settings";
 
 async function ensureConfigDir(): Promise<string> {
   if (!configDir) {
-    configDir = await join(await appConfigDir(), "collector");
+    configDir = (await getCollectorProfileLayout()).configDir;
   }
   return configDir;
 }

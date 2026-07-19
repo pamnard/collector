@@ -1,4 +1,3 @@
-import { appDataDir, join } from "@tauri-apps/api/path";
 import { invoke } from "@tauri-apps/api/core";
 import type { ItemFile, VaultMeta } from "@collector/shared";
 import type { MediaFileMeta } from "@collector/shared";
@@ -42,6 +41,7 @@ import {
 import { clearDashboardSnapshot } from "./dashboard-snapshot-service";
 import { generateCoverFromMedia } from "./thumbnail-service";
 import { getLegacyIndexDatabasePaths } from "./index-db-path";
+import { getCollectorProfileLayout } from "./profile-layout";
 import { reportServiceError } from "./runtime-error";
 import {
   configureVaultFilesystemWatcher,
@@ -223,7 +223,7 @@ async function removeLegacyIndexDatabaseFiles(): Promise<void> {
 
 const indexBoot = createCollectorIndexBoot<TauriSqlAdapter>({
   prepareEnvironment: async () => {
-    dataDir = await join(await appDataDir(), "collector");
+    dataDir = (await getCollectorProfileLayout()).dataDir;
     await fs.mkdir(dataDir);
     await removeLegacyIndexDatabaseFiles();
   },

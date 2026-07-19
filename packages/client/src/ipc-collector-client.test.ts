@@ -1,3 +1,4 @@
+import { selfContainedCollectorProfileLayout } from "@collector/shared";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -334,7 +335,7 @@ describe("CollectorIpcClient", () => {
     await writeLegacyBrokenIndexDb(join(dataDir, "collector.db"));
 
     // IPC-only host: do not auto-heal so the client path exercises rebuild.
-    const runtime = createServiceDomainRuntime(dataDir);
+    const runtime = createServiceDomainRuntime(selfContainedCollectorProfileLayout(dataDir));
     const ipc = await startServiceIpcServer({
       dataDir,
       handler: {
