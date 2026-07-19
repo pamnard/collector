@@ -1,5 +1,6 @@
 /**
- * Out-of-band Collector service host (#151): open index DB + HTTP health/ping.
+ * Out-of-band Collector service host (#151/#152):
+ * open index DB + HTTP health/ping + local IPC (Unix socket / Windows pipe).
  * Must not be started by the Tauri app lifecycle (dual-writer risk).
  */
 
@@ -8,6 +9,7 @@ import { createServer, type Server } from "node:http";
 import { join } from "node:path";
 import { createCollectorIndexBoot } from "../index-boot.js";
 import { NodeSqliteExecutor } from "./node-sql.js";
+import { startServiceIpcServer, type ServiceIpcServer } from "./ipc/server.js";
 
 export const SERVICE_HOST_READY_PREFIX = "COLLECTOR_SERVICE_READY ";
 
@@ -18,12 +20,19 @@ export interface ServiceHostOptions {
   host?: string;
   /** TCP port; 0 = ephemeral (default). */
   port?: number;
+  /**
+   * Local IPC path. Default: platform path under `dataDir`.
+   * Pass `false` to disable IPC (HTTP-only).
+   */
+  ipcPath?: string | false;
 }
 
 export interface ServiceHost {
   host: string;
   port: number;
   baseUrl: string;
+  /** Local IPC endpoint (Unix socket or Windows named pipe), if enabled. */
+  ipcPath: string | null;
   /** Open + healthy index session. */
   isHealthy: () => boolean;
   close: () => Promise<void>;
@@ -59,6 +68,16 @@ export async function startServiceHost(
   await boot.open();
   await boot.ensureHealthy();
 
+  const healthPayload = () => {
+    const healthy = boot.isHealthy();
+    return {
+      ok: healthy,
+      status: healthy ? ("healthy" as const) : ("unhealthy" as const),
+      open: boot.isOpen(),
+      healthy,
+    };
+  };
+
   const server: Server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", `http://${listenHost}`);
     if (req.method === "GET" && url.pathname === "/ping") {
@@ -66,13 +85,8 @@ export async function startServiceHost(
       return;
     }
     if (req.method === "GET" && url.pathname === "/health") {
-      const healthy = boot.isHealthy();
-      json(res, healthy ? 200 : 503, {
-        ok: healthy,
-        status: healthy ? "healthy" : "unhealthy",
-        open: boot.isOpen(),
-        healthy,
-      });
+      const body = healthPayload();
+      json(res, body.healthy ? 200 : 503, body);
       return;
     }
     json(res, 404, { ok: false, error: "not_found" });
@@ -89,12 +103,28 @@ export async function startServiceHost(
     throw new Error("service host failed to bind a TCP port");
   }
 
+  let ipc: ServiceIpcServer | null = null;
+  if (options.ipcPath !== false) {
+    ipc = await startServiceIpcServer({
+      dataDir: options.dataDir,
+      path: typeof options.ipcPath === "string" ? options.ipcPath : undefined,
+      handler: {
+        ping: () => ({ ok: true, pong: true }),
+        health: healthPayload,
+      },
+    });
+  }
+
   let closed = false;
   const close = async (): Promise<void> => {
     if (closed) {
       return;
     }
     closed = true;
+    if (ipc) {
+      await ipc.close();
+      ipc = null;
+    }
     await new Promise<void>((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
     });
@@ -108,6 +138,7 @@ export async function startServiceHost(
     host: listenHost,
     port: address.port,
     baseUrl: `http://${listenHost}:${address.port}`,
+    ipcPath: ipc?.path ?? null,
     isHealthy: () => boot.isHealthy(),
     close,
   };
@@ -119,5 +150,6 @@ export function formatServiceHostReadyLine(host: ServiceHost): string {
     host: host.host,
     port: host.port,
     baseUrl: host.baseUrl,
+    ipcPath: host.ipcPath,
   })}`;
 }
