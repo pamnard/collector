@@ -133,17 +133,23 @@ export function createCollectorIpcClient(
     getItemSource: async (itemId: string): Promise<string> =>
       transport.request("getItemSource", { itemId }) as Promise<string>,
     updateItemSource: async (
-      _itemId: string,
-      _rawMarkdown: string,
-    ): Promise<ItemFile> => unimplemented("updateItemSource"),
-    createItem: async (_input: CreateItemInput): Promise<ItemFile> =>
-      unimplemented("createItem"),
+      itemId: string,
+      rawMarkdown: string,
+    ): Promise<ItemFile> =>
+      transport.request("updateItemSource", {
+        itemId,
+        rawMarkdown,
+      }) as Promise<ItemFile>,
+    createItem: async (input: CreateItemInput): Promise<ItemFile> =>
+      transport.request("createItem", input as unknown as Record<string, unknown>) as Promise<ItemFile>,
     updateItem: async (
-      _itemId: string,
-      _input: UpdateItemInput,
-    ): Promise<ItemFile> => unimplemented("updateItem"),
-    deleteItem: async (_itemId: string): Promise<void> =>
-      unimplemented("deleteItem"),
+      itemId: string,
+      input: UpdateItemInput,
+    ): Promise<ItemFile> =>
+      transport.request("updateItem", { itemId, input }) as Promise<ItemFile>,
+    deleteItem: async (itemId: string): Promise<void> => {
+      await transport.request("deleteItem", { itemId });
+    },
 
     // Tags
     subscribeTags(

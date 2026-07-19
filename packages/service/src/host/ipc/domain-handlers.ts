@@ -5,12 +5,14 @@
 import type { ServiceDomainRuntime } from "../domain-runtime.js";
 import type { DomainIpcHandlerMap } from "./domain-methods.js";
 import { buildItemsReadHandlers } from "./handlers/items-read.js";
+import { buildItemsWriteHandlers } from "./handlers/items-write.js";
 
 export function buildDomainIpcHandlers(
   runtime: ServiceDomainRuntime,
 ): DomainIpcHandlerMap {
   return {
     ...buildItemsReadHandlers(runtime),
+    ...buildItemsWriteHandlers(runtime),
   };
 }
 

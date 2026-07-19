@@ -85,6 +85,41 @@ describe("CollectorIpcClient", () => {
     }
   });
 
+  it("item create/update/delete work over IPC (#156)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-ipc-writes-"));
+    dirs.push(dataDir);
+    const host = await startServiceHost({ dataDir, port: 0 });
+    try {
+      const client = await connectCollectorIpcClient(host.ipcPath!);
+      try {
+        const created = await client.createItem({
+          title: "IPC Note",
+          content_type: "note",
+          content: "# hello",
+        });
+        expect(created.title).toBe("IPC Note");
+
+        const updated = await client.updateItem(created.id, {
+          title: "IPC Note 2",
+        });
+        expect(updated.title).toBe("IPC Note 2");
+
+        const source = await client.updateItemSource(
+          created.id,
+          "---\ntitle: IPC Note 2\n---\n\n# body\n",
+        );
+        expect(source.id).toBe(created.id);
+
+        await client.deleteItem(created.id);
+        await expect(client.getItemById(created.id)).rejects.toBeTruthy();
+      } finally {
+        await client.close();
+      }
+    } finally {
+      await host.close();
+    }
+  });
+
   it("unimplemented domain methods fail fast without inventing defaults", async () => {
     const transport = {
       ping: async () => ({ ok: true as const, pong: true as const }),
@@ -102,16 +137,7 @@ describe("CollectorIpcClient", () => {
 
     const client = createCollectorIpcClient(transport);
 
-    await expect(client.createItem({
-      title: "x",
-      description: "",
-      content_type: "note",
-      source_type: "manual",
-      metadata: {},
-      tag_ids: [],
-      collection_ids: [],
-      folder_path: "",
-    } as never)).rejects.toMatchObject({
+    await expect(client.listTags()).rejects.toMatchObject({
       name: "ServiceIpcError",
       layer: "validation",
       code: "unimplemented",

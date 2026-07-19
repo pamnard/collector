@@ -2,56 +2,15 @@
  * IPC handlers: item/search/dashboard reads (#155).
  */
 
-import type { NavFilter } from "@collector/api";
-import { serviceIpcError } from "../errors.js";
+import {
+  asObject,
+  badRequest,
+  parseNavFilter,
+  requireString,
+} from "./params.js";
 import { DOMAIN_IPC_METHODS } from "../domain-methods.js";
 import type { DomainIpcHandlerMap } from "../domain-methods.js";
 import type { ServiceDomainRuntime } from "../../domain-runtime.js";
-
-function badRequest(message: string): never {
-  throw serviceIpcError({
-    layer: "validation",
-    code: "bad_request",
-    message,
-  });
-}
-
-function asObject(params: unknown, method: string): Record<string, unknown> {
-  if (params === undefined || params === null) {
-    return {};
-  }
-  if (typeof params !== "object" || Array.isArray(params)) {
-    badRequest(`${method}: params must be an object`);
-  }
-  return params as Record<string, unknown>;
-}
-
-function requireString(
-  value: unknown,
-  field: string,
-  method: string,
-): string {
-  if (typeof value !== "string" || value.length === 0) {
-    badRequest(`${method}: ${field} must be a non-empty string`);
-  }
-  return value;
-}
-
-function parseNavFilter(value: unknown, method: string): NavFilter {
-  if (value === "all") {
-    return "all";
-  }
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    const obj = value as Record<string, unknown>;
-    if (obj.type === "tag" && typeof obj.tagId === "string") {
-      return { type: "tag", tagId: obj.tagId };
-    }
-    if (obj.type === "folder" && typeof obj.folderPath === "string") {
-      return { type: "folder", folderPath: obj.folderPath };
-    }
-  }
-  badRequest(`${method}: invalid NavFilter`);
-}
 
 export function buildItemsReadHandlers(
   runtime: ServiceDomainRuntime,
