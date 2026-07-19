@@ -1,9 +1,8 @@
 /**
  * UI CollectorClient singleton (#169 / epic #142).
  *
- * Default: LocalAdapter (web / service mode off).
- * Tauri cutover (#170) swaps to IPC via {@link setCollectorClient} in
- * `bootstrapServiceModeCutover` before React mounts.
+ * Default: LocalAdapter (web/dev-mock / tests). Tauri service mode (#170)
+ * swaps to IPC before React mounts. LocalAdapter cannot open SQLite (#171).
  * Call sites should use {@link getCollectorClient}.
  */
 

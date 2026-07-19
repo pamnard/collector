@@ -33,7 +33,6 @@ import type { Tag } from "@collector/shared";
 import type { CreateItemInput, UpdateItemInput } from "../types/item";
 import type { NavFilter } from "../types/ui";
 import { TauriFileSystemAdapter } from "../adapters/tauri-fs";
-import { TauriSqlAdapter } from "../adapters/tauri-sql";
 import {
   ensureAppSettings,
   updateAppSettings,
@@ -221,13 +220,18 @@ async function removeLegacyIndexDatabaseFiles(): Promise<void> {
   }
 }
 
-const indexBoot = createCollectorIndexBoot<TauriSqlAdapter>({
+const UI_INPROCESS_SQLITE_REMOVED =
+  "UI in-process SQLite removed (#171); use service IPC (default COLLECTOR_SERVICE_MODE)";
+
+const indexBoot = createCollectorIndexBoot({
   prepareEnvironment: async () => {
     dataDir = (await getCollectorProfileLayout()).dataDir;
     await fs.mkdir(dataDir);
     await removeLegacyIndexDatabaseFiles();
   },
-  openSql: () => TauriSqlAdapter.open(),
+  openSql: async () => {
+    throw new Error(UI_INPROCESS_SQLITE_REMOVED);
+  },
   onUnhealthyRebuildStart: async () => {
     setVaultIndexSyncStatus({
       vaultId: null,
