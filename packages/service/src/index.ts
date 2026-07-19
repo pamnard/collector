@@ -111,3 +111,20 @@ export {
   mapNodeIpcErrno,
   serviceIpcError,
 } from "./host/ipc/errors.js";
+
+export {
+  DOMAIN_IPC_METHODS,
+  type DomainIpcHandler,
+  type DomainIpcHandlerMap,
+  type DomainIpcMethod,
+} from "./host/ipc/domain-methods.js";
+
+export {
+  buildDomainIpcHandlers,
+  createDomainIpcDispatcher,
+} from "./host/ipc/domain-handlers.js";
+
+export {
+  createServiceDomainRuntime,
+  type ServiceDomainRuntime,
+} from "./host/domain-runtime.js";

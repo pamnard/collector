@@ -43,6 +43,48 @@ describe("CollectorIpcClient", () => {
     }
   });
 
+  it("item/search/dashboard reads work over IPC (#155)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-ipc-reads-"));
+    dirs.push(dataDir);
+    const host = await startServiceHost({ dataDir, port: 0 });
+    try {
+      const client = await connectCollectorIpcClient(host.ipcPath!);
+      try {
+        const items = await client.listItems();
+        expect(items.length).toBeGreaterThan(0);
+
+        const page = await client.fetchDashboardIndexPage("all", "", {
+          limit: 60,
+          offset: 0,
+        });
+        expect(page.totalCount).toBeGreaterThan(0);
+        expect(page.itemIds.length).toBeGreaterThan(0);
+
+        const ids = await client.listDashboardItemIds("all", "");
+        expect(ids.totalCount).toBe(page.totalCount);
+        expect(ids.itemIds.length).toBeGreaterThan(0);
+
+        const loaded = await client.loadDashboardItems(ids.itemIds, 0, 10);
+        expect(loaded.length).toBeGreaterThan(0);
+
+        const byId = await client.getItemById(items[0]!.id);
+        expect(byId.item.id).toBe(items[0]!.id);
+
+        const source = await client.getItemSource(items[0]!.id);
+        expect(typeof source).toBe("string");
+        expect(source.length).toBeGreaterThan(0);
+
+        await expect(client.listTags()).rejects.toMatchObject({
+          code: "unimplemented",
+        });
+      } finally {
+        await client.close();
+      }
+    } finally {
+      await host.close();
+    }
+  });
+
   it("unimplemented domain methods fail fast without inventing defaults", async () => {
     const transport = {
       ping: async () => ({ ok: true as const, pong: true as const }),
@@ -60,7 +102,16 @@ describe("CollectorIpcClient", () => {
 
     const client = createCollectorIpcClient(transport);
 
-    await expect(client.listItems()).rejects.toMatchObject({
+    await expect(client.createItem({
+      title: "x",
+      description: "",
+      content_type: "note",
+      source_type: "manual",
+      metadata: {},
+      tag_ids: [],
+      collection_ids: [],
+      folder_path: "",
+    } as never)).rejects.toMatchObject({
       name: "ServiceIpcError",
       layer: "validation",
       code: "unimplemented",

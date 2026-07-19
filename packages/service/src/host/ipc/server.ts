@@ -15,7 +15,6 @@ import {
   type ServiceIpcErrorResponse,
   type ServiceIpcHealthResult,
   type ServiceIpcMessage,
-  type ServiceIpcMethod,
   type ServiceIpcRequest,
   type ServiceIpcResponse,
 } from "./framing.js";
@@ -29,6 +28,13 @@ export interface ServiceIpcHandler {
     | { ok: true; pong: true }
     | Promise<{ ok: true; pong: true }>;
   health: () => ServiceIpcHealthResult | Promise<ServiceIpcHealthResult>;
+  /**
+   * Domain dispatch. Return `undefined` to fall through to unknown_method.
+   */
+  request?: (
+    method: string,
+    params?: unknown,
+  ) => Promise<unknown | undefined>;
 }
 
 export interface ServiceIpcServer {
@@ -54,7 +60,7 @@ async function handleRequest(
 ): Promise<ServiceIpcResponse | ServiceIpcErrorResponse> {
   assertProtocolVersion(message.v);
 
-  const method = message.method as ServiceIpcMethod;
+  const method = String(message.method);
   if (method === "ping") {
     return {
       v: SERVICE_IPC_PROTOCOL_VERSION,
@@ -72,10 +78,22 @@ async function handleRequest(
     };
   }
 
+  if (handler.request) {
+    const result = await handler.request(method, message.params);
+    if (result !== undefined) {
+      return {
+        v: SERVICE_IPC_PROTOCOL_VERSION,
+        id: message.id,
+        type: "res",
+        result,
+      };
+    }
+  }
+
   return errorResponse(message.id, {
     layer: "validation",
     code: "unknown_method",
-    message: `unknown method: ${String(message.method)}`,
+    message: `unknown method: ${method}`,
   });
 }
 
