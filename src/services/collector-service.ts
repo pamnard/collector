@@ -2,7 +2,11 @@ import { appDataDir, join } from "@tauri-apps/api/path";
 import { invoke } from "@tauri-apps/api/core";
 import type { ItemFile, VaultMeta } from "@collector/shared";
 import type { MediaFileMeta } from "@collector/shared";
-import { createCollectorIndexBoot, createItemsSearchService } from "@collector/service";
+import {
+  createCollectorIndexBoot,
+  createItemsSearchService,
+  createTagsFoldersService,
+} from "@collector/service";
 import type {
   DashboardIndexPage,
   DashboardItemIdsResult,
@@ -24,15 +28,6 @@ import {
   vaultRoot,
   vaultsRoot,
   writeVaultMeta,
-  createTag as createTagOnVault,
-  deleteTag as deleteTagOnVault,
-  listTagsWithCounts,
-  updateTag as updateTagOnVault,
-  createFolder as createFolderOnVault,
-  deleteFolder as deleteFolderOnVault,
-  listFolderTreeFromIndex,
-  moveItemToFolder,
-  renameFolder as renameFolderOnVault,
   attachMediaFile,
   deleteMediaFile,
   listItemMediaWithPaths,
@@ -644,6 +639,14 @@ const itemsSearch = createItemsSearchService({
   syncRepublishThrottleMs: SYNC_REPUBLISH_THROTTLE_MS,
 });
 
+const tagsFolders = createTagsFoldersService({
+  resolveActiveVault,
+  getContext,
+  kickoffVaultIndexSync,
+  addVaultSyncListener,
+  syncRepublishThrottleMs: SYNC_REPUBLISH_THROTTLE_MS,
+});
+
 export { DASHBOARD_PREFETCH_SIZE };
 export type { DashboardIndexPage, DashboardItemIdsResult };
 
@@ -869,85 +872,32 @@ export function subscribeTags(
       });
     return;
   }
-
-  void (async () => {
-    const { vault, path } = await resolveActiveVault();
-    if (signal?.aborted) {
-      return;
-    }
-
-    const publish = async () => {
-      try {
-        const tags = await listTagsWithCounts(getContext(), vault.id);
-        if (!signal?.aborted) {
-          onUpdate(tags);
-        }
-      } catch (error) {
-        handlers?.onError?.("tags publish", error);
-      }
-    };
-
-    const republish = createThrottledPublisher(() => {
-      void publish();
-    }, SYNC_REPUBLISH_THROTTLE_MS);
-
-    const unsub = addVaultSyncListener(vault.id, {
-      onBatch: () => {
-        republish.schedule();
-      },
-      onComplete: () => {
-        republish.flush();
-      },
-    });
-
-    const onAbort = () => {
-      republish.cancel();
-      unsub();
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-
-    await publish();
-    kickoffVaultIndexSync(vault.id, path);
-  })().catch((error: unknown) => {
-    handlers?.onError?.("tags subscribe", error);
-    if (!signal?.aborted) {
-      onUpdate([]);
-    }
-  });
+  tagsFolders.subscribeTags(onUpdate, handlers, signal);
 }
 
 export async function listTags(): Promise<TagWithCount[]> {
   if (isDevMock()) {
     return devMockCollector.listTags();
   }
-
-  const { vault, path } = await resolveActiveVault();
-  kickoffVaultIndexSync(vault.id, path);
-  return listTagsWithCounts(getContext(), vault.id);
+  return tagsFolders.listTags();
 }
 
 export async function createTag(input: {
   name: string;
   color?: string | null;
 }): Promise<Tag> {
-  const { vault, path } = await resolveActiveVault();
-  kickoffVaultIndexSync(vault.id, path);
-  return createTagOnVault(getContext(), path, vault.id, input);
+  return tagsFolders.createTag(input);
 }
 
 export async function updateTagRecord(
   tagId: string,
   input: { name?: string; color?: string | null },
 ): Promise<Tag> {
-  const { vault, path } = await resolveActiveVault();
-  kickoffVaultIndexSync(vault.id, path);
-  return updateTagOnVault(getContext(), path, vault.id, tagId, input);
+  return tagsFolders.updateTagRecord(tagId, input);
 }
 
 export async function deleteTag(tagId: string): Promise<void> {
-  const { vault, path } = await resolveActiveVault();
-  kickoffVaultIndexSync(vault.id, path);
-  await deleteTagOnVault(getContext(), path, vault.id, tagId);
+  return tagsFolders.deleteTag(tagId);
 }
 
 export function subscribeFolderTree(
@@ -967,100 +917,40 @@ export function subscribeFolderTree(
       });
     return;
   }
-
-  void (async () => {
-    const { vault, path } = await resolveActiveVault();
-    if (signal?.aborted) {
-      return;
-    }
-
-    const ctx = getContext();
-
-    const publish = async () => {
-      if (signal?.aborted) {
-        return;
-      }
-      try {
-        onUpdate(await listFolderTreeFromIndex(ctx, path, vault.id));
-      } catch (error: unknown) {
-        handlers?.onError?.("folder tree index", error);
-        if (!signal?.aborted) {
-          onUpdate([]);
-        }
-      }
-    };
-
-    const republish = createThrottledPublisher(() => {
-      void publish();
-    }, SYNC_REPUBLISH_THROTTLE_MS);
-
-    const unsub = addVaultSyncListener(vault.id, {
-      onBatch: () => {
-        republish.schedule();
-      },
-      onComplete: () => {
-        republish.flush();
-      },
-    });
-
-    const onAbort = () => {
-      republish.cancel();
-      unsub();
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-
-    await publish();
-    kickoffVaultIndexSync(vault.id, path);
-  })().catch((error: unknown) => {
-    handlers?.onError?.("folder tree", error);
-    if (!signal?.aborted) {
-      onUpdate([]);
-    }
-  });
+  tagsFolders.subscribeFolderTree(onUpdate, handlers, signal);
 }
 
 export async function loadFolderTree(): Promise<FolderTreeNode[]> {
-  return listFolderTree();
+  return tagsFolders.loadFolderTree();
 }
 
 export async function listFolderTree(): Promise<FolderTreeNode[]> {
   if (isDevMock()) {
     return devMockCollector.listFolderTree();
   }
-
-  const { vault, path } = await resolveActiveVault();
-  kickoffVaultIndexSync(vault.id, path);
-  return listFolderTreeFromIndex(getContext(), path, vault.id);
+  return tagsFolders.listFolderTree();
 }
 
 export async function createFolder(folderPath: string): Promise<string> {
-  const { vault, path } = await resolveActiveVault();
-  kickoffVaultIndexSync(vault.id, path);
-  return createFolderOnVault(getContext(), path, folderPath);
+  return tagsFolders.createFolder(folderPath);
 }
 
 export async function renameFolder(
   oldPath: string,
   newPath: string,
 ): Promise<string> {
-  const { vault, path } = await resolveActiveVault();
-  kickoffVaultIndexSync(vault.id, path);
-  return renameFolderOnVault(getContext(), path, vault.id, oldPath, newPath);
+  return tagsFolders.renameFolder(oldPath, newPath);
 }
 
 export async function deleteFolder(folderPath: string): Promise<void> {
-  const { vault, path } = await resolveActiveVault();
-  kickoffVaultIndexSync(vault.id, path);
-  await deleteFolderOnVault(getContext(), path, vault.id, folderPath);
+  return tagsFolders.deleteFolder(folderPath);
 }
 
 export async function moveItemToFolderPath(
   itemId: string,
   folderPath: string,
 ): Promise<ItemFile> {
-  const { vault, path } = await resolveActiveVault();
-  kickoffVaultIndexSync(vault.id, path);
-  return moveItemToFolder(getContext(), path, vault.id, itemId, folderPath);
+  return tagsFolders.moveItemToFolderPath(itemId, folderPath);
 }
 
 export async function listItemMedia(itemId: string): Promise<MediaWithPath[]> {

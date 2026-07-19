@@ -20,3 +20,10 @@ export {
   type ItemsSearchServiceDeps,
   type VaultSyncBatchListener,
 } from "./items-search.js";
+
+export {
+  createTagsFoldersService,
+  type ServiceSubscribeHandlers,
+  type TagsFoldersService,
+  type TagsFoldersServiceDeps,
+} from "./tags-folders.js";
