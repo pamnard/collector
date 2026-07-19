@@ -25,6 +25,7 @@ import {
   type VaultIndexSyncStatusStore,
 } from "../sync-status.js";
 import { NodeSqliteExecutor } from "./node-sql.js";
+import { createNodeVaultFilesystemWatcher } from "./vault-fs-watcher.js";
 
 const SYNC_STATUS_THROTTLE_MS = 200;
 
@@ -82,6 +83,12 @@ export interface ServiceDomainRuntime {
   isHealthy: () => boolean;
   close: () => Promise<void>;
   vaultIndexSyncStatus: VaultIndexSyncStatusStore;
+  startVaultFilesystemWatcher: (
+    vaultId: string,
+    vaultPath: string,
+  ) => Promise<void>;
+  stopVaultFilesystemWatcher: () => Promise<void>;
+  isVaultFilesystemWatcherActive: () => boolean;
   itemsSearch: ReturnType<typeof createItemsSearchService>;
   tagsFolders: ReturnType<typeof createTagsFoldersService>;
   mediaCover: ReturnType<typeof createMediaCoverService>;
@@ -107,6 +114,32 @@ export function createServiceDomainRuntime(
     }>
   >();
   const vaultIndexSyncStatus = createVaultIndexSyncStatusStore();
+  const watcherDisabledVaultIds = new Set<string>();
+  let runtimeClosed = false;
+
+  const vaultsHolder: {
+    current: ReturnType<typeof createVaultsService> | null;
+  } = { current: null };
+
+  let forceVaultIndexResync: (
+    vaultId: string,
+    vaultPath: string,
+    options?: { restartWatcher?: boolean },
+  ) => void = () => {
+    throw new Error("forceVaultIndexResync not initialized");
+  };
+
+  const vaultFsWatcher = createNodeVaultFilesystemWatcher({
+    getContext: () => getContext(),
+    getActiveVaultId: () =>
+      vaultsHolder.current?.getActiveVaultEntry()?.meta.id ?? null,
+    onItemsSynced: () => {
+      // Targeted sync already updated the index; status channel stays as-is.
+    },
+    forceVaultIndexResync: (vaultId, vaultPath) => {
+      forceVaultIndexResync(vaultId, vaultPath);
+    },
+  });
 
   const appSettings = createAppSettingsService({
     fs,
@@ -135,10 +168,6 @@ export function createServiceDomainRuntime(
     },
   });
 
-  const vaultsHolder: {
-    current: ReturnType<typeof createVaultsService> | null;
-  } = { current: null };
-
   const indexBoot = createCollectorIndexBoot({
     prepareEnvironment: async () => {
       await mkdir(dataDir, { recursive: true });
@@ -148,7 +177,9 @@ export function createServiceDomainRuntime(
       syncedVaultIds.clear();
       vaultSyncPromises.clear();
       vaultSyncListeners.clear();
+      watcherDisabledVaultIds.clear();
       vaultsHolder.current?.clearActiveVault();
+      await vaultFsWatcher.stop();
       vaultIndexSyncStatus.set({
         vaultId: null,
         status: "rebuilding",
@@ -221,6 +252,15 @@ export function createServiceDomainRuntime(
     vaultPath: string,
   ): Promise<void> {
     if (syncedVaultIds.has(vaultId)) {
+      if (
+        !runtimeClosed &&
+        !watcherDisabledVaultIds.has(vaultId) &&
+        !vaultFsWatcher.isWatching()
+      ) {
+        void vaultFsWatcher.start(vaultId, vaultPath).catch((error: unknown) => {
+          console.error("[collector] start vault filesystem watcher:", error);
+        });
+      }
       return;
     }
     const inflight = vaultSyncPromises.get(vaultId);
@@ -335,6 +375,14 @@ export function createServiceDomainRuntime(
           ftsReady,
         });
         emitComplete(vaultId);
+        if (
+          !runtimeClosed &&
+          !watcherDisabledVaultIds.has(vaultId)
+        ) {
+          void vaultFsWatcher.start(vaultId, vaultPath).catch((error: unknown) => {
+            console.error("[collector] start vault filesystem watcher:", error);
+          });
+        }
       } catch (error) {
         publishRunningStatus.cancel();
         vaultIndexSyncStatus.set({
@@ -359,6 +407,18 @@ export function createServiceDomainRuntime(
     });
   }
 
+  forceVaultIndexResync = (
+    vaultId: string,
+    vaultPath: string,
+    options: { restartWatcher?: boolean } = {},
+  ) => {
+    if (options.restartWatcher === false) {
+      watcherDisabledVaultIds.add(vaultId);
+    }
+    syncedVaultIds.delete(vaultId);
+    kickoffVaultIndexSync(vaultId, vaultPath);
+  };
+
   function isVaultFtsReady(vaultId: string): boolean {
     return syncedVaultIds.has(vaultId);
   }
@@ -381,8 +441,10 @@ export function createServiceDomainRuntime(
     ensureAppSettings: () => appSettings.ensureAppSettings(),
     updateAppSettings: (patch) => appSettings.updateAppSettings(patch),
     clearDashboardSnapshot: () => dashboardSnapshot.clearDashboardSnapshot(),
-    stopVaultFilesystemWatcher: async () => {},
-    enableVaultWatcher: () => {},
+    stopVaultFilesystemWatcher: () => vaultFsWatcher.stop(),
+    enableVaultWatcher: (vaultId) => {
+      watcherDisabledVaultIds.delete(vaultId);
+    },
   });
   vaultsHolder.current = vaults;
 
@@ -417,12 +479,18 @@ export function createServiceDomainRuntime(
     ensureInitialized,
     isHealthy: () => indexBoot.isHealthy(),
     async close() {
+      runtimeClosed = true;
+      await vaultFsWatcher.stop();
       const sql = indexBoot.getSql();
       if (sql) {
         await sql.close();
       }
     },
     vaultIndexSyncStatus,
+    startVaultFilesystemWatcher: (vaultId, vaultPath) =>
+      vaultFsWatcher.start(vaultId, vaultPath),
+    stopVaultFilesystemWatcher: () => vaultFsWatcher.stop(),
+    isVaultFilesystemWatcherActive: () => vaultFsWatcher.isWatching(),
     itemsSearch,
     tagsFolders,
     mediaCover,

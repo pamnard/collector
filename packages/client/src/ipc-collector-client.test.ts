@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -457,6 +457,53 @@ describe("CollectorIpcClient", () => {
           true,
         );
         unsub();
+      } finally {
+        await client.close();
+      }
+    } finally {
+      await host.close();
+    }
+  });
+
+  it("watcher orchestration updates index after vault file change (#164)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-ipc-watch-"));
+    dirs.push(dataDir);
+    const host = await startServiceHost({ dataDir, port: 0 });
+    try {
+      const client = await connectCollectorIpcClient(host.ipcPath!);
+      try {
+        const active = await client.ensureActiveVault();
+        await client.listDashboardItemIds("all");
+
+        await client.startVaultFilesystemWatcher(active.vault.id, active.path);
+        expect(await client.isVaultFilesystemWatcherActive()).toBe(true);
+        await client.stopVaultFilesystemWatcher();
+        expect(await client.isVaultFilesystemWatcherActive()).toBe(false);
+        await client.startVaultFilesystemWatcher(active.vault.id, active.path);
+        expect(await client.isVaultFilesystemWatcherActive()).toBe(true);
+
+        const items = await client.listItems();
+        expect(items.length).toBeGreaterThan(0);
+        const target = items[0]!;
+        const docPath = join(active.path, target.id);
+        const before = await client.getItemById(target.id);
+        const marker = `watch-${Date.now()}`;
+        const raw = readFileSync(docPath, "utf8");
+        const next = raw.includes("title:")
+          ? raw.replace(/title:\s*.*/, `title: ${marker}`)
+          : `---\ntitle: ${marker}\n---\n${raw}`;
+        writeFileSync(docPath, next, "utf8");
+
+        const deadline = Date.now() + 8_000;
+        let updated = before;
+        while (Date.now() < deadline) {
+          updated = await client.getItemById(target.id);
+          if (updated.item.title === marker) {
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        expect(updated.item.title).toBe(marker);
       } finally {
         await client.close();
       }
