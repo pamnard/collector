@@ -204,27 +204,44 @@ export function createCollectorIpcClient(
       }) as Promise<ItemFile>,
 
     // Media / cover
-    listItemMedia: async (_itemId: string): Promise<MediaWithPath[]> =>
-      unimplemented("listItemMedia"),
+    listItemMedia: async (itemId: string): Promise<MediaWithPath[]> =>
+      transport.request("listItemMedia", { itemId }) as Promise<MediaWithPath[]>,
     resolveItemThumbnailPath: async (
-      _item: ItemFile,
-    ): Promise<string | null> => unimplemented("resolveItemThumbnailPath"),
+      item: ItemFile,
+    ): Promise<string | null> =>
+      transport.request("resolveItemThumbnailPath", {
+        item,
+      }) as Promise<string | null>,
     resolveItemThumbnailPaths: async (
-      _items: ItemFile[],
-    ): Promise<Map<string, string | null>> =>
-      unimplemented("resolveItemThumbnailPaths"),
+      items: ItemFile[],
+    ): Promise<Map<string, string | null>> => {
+      const record = (await transport.request("resolveItemThumbnailPaths", {
+        items,
+      })) as Record<string, string | null>;
+      return new Map(Object.entries(record));
+    },
     setItemCoverFromMedia: async (
-      _itemId: string,
-      _mediaId: string,
-    ): Promise<ItemFile> => unimplemented("setItemCoverFromMedia"),
+      itemId: string,
+      mediaId: string,
+    ): Promise<ItemFile> =>
+      transport.request("setItemCoverFromMedia", {
+        itemId,
+        mediaId,
+      }) as Promise<ItemFile>,
     attachMediaFiles: async (
-      _itemId: string,
-      _files: AttachMediaFileInput[],
-    ): Promise<MediaFileMeta[]> => unimplemented("attachMediaFiles"),
-    deleteItemMedia: async (
-      _itemId: string,
-      _mediaId: string,
-    ): Promise<void> => unimplemented("deleteItemMedia"),
+      itemId: string,
+      files: AttachMediaFileInput[],
+    ): Promise<MediaFileMeta[]> =>
+      transport.request("attachMediaFiles", {
+        itemId,
+        files: files.map((file) => ({
+          filename: file.filename,
+          dataBase64: Buffer.from(file.data).toString("base64"),
+        })),
+      }) as Promise<MediaFileMeta[]>,
+    deleteItemMedia: async (itemId: string, mediaId: string): Promise<void> => {
+      await transport.request("deleteItemMedia", { itemId, mediaId });
+    },
 
     // Vaults
     listVaults: async (): Promise<VaultMeta[]> => unimplemented("listVaults"),

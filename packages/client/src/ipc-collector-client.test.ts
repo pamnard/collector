@@ -183,6 +183,53 @@ describe("CollectorIpcClient", () => {
     }
   });
 
+  it("media attach/list/delete work over IPC (#159)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-ipc-media-"));
+    dirs.push(dataDir);
+    const host = await startServiceHost({ dataDir, port: 0 });
+    try {
+      const client = await connectCollectorIpcClient(host.ipcPath!);
+      try {
+        const item = await client.createItem({
+          title: "Media note",
+          content_type: "note",
+          content: "m",
+        });
+
+        // Minimal 1x1 PNG
+        const png = Uint8Array.from(
+          Buffer.from(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+            "base64",
+          ),
+        );
+        const attached = await client.attachMediaFiles(item.id, [
+          { filename: "dot.png", data: png },
+        ]);
+        expect(attached.length).toBe(1);
+        expect(attached[0]!.filename).toBe("dot.png");
+
+        const listed = await client.listItemMedia(item.id);
+        expect(listed.some((m) => m.id === attached[0]!.id)).toBe(true);
+
+        const thumb = await client.resolveItemThumbnailPath(item);
+        expect(thumb === null || typeof thumb === "string").toBe(true);
+
+        const thumbs = await client.resolveItemThumbnailPaths([item]);
+        expect(thumbs instanceof Map).toBe(true);
+        expect(thumbs.has(item.id)).toBe(true);
+
+        await client.deleteItemMedia(item.id, attached[0]!.id);
+        const after = await client.listItemMedia(item.id);
+        expect(after.some((m) => m.id === attached[0]!.id)).toBe(false);
+      } finally {
+        await client.close();
+      }
+    } finally {
+      await host.close();
+    }
+  });
+
   it("unimplemented domain methods fail fast without inventing defaults", async () => {
     const transport = {
       ping: async () => ({ ok: true as const, pong: true as const }),
@@ -200,7 +247,7 @@ describe("CollectorIpcClient", () => {
 
     const client = createCollectorIpcClient(transport);
 
-    await expect(client.listItemMedia("x")).rejects.toMatchObject({
+    await expect(client.listVaults()).rejects.toMatchObject({
       name: "ServiceIpcError",
       layer: "validation",
       code: "unimplemented",
