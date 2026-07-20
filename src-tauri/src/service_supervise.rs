@@ -9,6 +9,7 @@
 //! Child stdout/stderr append to `{data-dir}/logs/collector-service.log` (#168).
 //! The sidecar launches the real Node domain host (#237); READY includes IPC endpoint.
 
+use crate::service_domain_host::{NODE_BIN_ENV, NODE_CLI_ENV};
 use crate::service_lock::{
     cleanup_orphans, CleanupOutcome, SUPERVISOR_PID_ENV,
 };
@@ -19,6 +20,13 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
+
+/// Packaged host runtime paths injected into the sidecar process env.
+#[derive(Debug, Clone)]
+pub struct PackagedHostRuntime {
+    pub node_cli: PathBuf,
+    pub node_bin: PathBuf,
+}
 
 /// Env flag that unlocks supervise spawn/stop for smokes and future cutover.
 pub const SUPERVISE_ENABLE_ENV: &str = "COLLECTOR_ENABLE_SERVICE_SUPERVISE";
@@ -78,6 +86,7 @@ impl ServiceSupervisor {
         sidecar_bin: &Path,
         data_dir: &Path,
         config_dir: Option<&Path>,
+        packaged_host: Option<&PackagedHostRuntime>,
     ) -> Result<Self, SuperviseError> {
         if !supervise_enabled() {
             return Err(SuperviseError::Disabled);
@@ -120,6 +129,10 @@ impl ServiceSupervisor {
             .stderr(Stdio::from(log_file_err));
         if verbose_enabled() {
             cmd.env(VERBOSE_ENV, "1");
+        }
+        if let Some(host) = packaged_host {
+            cmd.env(NODE_CLI_ENV, &host.node_cli);
+            cmd.env(NODE_BIN_ENV, &host.node_bin);
         }
         let child = cmd.spawn()?;
         Ok(Self {
@@ -277,7 +290,7 @@ mod tests {
     #[test]
     fn spawn_refuses_when_flag_off() {
         std::env::remove_var(SUPERVISE_ENABLE_ENV);
-        let err = ServiceSupervisor::spawn(Path::new("/bin/true"), Path::new("/tmp"), None).unwrap_err();
+        let err = ServiceSupervisor::spawn(Path::new("/bin/true"), Path::new("/tmp"), None, None).unwrap_err();
         assert!(matches!(err, SuperviseError::Disabled));
     }
 
@@ -293,7 +306,7 @@ mod tests {
             "collector-supervise-{}",
             std::process::id()
         ));
-        let mut sup = ServiceSupervisor::spawn(&sidecar, &dir, None).expect("spawn");
+        let mut sup = ServiceSupervisor::spawn(&sidecar, &dir, None, None).expect("spawn");
         let body = wait_for_ready_log(&sup.log_path(), Duration::from_secs(20));
         assert!(
             body.contains("COLLECTOR_SERVICE_READY ") && body.contains("\"ipcPath\""),
@@ -318,7 +331,7 @@ mod tests {
             "collector-supervise-locked-{}",
             std::process::id()
         ));
-        let mut first = ServiceSupervisor::spawn(&sidecar, &dir, None).expect("first spawn");
+        let mut first = ServiceSupervisor::spawn(&sidecar, &dir, None, None).expect("first spawn");
         let _ = wait_for_ready_log(&first.log_path(), Duration::from_secs(20));
         assert!(first.is_running().expect("running"));
 
@@ -335,7 +348,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(25));
         }
 
-        let err = ServiceSupervisor::spawn(&sidecar, &dir, None).expect_err("second must fail");
+        let err = ServiceSupervisor::spawn(&sidecar, &dir, None, None).expect_err("second must fail");
         assert!(matches!(err, SuperviseError::AlreadyLocked { .. }));
 
         first.stop(Duration::from_secs(10)).expect("stop");
@@ -355,7 +368,7 @@ mod tests {
             "collector-supervise-logs-{}",
             std::process::id()
         ));
-        let mut sup = ServiceSupervisor::spawn(&sidecar, &dir, None).expect("spawn");
+        let mut sup = ServiceSupervisor::spawn(&sidecar, &dir, None, None).expect("spawn");
         let log = service_log_path(&dir);
         let body = wait_for_ready_log(&log, Duration::from_secs(20));
         assert!(log.is_file(), "expected log at {}", log.display());
@@ -381,7 +394,7 @@ mod tests {
             "collector-supervise-ping-{}",
             std::process::id()
         ));
-        let mut sup = ServiceSupervisor::spawn(&sidecar, &dir, None).expect("spawn");
+        let mut sup = ServiceSupervisor::spawn(&sidecar, &dir, None, None).expect("spawn");
         let body = wait_for_ready_log(&sup.log_path(), Duration::from_secs(20));
         let base_url = parse_ready_base_url(&body).expect(&format!(
             "READY baseUrl missing in log: {body:?}"

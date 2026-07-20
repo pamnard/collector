@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Collector",
-  "version": "0.1.24",
+  "version": "0.1.25",
   "identifier": "com.collector.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -40,6 +40,7 @@
     "targets": "all",
     "createUpdaterArtifacts": true,
     "externalBin": ["binaries/collector-service"],
+    "resources": ["resources/collector-service-host"],
     "shortDescription": "Offline-first desktop vault for saved content",
     "longDescription": "Collector is an offline-first desktop app for saving and organizing articles, images, videos, notes, bookmarks, and more. Files on disk are the source of truth; SQLite powers search and filters.",
     "publisher": "pamnard",

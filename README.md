@@ -57,7 +57,9 @@ npm run tauri:dev
 
 ### Service sidecar (internal)
 
-Release builds package a `collector-service` sidecar binary (`bundle.externalBin`). It is an **internal** detail of the desktop app — not a user-facing daemon to install or configure. The default app path still uses the in-process index; the sidecar is not spawned on start yet.
+Release builds package a `collector-service` sidecar (`bundle.externalBin`) plus a self-contained Node domain host under `resources/collector-service-host/` (bundled Node + `better-sqlite3`). Both are **internal** — not a user-facing daemon to install or configure.
+
+Desktop app default is **service mode**: on start the UI bootstraps the supervised host over local IPC (opt out with `COLLECTOR_SERVICE_MODE=0`). The host is the sole SQLite writer.
 
 ### Linux dev quirks
 
