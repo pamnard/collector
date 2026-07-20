@@ -32,9 +32,12 @@ if dpkg-deb -c "$DEB" | grep -qE '\.(local/share|Library/Application Support|App
 fi
 
 # Packaged sidecar (#165): present in the installer, not spawned by default (#166).
-if ! dpkg-deb -c "$DEB" | grep -q 'collector-service'; then
+# Avoid `dpkg-deb | grep -q` under `pipefail`: early grep exit SIGPIPEs dpkg-deb and
+# falsely fails even when the sidecar is listed.
+deb_contents="$(dpkg-deb -c "$DEB")"
+if ! grep -q 'collector-service' <<<"$deb_contents"; then
   echo "FAIL: .deb missing collector-service sidecar binary (#165)" >&2
-  dpkg-deb -c "$DEB" | head -50 >&2
+  head -50 <<<"$deb_contents" >&2
   exit 1
 fi
 

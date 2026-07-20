@@ -24,35 +24,64 @@ struct ServiceSuperviseState {
     supervisor: Mutex<Option<ServiceSupervisor>>,
 }
 
-fn resolve_sidecar_bin(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let exe = app
-        .path()
-        .executable_dir()
-        .map_err(|e| format!("executable_dir: {e}"))?;
-    // Packaged: sidecar sits next to the app binary as collector-service.
-    // Dev: fall back to src-tauri/binaries/collector-service-$triple from prepare script.
-    let packaged = exe.join("collector-service");
-    if packaged.is_file() {
-        return Ok(packaged);
-    }
-    #[cfg(windows)]
-    {
-        let packaged_exe = exe.join("collector-service.exe");
-        if packaged_exe.is_file() {
-            return Ok(packaged_exe);
+fn host_target_triple() -> Result<String, String> {
+    // Tauri may export TAURI_ENV_TARGET_TRIPLE="" into the parent shell; treat
+    // empty as unset so release-smoke / plain binary launches still resolve.
+    if let Ok(triple) = std::env::var("TAURI_ENV_TARGET_TRIPLE") {
+        let trimmed = triple.trim();
+        if !trimmed.is_empty() {
+            return Ok(trimmed.to_string());
         }
     }
-    let triple = std::env::var("TAURI_ENV_TARGET_TRIPLE")
-        .or_else(|_| {
-            std::process::Command::new("rustc")
-                .args(["--print", "host-tuple"])
-                .output()
-                .ok()
-                .and_then(|o| String::from_utf8(o.stdout).ok())
-                .map(|s| s.trim().to_string())
-                .ok_or_else(|| "host triple".to_string())
-        })
-        .map_err(|e| e.to_string())?;
+    let out = std::process::Command::new("rustc")
+        .args(["--print", "host-tuple"])
+        .output()
+        .map_err(|e| format!("rustc host-tuple: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "rustc --print host-tuple failed (status={})",
+            out.status
+        ));
+    }
+    let triple = String::from_utf8(out.stdout)
+        .map_err(|e| format!("rustc host-tuple utf8: {e}"))?
+        .trim()
+        .to_string();
+    if triple.is_empty() {
+        return Err("rustc --print host-tuple returned empty".into());
+    }
+    Ok(triple)
+}
+
+fn resolve_sidecar_bin(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    // Packaged / `tauri build` output: sidecar sits next to the app binary as
+    // `collector-service`. Prefer both Tauri executable_dir and current_exe
+    // parent — release-smoke launches `target/release/collector` where the
+    // sibling binary exists even if executable_dir differs under xvfb.
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Ok(exe_dir) = app.path().executable_dir() {
+        dirs.push(exe_dir);
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            dirs.push(parent.to_path_buf());
+        }
+    }
+    for dir in &dirs {
+        let packaged = dir.join("collector-service");
+        if packaged.is_file() {
+            return Ok(packaged);
+        }
+        #[cfg(windows)]
+        {
+            let packaged_exe = dir.join("collector-service.exe");
+            if packaged_exe.is_file() {
+                return Ok(packaged_exe);
+            }
+        }
+    }
+    // Dev: src-tauri/binaries/collector-service-$triple from prepare script.
+    let triple = host_target_triple()?;
     let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("binaries")
         .join(format!("collector-service-{triple}"));

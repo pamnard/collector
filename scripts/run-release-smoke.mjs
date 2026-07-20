@@ -53,6 +53,9 @@ const env = {
 };
 delete env.RUSTUP_HOME;
 delete env.CARGO_HOME;
+// `tauri build` may leave an empty TAURI_ENV_TARGET_TRIPLE in the parent env;
+// an empty value breaks sidecar resolution (looks for collector-service-).
+delete env.TAURI_ENV_TARGET_TRIPLE;
 mkdirSync(env.XDG_DATA_HOME, { recursive: true });
 mkdirSync(env.XDG_CONFIG_HOME, { recursive: true });
 
