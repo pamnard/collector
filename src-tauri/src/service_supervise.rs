@@ -5,21 +5,23 @@
 //! spawn — the desktop app startup path must not call spawn when disabled
 //! (no second SQLite writer / no dual process).
 //!
+//! [`ServiceSupervisor::spawn_for_service_mode`] skips that env gate (service
+//! mode has its own `COLLECTOR_SERVICE_MODE` check) and does not mutate env.
+//!
 //! Spawn runs orphan cleanup (#167) and refuses when a live lock holder remains.
 //! Child stdout/stderr append to `{data-dir}/logs/collector-service.log` (#168).
 //! The sidecar launches the real Node domain host (#237); READY includes IPC endpoint.
 
-use crate::service_domain_host::{NODE_BIN_ENV, NODE_CLI_ENV};
-use crate::service_lock::{
-    cleanup_orphans, CleanupOutcome, SUPERVISOR_PID_ENV,
-};
-use crate::service_logs::{
-    open_service_log_append, service_log_path, verbose_enabled, VERBOSE_ENV,
-};
-use std::io;
+use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
+
+use crate::service_domain_host::{NODE_BIN_ENV, NODE_CLI_ENV};
+use crate::service_lock::{cleanup_orphans, CleanupOutcome, SUPERVISOR_PID_ENV};
+use crate::service_logs::{
+    open_service_log_append, service_log_path, verbose_enabled, VERBOSE_ENV,
+};
 
 /// Packaged host runtime paths injected into the sidecar process env.
 #[derive(Debug, Clone)]
@@ -44,38 +46,20 @@ pub struct ServiceSupervisor {
     data_dir: PathBuf,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum SuperviseError {
+    #[error(
+        "service supervise disabled (set COLLECTOR_ENABLE_SERVICE_SUPERVISE=1 to enable)"
+    )]
     Disabled,
+    #[error("service lock already held by pid {service_pid}")]
     AlreadyLocked { service_pid: u32 },
-    Io(io::Error),
+    #[error("service supervise I/O: {0}")]
+    Io(#[from] io::Error),
+    #[error("service process is not running")]
     NotRunning,
+    #[error("timed out waiting for service process")]
     TimedOut,
-}
-
-impl std::fmt::Display for SuperviseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Disabled => write!(
-                f,
-                "service supervise disabled (set {SUPERVISE_ENABLE_ENV}=1 to enable)"
-            ),
-            Self::AlreadyLocked { service_pid } => {
-                write!(f, "service lock already held by pid {service_pid}")
-            }
-            Self::Io(err) => write!(f, "service supervise I/O: {err}"),
-            Self::NotRunning => write!(f, "service process is not running"),
-            Self::TimedOut => write!(f, "timed out waiting for service process"),
-        }
-    }
-}
-
-impl std::error::Error for SuperviseError {}
-
-impl From<io::Error> for SuperviseError {
-    fn from(value: io::Error) -> Self {
-        Self::Io(value)
-    }
 }
 
 impl ServiceSupervisor {
@@ -91,6 +75,28 @@ impl ServiceSupervisor {
         if !supervise_enabled() {
             return Err(SuperviseError::Disabled);
         }
+        Self::spawn_inner(sidecar_bin, data_dir, config_dir, packaged_host)
+    }
+
+    /// Same as [`Self::spawn`] but skips `COLLECTOR_ENABLE_SERVICE_SUPERVISE`.
+    ///
+    /// Used by service-mode bootstrap (gated by `COLLECTOR_SERVICE_MODE` instead).
+    /// Does not mutate process environment.
+    pub fn spawn_for_service_mode(
+        sidecar_bin: &Path,
+        data_dir: &Path,
+        config_dir: Option<&Path>,
+        packaged_host: Option<&PackagedHostRuntime>,
+    ) -> Result<Self, SuperviseError> {
+        Self::spawn_inner(sidecar_bin, data_dir, config_dir, packaged_host)
+    }
+
+    fn spawn_inner(
+        sidecar_bin: &Path,
+        data_dir: &Path,
+        config_dir: Option<&Path>,
+        packaged_host: Option<&PackagedHostRuntime>,
+    ) -> Result<Self, SuperviseError> {
         if !sidecar_bin.is_file() {
             return Err(SuperviseError::Io(io::Error::new(
                 io::ErrorKind::NotFound,
@@ -107,9 +113,7 @@ impl ServiceSupervisor {
             | CleanupOutcome::CleanedOrphan { .. } => {}
         }
         let (log_path, log_file) = open_service_log_append(data_dir)?;
-        let log_file_err = log_file
-            .try_clone()
-            .map_err(|e| SuperviseError::Io(e))?;
+        let log_file_err = log_file.try_clone()?;
         if verbose_enabled() {
             eprintln!(
                 "collector supervise: service log → {} (set {VERBOSE_ENV}=0 to silence)",
@@ -117,9 +121,7 @@ impl ServiceSupervisor {
             );
         }
         let mut cmd = Command::new(sidecar_bin);
-        cmd.arg("serve")
-            .arg("--data-dir")
-            .arg(data_dir);
+        cmd.arg("serve").arg("--data-dir").arg(data_dir);
         if let Some(config_dir) = config_dir {
             cmd.arg("--config-dir").arg(config_dir);
         }
@@ -150,18 +152,36 @@ impl ServiceSupervisor {
     }
 
     /// Block until the service log contains a READY line with `ipcPath`.
+    ///
+    /// Reads only newly appended bytes (file offset), not the whole log each poll.
     pub fn wait_for_ready_ipc_path(
         &self,
         timeout: Duration,
     ) -> Result<PathBuf, SuperviseError> {
         let log = service_log_path(&self.data_dir);
         let deadline = Instant::now() + timeout;
+        let mut offset: u64 = 0;
+        let mut carry = String::new();
         loop {
             if log.is_file() {
-                let body = std::fs::read_to_string(&log).unwrap_or_default();
-                for line in body.lines() {
-                    if let Some(path) = crate::service_ipc::parse_ready_ipc_path(line) {
-                        return Ok(path);
+                let len = std::fs::metadata(&log)?.len();
+                if len < offset {
+                    offset = 0;
+                    carry.clear();
+                }
+                if len > offset {
+                    let mut file = std::fs::File::open(&log)?;
+                    file.seek(SeekFrom::Start(offset))?;
+                    let mut chunk = String::new();
+                    file.read_to_string(&mut chunk)?;
+                    offset = len;
+                    carry.push_str(&chunk);
+                    while let Some(nl) = carry.find('\n') {
+                        let line: String = carry.drain(..=nl).collect();
+                        let line = line.trim_end_matches(['\r', '\n']);
+                        if let Some(path) = crate::service_ipc::parse_ready_ipc_path(line) {
+                            return Ok(path);
+                        }
                     }
                 }
             }
@@ -236,23 +256,29 @@ fn libc_kill(pid: i32, sig: i32) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::Command;
-
-    fn host_triple() -> String {
-        let out = Command::new("rustc")
-            .args(["--print", "host-tuple"])
-            .output()
-            .expect("rustc host-tuple");
-        String::from_utf8(out.stdout)
-            .expect("utf8")
-            .trim()
-            .to_string()
-    }
+    use serial_test::serial;
 
     fn sidecar_path() -> PathBuf {
-        let triple = host_triple();
+        let triple = crate::host_target_triple().expect("host triple");
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         root.join(format!("binaries/collector-service-{triple}"))
+    }
+
+    fn require_sidecar_or_skip(sidecar: &Path) -> bool {
+        if sidecar.is_file() {
+            return true;
+        }
+        if std::env::var_os("CI").is_some() {
+            panic!(
+                "sidecar missing at {} (run prepare:service-sidecar; required under CI)",
+                sidecar.display()
+            );
+        }
+        eprintln!(
+            "skip: sidecar missing at {} (run prepare:service-sidecar)",
+            sidecar.display()
+        );
+        false
     }
 
     fn wait_for_ready_log(log: &Path, timeout: Duration) -> String {
@@ -288,17 +314,20 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn spawn_refuses_when_flag_off() {
         std::env::remove_var(SUPERVISE_ENABLE_ENV);
-        let err = ServiceSupervisor::spawn(Path::new("/bin/true"), Path::new("/tmp"), None, None).unwrap_err();
+        let err =
+            ServiceSupervisor::spawn(Path::new("/bin/true"), Path::new("/tmp"), None, None)
+                .unwrap_err();
         assert!(matches!(err, SuperviseError::Disabled));
     }
 
     #[test]
+    #[serial]
     fn spawn_stop_when_flag_on() {
         let sidecar = sidecar_path();
-        if !sidecar.is_file() {
-            eprintln!("skip: sidecar missing at {} (run prepare:service-sidecar)", sidecar.display());
+        if !require_sidecar_or_skip(&sidecar) {
             return;
         }
         std::env::set_var(SUPERVISE_ENABLE_ENV, "1");
@@ -314,16 +343,16 @@ mod tests {
         );
         assert!(sup.is_running().expect("running"));
         sup.stop(Duration::from_secs(10)).expect("stop");
-        assert!(!sup.is_running().unwrap_or(false));
+        assert!(!sup.is_running().expect("stopped check"));
         let _ = std::fs::remove_dir_all(dir);
         std::env::remove_var(SUPERVISE_ENABLE_ENV);
     }
 
     #[test]
+    #[serial]
     fn spawn_refuses_when_live_lock_held() {
         let sidecar = sidecar_path();
-        if !sidecar.is_file() {
-            eprintln!("skip: sidecar missing at {}", sidecar.display());
+        if !require_sidecar_or_skip(&sidecar) {
             return;
         }
         std::env::set_var(SUPERVISE_ENABLE_ENV, "1");
@@ -335,7 +364,6 @@ mod tests {
         let _ = wait_for_ready_log(&first.log_path(), Duration::from_secs(20));
         assert!(first.is_running().expect("running"));
 
-        // Wait until child writes the lock so cleanup sees a live holder.
         let deadline = Instant::now() + Duration::from_secs(3);
         while Instant::now() < deadline {
             if crate::service_lock::read_lock(&dir)
@@ -348,7 +376,8 @@ mod tests {
             std::thread::sleep(Duration::from_millis(25));
         }
 
-        let err = ServiceSupervisor::spawn(&sidecar, &dir, None, None).expect_err("second must fail");
+        let err =
+            ServiceSupervisor::spawn(&sidecar, &dir, None, None).expect_err("second must fail");
         assert!(matches!(err, SuperviseError::AlreadyLocked { .. }));
 
         first.stop(Duration::from_secs(10)).expect("stop");
@@ -357,10 +386,10 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn spawn_writes_service_log_file() {
         let sidecar = sidecar_path();
-        if !sidecar.is_file() {
-            eprintln!("skip: sidecar missing at {}", sidecar.display());
+        if !require_sidecar_or_skip(&sidecar) {
             return;
         }
         std::env::set_var(SUPERVISE_ENABLE_ENV, "1");
@@ -383,10 +412,10 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn spawn_domain_host_answers_http_ping() {
         let sidecar = sidecar_path();
-        if !sidecar.is_file() {
-            eprintln!("skip: sidecar missing at {}", sidecar.display());
+        if !require_sidecar_or_skip(&sidecar) {
             return;
         }
         std::env::set_var(SUPERVISE_ENABLE_ENV, "1");
@@ -396,9 +425,9 @@ mod tests {
         ));
         let mut sup = ServiceSupervisor::spawn(&sidecar, &dir, None, None).expect("spawn");
         let body = wait_for_ready_log(&sup.log_path(), Duration::from_secs(20));
-        let base_url = parse_ready_base_url(&body).expect(&format!(
-            "READY baseUrl missing in log: {body:?}"
-        ));
+        let base_url = parse_ready_base_url(&body).unwrap_or_else(|| {
+            panic!("READY baseUrl missing in log: {body:?}")
+        });
         let ping_url = format!("{base_url}/ping");
         let out = Command::new("curl")
             .args(["-fsS", "--max-time", "5", &ping_url])
@@ -415,7 +444,6 @@ mod tests {
             text.contains("\"pong\":true") || text.contains("\"ok\":true"),
             "unexpected ping body: {text}"
         );
-        // Index DB must exist under the supervised data-dir (sole writer).
         assert!(
             dir.join("collector.db").is_file(),
             "expected index DB at {}",

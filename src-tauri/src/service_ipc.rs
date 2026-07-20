@@ -4,48 +4,42 @@
 //! `@collector/service` `defaultServiceIpcPath`.
 //!
 //! Wire format: 4-byte BE length + UTF-8 JSON.
+//!
+//! # Platform notes
+//!
+//! On Unix, connect sets read/write socket timeouts. On Windows named pipes
+//! (`std::fs::File`), those timeouts are **not** enforced — overlapped I/O is
+//! out of scope for this crate.
 
-use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use serde_json::{json, Value};
+
 const PROTOCOL_VERSION: u32 = 1;
 const MAX_FRAME_BYTES: usize = 1024 * 1024;
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ServiceIpcError {
-    Io(std::io::Error),
+    #[error("service IPC I/O: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("service IPC framing: {0}")]
     Framing(String),
+    #[error("service IPC protocol: {0}")]
     Protocol(String),
-    Remote { layer: String, code: String, message: String },
+    #[error("service IPC {layer}/{code}: {message}")]
+    Remote {
+        layer: String,
+        code: String,
+        message: String,
+    },
+    #[error("service IPC request timed out")]
     Timeout,
+    #[error("service IPC not connected")]
     NotConnected,
-}
-
-impl std::fmt::Display for ServiceIpcError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Io(err) => write!(f, "service IPC I/O: {err}"),
-            Self::Framing(msg) => write!(f, "service IPC framing: {msg}"),
-            Self::Protocol(msg) => write!(f, "service IPC protocol: {msg}"),
-            Self::Remote { layer, code, message } => {
-                write!(f, "service IPC {layer}/{code}: {message}")
-            }
-            Self::Timeout => write!(f, "service IPC request timed out"),
-            Self::NotConnected => write!(f, "service IPC not connected"),
-        }
-    }
-}
-
-impl std::error::Error for ServiceIpcError {}
-
-impl From<std::io::Error> for ServiceIpcError {
-    fn from(value: std::io::Error) -> Self {
-        Self::Io(value)
-    }
 }
 
 struct IpcStream {
@@ -91,6 +85,7 @@ impl IpcStream {
         }
     }
 
+    /// Set read timeout. **Unix only** — on Windows this is a no-op (see module docs).
     fn set_read_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
         #[cfg(unix)]
         {
@@ -98,11 +93,13 @@ impl IpcStream {
         }
         #[cfg(windows)]
         {
+            // Named-pipe File has no std timeout API; do not pretend it works.
             let _ = timeout;
             Ok(())
         }
     }
 
+    /// Set write timeout. **Unix only** — on Windows this is a no-op (see module docs).
     fn set_write_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
         #[cfg(unix)]
         {
@@ -208,7 +205,9 @@ impl ServiceIpcClient {
         });
         if let Some(params) = params {
             msg.as_object_mut()
-                .expect("object")
+                .ok_or_else(|| {
+                    ServiceIpcError::Protocol("request JSON must be an object".into())
+                })?
                 .insert("params".into(), params);
         }
         let frame = encode_frame(&msg)?;
@@ -239,23 +238,28 @@ impl ServiceIpcClient {
                 return Ok(reply.get("result").cloned().unwrap_or(Value::Null));
             }
             if typ == "err" {
-                let err = reply.get("error").cloned().unwrap_or(Value::Null);
+                let err = reply
+                    .get("error")
+                    .ok_or_else(|| ServiceIpcError::Framing("missing error object".into()))?;
+                let layer = err
+                    .get("layer")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| ServiceIpcError::Framing("missing error.layer".into()))?
+                    .to_string();
+                let code = err
+                    .get("code")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| ServiceIpcError::Framing("missing error.code".into()))?
+                    .to_string();
+                let message = err
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| ServiceIpcError::Framing("missing error.message".into()))?
+                    .to_string();
                 return Err(ServiceIpcError::Remote {
-                    layer: err
-                        .get("layer")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("domain")
-                        .to_string(),
-                    code: err
-                        .get("code")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("error")
-                        .to_string(),
-                    message: err
-                        .get("message")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("service error")
-                        .to_string(),
+                    layer,
+                    code,
+                    message,
                 });
             }
             return Err(ServiceIpcError::Framing(format!("unexpected type {typ}")));
@@ -284,6 +288,12 @@ impl ServiceIpcState {
             client: Mutex::new(None),
             ipc_path: Mutex::new(None),
         }
+    }
+}
+
+impl Default for ServiceIpcState {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -342,6 +352,12 @@ mod tests {
         let cli = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../packages/service/dist/host/cli.js");
         if !cli.is_file() {
+            if std::env::var_os("CI").is_some() {
+                panic!(
+                    "missing {} (build @collector/service; required under CI)",
+                    cli.display()
+                );
+            }
             eprintln!("skip: missing {} (build @collector/service)", cli.display());
             return;
         }
@@ -365,7 +381,7 @@ mod tests {
         let stdout = child.stdout.take().expect("stdout");
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
-            for line in BufReader::new(stdout).lines().flatten() {
+            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                 let _ = tx.send(line);
             }
         });

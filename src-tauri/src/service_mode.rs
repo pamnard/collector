@@ -4,11 +4,10 @@
 //! Spawns the supervised domain host with the canonical profile layout and
 //! returns the IPC path for the WebView transport (#239).
 
-use crate::service_supervise::{
-    supervise_enabled, PackagedHostRuntime, ServiceSupervisor, SUPERVISE_ENABLE_ENV,
-};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+
+use crate::service_supervise::{PackagedHostRuntime, ServiceSupervisor};
 
 pub const SERVICE_MODE_ENV: &str = "COLLECTOR_SERVICE_MODE";
 
@@ -26,13 +25,6 @@ pub fn service_mode_enabled() -> bool {
     }
 }
 
-/// Ensure supervise gate is unlocked for cutover spawn.
-fn ensure_supervise_unlocked() {
-    if !supervise_enabled() {
-        std::env::set_var(SUPERVISE_ENABLE_ENV, "1");
-    }
-}
-
 pub fn bootstrap_service_mode(
     sidecar_bin: &Path,
     data_dir: &Path,
@@ -45,16 +37,20 @@ pub fn bootstrap_service_mode(
             "service mode disabled (set {SERVICE_MODE_ENV}=1 or unset it)"
         ));
     }
-    ensure_supervise_unlocked();
     if let Some(existing) = supervisor.as_mut() {
-        if existing.is_running().unwrap_or(false) {
+        if existing.is_running().map_err(|e| e.to_string())? {
             return existing
                 .wait_for_ready_ipc_path(Duration::from_secs(20))
                 .map_err(|e| e.to_string());
         }
     }
-    let sup = ServiceSupervisor::spawn(sidecar_bin, data_dir, Some(config_dir), packaged_host)
-        .map_err(|e| e.to_string())?;
+    let sup = ServiceSupervisor::spawn_for_service_mode(
+        sidecar_bin,
+        data_dir,
+        Some(config_dir),
+        packaged_host,
+    )
+    .map_err(|e| e.to_string())?;
     let ipc_path = sup
         .wait_for_ready_ipc_path(Duration::from_secs(30))
         .map_err(|e| e.to_string())?;
@@ -65,14 +61,17 @@ pub fn bootstrap_service_mode(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn default_enabled_when_env_unset() {
         std::env::remove_var(SERVICE_MODE_ENV);
         assert!(service_mode_enabled());
     }
 
     #[test]
+    #[serial]
     fn disabled_when_env_zero() {
         std::env::set_var(SERVICE_MODE_ENV, "0");
         assert!(!service_mode_enabled());
@@ -80,26 +79,24 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn bootstrap_spawns_live_host_and_returns_ipc_path() {
         use crate::service_ipc::ServiceIpcClient;
-        use crate::service_supervise::SUPERVISE_ENABLE_ENV;
-        use std::process::Command;
 
-        let triple = {
-            let out = Command::new("rustc")
-                .args(["--print", "host-tuple"])
-                .output()
-                .expect("rustc");
-            String::from_utf8(out.stdout).expect("utf8").trim().to_string()
-        };
+        let triple = crate::host_target_triple().expect("host triple");
         let sidecar = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join(format!("binaries/collector-service-{triple}"));
         if !sidecar.is_file() {
+            if std::env::var_os("CI").is_some() {
+                panic!(
+                    "missing sidecar {} (required under CI)",
+                    sidecar.display()
+                );
+            }
             eprintln!("skip: missing sidecar {}", sidecar.display());
             return;
         }
         std::env::remove_var(SERVICE_MODE_ENV);
-        std::env::set_var(SUPERVISE_ENABLE_ENV, "1");
         let root = std::env::temp_dir().join(format!(
             "collector-mode-boot-{}",
             std::process::id()
@@ -132,6 +129,5 @@ mod tests {
         }
         let _ = client.close();
         let _ = std::fs::remove_dir_all(root);
-        std::env::remove_var(SUPERVISE_ENABLE_ENV);
     }
 }

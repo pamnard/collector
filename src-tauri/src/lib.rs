@@ -1,19 +1,23 @@
 mod vault_fs;
 mod vault_watcher;
 pub mod service_domain_host;
+pub mod service_ipc;
 pub mod service_lock;
 pub mod service_logs;
-pub mod service_supervise;
 pub mod service_mode;
-pub mod service_ipc;
+pub mod service_supervise;
 
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use tauri::Manager;
+
+use service_ipc::{ServiceIpcClient, ServiceIpcState};
+use service_mode::{bootstrap_service_mode, service_mode_enabled};
 use service_supervise::{
     supervise_enabled, PackagedHostRuntime, ServiceSupervisor, SUPERVISE_ENABLE_ENV,
 };
-use std::path::PathBuf;
-use std::sync::Mutex;
-use std::time::Duration;
-use tauri::Manager;
 use vault_fs::{
     fs_touch, fs_write_text_exclusive, resolve_item_thumbnail_paths, vault_items_read_meta,
     vault_items_read_source_refs, vault_items_stat_meta,
@@ -26,7 +30,7 @@ struct ServiceSuperviseState {
     supervisor: Mutex<Option<ServiceSupervisor>>,
 }
 
-fn host_target_triple() -> Result<String, String> {
+pub(crate) fn host_target_triple() -> Result<String, String> {
     // Tauri may export TAURI_ENV_TARGET_TRIPLE="" into the parent shell; treat
     // empty as unset so release-smoke / plain binary launches still resolve.
     if let Ok(triple) = std::env::var("TAURI_ENV_TARGET_TRIPLE") {
@@ -202,7 +206,7 @@ mod packaged_host_resolve_tests {
             fs::write(host.join("node"), b"").unwrap();
             // executable bit not required for is_file()
         }
-        let found = find_packaged_host_in_roots(&[root.clone()])
+        let found = find_packaged_host_in_roots(std::slice::from_ref(&root))
             .expect("resolve")
             .expect("must find packaged host");
         assert!(found.node_cli.ends_with("cli.js"));
@@ -216,7 +220,7 @@ mod packaged_host_resolve_tests {
             std::process::id()
         ));
         fs::create_dir_all(&root).unwrap();
-        let found = find_packaged_host_in_roots(&[root.clone()]).expect("resolve");
+        let found = find_packaged_host_in_roots(std::slice::from_ref(&root)).expect("resolve");
         assert!(found.is_none());
         let _ = fs::remove_dir_all(root);
     }
@@ -242,7 +246,7 @@ fn service_supervise_spawn(
     let packaged_host = resolve_packaged_host_runtime(&app)?;
     let mut guard = state.supervisor.lock().map_err(|e| e.to_string())?;
     if let Some(existing) = guard.as_mut() {
-        if existing.is_running().unwrap_or(false) {
+        if existing.is_running().map_err(|e| e.to_string())? {
             return Ok(existing.pid());
         }
     }
@@ -284,10 +288,6 @@ fn service_supervise_kill(
     Ok(())
 }
 
-
-use service_ipc::{ServiceIpcClient, ServiceIpcState};
-use std::sync::Arc;
-
 #[tauri::command]
 fn service_ipc_connect(
     ipc_state: tauri::State<'_, ServiceIpcState>,
@@ -328,9 +328,6 @@ fn service_ipc_disconnect(
     *ipc_state.ipc_path.lock().map_err(|e| e.to_string())? = None;
     Ok(())
 }
-
-
-use service_mode::{bootstrap_service_mode, service_mode_enabled};
 
 #[tauri::command]
 fn service_mode_is_enabled() -> bool {
