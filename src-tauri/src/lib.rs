@@ -96,9 +96,71 @@ fn resolve_sidecar_bin(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     ))
 }
 
+/// Relative markers for `collector-service-host/cli.js` under a search root.
+///
+/// Linux `.deb`: Tauri `resource_dir()` is `/usr/lib/<ProductName>` (see
+/// tauri-utils `resource_dir_from`), while bundle resources land in
+/// `resource_dir/resources/…`. Flat `resource_dir/collector-service-host`
+/// covers Windows / `target/release` layouts.
+fn packaged_host_cli_candidates(root: &std::path::Path) -> [PathBuf; 2] {
+    [
+        root.join("collector-service-host/cli.js"),
+        root.join("resources/collector-service-host/cli.js"),
+    ]
+}
+
+fn packaged_host_from_cli(cli: PathBuf) -> Result<PackagedHostRuntime, String> {
+    let host_dir = cli
+        .parent()
+        .ok_or_else(|| format!("packaged host cli has no parent: {}", cli.display()))?
+        .to_path_buf();
+    #[cfg(windows)]
+    let node = host_dir.join("node.exe");
+    #[cfg(not(windows))]
+    let node = host_dir.join("node");
+    if !node.is_file() {
+        return Err(format!(
+            "packaged host marker {} present but bundled node missing at {}",
+            cli.display(),
+            node.display()
+        ));
+    }
+    Ok(PackagedHostRuntime {
+        node_cli: cli.canonicalize().unwrap_or(cli),
+        node_bin: node.canonicalize().unwrap_or(node),
+    })
+}
+
+/// Pure resolver used by [`resolve_packaged_host_runtime`] (unit-tested).
+fn find_packaged_host_in_roots(roots: &[PathBuf]) -> Result<Option<PackagedHostRuntime>, String> {
+    let mut saw_host_dir_without_cli: Option<PathBuf> = None;
+    for root in roots {
+        for cli in packaged_host_cli_candidates(root) {
+            if cli.is_file() {
+                return Ok(Some(packaged_host_from_cli(cli)?));
+            }
+            if let Some(host_dir) = cli.parent() {
+                if host_dir.is_dir() {
+                    saw_host_dir_without_cli = Some(host_dir.to_path_buf());
+                }
+            }
+        }
+    }
+    if let Some(dir) = saw_host_dir_without_cli {
+        return Err(format!(
+            "packaged host dir {} exists but collector-service-host/cli.js is missing",
+            dir.display()
+        ));
+    }
+    Ok(None)
+}
+
 /// Locate packaged `collector-service-host/cli.js` under Tauri resource_dir (or
 /// next to the executable for `target/release` layouts). Marker is **cli.js** —
 /// a bare resource_dir without that file is not "packaged present".
+///
+/// Do **not** search `CARGO_MANIFEST_DIR/resources`: that false-greens release
+/// smoke on the build machine while installed `.deb` still fails inject.
 fn resolve_packaged_host_runtime(
     app: &tauri::AppHandle,
 ) -> Result<Option<PackagedHostRuntime>, String> {
@@ -116,41 +178,48 @@ fn resolve_packaged_host_runtime(
             roots.push(parent.join("resources"));
         }
     }
-    // Dev prepare output before tauri copies resources into target/release.
-    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources"));
+    find_packaged_host_in_roots(&roots)
+}
 
-    let mut saw_host_dir_without_cli: Option<PathBuf> = None;
-    for root in &roots {
-        let host_dir = root.join("collector-service-host");
-        let cli = host_dir.join("cli.js");
-        if cli.is_file() {
-            #[cfg(windows)]
-            let node = host_dir.join("node.exe");
-            #[cfg(not(windows))]
-            let node = host_dir.join("node");
-            if !node.is_file() {
-                return Err(format!(
-                    "packaged host marker {} present but bundled node missing at {}",
-                    cli.display(),
-                    node.display()
-                ));
-            }
-            return Ok(Some(PackagedHostRuntime {
-                node_cli: cli.canonicalize().unwrap_or(cli),
-                node_bin: node.canonicalize().unwrap_or(node),
-            }));
-        }
-        if host_dir.is_dir() {
-            saw_host_dir_without_cli = Some(host_dir);
-        }
-    }
-    if let Some(dir) = saw_host_dir_without_cli {
-        return Err(format!(
-            "packaged host dir {} exists but collector-service-host/cli.js is missing",
-            dir.display()
+#[cfg(test)]
+mod packaged_host_resolve_tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn finds_host_under_linux_deb_resource_dir_layout() {
+        let root = std::env::temp_dir().join(format!(
+            "collector-linux-host-{}",
+            std::process::id()
         ));
+        let host = root.join("resources/collector-service-host");
+        fs::create_dir_all(&host).unwrap();
+        fs::write(host.join("cli.js"), b"// marker").unwrap();
+        #[cfg(windows)]
+        fs::write(host.join("node.exe"), b"").unwrap();
+        #[cfg(not(windows))]
+        {
+            fs::write(host.join("node"), b"").unwrap();
+            // executable bit not required for is_file()
+        }
+        let found = find_packaged_host_in_roots(&[root.clone()])
+            .expect("resolve")
+            .expect("must find packaged host");
+        assert!(found.node_cli.ends_with("cli.js"));
+        let _ = fs::remove_dir_all(root);
     }
-    Ok(None)
+
+    #[test]
+    fn misses_when_only_lib_root_without_resources_subdir() {
+        let root = std::env::temp_dir().join(format!(
+            "collector-linux-host-miss-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let found = find_packaged_host_in_roots(&[root.clone()]).expect("resolve");
+        assert!(found.is_none());
+        let _ = fs::remove_dir_all(root);
+    }
 }
 
 #[tauri::command]

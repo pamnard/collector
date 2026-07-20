@@ -73,6 +73,25 @@ if (existsSync(repoMarker)) {
 const nodeBin = join(hostDir, nodeName);
 const cliJs = join(hostDir, "cli.js");
 
+
+console.log("==> Linux deb layout marker (resource_dir/resources/host)");
+const linuxRoot = join(root, "lib", "Collector");
+const linuxHost = join(linuxRoot, "resources", "collector-service-host");
+mkdirSync(linuxHost, { recursive: true });
+cpSync(hostSrc, linuxHost, { recursive: true });
+const linuxCli = join(linuxHost, "cli.js");
+const linuxNode = join(linuxHost, nodeName);
+if (!existsSync(linuxCli) || !existsSync(linuxNode)) {
+  fail("linux deb layout copy incomplete");
+}
+// Contract: candidates are root/collector-service-host/cli.js OR
+// root/resources/collector-service-host/cli.js where root === resource_dir.
+if (!existsSync(join(linuxRoot, "resources", "collector-service-host", "cli.js"))) {
+  fail("linux resource_dir candidate missing");
+}
+if (existsSync(join(linuxRoot, "collector-service-host", "cli.js"))) {
+  fail("unexpected flat host under lib/Collector (should be under resources/)");
+}
 console.log("==> ABI probe (bundled node + better-sqlite3)");
 await new Promise((resolvePromise, rejectPromise) => {
   const child = spawn(nodeBin, ["-e", "require('better-sqlite3')(':memory:'); console.log('ok')"], {
