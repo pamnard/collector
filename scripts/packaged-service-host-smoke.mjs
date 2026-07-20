@@ -51,6 +51,9 @@ if (!existsSync(join(hostSrc, nodeName))) {
 if (!existsSync(join(hostSrc, "node_modules", "better-sqlite3"))) {
   fail(`better-sqlite3 missing under ${hostSrc}`);
 }
+if (!existsSync(join(hostSrc, "node_modules", "sharp"))) {
+  fail(`sharp missing under ${hostSrc}`);
+}
 
 const root = mkdtempSync(join(tmpdir(), "collector-packaged-host-"));
 const binDir = join(root, "bin");
@@ -92,9 +95,9 @@ if (!existsSync(join(linuxRoot, "resources", "collector-service-host", "cli.js")
 if (existsSync(join(linuxRoot, "collector-service-host", "cli.js"))) {
   fail("unexpected flat host under lib/Collector (should be under resources/)");
 }
-console.log("==> ABI probe (bundled node + better-sqlite3)");
+console.log("==> ABI probe (bundled node + better-sqlite3 + sharp)");
 await new Promise((resolvePromise, rejectPromise) => {
-  const child = spawn(nodeBin, ["-e", "require('better-sqlite3')(':memory:'); console.log('ok')"], {
+  const child = spawn(nodeBin, ["-e", "require('better-sqlite3')(':memory:'); require('sharp'); console.log('ok')"], {
     cwd: hostDir,
     stdio: ["ignore", "pipe", "pipe"],
   });

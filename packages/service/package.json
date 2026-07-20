@@ -36,7 +36,8 @@
     "@collector/core": "*",
     "@collector/db": "*",
     "@collector/shared": "*",
-    "better-sqlite3": "^11.9.1"
+    "better-sqlite3": "^11.9.1",
+    "sharp": "^0.34.2"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

@@ -161,6 +161,11 @@ export {
   clearItemCover,
   resolveItemThumbnailAbsolutePath,
 } from "./vault/cover-operations.js";
+export { resolveItemThumbnailPathsBatch } from "./vault/thumbnail-resolve.js";
+export type {
+  ThumbnailResolveItem,
+  ThumbnailResolveResult,
+} from "./vault/thumbnail-resolve.js";
 export { assertVaultTreeLayout } from "./vault/assert-vault-layout.js";
 
 export {

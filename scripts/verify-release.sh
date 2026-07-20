@@ -278,6 +278,7 @@ HOST_RES="$ROOT/src-tauri/resources/collector-service-host"
 [[ -f "$HOST_RES/cli.js" ]] || fail "packaged host missing cli.js at $HOST_RES (prepare-service-host-resources)"
 [[ -f "$HOST_RES/node" || -f "$HOST_RES/node.exe" ]] || fail "packaged host missing bundled node at $HOST_RES"
 [[ -d "$HOST_RES/node_modules/better-sqlite3" ]] || fail "packaged host missing better-sqlite3 at $HOST_RES"
+[[ -d "$HOST_RES/node_modules/sharp" ]] || fail "packaged host missing sharp at $HOST_RES"
 
 step "typecheck"
 npm run typecheck

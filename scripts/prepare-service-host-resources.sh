@@ -12,6 +12,7 @@ cd "$ROOT"
 # Pin: must match downloaded binary + headers tarballs below.
 NODE_VERSION="${COLLECTOR_BUNDLED_NODE_VERSION:-22.22.3}"
 BETTER_SQLITE3_VERSION="${COLLECTOR_BETTER_SQLITE3_VERSION:-11.10.0}"
+SHARP_VERSION="${COLLECTOR_SHARP_VERSION:-0.34.2}"
 
 HOST_OUT="$ROOT/src-tauri/resources/collector-service-host"
 CACHE_ROOT="${COLLECTOR_NODE_CACHE:-$ROOT/src-tauri/.cache/node-v${NODE_VERSION}}"
@@ -144,6 +145,7 @@ echo "==> esbuild domain host → $HOST_OUT/cli.js"
   --format=cjs \
   --packages=bundle \
   --external:better-sqlite3 \
+  --external:sharp \
   --outfile="$HOST_OUT/cli.js"
 
 cat >"$HOST_OUT/package.json" <<'EOF'
@@ -155,16 +157,17 @@ EOF
 cp -f "$BUNDLED_NODE" "$HOST_OUT/${NODE_BIN_NAME}"
 chmod +x "$HOST_OUT/${NODE_BIN_NAME}" 2>/dev/null || true
 
-echo "==> rebuild better-sqlite3@${BETTER_SQLITE3_VERSION} against bundled Node"
-REBUILD_DIR="$CACHE_ROOT/better-sqlite3-rebuild-${PLATFORM_ARCH}"
+echo "==> rebuild better-sqlite3@${BETTER_SQLITE3_VERSION} + sharp@${SHARP_VERSION} against bundled Node"
+REBUILD_DIR="$CACHE_ROOT/native-modules-rebuild-${PLATFORM_ARCH}"
 rm -rf "$REBUILD_DIR"
 mkdir -p "$REBUILD_DIR"
 cat >"$REBUILD_DIR/package.json" <<EOF
 {
-  "name": "collector-better-sqlite3-rebuild",
+  "name": "collector-native-modules-rebuild",
   "private": true,
   "dependencies": {
-    "better-sqlite3": "${BETTER_SQLITE3_VERSION}"
+    "better-sqlite3": "${BETTER_SQLITE3_VERSION}",
+    "sharp": "${SHARP_VERSION}"
   }
 }
 EOF
@@ -221,7 +224,11 @@ if [[ ! -d "$REBUILD_DIR/node_modules/better-sqlite3" ]]; then
   echo "FAIL: better-sqlite3 missing after rebuild in $REBUILD_DIR" >&2
   exit 1
 fi
-# Copy full runtime node_modules (better-sqlite3 + deps like bindings).
+if [[ ! -d "$REBUILD_DIR/node_modules/sharp" ]]; then
+  echo "FAIL: sharp missing after rebuild in $REBUILD_DIR" >&2
+  exit 1
+fi
+# Copy full runtime node_modules (better-sqlite3 + sharp + deps like bindings).
 # Drop native build intermediates to shrink the tree.
 find "$REBUILD_DIR/node_modules" -type d \( -name obj.target -o -name .deps \) -prune -exec rm -rf {} + 2>/dev/null || true
 rm -rf "$REBUILD_DIR/node_modules/better-sqlite3/deps" \
@@ -232,10 +239,11 @@ rm -rf "$REBUILD_DIR/node_modules/better-sqlite3/deps" \
 rm -rf "$HOST_OUT/node_modules"
 cp -a "$REBUILD_DIR/node_modules" "$HOST_OUT/node_modules"
 
-echo "==> ABI probe: open :memory: DB with bundled Node"
+echo "==> ABI probe: open :memory: DB + sharp with bundled Node"
 (
   cd "$HOST_OUT"
   "./${NODE_BIN_NAME}" -e "require('better-sqlite3')(':memory:'); console.log('better-sqlite3 ok')"
+  "./${NODE_BIN_NAME}" -e "require('sharp'); console.log('sharp ok')"
 )
 
 echo "==> smoke: bundled host --help"
@@ -254,6 +262,10 @@ if [[ ! -f "$HOST_OUT/${NODE_BIN_NAME}" ]]; then
 fi
 if [[ ! -d "$HOST_OUT/node_modules/better-sqlite3" ]]; then
   echo "FAIL: missing better-sqlite3 under $HOST_OUT" >&2
+  exit 1
+fi
+if [[ ! -d "$HOST_OUT/node_modules/sharp" ]]; then
+  echo "FAIL: missing sharp under $HOST_OUT" >&2
   exit 1
 fi
 

@@ -9,6 +9,7 @@ import {
   buildFtsMatchQuery,
   buildMetadataFtsMatchQuery,
   migrateLegacyUnifiedProfileLayout,
+  resolveItemThumbnailPathsBatch,
   syncVaultIndexFromFilesystem,
   type IndexSyncProgress,
 } from "@collector/core";
@@ -25,6 +26,7 @@ import {
   createVaultIndexSyncStatusStore,
   type VaultIndexSyncStatusStore,
 } from "../sync-status.js";
+import { generateCoverFromMedia } from "./node-cover.js";
 import { NodeSqliteExecutor } from "./node-sql.js";
 import { createNodeVaultFilesystemWatcher } from "./vault-fs-watcher.js";
 
@@ -470,9 +472,9 @@ export function createServiceDomainRuntime(
   const mediaCover = createMediaCoverService({
     resolveActiveVault: () => vaults.resolveActiveVault(),
     getContext,
-    generateCoverFromMedia: async () => null,
-    resolveThumbnailPathsBatch: async (_vaultPath, items) =>
-      items.map((item) => ({ id: item.id, path: null })),
+    generateCoverFromMedia,
+    resolveThumbnailPathsBatch: (vaultPath, items) =>
+      resolveItemThumbnailPathsBatch(getContext().fs, vaultPath, items),
   });
 
   return {
