@@ -12,6 +12,7 @@ import {
   mkdtempSync,
   rmSync,
   existsSync,
+  cpSync,
   readFileSync,
   readdirSync,
   readlinkSync,
@@ -19,7 +20,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, dirname } from "node:path";
 import { spawn } from "node:child_process";
 import { ensureHealthyIndex } from "../packages/db/dist/validate.js";
 import { BetterSqliteMigrator } from "../packages/db/dist/testing/better-sqlite.js";
@@ -35,9 +36,40 @@ if (!BIN) {
   process.exit(1);
 }
 
-const binary = resolve(BIN);
-if (!existsSync(binary)) {
-  console.error(`Binary not found: ${binary}`);
+const sourceBinary = resolve(BIN);
+if (!existsSync(sourceBinary)) {
+  console.error(`Binary not found: ${sourceBinary}`);
+  process.exit(1);
+}
+
+// Run from an isolated copy so monorepo ancestor walk cannot find
+// packages/service/dist/host/cli.js (false-green on packaging holes).
+const isolateRoot = mkdtempSync(join(tmpdir(), "collector-release-isolate-"));
+const isolateBinDir = join(isolateRoot, "bin");
+mkdirSync(isolateBinDir, { recursive: true });
+const sourceDir = dirname(sourceBinary);
+const binaryName = sourceBinary.endsWith(".exe") ? "collector.exe" : "collector";
+const binary = join(isolateBinDir, binaryName);
+cpSync(sourceBinary, binary);
+const sidecarName = sourceBinary.endsWith(".exe")
+  ? "collector-service.exe"
+  : "collector-service";
+const sourceSidecar = join(sourceDir, sidecarName);
+if (existsSync(sourceSidecar)) {
+  cpSync(sourceSidecar, join(isolateBinDir, sidecarName));
+}
+let hostSrc = join(sourceDir, "resources", "collector-service-host");
+if (!existsSync(join(hostSrc, "cli.js"))) {
+  hostSrc = resolve("src-tauri/resources/collector-service-host");
+}
+if (existsSync(join(hostSrc, "cli.js"))) {
+  const hostDest = join(isolateBinDir, "resources", "collector-service-host");
+  mkdirSync(dirname(hostDest), { recursive: true });
+  cpSync(hostSrc, hostDest, { recursive: true });
+} else {
+  console.error(
+    `FAIL: packaged host cli.js missing (looked in release resources and ${hostSrc})`,
+  );
   process.exit(1);
 }
 
@@ -248,6 +280,7 @@ try {
     // already closed
   }
   rmSync(profileRoot, { recursive: true, force: true });
+  rmSync(isolateRoot, { recursive: true, force: true });
 }
 
 process.exit(exitCode);

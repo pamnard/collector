@@ -31,7 +31,7 @@ if dpkg-deb -c "$DEB" | grep -qE '\.(local/share|Library/Application Support|App
   exit 1
 fi
 
-# Packaged sidecar (#165): present in the installer, not spawned by default (#166).
+# Packaged sidecar (#165) + self-contained domain host (cli.js + bundled node + better-sqlite3).
 # Avoid `dpkg-deb | grep -q` under `pipefail`: early grep exit SIGPIPEs dpkg-deb and
 # falsely fails even when the sidecar is listed.
 deb_contents="$(dpkg-deb -c "$DEB")"
@@ -40,5 +40,17 @@ if ! grep -q 'collector-service' <<<"$deb_contents"; then
   head -50 <<<"$deb_contents" >&2
   exit 1
 fi
+if ! grep -q 'collector-service-host/cli.js' <<<"$deb_contents"; then
+  echo "FAIL: .deb missing packaged domain host cli.js (collector-service-host)" >&2
+  exit 1
+fi
+if ! grep -qE 'collector-service-host/(node|node\.exe)' <<<"$deb_contents"; then
+  echo "FAIL: .deb missing bundled Node under collector-service-host/" >&2
+  exit 1
+fi
+if ! grep -q 'collector-service-host/node_modules/better-sqlite3' <<<"$deb_contents"; then
+  echo "FAIL: .deb missing better-sqlite3 under collector-service-host/" >&2
+  exit 1
+fi
 
-echo "OK: $DEB — no maintainer scripts, no bundled user data, sidecar present"
+echo "OK: $DEB — no maintainer scripts, no bundled user data, sidecar + packaged host present"

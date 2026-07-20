@@ -7,7 +7,9 @@ pub mod service_supervise;
 pub mod service_mode;
 pub mod service_ipc;
 
-use service_supervise::{supervise_enabled, ServiceSupervisor, SUPERVISE_ENABLE_ENV};
+use service_supervise::{
+    supervise_enabled, PackagedHostRuntime, ServiceSupervisor, SUPERVISE_ENABLE_ENV,
+};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -94,6 +96,63 @@ fn resolve_sidecar_bin(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     ))
 }
 
+/// Locate packaged `collector-service-host/cli.js` under Tauri resource_dir (or
+/// next to the executable for `target/release` layouts). Marker is **cli.js** —
+/// a bare resource_dir without that file is not "packaged present".
+fn resolve_packaged_host_runtime(
+    app: &tauri::AppHandle,
+) -> Result<Option<PackagedHostRuntime>, String> {
+    let mut roots: Vec<PathBuf> = Vec::new();
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        roots.push(resource_dir);
+    }
+    if let Ok(exe_dir) = app.path().executable_dir() {
+        roots.push(exe_dir.clone());
+        roots.push(exe_dir.join("resources"));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            roots.push(parent.to_path_buf());
+            roots.push(parent.join("resources"));
+        }
+    }
+    // Dev prepare output before tauri copies resources into target/release.
+    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources"));
+
+    let mut saw_host_dir_without_cli: Option<PathBuf> = None;
+    for root in &roots {
+        let host_dir = root.join("collector-service-host");
+        let cli = host_dir.join("cli.js");
+        if cli.is_file() {
+            #[cfg(windows)]
+            let node = host_dir.join("node.exe");
+            #[cfg(not(windows))]
+            let node = host_dir.join("node");
+            if !node.is_file() {
+                return Err(format!(
+                    "packaged host marker {} present but bundled node missing at {}",
+                    cli.display(),
+                    node.display()
+                ));
+            }
+            return Ok(Some(PackagedHostRuntime {
+                node_cli: cli.canonicalize().unwrap_or(cli),
+                node_bin: node.canonicalize().unwrap_or(node),
+            }));
+        }
+        if host_dir.is_dir() {
+            saw_host_dir_without_cli = Some(host_dir);
+        }
+    }
+    if let Some(dir) = saw_host_dir_without_cli {
+        return Err(format!(
+            "packaged host dir {} exists but collector-service-host/cli.js is missing",
+            dir.display()
+        ));
+    }
+    Ok(None)
+}
+
 #[tauri::command]
 fn service_supervise_is_enabled() -> bool {
     supervise_enabled()
@@ -111,14 +170,20 @@ fn service_supervise_spawn(
         ));
     }
     let sidecar = resolve_sidecar_bin(&app)?;
+    let packaged_host = resolve_packaged_host_runtime(&app)?;
     let mut guard = state.supervisor.lock().map_err(|e| e.to_string())?;
     if let Some(existing) = guard.as_mut() {
         if existing.is_running().unwrap_or(false) {
             return Ok(existing.pid());
         }
     }
-    let sup = ServiceSupervisor::spawn(&sidecar, PathBuf::from(data_dir).as_path(), None)
-        .map_err(|e| e.to_string())?;
+    let sup = ServiceSupervisor::spawn(
+        &sidecar,
+        PathBuf::from(data_dir).as_path(),
+        None,
+        packaged_host.as_ref(),
+    )
+    .map_err(|e| e.to_string())?;
     let pid = sup.pid();
     *guard = Some(sup);
     Ok(pid)
@@ -211,12 +276,14 @@ fn service_mode_bootstrap(
     config_dir: String,
 ) -> Result<String, String> {
     let sidecar = resolve_sidecar_bin(&app)?;
+    let packaged_host = resolve_packaged_host_runtime(&app)?;
     let mut guard = state.supervisor.lock().map_err(|e| e.to_string())?;
     let ipc = bootstrap_service_mode(
         &sidecar,
         PathBuf::from(data_dir).as_path(),
         PathBuf::from(config_dir).as_path(),
         &mut guard,
+        packaged_host.as_ref(),
     )?;
     Ok(ipc.to_string_lossy().into_owned())
 }

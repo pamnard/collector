@@ -5,7 +5,7 @@
 //! returns the IPC path for the WebView transport (#239).
 
 use crate::service_supervise::{
-    supervise_enabled, ServiceSupervisor, SUPERVISE_ENABLE_ENV,
+    supervise_enabled, PackagedHostRuntime, ServiceSupervisor, SUPERVISE_ENABLE_ENV,
 };
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -38,6 +38,7 @@ pub fn bootstrap_service_mode(
     data_dir: &Path,
     config_dir: &Path,
     supervisor: &mut Option<ServiceSupervisor>,
+    packaged_host: Option<&PackagedHostRuntime>,
 ) -> Result<PathBuf, String> {
     if !service_mode_enabled() {
         return Err(format!(
@@ -52,7 +53,7 @@ pub fn bootstrap_service_mode(
                 .map_err(|e| e.to_string());
         }
     }
-    let sup = ServiceSupervisor::spawn(sidecar_bin, data_dir, Some(config_dir))
+    let sup = ServiceSupervisor::spawn(sidecar_bin, data_dir, Some(config_dir), packaged_host)
         .map_err(|e| e.to_string())?;
     let ipc_path = sup
         .wait_for_ready_ipc_path(Duration::from_secs(30))
@@ -108,7 +109,7 @@ mod tests {
         std::fs::create_dir_all(&data_dir).unwrap();
         std::fs::create_dir_all(&config_dir).unwrap();
         let mut holder = None;
-        let ipc = bootstrap_service_mode(&sidecar, &data_dir, &config_dir, &mut holder)
+        let ipc = bootstrap_service_mode(&sidecar, &data_dir, &config_dir, &mut holder, None)
             .expect("bootstrap");
         let client = ServiceIpcClient::connect(&ipc, Duration::from_secs(5)).expect("connect");
         let ping = client.request("ping", None).expect("ping");

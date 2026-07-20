@@ -2,8 +2,12 @@
 //!
 //! The packaged `collector-service` binary keeps the sole-writer lock and
 //! supervises `node …/host/cli.js serve --data-dir …`. The Node child opens
-//! SQLite and serves HTTP + local IPC. Default app path still does not spawn
-//! this process until #170.
+//! SQLite and serves HTTP + local IPC.
+//!
+//! Packaged layout: Tauri injects `COLLECTOR_SERVICE_NODE_CLI` +
+//! `COLLECTOR_SERVICE_NODE` pointing at `resources/collector-service-host/`.
+//! When that marker tree is present (or env is set), monorepo / system Node
+//! fallbacks are forbidden.
 
 use std::env;
 use std::io::{self, BufRead, BufReader, Write};
@@ -15,7 +19,7 @@ use std::thread;
 
 /// Override path to `packages/service/dist/host/cli.js` (or packaged copy).
 pub const NODE_CLI_ENV: &str = "COLLECTOR_SERVICE_NODE_CLI";
-/// Override Node executable (default: `node` on PATH).
+/// Override Node executable (default: `node` on PATH for monorepo-only runs).
 pub const NODE_BIN_ENV: &str = "COLLECTOR_SERVICE_NODE";
 
 static FORWARD_CHILD_PID: AtomicI32 = AtomicI32::new(0);
@@ -23,6 +27,7 @@ static FORWARD_CHILD_PID: AtomicI32 = AtomicI32::new(0);
 #[derive(Debug)]
 pub enum DomainHostLaunchError {
     CliNotFound(String),
+    NodeNotFound(String),
     Io(io::Error),
     ChildExitedEarly { status: Option<i32>, hint: String },
 }
@@ -31,6 +36,7 @@ impl std::fmt::Display for DomainHostLaunchError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::CliNotFound(msg) => write!(f, "{msg}"),
+            Self::NodeNotFound(msg) => write!(f, "{msg}"),
             Self::Io(err) => write!(f, "{err}"),
             Self::ChildExitedEarly { status, hint } => {
                 write!(
@@ -50,30 +56,83 @@ impl From<io::Error> for DomainHostLaunchError {
     }
 }
 
+fn packaged_cli_candidates_near(dir: &Path) -> [PathBuf; 2] {
+    [
+        dir.join("collector-service-host/cli.js"),
+        dir.join("resources/collector-service-host/cli.js"),
+    ]
+}
+
+fn packaged_host_dir_near(dir: &Path) -> [PathBuf; 2] {
+    [
+        dir.join("collector-service-host"),
+        dir.join("resources/collector-service-host"),
+    ]
+}
+
+fn packaged_node_bin(host_dir: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        host_dir.join("node.exe")
+    }
+    #[cfg(not(windows))]
+    {
+        host_dir.join("node")
+    }
+}
+
+/// True when a packaged host *directory* exists next to `dir` (marker tree),
+/// regardless of whether `cli.js` is present. Presence of the directory without
+/// `cli.js` is a hard error — never fall back to monorepo paths.
+fn packaged_host_dir_present_near(dir: &Path) -> Option<PathBuf> {
+    for host_dir in packaged_host_dir_near(dir) {
+        if host_dir.is_dir() {
+            return Some(host_dir);
+        }
+    }
+    None
+}
+
 /// Resolve `host/cli.js` for the Node domain host.
 pub fn resolve_host_cli() -> Result<PathBuf, DomainHostLaunchError> {
     if let Ok(raw) = env::var(NODE_CLI_ENV) {
         let path = PathBuf::from(&raw);
         if path.is_file() {
-            return Ok(path);
+            return Ok(path.canonicalize().unwrap_or(path));
         }
         return Err(DomainHostLaunchError::CliNotFound(format!(
             "{NODE_CLI_ENV}={raw} is not a file"
         )));
     }
 
-    let mut candidates: Vec<PathBuf> = Vec::new();
-
     if let Ok(exe) = env::current_exe() {
         if let Some(dir) = exe.parent() {
-            candidates.push(dir.join("collector-service-host/cli.js"));
-            candidates.push(dir.join("resources/collector-service-host/cli.js"));
+            // Packaged marker tree: only packaged paths (no monorepo fallback).
+            if let Some(host_dir) = packaged_host_dir_present_near(dir) {
+                let cli = host_dir.join("cli.js");
+                if cli.is_file() {
+                    return Ok(cli.canonicalize().unwrap_or(cli));
+                }
+                return Err(DomainHostLaunchError::CliNotFound(format!(
+                    "packaged host dir present at {} but missing cli.js",
+                    host_dir.display()
+                )));
+            }
+            for path in packaged_cli_candidates_near(dir) {
+                if path.is_file() {
+                    return Ok(path.canonicalize().unwrap_or(path));
+                }
+            }
         }
+    }
+
+    // Monorepo / out-of-band smokes only (no packaged marker).
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Ok(exe) = env::current_exe() {
         for ancestor in exe.ancestors() {
             candidates.push(ancestor.join("packages/service/dist/host/cli.js"));
         }
     }
-
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     candidates.push(manifest.join("../packages/service/dist/host/cli.js"));
     for ancestor in manifest.ancestors() {
@@ -88,14 +147,38 @@ pub fn resolve_host_cli() -> Result<PathBuf, DomainHostLaunchError> {
 
     Err(DomainHostLaunchError::CliNotFound(format!(
         "domain host CLI not found; set {NODE_CLI_ENV} or build @collector/service \
-         (expected packages/service/dist/host/cli.js)"
+         (expected packages/service/dist/host/cli.js or packaged collector-service-host/cli.js)"
     )))
 }
 
-pub fn resolve_node_bin() -> PathBuf {
-    env::var_os(NODE_BIN_ENV)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("node"))
+/// Resolve the Node binary. Packaged / env paths hard-fail; monorepo uses `node` on PATH.
+pub fn resolve_node_bin() -> Result<PathBuf, DomainHostLaunchError> {
+    if let Ok(raw) = env::var(NODE_BIN_ENV) {
+        let path = PathBuf::from(&raw);
+        if path.is_file() {
+            return Ok(path.canonicalize().unwrap_or(path));
+        }
+        return Err(DomainHostLaunchError::NodeNotFound(format!(
+            "{NODE_BIN_ENV}={raw} is not a file"
+        )));
+    }
+
+    if let Ok(exe) = env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            if let Some(host_dir) = packaged_host_dir_present_near(dir) {
+                let node = packaged_node_bin(&host_dir);
+                if node.is_file() {
+                    return Ok(node.canonicalize().unwrap_or(node));
+                }
+                return Err(DomainHostLaunchError::NodeNotFound(format!(
+                    "packaged host dir present at {} but missing bundled node binary",
+                    host_dir.display()
+                )));
+            }
+        }
+    }
+
+    Ok(PathBuf::from("node"))
 }
 
 #[cfg(unix)]
@@ -148,7 +231,7 @@ pub fn run_domain_host_serve(
     config_dir: Option<&Path>,
 ) -> Result<i32, DomainHostLaunchError> {
     let cli = resolve_host_cli()?;
-    let node = resolve_node_bin();
+    let node = resolve_node_bin()?;
 
     let mut cmd = Command::new(&node);
     cmd.arg(&cli)
@@ -157,6 +240,10 @@ pub fn run_domain_host_serve(
         .arg(data_dir);
     if let Some(config_dir) = config_dir {
         cmd.arg("--config-dir").arg(config_dir);
+    }
+    // Ensure ESM/CJS resolution finds packaged better-sqlite3 next to cli.js.
+    if let Some(cli_dir) = cli.parent() {
+        cmd.current_dir(cli_dir);
     }
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())

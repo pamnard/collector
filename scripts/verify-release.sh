@@ -274,6 +274,10 @@ esac
 SIDECAR_BIN="$ROOT/src-tauri/binaries/collector-service-${SIDECAR_TRIPLE}${SIDECAR_EXT}"
 [[ -f "$SIDECAR_BIN" ]] || fail "service sidecar missing at $SIDECAR_BIN (run prepare:service-sidecar)"
 "$SIDECAR_BIN" --version | grep -q collector-service || fail "service sidecar --version failed"
+HOST_RES="$ROOT/src-tauri/resources/collector-service-host"
+[[ -f "$HOST_RES/cli.js" ]] || fail "packaged host missing cli.js at $HOST_RES (prepare-service-host-resources)"
+[[ -f "$HOST_RES/node" || -f "$HOST_RES/node.exe" ]] || fail "packaged host missing bundled node at $HOST_RES"
+[[ -d "$HOST_RES/node_modules/better-sqlite3" ]] || fail "packaged host missing better-sqlite3 at $HOST_RES"
 
 step "typecheck"
 npm run typecheck
@@ -347,6 +351,19 @@ else
   node scripts/run-release-smoke.mjs "$BIN"
   # Smoke must not leave collector/Xvfb behind (xvfb-run process-group teardown).
   stop_running_collector_binaries
+
+  step "packaged service host smoke (isolated, no monorepo ancestry)"
+  RELEASE_DIR="$(dirname "$BIN")"
+  # Prefer resources next to release binary; fall back to prepare output.
+  HOST_DIR="$RELEASE_DIR/resources/collector-service-host"
+  if [[ ! -f "$HOST_DIR/cli.js" ]]; then
+    HOST_DIR="$ROOT/src-tauri/resources/collector-service-host"
+  fi
+  SIDECAR_RELEASE="$RELEASE_DIR/collector-service"
+  if [[ ! -f "$SIDECAR_RELEASE" && ! -f "${SIDECAR_RELEASE}.exe" ]]; then
+    SIDECAR_RELEASE="$SIDECAR_BIN"
+  fi
+  node scripts/packaged-service-host-smoke.mjs "$SIDECAR_RELEASE" "$HOST_DIR"
 fi
 
 if [[ "$(uname -s)" == "Linux" ]] && [[ "${SKIP_TAURI_BUILD:-}" != "1" ]]; then
