@@ -1,5 +1,5 @@
 /**
- * Read-only Collector CLI over service IPC (#172).
+ * Collector CLI over service IPC (#172/#173).
  * Never opens SQLite — dials the running local service only.
  */
 
@@ -61,13 +61,14 @@ export async function runCollectorCli(
   }
 
   try {
-    if (args.command.name === "health") {
+    const cmd = args.command;
+    if (cmd.name === "health") {
       const health = await client.health();
       io.stdout(JSON.stringify(health, null, 2));
       return 0;
     }
-    if (args.command.name === "search") {
-      const items = await client.searchItems(args.command.query, "all");
+    if (cmd.name === "search") {
+      const items = await client.searchItems(cmd.query, "all");
       io.stdout(
         JSON.stringify(
           items.map((item) => ({
@@ -81,9 +82,70 @@ export async function runCollectorCli(
       );
       return 0;
     }
-    const result = await client.getItemById(args.command.itemId);
-    io.stdout(JSON.stringify(result, null, 2));
-    return 0;
+    if (cmd.name === "get-item") {
+      const result = await client.getItemById(cmd.itemId);
+      io.stdout(JSON.stringify(result, null, 2));
+      return 0;
+    }
+    if (cmd.name === "create-item") {
+      const item = await client.createItem({
+        title: cmd.title,
+        content_type: cmd.content_type,
+        ...(cmd.description === undefined ? {} : { description: cmd.description }),
+        ...(cmd.url === undefined ? {} : { url: cmd.url }),
+        ...(cmd.content === undefined ? {} : { content: cmd.content }),
+        ...(cmd.folder_path === undefined ? {} : { folder_path: cmd.folder_path }),
+      });
+      io.stdout(JSON.stringify(item, null, 2));
+      return 0;
+    }
+    if (cmd.name === "update-item") {
+      const item = await client.updateItem(cmd.itemId, {
+        ...(cmd.title === undefined ? {} : { title: cmd.title }),
+        ...(cmd.description === undefined ? {} : { description: cmd.description }),
+        ...(cmd.url === undefined ? {} : { url: cmd.url }),
+        ...(cmd.content === undefined ? {} : { content: cmd.content }),
+        ...(cmd.folder_path === undefined ? {} : { folder_path: cmd.folder_path }),
+      });
+      io.stdout(JSON.stringify(item, null, 2));
+      return 0;
+    }
+    if (cmd.name === "delete-item") {
+      await client.deleteItem(cmd.itemId);
+      io.stdout(JSON.stringify({ ok: true, deleted: cmd.itemId }));
+      return 0;
+    }
+    if (cmd.name === "create-tag") {
+      const tag = await client.createTag({
+        name: cmd.tagName,
+        ...(cmd.color === undefined ? {} : { color: cmd.color }),
+      });
+      io.stdout(JSON.stringify(tag, null, 2));
+      return 0;
+    }
+    if (cmd.name === "delete-tag") {
+      await client.deleteTag(cmd.tagId);
+      io.stdout(JSON.stringify({ ok: true, deleted: cmd.tagId }));
+      return 0;
+    }
+    if (cmd.name === "create-folder") {
+      const path = await client.createFolder(cmd.folderPath);
+      io.stdout(JSON.stringify({ ok: true, path }, null, 2));
+      return 0;
+    }
+    if (cmd.name === "move-item") {
+      await client.moveItemToFolderPath(cmd.itemId, cmd.folderPath);
+      io.stdout(
+        JSON.stringify({
+          ok: true,
+          itemId: cmd.itemId,
+          folder_path: cmd.folderPath,
+        }),
+      );
+      return 0;
+    }
+    const _exhaustive: never = cmd;
+    throw new Error(`unhandled command: ${JSON.stringify(_exhaustive)}`);
   } catch (error) {
     if (isServiceIpcError(error)) {
       io.stderr(`${error.code}: ${error.message}`);

@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@collector/client": "*",
-    "@collector/service": "*"
+    "@collector/service": "*",
+    "@collector/shared": "*"
   },
   "devDependencies": {
     "typescript": "~5.8.3",

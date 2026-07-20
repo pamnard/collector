@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `collector` CLI — thin read-only client over the local service IPC (#172).
+ * `collector` CLI — thin client over the local service IPC (#172/#173).
  */
 
 import { runCollectorCli } from "./run.js";
