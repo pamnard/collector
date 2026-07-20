@@ -169,7 +169,7 @@ cat >"$REBUILD_DIR/package.json" <<EOF
 }
 EOF
 
-# Use the tarball's npm under the bundled Node so node-gyp targets that ABI.
+# Use the tarball's npm under the bundled Node so install/gyp see that ABI.
 BUNDLED_NPM="$NODE_EXTRACT/lib/node_modules/npm/bin/npm-cli.js"
 if [[ ! -f "$BUNDLED_NPM" ]]; then
   # Windows layout: node_modules/npm next to node.exe
@@ -180,13 +180,41 @@ if [[ ! -f "$BUNDLED_NPM" ]]; then
   exit 1
 fi
 
+case "$PLATFORM_ARCH" in
+  *-x64) NPM_ARCH="x64" ;;
+  *-arm64) NPM_ARCH="arm64" ;;
+  *)
+    echo "FAIL: cannot map $PLATFORM_ARCH to npm_config_arch" >&2
+    exit 1
+    ;;
+esac
+case "$PLATFORM_ARCH" in
+  linux-*) NPM_PLATFORM="linux" ;;
+  win-*) NPM_PLATFORM="win32" ;;
+  darwin-*) NPM_PLATFORM="darwin" ;;
+  *)
+    echo "FAIL: cannot map $PLATFORM_ARCH to npm_config_platform" >&2
+    exit 1
+    ;;
+esac
+
 (
   cd "$REBUILD_DIR"
-  export npm_config_nodedir="$NODEDIR"
-  export npm_config_build_from_source="true"
+  # Prefer official prebuilds for NODE_VERSION (no MSVC/node-gyp on Windows CI).
+  # Fall back to headers + source only if prebuild is missing.
+  export PATH="$(dirname "$BUNDLED_NODE"):$PATH"
   export npm_config_target="$NODE_VERSION"
   export npm_config_runtime="node"
-  "$BUNDLED_NODE" "$BUNDLED_NPM" install --ignore-scripts=false
+  export npm_config_arch="$NPM_ARCH"
+  export npm_config_platform="$NPM_PLATFORM"
+  export npm_config_disturl="https://nodejs.org/dist"
+  unset npm_config_build_from_source || true
+  if ! "$BUNDLED_NODE" "$BUNDLED_NPM" install --ignore-scripts=false; then
+    echo "==> prebuild install failed; retrying with nodedir + build-from-source"
+    export npm_config_nodedir="$NODEDIR"
+    export npm_config_build_from_source="true"
+    "$BUNDLED_NODE" "$BUNDLED_NPM" install --ignore-scripts=false
+  fi
 )
 
 if [[ ! -d "$REBUILD_DIR/node_modules/better-sqlite3" ]]; then
