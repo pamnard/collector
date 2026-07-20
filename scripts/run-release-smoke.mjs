@@ -2,6 +2,8 @@
  * Headless smoke: run release binary, fail on ANY runtime error.
  *
  * - JS/WebView: app writes to smoke-errors.log when smoke-mode.flag exists
+ * - UI paint: smoke-ui-ready.flag after AppLayout shell has non-zero box
+ *   (StartupErrorScreen / blank root must NOT write this — gate fails)
  * - stderr: any non-whitelisted line fails
  * - DB: legacy broken index must be repaired
  *
@@ -62,16 +64,27 @@ let hostSrc = join(sourceDir, "resources", "collector-service-host");
 if (!existsSync(join(hostSrc, "cli.js"))) {
   hostSrc = resolve("src-tauri/resources/collector-service-host");
 }
-if (existsSync(join(hostSrc, "cli.js"))) {
-  const hostDest = join(isolateBinDir, "resources", "collector-service-host");
-  mkdirSync(dirname(hostDest), { recursive: true });
-  cpSync(hostSrc, hostDest, { recursive: true });
-} else {
+if (!existsSync(join(hostSrc, "cli.js"))) {
   console.error(
     `FAIL: packaged host cli.js missing (looked in release resources and ${hostSrc})`,
   );
   process.exit(1);
 }
+// Linux packaged layout: resource_dir = <exe>/../lib/<ProductName>
+// (tauri-utils), with bundle resources under resource_dir/resources/.
+const linuxHostDest = join(
+  isolateRoot,
+  "lib",
+  "Collector",
+  "resources",
+  "collector-service-host",
+);
+mkdirSync(dirname(linuxHostDest), { recursive: true });
+cpSync(hostSrc, linuxHostDest, { recursive: true });
+// Flat sibling resources/ (Windows / some target/release layouts).
+const flatHostDest = join(isolateBinDir, "resources", "collector-service-host");
+mkdirSync(dirname(flatHostDest), { recursive: true });
+cpSync(hostSrc, flatHostDest, { recursive: true });
 
 const profileRoot = mkdtempSync(join(tmpdir(), "collector-release-smoke-"));
 const home = join(profileRoot, "home");
@@ -94,6 +107,7 @@ mkdirSync(env.XDG_CONFIG_HOME, { recursive: true });
 const appConfigDir = join(home, ".config/com.collector.app");
 mkdirSync(appConfigDir, { recursive: true });
 writeFileSync(join(appConfigDir, "smoke-mode.flag"), "1\n");
+const smokeUiReadyFlag = join(appConfigDir, "smoke-ui-ready.flag");
 
 await writeLegacyBrokenIndexDb(canonicalIndexPath(home));
 await writeLegacyBrokenIndexDb(wrongDataDirIndexPath(home));
@@ -252,21 +266,61 @@ try {
         "application logged runtime errors (smoke-errors.log)",
         jsErrors.map((line) => `  ${line}`).join("\n"),
       );
+    } else if (!existsSync(smokeUiReadyFlag)) {
+      fail(
+        "smoke-ui-ready.flag missing — WebView did not paint the app shell (blank/error screen)",
+        [
+          `  expected: ${smokeUiReadyFlag}`,
+          "  smoke-errors.log:",
+          ...(jsErrors.length
+            ? jsErrors.map((line) => `    ${line}`)
+            : ["    (empty)"]),
+          "  stderr:",
+          ...(stderrLog.trim()
+            ? stderrLog
+                .trim()
+                .split("\n")
+                .slice(-20)
+                .map((line) => `    ${line}`)
+            : ["    (empty)"]),
+        ].join("\n"),
+      );
     } else {
-      const dbPath = canonicalIndexPath(home);
-      if (!existsSync(dbPath)) {
+      const uiReadyBody = readFileSync(smokeUiReadyFlag, "utf8").trim();
+      let painted = false;
+      try {
+        const meta = JSON.parse(uiReadyBody);
+        painted =
+          typeof meta.width === "number" &&
+          typeof meta.height === "number" &&
+          meta.width > 0 &&
+          meta.height > 0;
+      } catch {
+        painted = false;
+      }
+      if (!painted) {
         fail(
-          "canonical collector.db missing after startup",
-          stderrLog.trim() || "(empty stderr)",
+          "smoke-ui-ready.flag present but shell box is invalid",
+          uiReadyBody || "(empty)",
         );
       } else {
-        const db = BetterSqliteMigrator.open(dbPath);
-        const health = await ensureHealthyIndex(db);
-        db.close();
-        if (!health.ok) {
-          fail("index unhealthy after startup", health.errors.join("; "));
+        const dbPath = canonicalIndexPath(home);
+        if (!existsSync(dbPath)) {
+          fail(
+            "canonical collector.db missing after startup",
+            stderrLog.trim() || "(empty stderr)",
+          );
         } else {
-          console.log("OK: no runtime errors, legacy index repaired");
+          const db = BetterSqliteMigrator.open(dbPath);
+          const health = await ensureHealthyIndex(db);
+          db.close();
+          if (!health.ok) {
+            fail("index unhealthy after startup", health.errors.join("; "));
+          } else {
+            console.log(
+              "OK: no runtime errors, UI shell painted, legacy index repaired",
+            );
+          }
         }
       }
     }

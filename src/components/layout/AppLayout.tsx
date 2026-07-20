@@ -27,6 +27,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "../ui/resizable";
+import { SmokeUiReadyBeacon } from "../startup/SmokeUiReadyBeacon";
 import { Header } from "./Header";
 import { IndexingStatusAlert } from "./IndexingStatusAlert";
 import { MainScrollArea } from "./MainScrollArea";
@@ -147,7 +148,11 @@ export function AppLayout() {
       }}
     >
       {isDesktop ? (
-        <div className="h-screen overflow-hidden bg-main font-sans text-primary transition-colors duration-200">
+        <div
+          data-smoke-shell
+          className="h-screen overflow-hidden bg-main font-sans text-primary transition-colors duration-200"
+        >
+          <SmokeUiReadyBeacon />
           <ResizablePanelGroup orientation="horizontal" className="h-full w-full">
             <ResizablePanel
               id="sidebar"
@@ -181,7 +186,11 @@ export function AppLayout() {
           </ResizablePanelGroup>
         </div>
       ) : (
-        <div className="flex h-screen overflow-hidden bg-main font-sans text-primary transition-colors duration-200">
+        <div
+          data-smoke-shell
+          className="flex h-screen overflow-hidden bg-main font-sans text-primary transition-colors duration-200"
+        >
+          <SmokeUiReadyBeacon />
           <Sidebar
             variant="drawer"
             isOpen={isSidebarOpen}
