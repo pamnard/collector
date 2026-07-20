@@ -1,14 +1,12 @@
-//! Unix-socket Service IPC proxy for WebView → local host (#239 / epic #142).
+//! Local Service IPC proxy for WebView → host (#239 / epic #142).
 //!
-//! Tauri commands dial the same framed protocol as Node `connectServiceIpc`.
-//! Default app path stays in-process until #170 — this module is transport only.
+//! Unix domain socket on Unix; Windows named pipe (`\\.\pipe\…`) matching
+//! `@collector/service` `defaultServiceIpcPath`.
 //!
-//! Wire format matches `packages/service` framing: 4-byte BE length + UTF-8 JSON.
+//! Wire format: 4-byte BE length + UTF-8 JSON.
 
 use serde_json::{json, Value};
 use std::io::{Read, Write};
-use std::net::Shutdown;
-use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -50,6 +48,83 @@ impl From<std::io::Error> for ServiceIpcError {
     }
 }
 
+struct IpcStream {
+    #[cfg(unix)]
+    inner: std::os::unix::net::UnixStream,
+    #[cfg(windows)]
+    inner: std::fs::File,
+}
+
+impl Read for IpcStream {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.inner.read(buf)
+    }
+}
+
+impl Write for IpcStream {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.inner.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+impl IpcStream {
+    fn connect(path: &Path) -> std::io::Result<Self> {
+        #[cfg(unix)]
+        {
+            let inner = std::os::unix::net::UnixStream::connect(path)?;
+            Ok(Self { inner })
+        }
+        #[cfg(windows)]
+        {
+            use std::fs::OpenOptions;
+            use std::os::windows::fs::OpenOptionsExt;
+            let inner = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .share_mode(0)
+                .open(path)?;
+            Ok(Self { inner })
+        }
+    }
+
+    fn set_read_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
+        #[cfg(unix)]
+        {
+            self.inner.set_read_timeout(timeout)
+        }
+        #[cfg(windows)]
+        {
+            let _ = timeout;
+            Ok(())
+        }
+    }
+
+    fn set_write_timeout(&self, timeout: Option<Duration>) -> std::io::Result<()> {
+        #[cfg(unix)]
+        {
+            self.inner.set_write_timeout(timeout)
+        }
+        #[cfg(windows)]
+        {
+            let _ = timeout;
+            Ok(())
+        }
+    }
+
+    fn shutdown_both(&self) {
+        #[cfg(unix)]
+        {
+            let _ = self.inner.shutdown(std::net::Shutdown::Both);
+        }
+        #[cfg(windows)]
+        {}
+    }
+}
+
 fn encode_frame(message: &Value) -> Result<Vec<u8>, ServiceIpcError> {
     let body = serde_json::to_vec(message)
         .map_err(|e| ServiceIpcError::Framing(e.to_string()))?;
@@ -65,7 +140,7 @@ fn encode_frame(message: &Value) -> Result<Vec<u8>, ServiceIpcError> {
     Ok(out)
 }
 
-fn read_frame(stream: &mut UnixStream) -> Result<Value, ServiceIpcError> {
+fn read_frame(stream: &mut IpcStream) -> Result<Value, ServiceIpcError> {
     let mut header = [0u8; 4];
     stream.read_exact(&mut header)?;
     let len = u32::from_be_bytes(header) as usize;
@@ -80,12 +155,24 @@ fn read_frame(stream: &mut UnixStream) -> Result<Value, ServiceIpcError> {
 }
 
 pub fn default_ipc_path(data_dir: &Path) -> PathBuf {
-    data_dir.join("collector-service.sock")
+    #[cfg(windows)]
+    {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(data_dir.to_string_lossy().as_bytes());
+        let digest = hasher.finalize();
+        let id: String = digest[..8].iter().map(|b| format!("{b:02x}")).collect();
+        PathBuf::from(format!(r"\\.\pipe\collector-service-{id}"))
+    }
+    #[cfg(not(windows))]
+    {
+        data_dir.join("collector-service.sock")
+    }
 }
 
 /// Blocking request/response client (one connection; serialized).
 pub struct ServiceIpcClient {
-    stream: Mutex<UnixStream>,
+    stream: Mutex<IpcStream>,
     next_id: AtomicU64,
 }
 
@@ -93,7 +180,7 @@ impl ServiceIpcClient {
     pub fn connect(path: &Path, timeout: Duration) -> Result<Self, ServiceIpcError> {
         let deadline = std::time::Instant::now() + timeout;
         let stream = loop {
-            match UnixStream::connect(path) {
+            match IpcStream::connect(path) {
                 Ok(s) => break s,
                 Err(err) => {
                     if std::time::Instant::now() >= deadline {
@@ -132,7 +219,6 @@ impl ServiceIpcClient {
         guard.write_all(&frame)?;
         guard.flush()?;
 
-        // Read until matching res/err; ignore evt frames for now (sync status via separate poll).
         loop {
             let reply = read_frame(&mut guard)?;
             let typ = reply
@@ -181,7 +267,7 @@ impl ServiceIpcClient {
             .stream
             .lock()
             .map_err(|_| ServiceIpcError::Protocol("ipc mutex poisoned".into()))?;
-        let _ = guard.shutdown(Shutdown::Both);
+        guard.shutdown_both();
         Ok(())
     }
 }
@@ -228,12 +314,23 @@ mod tests {
 
     #[test]
     fn default_sock_under_data_dir() {
-        assert_eq!(
-            default_ipc_path(Path::new("/data")),
-            PathBuf::from("/data/collector-service.sock")
-        );
+        #[cfg(windows)]
+        {
+            let p = default_ipc_path(Path::new(r"C:\data"));
+            let s = p.to_string_lossy();
+            assert!(s.starts_with(r"\\.\pipe\collector-service-"), "{s}");
+            assert_eq!(s.len(), r"\\.\pipe\collector-service-".len() + 16);
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(
+                default_ipc_path(Path::new("/data")),
+                PathBuf::from("/data/collector-service.sock")
+            );
+        }
     }
 
+    #[cfg(unix)]
     #[test]
     fn connect_ping_and_domain_rpc_against_live_host() {
         use std::io::{BufRead, BufReader};
@@ -306,5 +403,4 @@ mod tests {
         let _ = child.wait();
         let _ = std::fs::remove_dir_all(&data_dir);
     }
-
 }
