@@ -12,14 +12,13 @@ jobs:
       contents: write
     strategy:
       fail-fast: false
+      # Temporarily Linux-only until we have users on other OSes.
+      # To restore: re-add macos-latest (args: "") and windows-latest
+      # (args: "--bundles nsis"), and expand releaseBody installers below.
       matrix:
         include:
-          - platform: macos-latest
-            args: ""
           - platform: ubuntu-22.04
             args: ""
-          - platform: windows-latest
-            args: "--bundles nsis"
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -65,8 +64,8 @@ jobs:
 
             **Installers**
             - Linux: `.deb` / `.AppImage`
-            - macOS: `.dmg`
-            - Windows: `.msi` / `.exe`
+
+            (macOS / Windows builds temporarily disabled.)
           releaseDraft: true
           prerelease: false
           uploadWorkflowArtifacts: true
