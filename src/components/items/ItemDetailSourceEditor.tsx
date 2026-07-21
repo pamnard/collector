@@ -10,7 +10,6 @@ import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import {
   bracketMatching,
   defaultHighlightStyle,
-  HighlightStyle,
   indentOnInput,
   syntaxHighlighting,
 } from "@codemirror/language";
@@ -22,34 +21,13 @@ import {
   keymap,
   lineNumbers,
 } from "@codemirror/view";
-import { tags as t } from "@lezer/highlight";
 import { useTheme } from "../../hooks/useTheme";
+import { darkHighlightStyle } from "../../lib/syntax-highlight-colors";
 
 interface ItemDetailSourceEditorProps {
   value: string;
   onChange: (value: string) => void;
 }
-
-const darkHighlightStyle = HighlightStyle.define([
-  { tag: t.heading, fontWeight: "700", color: "#e5e7eb" },
-  { tag: t.strong, fontWeight: "700" },
-  { tag: t.emphasis, fontStyle: "italic" },
-  { tag: t.strikethrough, textDecoration: "line-through" },
-  { tag: t.link, color: "#818cf8" },
-  { tag: t.url, color: "#94a3b8" },
-  { tag: t.monospace, color: "#f472b6" },
-  { tag: t.meta, color: "#94a3b8" },
-  { tag: t.keyword, color: "#c084fc" },
-  { tag: t.string, color: "#86efac" },
-  { tag: t.number, color: "#fdba74" },
-  { tag: t.bool, color: "#fdba74" },
-  { tag: t.atom, color: "#fdba74" },
-  { tag: t.propertyName, color: "#7dd3fc" },
-  { tag: t.comment, color: "#6b7280", fontStyle: "italic" },
-  { tag: t.processingInstruction, color: "#94a3b8" },
-  { tag: t.punctuation, color: "#9ca3af" },
-  { tag: t.contentSeparator, color: "#6b7280" },
-]);
 
 function sourceEditorTheme(dark: boolean) {
   const pageBg = dark ? "rgb(28 28 28)" : "rgb(255 255 255)";

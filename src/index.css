@@ -1,5 +1,6 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "./styles/markdown-code-highlight.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

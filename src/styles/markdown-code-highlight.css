@@ -1,0 +1,197 @@
+/* Fenced code blocks — Atelier Sulphurpool (https://atelierbram.github.io/syntax-highlighting/atelier-schemes/sulphurpool/) */
+
+.markdown-code-block {
+  margin: 1.5rem 0;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: var(--code-block-bg);
+}
+
+.markdown-code-block-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 2.25rem;
+  padding: 0.25rem 0.5rem 0.25rem 0.875rem;
+  background: var(--code-block-toolbar-bg);
+  color: var(--code-block-muted);
+}
+
+.markdown-code-block-language {
+  font-size: 0.875rem;
+  color: var(--code-block-muted);
+  text-transform: lowercase;
+}
+
+.markdown-code-block-toolbar [data-slot="button"] {
+  color: var(--code-block-muted);
+}
+
+.markdown-code-block-toolbar [data-slot="button"]:hover {
+  background: var(--code-block-hover-bg);
+  color: var(--code-block-fg-bright);
+}
+
+.markdown-code-block-frame {
+  display: flex;
+  overflow: auto;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono,
+    Courier New, monospace;
+  font-size: 0.875rem;
+  line-height: 1.625;
+}
+
+.markdown-code-block-gutter {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  padding: 1rem 0.75rem 1rem 1rem;
+  text-align: right;
+  color: var(--code-block-gutter);
+  user-select: none;
+}
+
+.markdown-code-block-line-number {
+  min-width: 1.75rem;
+}
+
+.markdown-code-block-pre {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  padding: 1rem;
+  overflow: visible;
+  border: none;
+  background: transparent;
+}
+
+.markdown-code-block-pre code {
+  display: block;
+  min-width: min-content;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  background: transparent;
+}
+
+.markdown-code-block-pre code.hljs {
+  color: var(--code-block-fg);
+  background: transparent;
+}
+
+.markdown-code-block-pre code.hljs .hljs-keyword,
+.markdown-code-block-pre code.hljs .hljs-selector-tag,
+.markdown-code-block-pre code.hljs .hljs-name,
+.markdown-code-block-pre code.hljs .hljs-selector-id,
+.markdown-code-block-pre code.hljs .hljs-selector-class {
+  color: var(--syntax-keyword);
+}
+
+.markdown-code-block-pre code.hljs .hljs-built_in,
+.markdown-code-block-pre code.hljs .hljs-type {
+  color: var(--syntax-type);
+}
+
+.markdown-code-block-pre code.hljs .hljs-string,
+.markdown-code-block-pre code.hljs .hljs-regexp,
+.markdown-code-block-pre code.hljs .hljs-addition {
+  color: var(--syntax-string);
+}
+
+.markdown-code-block-pre code.hljs .hljs-number,
+.markdown-code-block-pre code.hljs .hljs-literal,
+.markdown-code-block-pre code.hljs .hljs-boolean {
+  color: var(--syntax-number);
+}
+
+.markdown-code-block-pre code.hljs .hljs-attr,
+.markdown-code-block-pre code.hljs .hljs-attribute,
+.markdown-code-block-pre code.hljs .hljs-variable,
+.markdown-code-block-pre code.hljs .hljs-template-variable {
+  color: var(--code-block-fg);
+}
+
+.markdown-code-block-pre code.hljs .hljs-title,
+.markdown-code-block-pre code.hljs .hljs-title.class_ {
+  color: var(--syntax-type);
+}
+
+.markdown-code-block-pre code.hljs .hljs-title.function_ {
+  color: var(--syntax-function);
+}
+
+.markdown-code-block-pre code.hljs .hljs-comment,
+.markdown-code-block-pre code.hljs .hljs-quote,
+.markdown-code-block-pre code.hljs .hljs-doctag {
+  color: var(--syntax-comment);
+  font-style: italic;
+}
+
+.markdown-code-block-pre code.hljs .hljs-meta,
+.markdown-code-block-pre code.hljs .hljs-meta .hljs-keyword {
+  color: var(--syntax-meta);
+}
+
+.markdown-code-block-pre code.hljs .hljs-symbol,
+.markdown-code-block-pre code.hljs .hljs-bullet {
+  color: var(--syntax-symbol);
+}
+
+.markdown-code-block-pre code.hljs .hljs-section,
+.markdown-code-block-pre code.hljs .hljs-subst {
+  color: var(--code-block-fg);
+}
+
+.markdown-code-block-pre code.hljs .hljs-deletion {
+  color: var(--syntax-deletion);
+}
+
+.markdown-code-block-pre code.hljs .hljs-emphasis {
+  font-style: italic;
+}
+
+.markdown-code-block-pre code.hljs .hljs-strong {
+  font-weight: 700;
+}
+
+/* Sulphurpool light — inverted base16 (app light theme) */
+.markdown-code-block {
+  --code-block-bg: #f5f7ff; /* base07 */
+  --code-block-toolbar-bg: #dfe2f1; /* base06 */
+  --code-block-fg: #202746; /* base00 */
+  --code-block-fg-bright: #293256; /* base01 */
+  --code-block-muted: #898ea4; /* base04 */
+  --code-block-gutter: #6b7394; /* base03 */
+  --code-block-hover-bg: rgb(94 102 135 / 0.18); /* base02 */
+  --syntax-comment: #6b7394; /* base03 */
+  --syntax-deletion: #c94922; /* base08 */
+  --syntax-number: #c76b29; /* base09 */
+  --syntax-type: #c08b30; /* base0a */
+  --syntax-string: #ac9739; /* base0b */
+  --syntax-function: #3d8fd1; /* base0d */
+  --syntax-keyword: #6679cc; /* base0e */
+  --syntax-symbol: #9c637a; /* base0f */
+  --syntax-meta: #898ea4; /* base04 */
+}
+
+/* Sulphurpool dark — default base16 (app dark theme) */
+.dark .markdown-code-block {
+  --code-block-bg: #202746; /* base00 */
+  --code-block-toolbar-bg: #293256; /* base01 */
+  --code-block-fg: #979db4; /* base05 */
+  --code-block-fg-bright: #dfe2f1; /* base06 */
+  --code-block-muted: #898ea4; /* base04 */
+  --code-block-gutter: #6b7394; /* base03 */
+  --code-block-hover-bg: rgb(94 102 135 / 0.35); /* base02 */
+  --syntax-comment: #6b7394; /* base03 */
+  --syntax-deletion: #c94922; /* base08 */
+  --syntax-number: #c76b29; /* base09 */
+  --syntax-type: #c08b30; /* base0a */
+  --syntax-string: #ac9739; /* base0b */
+  --syntax-function: #3d8fd1; /* base0d */
+  --syntax-keyword: #6679cc; /* base0e */
+  --syntax-symbol: #9c637a; /* base0f */
+  --syntax-meta: #898ea4; /* base04 */
+}
