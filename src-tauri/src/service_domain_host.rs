@@ -24,36 +24,16 @@ pub const NODE_BIN_ENV: &str = "COLLECTOR_SERVICE_NODE";
 
 static FORWARD_CHILD_PID: AtomicI32 = AtomicI32::new(0);
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum DomainHostLaunchError {
+    #[error("{0}")]
     CliNotFound(String),
+    #[error("{0}")]
     NodeNotFound(String),
-    Io(io::Error),
+    #[error("{0}")]
+    Io(#[from] io::Error),
+    #[error("domain host exited before READY (status={status:?}): {hint}")]
     ChildExitedEarly { status: Option<i32>, hint: String },
-}
-
-impl std::fmt::Display for DomainHostLaunchError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::CliNotFound(msg) => write!(f, "{msg}"),
-            Self::NodeNotFound(msg) => write!(f, "{msg}"),
-            Self::Io(err) => write!(f, "{err}"),
-            Self::ChildExitedEarly { status, hint } => {
-                write!(
-                    f,
-                    "domain host exited before READY (status={status:?}): {hint}"
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for DomainHostLaunchError {}
-
-impl From<io::Error> for DomainHostLaunchError {
-    fn from(value: io::Error) -> Self {
-        Self::Io(value)
-    }
 }
 
 fn packaged_cli_candidates_near(dir: &Path) -> [PathBuf; 2] {
@@ -85,12 +65,9 @@ fn packaged_node_bin(host_dir: &Path) -> PathBuf {
 /// regardless of whether `cli.js` is present. Presence of the directory without
 /// `cli.js` is a hard error — never fall back to monorepo paths.
 fn packaged_host_dir_present_near(dir: &Path) -> Option<PathBuf> {
-    for host_dir in packaged_host_dir_near(dir) {
-        if host_dir.is_dir() {
-            return Some(host_dir);
-        }
-    }
-    None
+    packaged_host_dir_near(dir)
+        .into_iter()
+        .find(|host_dir| host_dir.is_dir())
 }
 
 /// Resolve `host/cli.js` for the Node domain host.
@@ -207,8 +184,8 @@ fn install_signal_forwarding() {
 
     // SAFETY: replace default SIGTERM/SIGINT with forward-to-child handlers.
     unsafe {
-        signal(SIGTERM, forward as usize);
-        signal(SIGINT, forward as usize);
+        signal(SIGTERM, forward as *const () as usize);
+        signal(SIGINT, forward as *const () as usize);
     }
 }
 
@@ -264,16 +241,10 @@ pub fn run_domain_host_serve(
     install_signal_forwarding();
 
     let stdout = child.stdout.take().ok_or_else(|| {
-        DomainHostLaunchError::Io(io::Error::new(
-            io::ErrorKind::Other,
-            "missing domain host stdout",
-        ))
+        DomainHostLaunchError::Io(io::Error::other("missing domain host stdout"))
     })?;
     let stderr = child.stderr.take().ok_or_else(|| {
-        DomainHostLaunchError::Io(io::Error::new(
-            io::ErrorKind::Other,
-            "missing domain host stderr",
-        ))
+        DomainHostLaunchError::Io(io::Error::other("missing domain host stderr"))
     })?;
 
     let ready_seen = Arc::new(AtomicBool::new(false));

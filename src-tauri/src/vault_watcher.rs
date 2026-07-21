@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
@@ -17,14 +17,14 @@ const WATCH_ERROR_EVENT: &str = "vault-items-watcher-error";
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct VaultItemFsChange {
-    vault_path: String,
+    vault_path: Arc<str>,
     changed_path: String,
 }
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct VaultWatcherErrorPayload {
-    vault_path: String,
+    vault_path: Arc<str>,
     message: String,
 }
 
@@ -44,6 +44,12 @@ impl VaultWatcherState {
     }
 }
 
+impl Default for VaultWatcherState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[tauri::command]
 pub fn start_vault_items_watcher(
     app: AppHandle,
@@ -60,7 +66,7 @@ pub fn start_vault_items_watcher(
         return Ok(());
     }
 
-    let vault_path_for_emit = vault_path.clone();
+    let vault_path_for_emit: Arc<str> = Arc::from(vault_path.as_str());
     let app_handle = app.clone();
 
     let mut watcher = RecommendedWatcher::new(
@@ -71,7 +77,7 @@ pub fn start_vault_items_watcher(
                         let _ = app_handle.emit(
                             WATCH_EVENT,
                             VaultItemFsChange {
-                                vault_path: vault_path_for_emit.clone(),
+                                vault_path: Arc::clone(&vault_path_for_emit),
                                 changed_path: path.to_string_lossy().into_owned(),
                             },
                         );
@@ -81,7 +87,7 @@ pub fn start_vault_items_watcher(
                     let _ = app_handle.emit(
                         WATCH_ERROR_EVENT,
                         VaultWatcherErrorPayload {
-                            vault_path: vault_path_for_emit.clone(),
+                            vault_path: Arc::clone(&vault_path_for_emit),
                             message: error.to_string(),
                         },
                     );

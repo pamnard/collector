@@ -30,29 +30,12 @@ pub enum CleanupOutcome {
     LiveHolder { service_pid: u32, supervisor_pid: u32 },
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum LockError {
+    #[error("service lock already held by pid {service_pid}")]
     AlreadyLocked { service_pid: u32 },
-    Io(io::Error),
-}
-
-impl std::fmt::Display for LockError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::AlreadyLocked { service_pid } => {
-                write!(f, "service lock already held by pid {service_pid}")
-            }
-            Self::Io(err) => write!(f, "service lock I/O: {err}"),
-        }
-    }
-}
-
-impl std::error::Error for LockError {}
-
-impl From<io::Error> for LockError {
-    fn from(value: io::Error) -> Self {
-        Self::Io(value)
-    }
+    #[error("service lock I/O: {0}")]
+    Io(#[from] io::Error),
 }
 
 pub fn lock_path(data_dir: &Path) -> PathBuf {
@@ -185,14 +168,16 @@ pub fn effective_supervisor_pid(info: &LockInfo) -> Option<u32> {
 fn kill_process(pid: u32) {
     #[cfg(unix)]
     {
+        // SAFETY: SIGTERM to a service pid we decided to reclaim/orphan-clean.
         let _ = unsafe { libc_kill(pid as i32, 15) };
         let deadline = std::time::Instant::now() + Duration::from_secs(2);
         while process_alive(pid) && std::time::Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(50));
         }
         if process_alive(pid) {
+            // SAFETY: SIGKILL after SIGTERM grace for the same reclaimed pid.
             let _ = unsafe { libc_kill(pid as i32, 9) };
-            let _ = wait_brief(pid);
+            wait_brief(pid);
         }
     }
     #[cfg(not(unix))]
@@ -310,6 +295,26 @@ mod tests {
         dir
     }
 
+    fn sidecar_path() -> PathBuf {
+        let triple = crate::host_target_triple().expect("host triple");
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(format!("binaries/collector-service-{triple}"))
+    }
+
+    fn require_sidecar_or_skip(sidecar: &Path) -> bool {
+        if sidecar.is_file() {
+            return true;
+        }
+        if std::env::var_os("CI").is_some() {
+            panic!(
+                "sidecar missing at {} (required under CI)",
+                sidecar.display()
+            );
+        }
+        eprintln!("skip: sidecar missing at {}", sidecar.display());
+        false
+    }
+
     #[test]
     fn parse_roundtrip() {
         let info = LockInfo {
@@ -341,19 +346,8 @@ mod tests {
 
     #[test]
     fn live_holder_blocks_second_acquire() {
-        let sidecar = {
-            let triple = {
-                let out = Command::new("rustc")
-                    .args(["--print", "host-tuple"])
-                    .output()
-                    .expect("rustc");
-                String::from_utf8(out.stdout).expect("utf8").trim().to_string()
-            };
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join(format!("binaries/collector-service-{triple}"))
-        };
-        if !sidecar.is_file() {
-            eprintln!("skip: sidecar missing at {}", sidecar.display());
+        let sidecar = sidecar_path();
+        if !require_sidecar_or_skip(&sidecar) {
             return;
         }
 
@@ -396,6 +390,7 @@ mod tests {
         // SIGTERM so sidecar forwards to Node domain host (#237).
         #[cfg(unix)]
         {
+            // SAFETY: terminate our test child only.
             let _ = unsafe { libc_kill(child.id() as i32, 15) };
         }
         #[cfg(not(unix))]
@@ -409,19 +404,8 @@ mod tests {
 
     #[test]
     fn orphan_cleaned_when_supervisor_dead() {
-        let sidecar = {
-            let triple = {
-                let out = Command::new("rustc")
-                    .args(["--print", "host-tuple"])
-                    .output()
-                    .expect("rustc");
-                String::from_utf8(out.stdout).expect("utf8").trim().to_string()
-            };
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join(format!("binaries/collector-service-{triple}"))
-        };
-        if !sidecar.is_file() {
-            eprintln!("skip: sidecar missing at {}", sidecar.display());
+        let sidecar = sidecar_path();
+        if !require_sidecar_or_skip(&sidecar) {
             return;
         }
 

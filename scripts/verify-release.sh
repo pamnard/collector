@@ -301,8 +301,11 @@ npm run test:large-empty-index
 step "frontend + packages build"
 npm run build
 
-step "rust compile check"
-( cd src-tauri && cargo check )
+step "rust clippy (deny warnings)"
+( cd src-tauri && cargo clippy --all-targets --all-features --locked -- -D warnings )
+
+step "rust tests"
+( cd src-tauri && cargo test --locked )
 
 if [[ "${SKIP_TAURI_BUILD:-}" == "1" ]]; then
   echo "SKIP: tauri build (SKIP_TAURI_BUILD=1)"

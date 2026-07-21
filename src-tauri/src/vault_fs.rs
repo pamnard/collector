@@ -310,27 +310,25 @@ fn first_image_media_path(media_root: &Path) -> Option<PathBuf> {
     None
 }
 
-fn resolve_one_thumbnail(vault_path: &str, item: &ThumbnailResolveItem) -> ThumbnailResolveResult {
-    if let Some(thumbnail) = item.thumbnail.as_deref().filter(|value| !value.is_empty()) {
-        let candidate = resolve_thumbnail_absolute(vault_path, &item.id, thumbnail);
+fn resolve_one_thumbnail(vault_path: &str, item: ThumbnailResolveItem) -> ThumbnailResolveResult {
+    let ThumbnailResolveItem { id, thumbnail } = item;
+    if let Some(thumbnail) = thumbnail.as_deref().filter(|value| !value.is_empty()) {
+        let candidate = resolve_thumbnail_absolute(vault_path, &id, thumbnail);
         if candidate.is_file() {
             return ThumbnailResolveResult {
-                id: item.id.clone(),
+                id,
                 path: Some(candidate.to_string_lossy().into_owned()),
             };
         }
     }
 
-    let path = match item_media_root(vault_path, &item.id) {
+    let path = match item_media_root(vault_path, &id) {
         Ok(media_root) => {
             first_image_media_path(&media_root).map(|candidate| candidate.to_string_lossy().into_owned())
         }
         Err(_) => None,
     };
-    ThumbnailResolveResult {
-        id: item.id.clone(),
-        path,
-    }
+    ThumbnailResolveResult { id, path }
 }
 
 #[tauri::command]
@@ -343,7 +341,7 @@ pub fn resolve_item_thumbnail_paths(
     }
 
     Ok(items
-        .iter()
+        .into_iter()
         .map(|item| resolve_one_thumbnail(&vault_path, item))
         .collect())
 }
