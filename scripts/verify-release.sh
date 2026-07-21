@@ -304,6 +304,9 @@ npm run build
 step "rust clippy (deny warnings)"
 ( cd src-tauri && cargo clippy --all-targets --all-features --locked -- -D warnings )
 
+step "rust tests"
+( cd src-tauri && cargo test --locked )
+
 if [[ "${SKIP_TAURI_BUILD:-}" == "1" ]]; then
   echo "SKIP: tauri build (SKIP_TAURI_BUILD=1)"
 else

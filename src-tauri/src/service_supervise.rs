@@ -44,6 +44,8 @@ pub fn supervise_enabled() -> bool {
 pub struct ServiceSupervisor {
     child: Child,
     data_dir: PathBuf,
+    /// Service-log byte offset at spawn; READY for this child must appear after it.
+    ready_log_offset: u64,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -113,6 +115,8 @@ impl ServiceSupervisor {
             | CleanupOutcome::CleanedOrphan { .. } => {}
         }
         let (log_path, log_file) = open_service_log_append(data_dir)?;
+        // Seed BEFORE child I/O so stale READY lines from prior runs are ignored.
+        let ready_log_offset = log_file.metadata()?.len();
         let log_file_err = log_file.try_clone()?;
         if verbose_enabled() {
             eprintln!(
@@ -140,6 +144,7 @@ impl ServiceSupervisor {
         Ok(Self {
             child,
             data_dir: data_dir.to_path_buf(),
+            ready_log_offset,
         })
     }
 
@@ -153,43 +158,17 @@ impl ServiceSupervisor {
 
     /// Block until the service log contains a READY line with `ipcPath`.
     ///
-    /// Reads only newly appended bytes (file offset), not the whole log each poll.
+    /// Scans only bytes appended after [`Self::ready_log_offset`] (log EOF at spawn),
+    /// so prior-run READY lines cannot satisfy a new child.
     pub fn wait_for_ready_ipc_path(
         &self,
         timeout: Duration,
     ) -> Result<PathBuf, SuperviseError> {
-        let log = service_log_path(&self.data_dir);
-        let deadline = Instant::now() + timeout;
-        let mut offset: u64 = 0;
-        let mut carry = String::new();
-        loop {
-            if log.is_file() {
-                let len = std::fs::metadata(&log)?.len();
-                if len < offset {
-                    offset = 0;
-                    carry.clear();
-                }
-                if len > offset {
-                    let mut file = std::fs::File::open(&log)?;
-                    file.seek(SeekFrom::Start(offset))?;
-                    let mut chunk = String::new();
-                    file.read_to_string(&mut chunk)?;
-                    offset = len;
-                    carry.push_str(&chunk);
-                    while let Some(nl) = carry.find('\n') {
-                        let line: String = carry.drain(..=nl).collect();
-                        let line = line.trim_end_matches(['\r', '\n']);
-                        if let Some(path) = crate::service_ipc::parse_ready_ipc_path(line) {
-                            return Ok(path);
-                        }
-                    }
-                }
-            }
-            if Instant::now() >= deadline {
-                return Err(SuperviseError::TimedOut);
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        }
+        wait_for_ready_in_log(
+            &service_log_path(&self.data_dir),
+            self.ready_log_offset,
+            timeout,
+        )
     }
 
     pub fn pid(&self) -> u32 {
@@ -241,6 +220,46 @@ impl ServiceSupervisor {
             }
             std::thread::sleep(Duration::from_millis(50));
         }
+    }
+}
+
+/// Poll `log` from `start_offset` until a READY `ipcPath` line appears or `timeout`.
+fn wait_for_ready_in_log(
+    log: &Path,
+    start_offset: u64,
+    timeout: Duration,
+) -> Result<PathBuf, SuperviseError> {
+    let deadline = Instant::now() + timeout;
+    let mut offset = start_offset;
+    let mut carry = String::new();
+    loop {
+        if log.is_file() {
+            let len = std::fs::metadata(log)?.len();
+            if len < offset {
+                // Truncated/rotated: rescan from start of the new file contents.
+                offset = 0;
+                carry.clear();
+            }
+            if len > offset {
+                let mut file = std::fs::File::open(log)?;
+                file.seek(SeekFrom::Start(offset))?;
+                let mut chunk = String::new();
+                file.read_to_string(&mut chunk)?;
+                offset = len;
+                carry.push_str(&chunk);
+                while let Some(nl) = carry.find('\n') {
+                    let line: String = carry.drain(..=nl).collect();
+                    let line = line.trim_end_matches(['\r', '\n']);
+                    if let Some(path) = crate::service_ipc::parse_ready_ipc_path(line) {
+                        return Ok(path);
+                    }
+                }
+            }
+        }
+        if Instant::now() >= deadline {
+            return Err(SuperviseError::TimedOut);
+        }
+        std::thread::sleep(Duration::from_millis(50));
     }
 }
 
@@ -311,6 +330,61 @@ mod tests {
                 .map(str::to_string);
         }
         None
+    }
+
+    #[test]
+    fn wait_for_ready_ignores_stale_lines_before_offset() {
+        let dir = std::env::temp_dir().join(format!(
+            "collector-ready-offset-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("logs")).unwrap();
+        let log = service_log_path(&dir);
+        let stale = concat!(
+            "COLLECTOR_SERVICE_READY ",
+            r#"{"host":"127.0.0.1","port":1,"baseUrl":"http://127.0.0.1:1","ipcPath":"/tmp/stale.sock"}"#,
+            "\n"
+        );
+        std::fs::write(&log, stale).unwrap();
+        let start = std::fs::metadata(&log).unwrap().len();
+        let err = wait_for_ready_in_log(&log, start, Duration::from_millis(200))
+            .expect_err("stale READY must not win");
+        assert!(matches!(err, SuperviseError::TimedOut));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn wait_for_ready_accepts_line_after_offset() {
+        let dir = std::env::temp_dir().join(format!(
+            "collector-ready-after-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("logs")).unwrap();
+        let log = service_log_path(&dir);
+        let stale = concat!(
+            "COLLECTOR_SERVICE_READY ",
+            r#"{"host":"127.0.0.1","port":1,"baseUrl":"http://127.0.0.1:1","ipcPath":"/tmp/stale.sock"}"#,
+            "\n"
+        );
+        std::fs::write(&log, stale).unwrap();
+        let start = std::fs::metadata(&log).unwrap().len();
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new().append(true).open(&log).unwrap();
+        file.write_all(
+            concat!(
+                "COLLECTOR_SERVICE_READY ",
+                r#"{"host":"127.0.0.1","port":2,"baseUrl":"http://127.0.0.1:2","ipcPath":"/tmp/fresh.sock"}"#,
+                "\n"
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+        drop(file);
+        let path = wait_for_ready_in_log(&log, start, Duration::from_secs(2)).expect("fresh");
+        assert_eq!(path, PathBuf::from("/tmp/fresh.sock"));
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

@@ -17,14 +17,14 @@ const WATCH_ERROR_EVENT: &str = "vault-items-watcher-error";
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct VaultItemFsChange {
-    vault_path: String,
+    vault_path: Arc<str>,
     changed_path: String,
 }
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct VaultWatcherErrorPayload {
-    vault_path: String,
+    vault_path: Arc<str>,
     message: String,
 }
 
@@ -77,7 +77,7 @@ pub fn start_vault_items_watcher(
                         let _ = app_handle.emit(
                             WATCH_EVENT,
                             VaultItemFsChange {
-                                vault_path: vault_path_for_emit.to_string(),
+                                vault_path: Arc::clone(&vault_path_for_emit),
                                 changed_path: path.to_string_lossy().into_owned(),
                             },
                         );
@@ -87,7 +87,7 @@ pub fn start_vault_items_watcher(
                     let _ = app_handle.emit(
                         WATCH_ERROR_EVENT,
                         VaultWatcherErrorPayload {
-                            vault_path: vault_path_for_emit.to_string(),
+                            vault_path: Arc::clone(&vault_path_for_emit),
                             message: error.to_string(),
                         },
                     );

@@ -151,6 +151,71 @@ fn read_frame(stream: &mut IpcStream) -> Result<Value, ServiceIpcError> {
     serde_json::from_slice(&body).map_err(|e| ServiceIpcError::Framing(e.to_string()))
 }
 
+/// Decode one reply frame for an in-flight request.
+///
+/// Returns `Ok(None)` only for `evt` (keep reading). Wrong version / wrong id /
+/// missing `result` on `res` are hard framing errors — never invent defaults.
+fn interpret_reply(reply: &Value, expected_id: &str) -> Result<Option<Value>, ServiceIpcError> {
+    let version = reply
+        .get("v")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| ServiceIpcError::Framing("missing v".into()))?;
+    if version != u64::from(PROTOCOL_VERSION) {
+        return Err(ServiceIpcError::Framing(format!(
+            "unsupported protocol version {version}"
+        )));
+    }
+    let typ = reply
+        .get("type")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ServiceIpcError::Framing("missing type".into()))?;
+    if typ == "evt" {
+        return Ok(None);
+    }
+    let reply_id = reply
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ServiceIpcError::Framing("missing id".into()))?;
+    if reply_id != expected_id {
+        return Err(ServiceIpcError::Framing(format!(
+            "unexpected id {reply_id} (expected {expected_id})"
+        )));
+    }
+    if typ == "res" {
+        let result = reply
+            .get("result")
+            .ok_or_else(|| ServiceIpcError::Framing("missing result".into()))?
+            .clone();
+        return Ok(Some(result));
+    }
+    if typ == "err" {
+        let err = reply
+            .get("error")
+            .ok_or_else(|| ServiceIpcError::Framing("missing error object".into()))?;
+        let layer = err
+            .get("layer")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ServiceIpcError::Framing("missing error.layer".into()))?
+            .to_string();
+        let code = err
+            .get("code")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ServiceIpcError::Framing("missing error.code".into()))?
+            .to_string();
+        let message = err
+            .get("message")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ServiceIpcError::Framing("missing error.message".into()))?
+            .to_string();
+        return Err(ServiceIpcError::Remote {
+            layer,
+            code,
+            message,
+        });
+    }
+    Err(ServiceIpcError::Framing(format!("unexpected type {typ}")))
+}
+
 pub fn default_ipc_path(data_dir: &Path) -> PathBuf {
     #[cfg(windows)]
     {
@@ -220,49 +285,10 @@ impl ServiceIpcClient {
 
         loop {
             let reply = read_frame(&mut guard)?;
-            let typ = reply
-                .get("type")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| ServiceIpcError::Framing("missing type".into()))?;
-            if typ == "evt" {
-                continue;
+            match interpret_reply(&reply, &id)? {
+                None => continue,
+                Some(result) => return Ok(result),
             }
-            let reply_id = reply
-                .get("id")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| ServiceIpcError::Framing("missing id".into()))?;
-            if reply_id != id {
-                continue;
-            }
-            if typ == "res" {
-                return Ok(reply.get("result").cloned().unwrap_or(Value::Null));
-            }
-            if typ == "err" {
-                let err = reply
-                    .get("error")
-                    .ok_or_else(|| ServiceIpcError::Framing("missing error object".into()))?;
-                let layer = err
-                    .get("layer")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| ServiceIpcError::Framing("missing error.layer".into()))?
-                    .to_string();
-                let code = err
-                    .get("code")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| ServiceIpcError::Framing("missing error.code".into()))?
-                    .to_string();
-                let message = err
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| ServiceIpcError::Framing("missing error.message".into()))?
-                    .to_string();
-                return Err(ServiceIpcError::Remote {
-                    layer,
-                    code,
-                    message,
-                });
-            }
-            return Err(ServiceIpcError::Framing(format!("unexpected type {typ}")));
         }
     }
 
@@ -320,6 +346,77 @@ mod tests {
             parse_ready_ipc_path(line).as_deref(),
             Some(Path::new("/tmp/x.sock"))
         );
+    }
+
+    #[test]
+    fn interpret_accepts_explicit_null_result() {
+        let reply = json!({
+            "v": PROTOCOL_VERSION,
+            "id": "1",
+            "type": "res",
+            "result": Value::Null,
+        });
+        assert_eq!(
+            interpret_reply(&reply, "1").expect("ok"),
+            Some(Value::Null)
+        );
+    }
+
+    #[test]
+    fn interpret_rejects_missing_result() {
+        let reply = json!({
+            "v": PROTOCOL_VERSION,
+            "id": "1",
+            "type": "res",
+        });
+        let err = interpret_reply(&reply, "1").expect_err("missing result");
+        assert!(matches!(err, ServiceIpcError::Framing(msg) if msg.contains("missing result")));
+    }
+
+    #[test]
+    fn interpret_rejects_wrong_version() {
+        let reply = json!({
+            "v": 99u32,
+            "id": "1",
+            "type": "res",
+            "result": true,
+        });
+        let err = interpret_reply(&reply, "1").expect_err("bad v");
+        assert!(matches!(err, ServiceIpcError::Framing(msg) if msg.contains("version")));
+    }
+
+    #[test]
+    fn interpret_rejects_wrong_id() {
+        let reply = json!({
+            "v": PROTOCOL_VERSION,
+            "id": "other",
+            "type": "res",
+            "result": true,
+        });
+        let err = interpret_reply(&reply, "1").expect_err("bad id");
+        assert!(matches!(err, ServiceIpcError::Framing(msg) if msg.contains("unexpected id")));
+    }
+
+    #[test]
+    fn interpret_rejects_err_missing_layer() {
+        let reply = json!({
+            "v": PROTOCOL_VERSION,
+            "id": "1",
+            "type": "err",
+            "error": { "code": "x", "message": "y" },
+        });
+        let err = interpret_reply(&reply, "1").expect_err("missing layer");
+        assert!(matches!(err, ServiceIpcError::Framing(msg) if msg.contains("error.layer")));
+    }
+
+    #[test]
+    fn interpret_evt_continues() {
+        let reply = json!({
+            "v": PROTOCOL_VERSION,
+            "type": "evt",
+            "event": "tick",
+        });
+        assert_eq!(interpret_reply(&reply, "1").expect("evt"), None);
     }
 
     #[test]
