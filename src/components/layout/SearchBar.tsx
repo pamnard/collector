@@ -52,7 +52,7 @@ export function SearchBar({
   return (
     <div
       ref={containerRef}
-      className={`flex items-center bg-input/65 backdrop-blur-md border rounded-lg transition-all duration-300 ${
+      className={`flex items-center bg-input/80 backdrop-blur-md border rounded-lg transition-all duration-300 ${
         expanded ? "border-border pr-1" : "border-transparent"
       }`}
     >

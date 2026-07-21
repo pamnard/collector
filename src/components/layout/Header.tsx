@@ -60,7 +60,7 @@ export function Header({
             {theme === "dark" ? <Sun size={20} /> : <Moon size={20} />}
           </button>
 
-          <div className="flex items-center rounded-lg border border-border bg-input/65 p-1 backdrop-blur-sm">
+          <div className="flex items-center rounded-lg bg-input/80 p-1 backdrop-blur-sm">
             <button
               type="button"
               onClick={() => onViewModeChange("grid")}

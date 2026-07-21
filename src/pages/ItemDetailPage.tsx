@@ -280,7 +280,7 @@ export function ItemDetailPage() {
       <button
         type="button"
         onClick={() => navigate(-1)}
-        className="inline-flex items-center gap-2 rounded-lg bg-input/65 px-3 py-2 text-sm text-secondary backdrop-blur-md transition-colors hover:text-primary"
+        className="inline-flex items-center gap-2 rounded-lg bg-input/80 px-3 py-2 text-sm text-secondary backdrop-blur-md transition-colors hover:text-primary"
       >
         <ArrowLeft size={20} />
         Назад
@@ -290,7 +290,7 @@ export function ItemDetailPage() {
         <div
           role="group"
           aria-label="Режим страницы"
-          className="flex items-center rounded-lg border border-border bg-input/65 p-1 backdrop-blur-sm"
+          className="flex items-center rounded-lg bg-input/80 p-1 backdrop-blur-sm"
         >
           <button
             type="button"
