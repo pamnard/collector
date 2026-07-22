@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
-import { ArrowLeft, Code, Eye, Form, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, Check, Code, Copy, Eye, Form, Trash2 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { ItemFile } from "@collector/shared";
+import { Alert } from "../components/alerts/Alert";
+import { AlertStack } from "../components/alerts/AlertStack";
 import { MarkdownContent } from "../components/content/MarkdownContent";
 import { ItemDetailHero } from "../components/items/ItemDetailHero";
 import { ItemDetailInlineEditor } from "../components/items/ItemDetailInlineEditor";
@@ -68,6 +70,10 @@ export function ItemDetailPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [idCopyFeedback, setIdCopyFeedback] = useState<
+    "copied" | "failed" | null
+  >(null);
+  const idCopyFeedbackTimer = useRef<number | null>(null);
   const isFormMode = mode === "form";
   const isSourceMode = mode === "source";
   const isSourceDirty =
@@ -275,6 +281,39 @@ export function ItemDetailPage() {
     void reloadItem(item.id).finally(() => refreshVault());
   };
 
+  useEffect(() => {
+    return () => {
+      if (idCopyFeedbackTimer.current !== null) {
+        window.clearTimeout(idCopyFeedbackTimer.current);
+      }
+    };
+  }, []);
+
+  const showIdCopyFeedback = (next: "copied" | "failed") => {
+    if (idCopyFeedbackTimer.current !== null) {
+      window.clearTimeout(idCopyFeedbackTimer.current);
+    }
+    setIdCopyFeedback(next);
+    idCopyFeedbackTimer.current = window.setTimeout(() => {
+      setIdCopyFeedback(null);
+      idCopyFeedbackTimer.current = null;
+    }, 2000);
+  };
+
+  const handleCopyItemId = async () => {
+    if (!item) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(item.id);
+      showIdCopyFeedback("copied");
+    } catch (err: unknown) {
+      console.error("Item id copy failed", { error: err, itemId: item.id });
+      showIdCopyFeedback("failed");
+    }
+  };
+
   const toolbar = (
     <div className="flex items-center justify-between gap-4">
       <button
@@ -292,6 +331,37 @@ export function ItemDetailPage() {
           aria-label="Режим страницы"
           className="flex items-center rounded-lg bg-input/80 p-1 backdrop-blur-sm"
         >
+          <button
+            type="button"
+            aria-label={
+              idCopyFeedback === "copied"
+                ? "Id скопирован"
+                : idCopyFeedback === "failed"
+                  ? "Не удалось скопировать id"
+                  : "Скопировать id элемента"
+            }
+            title={
+              idCopyFeedback === "copied"
+                ? "Id скопирован"
+                : idCopyFeedback === "failed"
+                  ? "Не удалось скопировать id"
+                  : "Скопировать id элемента"
+            }
+            className={`rounded-md p-1.5 transition-all ${
+              idCopyFeedback === "copied"
+                ? "text-primary"
+                : idCopyFeedback === "failed"
+                  ? "text-red-400"
+                  : "text-secondary hover:text-primary"
+            }`}
+            onClick={() => void handleCopyItemId()}
+          >
+            {idCopyFeedback === "copied" ? (
+              <Check size={18} />
+            ) : (
+              <Copy size={18} />
+            )}
+          </button>
           <button
             type="button"
             aria-label="Просмотр"
@@ -354,6 +424,25 @@ export function ItemDetailPage() {
 
   return (
     <div className="@container w-full p-4 md:p-8">
+      {idCopyFeedback !== null && (
+        <AlertStack>
+          <Alert
+            tone={idCopyFeedback === "failed" ? "danger" : "info"}
+            onDismiss={() => {
+              if (idCopyFeedbackTimer.current !== null) {
+                window.clearTimeout(idCopyFeedbackTimer.current);
+                idCopyFeedbackTimer.current = null;
+              }
+              setIdCopyFeedback(null);
+            }}
+          >
+            {idCopyFeedback === "failed"
+              ? "Не удалось скопировать id"
+              : "Id скопирован"}
+          </Alert>
+        </AlertStack>
+      )}
+
       {error && (
         <pre className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-400 whitespace-pre-wrap">
           {error}
