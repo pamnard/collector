@@ -1,5 +1,4 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createReadStream } from "node:fs";
 import { access, constants, stat } from "node:fs/promises";
 import { extname, relative, resolve } from "node:path";
 import type { Plugin } from "vite";
@@ -23,6 +22,7 @@ import {
   DEV_VAULT_SNAPSHOT_PATH,
   type DevVaultSnapshot,
 } from "./dev-vault-types";
+import { sendFileWithByteRange } from "./http-byte-range";
 
 export {
   DEV_VAULT_FS_PREFIX,
@@ -209,6 +209,7 @@ async function handleSnapshot(
 }
 
 async function handleStaticFile(
+  req: IncomingMessage,
   res: ServerResponse,
   vaultRoot: string | null,
   relUrlPath: string,
@@ -236,10 +237,7 @@ async function handleStaticFile(
   }
 
   const mime = MIME_BY_EXT[extname(filePath).toLowerCase()] ?? "application/octet-stream";
-  res.statusCode = 200;
-  res.setHeader("Content-Type", mime);
-  res.setHeader("Content-Length", String(fileStat.size));
-  createReadStream(filePath).pipe(res);
+  sendFileWithByteRange(req, res, filePath, fileStat.size, mime);
 }
 
 function requestPath(req: IncomingMessage): string {
@@ -280,7 +278,7 @@ export function collectorDevVaultPlugin(): Plugin {
 
         if (path.startsWith(`${DEV_VAULT_FS_PREFIX}/`)) {
           const rel = path.slice(DEV_VAULT_FS_PREFIX.length + 1);
-          void handleStaticFile(res, vaultRoot, rel);
+          void handleStaticFile(req, res, vaultRoot, rel);
           return;
         }
 
