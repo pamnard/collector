@@ -54,6 +54,10 @@ if (!existsSync(join(hostSrc, "node_modules", "better-sqlite3"))) {
 if (!existsSync(join(hostSrc, "node_modules", "sharp"))) {
   fail(`sharp missing under ${hostSrc}`);
 }
+const ffmpegName = isWin ? "ffmpeg.exe" : "ffmpeg";
+if (!existsSync(join(hostSrc, "bin", ffmpegName))) {
+  fail(`ffmpeg missing under ${hostSrc}/bin (#267)`);
+}
 
 const root = mkdtempSync(join(tmpdir(), "collector-packaged-host-"));
 const binDir = join(root, "bin");

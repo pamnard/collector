@@ -279,6 +279,7 @@ HOST_RES="$ROOT/src-tauri/resources/collector-service-host"
 [[ -f "$HOST_RES/node" || -f "$HOST_RES/node.exe" ]] || fail "packaged host missing bundled node at $HOST_RES"
 [[ -d "$HOST_RES/node_modules/better-sqlite3" ]] || fail "packaged host missing better-sqlite3 at $HOST_RES"
 [[ -d "$HOST_RES/node_modules/sharp" ]] || fail "packaged host missing sharp at $HOST_RES"
+[[ -f "$HOST_RES/bin/ffmpeg" || -f "$HOST_RES/bin/ffmpeg.exe" ]] || fail "packaged host missing ffmpeg at $HOST_RES/bin (#267)"
 
 step "typecheck"
 npm run typecheck

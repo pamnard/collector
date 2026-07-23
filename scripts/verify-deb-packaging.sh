@@ -56,5 +56,9 @@ if ! grep -q 'collector-service-host/node_modules/sharp' <<<"$deb_contents"; the
   echo "FAIL: .deb missing sharp under collector-service-host/" >&2
   exit 1
 fi
+if ! grep -qE 'collector-service-host/bin/(ffmpeg|ffmpeg\.exe)' <<<"$deb_contents"; then
+  echo "FAIL: .deb missing bundled ffmpeg under collector-service-host/bin/ (#267)" >&2
+  exit 1
+fi
 
 echo "OK: $DEB — no maintainer scripts, no bundled user data, sidecar + packaged host present"
