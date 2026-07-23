@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, Code, Copy, Eye, Form, Trash2 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { ItemFile } from "@collector/shared";
+import type { MediaWithPath } from "@collector/core";
 import { Alert } from "../components/alerts/Alert";
 import { AlertStack } from "../components/alerts/AlertStack";
 import { MarkdownContent } from "../components/content/MarkdownContent";
@@ -10,9 +11,12 @@ import { ItemDetailInlineEditor } from "../components/items/ItemDetailInlineEdit
 import { ItemDetailMetadata } from "../components/items/ItemDetailMetadata";
 import { ItemDetailSourceEditor } from "../components/items/ItemDetailSourceEditor";
 import { MediaGallery } from "../components/media/MediaGallery";
+import { MediaPlayerOverlay } from "../components/media/MediaPlayerOverlay";
 import { useShell } from "../components/layout/AppLayout";
+import { useMediaPlayerOverlay } from "../hooks/useMediaPlayerOverlay";
 import type { ItemFormValues } from "../types/item";
 import { getCollectorClient } from "../services/collector-client";
+import type { PlayableMediaKind } from "../utils/local-media-playback";
 
 type ItemDetailMode = "view" | "form" | "source";
 
@@ -73,13 +77,52 @@ export function ItemDetailPage() {
   const [idCopyFeedback, setIdCopyFeedback] = useState<
     "copied" | "failed" | null
   >(null);
+  const [mediaPlayError, setMediaPlayError] = useState<string | null>(null);
   const idCopyFeedbackTimer = useRef<number | null>(null);
+  const {
+    session: mediaPlayerSession,
+    openItemMedia,
+    openMediaRef,
+    close: closeMediaPlayer,
+  } = useMediaPlayerOverlay();
   const isFormMode = mode === "form";
   const isSourceMode = mode === "source";
   const isSourceDirty =
     sourceText !== null &&
     sourceBaseline !== null &&
     sourceText !== sourceBaseline;
+
+  const handlePlayHeroVideo = useCallback(() => {
+    if (!item) {
+      return;
+    }
+    setMediaPlayError(null);
+    void openItemMedia(item.id, "video").catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[ItemDetailPage] hero video open failed", {
+        itemId: item.id,
+        message,
+      });
+      setMediaPlayError(message);
+    });
+  }, [item, openItemMedia]);
+
+  const handlePlayGalleryMedia = useCallback(
+    (file: MediaWithPath) => {
+      if (file.media_type !== "video" && file.media_type !== "audio") {
+        throw new Error(`Media is not playable: ${file.media_type}`);
+      }
+      setMediaPlayError(null);
+      openMediaRef(
+        {
+          path: file.absolute_path,
+          kind: file.media_type as PlayableMediaKind,
+        },
+        file.filename,
+      );
+    },
+    [openMediaRef],
+  );
 
   const reloadItem = async (itemId: string) => {
     const { item: loadedItem, content: loadedContent } = await getCollectorClient().getItemById(itemId);
@@ -459,7 +502,13 @@ export function ItemDetailPage() {
             <div className="mx-auto w-full max-w-[900px]">{toolbar}</div>
           </div>
 
-          {mode === "view" && <ItemDetailHero item={item} />}
+          {mode === "view" && (
+            <ItemDetailHero
+              item={item}
+              onPlayLocalVideo={handlePlayHeroVideo}
+              playError={mediaPlayError}
+            />
+          )}
 
           <aside className="min-w-0 @[1100px]:col-span-3 @[1100px]:col-start-10 @[1100px]:row-span-6 @[1100px]:row-start-1">
             <div className="mx-auto w-full max-w-[900px] @[1100px]:max-w-none @[1100px]:sticky @[1100px]:top-4">
@@ -505,10 +554,23 @@ export function ItemDetailPage() {
 
           <div className="min-w-0 @[1100px]:col-span-9">
             <div className="mx-auto w-full max-w-[900px]">
-              <MediaGallery itemId={item.id} onUpdated={handleItemUpdated} />
+              <MediaGallery
+                itemId={item.id}
+                onUpdated={handleItemUpdated}
+                onPlayMedia={handlePlayGalleryMedia}
+              />
             </div>
           </div>
         </article>
+      )}
+
+      {mediaPlayerSession && (
+        <MediaPlayerOverlay
+          src={mediaPlayerSession.src}
+          kind={mediaPlayerSession.kind}
+          title={mediaPlayerSession.title}
+          onClose={closeMediaPlayer}
+        />
       )}
     </div>
   );
