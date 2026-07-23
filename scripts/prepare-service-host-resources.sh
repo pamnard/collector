@@ -13,6 +13,8 @@ cd "$ROOT"
 NODE_VERSION="${COLLECTOR_BUNDLED_NODE_VERSION:-22.22.3}"
 BETTER_SQLITE3_VERSION="${COLLECTOR_BETTER_SQLITE3_VERSION:-11.10.0}"
 SHARP_VERSION="${COLLECTOR_SHARP_VERSION:-0.34.2}"
+# Static ffmpeg for video cover.webp extract (#267). Override to pin / skip fetch.
+FFMPEG_STATIC_VERSION="${COLLECTOR_FFMPEG_STATIC_VERSION:-5.3.0}"
 
 HOST_OUT="$ROOT/src-tauri/resources/collector-service-host"
 CACHE_ROOT="${COLLECTOR_NODE_CACHE:-$ROOT/src-tauri/.cache/node-v${NODE_VERSION}}"
@@ -239,11 +241,55 @@ rm -rf "$REBUILD_DIR/node_modules/better-sqlite3/deps" \
 rm -rf "$HOST_OUT/node_modules"
 cp -a "$REBUILD_DIR/node_modules" "$HOST_OUT/node_modules"
 
+echo "==> fetch ffmpeg-static@${FFMPEG_STATIC_VERSION} → $HOST_OUT/bin (#267)"
+FFMPEG_FETCH_DIR="$CACHE_ROOT/ffmpeg-static-${PLATFORM_ARCH}-v${FFMPEG_STATIC_VERSION}"
+FFMPEG_BIN_NAME="ffmpeg"
+if [[ "$IS_WIN" -eq 1 ]]; then
+  FFMPEG_BIN_NAME="ffmpeg.exe"
+fi
+mkdir -p "$FFMPEG_FETCH_DIR"
+if [[ ! -f "$FFMPEG_FETCH_DIR/${FFMPEG_BIN_NAME}" ]]; then
+  cat >"$FFMPEG_FETCH_DIR/package.json" <<EOF
+{
+  "name": "collector-ffmpeg-static-fetch",
+  "private": true,
+  "dependencies": {
+    "ffmpeg-static": "${FFMPEG_STATIC_VERSION}"
+  }
+}
+EOF
+  (
+    cd "$FFMPEG_FETCH_DIR"
+    export npm_config_arch="$NPM_ARCH"
+    export npm_config_platform="$NPM_PLATFORM"
+    # ffmpeg-static postinstall downloads the platform binary.
+    npm install --ignore-scripts=false
+  )
+  FETCHED="$(
+    cd "$FFMPEG_FETCH_DIR"
+    node -e "process.stdout.write(require('ffmpeg-static'))"
+  )"
+  if [[ -z "$FETCHED" || ! -f "$FETCHED" ]]; then
+    echo "FAIL: ffmpeg-static did not resolve a binary at $FFMPEG_FETCH_DIR" >&2
+    exit 1
+  fi
+  cp -f "$FETCHED" "$FFMPEG_FETCH_DIR/${FFMPEG_BIN_NAME}"
+  chmod +x "$FFMPEG_FETCH_DIR/${FFMPEG_BIN_NAME}" 2>/dev/null || true
+fi
+mkdir -p "$HOST_OUT/bin"
+cp -f "$FFMPEG_FETCH_DIR/${FFMPEG_BIN_NAME}" "$HOST_OUT/bin/${FFMPEG_BIN_NAME}"
+chmod +x "$HOST_OUT/bin/${FFMPEG_BIN_NAME}" 2>/dev/null || true
+if [[ ! -f "$HOST_OUT/bin/${FFMPEG_BIN_NAME}" ]]; then
+  echo "FAIL: missing bundled ffmpeg at $HOST_OUT/bin/${FFMPEG_BIN_NAME}" >&2
+  exit 1
+fi
+
 echo "==> ABI probe: open :memory: DB + sharp with bundled Node"
 (
   cd "$HOST_OUT"
   "./${NODE_BIN_NAME}" -e "require('better-sqlite3')(':memory:'); console.log('better-sqlite3 ok')"
   "./${NODE_BIN_NAME}" -e "require('sharp'); console.log('sharp ok')"
+  "./bin/${FFMPEG_BIN_NAME}" -version | head -1
 )
 
 echo "==> smoke: bundled host --help"
@@ -266,6 +312,10 @@ if [[ ! -d "$HOST_OUT/node_modules/better-sqlite3" ]]; then
 fi
 if [[ ! -d "$HOST_OUT/node_modules/sharp" ]]; then
   echo "FAIL: missing sharp under $HOST_OUT" >&2
+  exit 1
+fi
+if [[ ! -f "$HOST_OUT/bin/${FFMPEG_BIN_NAME}" ]]; then
+  echo "FAIL: missing ffmpeg under $HOST_OUT/bin" >&2
   exit 1
 fi
 
