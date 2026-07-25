@@ -1,5 +1,5 @@
-import { Hash } from "lucide-react";
 import type { TagWithCount } from "@collector/core";
+import { Badge } from "@/components/ui/badge";
 import type { NavFilter } from "../../types/ui";
 import { navFilterKey } from "../../types/ui";
 
@@ -31,19 +31,19 @@ export function SidebarTags({
           !isSettings &&
           activeKey === navFilterKey({ type: "tag", tagId: tag.id });
         return (
-          <button
+          <Badge
             key={tag.id}
-            type="button"
-            onClick={() => onSelect({ type: "tag", tagId: tag.id })}
-            className={`flex items-center gap-1 text-sm transition-colors ${
-              selected
-                ? "text-indigo-600 dark:text-indigo-400"
-                : "text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
-            }`}
+            variant={selected ? "default" : "outline"}
+            render={
+              <button
+                type="button"
+                onClick={() => onSelect({ type: "tag", tagId: tag.id })}
+              />
+            }
           >
-            <Hash size={16} />
             <span className="truncate max-w-[150px]">{tag.name}</span>
-          </button>
+            <span className="tabular-nums opacity-70">{tag.item_count}</span>
+          </Badge>
         );
       })}
     </div>

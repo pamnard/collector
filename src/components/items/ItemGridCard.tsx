@@ -8,6 +8,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ItemFile } from "@collector/shared";
 import type { TagWithCount } from "@collector/core";
+import { Badge } from "@/components/ui/badge";
 import { toDisplayAssetSrc } from "../../utils/asset-src";
 import { formatItemDate } from "../../utils/formatItemDate";
 import { getYouTubeThumbnail } from "../../utils/youtube-thumbnail";
@@ -194,30 +195,32 @@ export function ItemGridCard({
       {tags.length > 0 && (
         <div className="mt-auto flex flex-wrap gap-2">
           {tags.slice(0, 3).map((tag) => (
-            <span
+            <Badge
               key={tag.id}
+              variant="outline"
               className={
                 overlayLayout
-                  ? "rounded-md border border-white/25 bg-white/15 px-2 py-1 text-sm text-white dark:border-neutral-900/20 dark:bg-neutral-900/10 dark:text-neutral-800"
-                  : "rounded-md border border-black/10 dark:border-white/10 bg-neutral-100 dark:bg-neutral-700 px-2 py-1 text-sm text-neutral-500 dark:text-neutral-400"
+                  ? "border-white/25 bg-white/15 text-white dark:border-neutral-900/20 dark:bg-neutral-900/10 dark:text-neutral-800"
+                  : undefined
               }
               style={
                 !overlayLayout && tag.color ? { color: tag.color } : undefined
               }
             >
-              #{tag.name}
-            </span>
+              {tag.name}
+            </Badge>
           ))}
           {tags.length > 3 && (
-            <span
+            <Badge
+              variant="outline"
               className={
                 overlayLayout
-                  ? "rounded-md border border-white/25 bg-white/15 px-2 py-1 text-sm text-white dark:border-neutral-900/20 dark:bg-neutral-900/10 dark:text-neutral-800"
-                  : "rounded-md border border-black/10 dark:border-white/10 bg-neutral-100 dark:bg-neutral-700 px-2 py-1 text-sm text-neutral-500 dark:text-neutral-400"
+                  ? "border-white/25 bg-white/15 text-white dark:border-neutral-900/20 dark:bg-neutral-900/10 dark:text-neutral-800"
+                  : undefined
               }
             >
               +{tags.length - 3}
-            </span>
+            </Badge>
           )}
         </div>
       )}

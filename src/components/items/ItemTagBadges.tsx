@@ -1,4 +1,5 @@
 import type { TagWithCount } from "@collector/core";
+import { Badge } from "@/components/ui/badge";
 
 interface ItemTagBadgesProps {
   tagIds: string[];
@@ -17,13 +18,13 @@ export function ItemTagBadges({ tagIds, tagsById }: ItemTagBadgesProps) {
   return (
     <div className="mt-2 flex flex-wrap gap-1">
       {visibleTags.map((tag) => (
-        <span
+        <Badge
           key={tag.id}
-          className="rounded-full bg-neutral-100/50 dark:bg-neutral-700/50 px-2 py-0.5 text-sm text-neutral-500 dark:text-neutral-400"
+          variant="outline"
           style={tag.color ? { color: tag.color } : undefined}
         >
           {tag.name}
-        </span>
+        </Badge>
       ))}
     </div>
   );

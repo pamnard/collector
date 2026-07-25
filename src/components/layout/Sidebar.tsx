@@ -123,7 +123,7 @@ export function Sidebar({
         />
 
         <ShadcnSidebar collapsible="none" className="flex min-w-0 flex-1 flex-col bg-neutral-200 dark:bg-neutral-900">
-          <div className="flex h-16 shrink-0 items-center px-4 box-border">
+          <div className="flex h-12 shrink-0 items-center px-4 box-border">
             <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
               {panelTitle(mode)}
             </div>
