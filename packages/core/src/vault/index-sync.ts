@@ -4,6 +4,7 @@ import type {
   VaultContext,
 } from "../adapters/types.js";
 import { assertVaultTreeLayout } from "./assert-vault-layout.js";
+import { ensureInboxLayout } from "./inbox-layout.js";
 import { readVaultMeta } from "./item-io.js";
 import { syncIndexFromFilesystem } from "./operations.js";
 import { syncTagsToIndex } from "./tag-operations.js";
@@ -19,6 +20,7 @@ export async function syncVaultIndexFromFilesystem(
   options: IndexSyncOptions = {},
 ): Promise<VaultIndexSyncReport> {
   await assertVaultTreeLayout(ctx.fs, vaultPath);
+  await ensureInboxLayout(ctx, vaultPath);
   const meta = await readVaultMeta(ctx.fs, vaultPath);
   await ctx.index.upsertVault(meta, vaultPath);
   await syncTagsToIndex(ctx, vaultPath, meta.id);

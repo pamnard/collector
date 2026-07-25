@@ -1,4 +1,5 @@
 import type { ContentType } from "@collector/shared";
+import { INBOX_FOLDER_NAME } from "@collector/shared";
 
 export interface ItemFormValues {
   title: string;
@@ -36,5 +37,5 @@ export const EMPTY_ITEM_FORM: ItemFormValues = {
   content_type: "note",
   content: "",
   tag_ids: [],
-  folder_path: "",
+  folder_path: INBOX_FOLDER_NAME,
 };

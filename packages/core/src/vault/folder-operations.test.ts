@@ -31,7 +31,7 @@ describe("folder operations", () => {
     }
   });
 
-  it("listFolderTreeFromIndex skips item disk scan", async () => {
+  it("listFolderTreeFromIndex always includes Inbox even when empty", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "collector-folder-"));
     const sql = new MemorySqlAdapter();
     const ctx = { fs, index: new SqlVaultIndexStore(sql) };
@@ -58,13 +58,13 @@ describe("folder operations", () => {
     });
 
     const indexTree = await listFolderTreeFromIndex(ctx, path, meta.id);
-    expect(indexTree).toHaveLength(1);
-    expect(indexTree[0]?.path).toBe("Work");
-    expect(indexTree[0]?.item_count).toBe(1);
+    expect(indexTree.map((node) => node.path)).toEqual(["Inbox", "Work"]);
+    expect(indexTree.find((node) => node.path === "Inbox")?.item_count).toBe(0);
+    expect(indexTree.find((node) => node.path === "Work")?.item_count).toBe(1);
 
     const mergedTree = await reconcileFolderTreeFromDisk(ctx, path, meta.id);
-    expect(mergedTree[0]?.path).toBe("Work");
-    expect(mergedTree[0]?.item_count).toBe(1);
+    expect(mergedTree.map((node) => node.path)).toEqual(["Inbox", "Work"]);
+    expect(mergedTree.find((node) => node.path === "Work")?.item_count).toBe(1);
   });
 
   it("reconcileFolderTreeFromDisk includes folder paths only on disk", async () => {
@@ -94,13 +94,14 @@ describe("folder operations", () => {
     await ctx.index.deleteItem(itemId);
 
     const indexTree = await listFolderTreeFromIndex(ctx, path, meta.id);
-    expect(indexTree).toHaveLength(0);
+    expect(indexTree.map((node) => node.path)).toEqual(["Inbox"]);
 
     const mergedTree = await reconcileFolderTreeFromDisk(ctx, path, meta.id);
-    expect(mergedTree).toHaveLength(1);
-    expect(mergedTree[0]?.path).toBe("Imports");
+    expect(mergedTree.map((node) => node.path)).toEqual(["Inbox", "Imports"]);
     expect(
-      mergedTree[0]?.children.some((child) => child.path === "Imports/Drop"),
+      mergedTree
+        .find((node) => node.path === "Imports")
+        ?.children.some((child) => child.path === "Imports/Drop"),
     ).toBe(true);
   });
 

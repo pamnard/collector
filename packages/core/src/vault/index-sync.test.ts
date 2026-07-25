@@ -116,10 +116,11 @@ describe("syncVaultIndexFromFilesystem", () => {
       [meta.id],
     );
     expect(itemRows).toHaveLength(1);
+    expect(itemRows[0]?.id).toBe(`Inbox/${itemId}`);
 
     const itemTagRows = await db.select<{ item_id: string }>(
       "SELECT item_id FROM item_tags WHERE item_id = ? AND tag_id = ?",
-      [itemId, tag.id],
+      [`Inbox/${itemId}`, tag.id],
     );
     expect(itemTagRows).toHaveLength(1);
 

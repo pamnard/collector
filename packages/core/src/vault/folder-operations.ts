@@ -8,6 +8,10 @@ import type { VaultContext } from "../adapters/types.js";
 import { nowIso } from "../util/ids.js";
 import { buildFolderTree, renameFolderPath, type FolderTreeNode } from "./folder-tree.js";
 import {
+  ensureInboxLayout,
+  resolveOrCreateInboxFolder,
+} from "./inbox-layout.js";
+import {
   readItemContent,
   readItemFile,
   readItemSourceRef,
@@ -47,14 +51,15 @@ export async function readVaultFolderPaths(
   return listFolderRelativePaths(ctx.fs, vaultPath);
 }
 
-/** SQLite counts only (no disk scan) — misses folders that currently hold zero items. */
+/** SQLite counts + always include Inbox (even when empty / zero items). */
 export async function listFolderTreeFromIndex(
   ctx: VaultContext,
-  _vaultPath: string,
+  vaultPath: string,
   vaultId: string,
 ): Promise<FolderTreeNode[]> {
+  const inbox = await ensureInboxLayout(ctx, vaultPath);
   const countRows = await ctx.index.listFolderItemCounts(vaultId);
-  return buildFolderTreeFromSources([], countRows);
+  return buildFolderTreeFromSources([inbox], countRows);
 }
 
 /** Authoritative: union of real on-disk folders + SQLite item counts. */
@@ -63,6 +68,7 @@ export async function reconcileFolderTreeFromDisk(
   vaultPath: string,
   vaultId: string,
 ): Promise<FolderTreeNode[]> {
+  await ensureInboxLayout(ctx, vaultPath);
   const diskFolders = await listFolderRelativePaths(ctx.fs, vaultPath);
   const countRows = await ctx.index.listFolderItemCounts(vaultId);
   return buildFolderTreeFromSources(diskFolders, countRows);
@@ -175,10 +181,13 @@ export async function moveItemToFolder(
   itemId: string,
   folderPath: string,
 ): Promise<ItemFile> {
-  const normalized = assertFolderPath(folderPath);
+  let normalized = assertFolderPath(folderPath);
+  if (!normalized) {
+    normalized = await resolveOrCreateInboxFolder(ctx, vaultPath);
+  }
   const id = normalizeRelativePath(itemId);
   const name = basename(id);
-  const newId = normalized ? `${normalized}/${name}` : name;
+  const newId = `${normalized}/${name}`;
 
   if (newId === id) {
     return readItemFile(ctx.fs, vaultPath, id, vaultId);

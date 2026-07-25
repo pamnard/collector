@@ -1,4 +1,4 @@
-import { normalizeFolderPath } from "@collector/shared";
+import { compareFolderNamesForDisplay, normalizeFolderPath } from "@collector/shared";
 
 export interface FolderTreeNode {
   name: string;
@@ -78,7 +78,7 @@ export function buildFolderTree(
       total += rollupCounts(child);
     }
     node.item_count = total;
-    node.children.sort((a, b) => a.name.localeCompare(b.name));
+    node.children.sort((a, b) => compareFolderNamesForDisplay(a.name, b.name));
     return total;
   };
 
@@ -86,7 +86,7 @@ export function buildFolderTree(
     rollupCounts(root);
   }
 
-  return roots.sort((a, b) => a.name.localeCompare(b.name));
+  return roots.sort((a, b) => compareFolderNamesForDisplay(a.name, b.name));
 }
 
 export function renameFolderPath(

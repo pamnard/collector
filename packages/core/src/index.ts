@@ -139,6 +139,10 @@ export {
   renameFolder,
 } from "./vault/folder-operations.js";
 export type { FolderTreeNode } from "./vault/folder-tree.js";
+export {
+  ensureInboxLayout,
+  resolveOrCreateInboxFolder,
+} from "./vault/inbox-layout.js";
 
 export {
   createTag,

@@ -1,11 +1,10 @@
-import { Folder, FolderOpen } from "lucide-react";
+import { Folder, FolderOpen, Inbox } from "lucide-react";
 import { useMemo } from "react";
 import type { FolderTreeNode } from "@collector/core";
+import { isInboxFolderName } from "@collector/shared";
 import { useFolderTree } from "../../hooks/useFolderTree";
 import type { NavFilter } from "../../types/ui";
 import { navFilterKey } from "../../types/ui";
-
-const UNCATEGORIZED_FILTER: NavFilter = { type: "folder", folderPath: "" };
 
 function flattenFolders(nodes: FolderTreeNode[]): FolderTreeNode[] {
   const flat: FolderTreeNode[] = [];
@@ -45,25 +44,14 @@ export function SidebarCollections({
   const folders = useFolderTree(vaultRevision);
   const activeKey = navFilterKey(activeFilter);
   const flatFolders = useMemo(() => flattenFolders(folders), [folders]);
-  const uncategorizedSelected =
-    !isSettings && activeKey === navFilterKey(UNCATEGORIZED_FILTER);
-  const UncategorizedIcon = uncategorizedSelected ? FolderOpen : Folder;
 
   return (
     <div className="space-y-1">
-      <button
-        type="button"
-        onClick={() => onSelect(UNCATEGORIZED_FILTER)}
-        className={collectionButtonClass(uncategorizedSelected)}
-      >
-        <UncategorizedIcon size={18} className="opacity-50" />
-        <span className="truncate">Без коллекции</span>
-      </button>
-
       {flatFolders.map((folder) => {
         const filter: NavFilter = { type: "folder", folderPath: folder.path };
         const selected = !isSettings && activeKey === navFilterKey(filter);
-        const Icon = selected ? FolderOpen : Folder;
+        const inbox = isInboxFolderName(folder.name);
+        const Icon = inbox ? Inbox : selected ? FolderOpen : Folder;
         return (
           <button
             key={folder.path}

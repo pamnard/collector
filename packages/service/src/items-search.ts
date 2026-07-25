@@ -24,6 +24,7 @@ import {
   readItemContent,
   readItemFile,
   readItemRawMarkdown,
+  resolveOrCreateInboxFolder,
   upsertItem,
   writeItemRawMarkdown,
   type IndexSyncProgress,
@@ -413,13 +414,14 @@ export function createItemsSearchService(
     const { vault, path } = await deps.resolveActiveVault();
     const ctx = deps.getContext();
     const timestamp = new Date().toISOString();
-    const folderPath = input.folder_path?.trim() ?? "";
-    const fileName = `${newItemId()}.md`;
-    const id = folderPath ? `${folderPath}/${fileName}` : fileName;
-
-    if (folderPath) {
+    let folderPath = input.folder_path?.trim() ?? "";
+    if (!folderPath) {
+      folderPath = await resolveOrCreateInboxFolder(ctx, path);
+    } else {
       await createFolderOnVault(ctx, path, folderPath);
     }
+    const fileName = `${newItemId()}.md`;
+    const id = `${folderPath}/${fileName}`;
 
     return upsertItem(ctx, path, vault.id, {
       item: {

@@ -1,5 +1,6 @@
 import type { FolderTreeNode, TagWithCount } from "@collector/core";
 import type { ItemFile, VaultMeta } from "@collector/shared";
+import { INBOX_FOLDER_NAME, isInboxFolderName } from "@collector/shared";
 import {
   createMockItems,
   createMockTags,
@@ -20,6 +21,20 @@ function folderItemCount(folderPath: string): number {
       item.folder_path === folderPath ||
       item.folder_path.startsWith(`${folderPath}/`),
   ).length;
+}
+
+function withInboxFolder(tree: FolderTreeNode[]): FolderTreeNode[] {
+  const withoutInbox = tree.filter((node) => !isInboxFolderName(node.name));
+  const existing = tree.find((node) => isInboxFolderName(node.name));
+  const inbox =
+    existing ??
+    ({
+      name: INBOX_FOLDER_NAME,
+      path: INBOX_FOLDER_NAME,
+      item_count: folderItemCount(INBOX_FOLDER_NAME),
+      children: [],
+    } satisfies FolderTreeNode);
+  return [inbox, ...withoutInbox];
 }
 
 function buildSyntheticFolderTree(): FolderTreeNode[] {
@@ -43,7 +58,7 @@ function buildSyntheticFolderTree(): FolderTreeNode[] {
     ],
   };
 
-  return [
+  return withInboxFolder([
     projects,
     {
       name: "reading",
@@ -51,13 +66,7 @@ function buildSyntheticFolderTree(): FolderTreeNode[] {
       item_count: folderItemCount("reading"),
       children: [],
     },
-    {
-      name: "inbox",
-      path: "inbox",
-      item_count: folderItemCount("inbox"),
-      children: [],
-    },
-  ];
+  ]);
 }
 
 function resetSynthetic(): void {
@@ -115,7 +124,7 @@ export const mockStore = {
 
   listFolderTree(): FolderTreeNode[] {
     if (folderTree) {
-      return folderTree;
+      return withInboxFolder(folderTree);
     }
     return buildSyntheticFolderTree();
   },

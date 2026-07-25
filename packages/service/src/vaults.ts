@@ -4,11 +4,13 @@
  */
 
 import type { AppSettings, ItemFile, VaultMeta } from "@collector/shared";
+import { INBOX_FOLDER_NAME } from "@collector/shared";
 import {
   assertVaultTreeLayout,
   createSingleFlight,
   createVault,
   readVaultMeta,
+  resolveOrCreateInboxFolder,
   runEmptyVaultBootstrap,
   upsertItem,
   vaultMetaPath,
@@ -72,11 +74,15 @@ function pickVaultEntry(
   return entries[0] ?? null;
 }
 
-function defaultWelcomeItem(vaultId: string): { item: ItemFile; content: string } {
+function defaultWelcomeItem(
+  vaultId: string,
+  inboxFolder: string = INBOX_FOLDER_NAME,
+): { item: ItemFile; content: string } {
   const now = new Date().toISOString();
+  const fileName = `${crypto.randomUUID()}.md`;
   return {
     item: {
-      id: `${crypto.randomUUID()}.md`,
+      id: `${inboxFolder}/${fileName}`,
       vault_id: vaultId,
       title: "Welcome to Collector",
       description:
@@ -86,7 +92,7 @@ function defaultWelcomeItem(vaultId: string): { item: ItemFile; content: string 
       metadata: {},
       tag_ids: [],
       collection_ids: [],
-      folder_path: "",
+      folder_path: inboxFolder,
       content_revision: 1,
       created_at: now,
       updated_at: now,
@@ -163,9 +169,13 @@ export function createVaultsService(deps: VaultsServiceDeps): VaultsService {
             isDefault: true,
           });
 
+          const inboxFolder = await resolveOrCreateInboxFolder(
+            ctx,
+            created.path,
+          );
           const welcome =
             deps.createWelcomeItem?.(created.meta.id) ??
-            defaultWelcomeItem(created.meta.id);
+            defaultWelcomeItem(created.meta.id, inboxFolder);
 
           await upsertItem(ctx, created.path, created.meta.id, welcome);
 

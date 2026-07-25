@@ -80,7 +80,7 @@ const ITEM_SEEDS: ItemSeed[] = [
     content_type: "video",
     url: YOUTUBE_URLS[2],
     tagIndexes: [2, 0],
-    folder_path: "inbox",
+    folder_path: "Inbox",
   },
   {
     title: "Tall cover image sample",
@@ -118,7 +118,7 @@ const ITEM_SEEDS: ItemSeed[] = [
     content_type: "bookmark",
     url: "https://news.ycombinator.com/",
     tagIndexes: [0],
-    folder_path: "inbox",
+    folder_path: "Inbox",
   },
   {
     title: "Research link without cover",
@@ -133,7 +133,7 @@ const ITEM_SEEDS: ItemSeed[] = [
     description: "Ещё один seed для sidebar count.",
     content_type: "note",
     tagIndexes: [4],
-    folder_path: "inbox",
+    folder_path: "Inbox",
   },
   {
     title: "Design system color tokens",
@@ -149,7 +149,7 @@ const ITEM_SEEDS: ItemSeed[] = [
     content_type: "video",
     url: YOUTUBE_URLS[3],
     tagIndexes: [2],
-    folder_path: "inbox",
+    folder_path: "Inbox",
   },
   {
     title: "React 19 release notes",
@@ -188,7 +188,7 @@ const ITEM_SEEDS: ItemSeed[] = [
     content_type: "image",
     thumbnail: picsum("collector-square", 800, 800),
     tagIndexes: [3],
-    folder_path: "inbox",
+    folder_path: "Inbox",
   },
   {
     title: "Long title that should wrap nicely on the card without breaking the masonry column layout in the dashboard",
@@ -203,7 +203,7 @@ const ITEM_SEEDS: ItemSeed[] = [
     description: "",
     content_type: "note",
     tagIndexes: [],
-    folder_path: "inbox",
+    folder_path: "Inbox",
   },
   {
     title: "Tagged reading list",
@@ -225,7 +225,7 @@ const ITEM_SEEDS: ItemSeed[] = [
     description: "Audio item.",
     content_type: "audio",
     tagIndexes: [2],
-    folder_path: "inbox",
+    folder_path: "Inbox",
   },
   {
     title: "Other misc link",
@@ -233,7 +233,7 @@ const ITEM_SEEDS: ItemSeed[] = [
     content_type: "other",
     url: "https://example.com/misc",
     tagIndexes: [4],
-    folder_path: "inbox",
+    folder_path: "Inbox",
   },
   {
     title: "Collector issue #57",
@@ -248,7 +248,7 @@ const ITEM_SEEDS: ItemSeed[] = [
     description: "Inbox folder count.",
     content_type: "note",
     tagIndexes: [],
-    folder_path: "inbox",
+    folder_path: "Inbox",
   },
   {
     title: "Nested folder path item",

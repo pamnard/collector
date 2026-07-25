@@ -6,6 +6,7 @@ import type { ItemFile } from "@collector/shared";
 import {
   buildFolderTreeFromSources,
   dirname,
+  ensureInboxLayout,
   joinSegments,
   listFolderRelativePaths,
   listItemRelativePaths,
@@ -14,6 +15,7 @@ import {
   readItemFile,
   readVaultMeta,
   type TagWithCount,
+  type VaultContext,
 } from "@collector/core";
 import { NodeFileSystemAdapter } from "../../packages/core/src/adapters/node-fs";
 import { readTagsFile } from "../../packages/core/src/vault/tag-io";
@@ -152,6 +154,8 @@ async function resolveThumbnailUrl(
 
 async function buildSnapshot(vaultRoot: string): Promise<DevVaultSnapshot> {
   const fs = new NodeFileSystemAdapter();
+  // Layout ensure only touches the filesystem (no index reads/writes).
+  await ensureInboxLayout({ fs, index: {} as VaultContext["index"] }, vaultRoot);
   const vault = await readVaultMeta(fs, vaultRoot);
   const itemIds = await listItemRelativePaths(fs, vaultRoot);
   const items: ItemFile[] = [];
