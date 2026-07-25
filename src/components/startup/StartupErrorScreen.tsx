@@ -4,10 +4,10 @@ interface StartupErrorScreenProps {
 
 export function StartupErrorScreen({ message }: StartupErrorScreenProps) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-main p-6 font-sans text-primary">
+    <div className="flex min-h-screen items-center justify-center bg-white dark:bg-neutral-800 p-6 font-sans text-neutral-900 dark:text-neutral-100">
       <div className="w-full max-w-lg space-y-4">
         <h1 className="text-xl font-semibold">Не удалось запустить Collector</h1>
-        <p className="text-secondary text-sm">
+        <p className="text-neutral-500 dark:text-neutral-400 text-sm">
           Локальный сервис или индекс не поднялись. Перезапустите приложение.
           Если ошибка повторяется — проверьте лог сервиса в каталоге данных
           приложения и переустановите Collector.

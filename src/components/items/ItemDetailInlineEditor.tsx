@@ -38,7 +38,7 @@ export function ItemDetailInlineEditor({
         value={values.title}
         onChange={(event) => update("title", event.target.value)}
         placeholder="Название"
-        className="w-full bg-transparent text-2xl font-semibold outline-none border-b border-border pb-2 focus:border-indigo-500/50"
+        className="w-full bg-transparent text-2xl font-semibold outline-none border-b border-black/10 dark:border-white/10 pb-2 focus:border-indigo-500/50"
       />
 
       <textarea
@@ -46,7 +46,7 @@ export function ItemDetailInlineEditor({
         onChange={(event) => update("description", event.target.value)}
         rows={2}
         placeholder="Описание"
-        className="w-full rounded-lg border border-border bg-input/20 px-3 py-2 text-sm resize-y"
+        className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-neutral-100/20 dark:bg-neutral-700/20 px-3 py-2 text-sm resize-y"
       />
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -57,7 +57,7 @@ export function ItemDetailInlineEditor({
             onChange={(event) =>
               update("content_type", event.target.value as ContentType)
             }
-            className="mt-1 w-full rounded-lg border border-border bg-input/20 px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-black/10 dark:border-white/10 bg-neutral-100/20 dark:bg-neutral-700/20 px-3 py-2 text-sm"
           >
             {CONTENT_TYPES.map((type) => (
               <option key={type} value={type}>
@@ -74,7 +74,7 @@ export function ItemDetailInlineEditor({
             value={values.url}
             onChange={(event) => update("url", event.target.value)}
             placeholder="https://"
-            className="mt-1 w-full rounded-lg border border-border bg-input/20 px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-black/10 dark:border-white/10 bg-neutral-100/20 dark:bg-neutral-700/20 px-3 py-2 text-sm"
           />
         </label>
       </div>

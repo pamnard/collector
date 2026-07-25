@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getName } from "@tauri-apps/api/app";
 import { RefreshCw } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import type { VaultMeta } from "@collector/shared";
 import { useShell } from "../components/layout/AppLayout";
 import { useAppUpdater } from "../hooks/useAppUpdater";
@@ -8,8 +9,11 @@ import { useTheme } from "../hooks/useTheme";
 import { useCheckUpdatesOnStart } from "../hooks/useUpdaterSettings";
 import { useViewMode } from "../hooks/useViewMode";
 import { getCollectorClient } from "../services/collector-client";
+import { parseSettingsSection } from "../types/sidebar-mode";
 
 export function SettingsPage() {
+  const [searchParams] = useSearchParams();
+  const section = parseSettingsSection(searchParams.get("section"));
   const { theme, toggleTheme } = useTheme();
   const { viewMode } = useViewMode();
   const { refreshVault } = useShell();
@@ -63,9 +67,20 @@ export function SettingsPage() {
     }
   };
 
+  if (section === "mcp") {
+    return (
+      <div className="p-4 md:p-8 max-w-2xl">
+        <h1 className="text-2xl font-semibold mb-6">МЦП</h1>
+        <section className="rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 p-4">
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">Скоро</p>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 md:p-8 max-w-2xl">
-      <h1 className="text-2xl font-semibold mb-6">Настройки</h1>
+      <h1 className="text-2xl font-semibold mb-6">Общие</h1>
 
       {error && (
         <pre className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-400 whitespace-pre-wrap">
@@ -73,18 +88,18 @@ export function SettingsPage() {
         </pre>
       )}
 
-      <section className="rounded-lg border border-border bg-card divide-y divide-border">
+      <section className="rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 divide-y divide-black/10 dark:divide-white/10">
         <div className="p-4 flex items-center justify-between gap-4">
           <div>
             <p className="font-medium">Тема</p>
-            <p className="text-secondary text-sm">
+            <p className="text-neutral-500 dark:text-neutral-400 text-sm">
               {theme === "dark" ? "Тёмная" : "Светлая"}
             </p>
           </div>
           <button
             type="button"
             onClick={toggleTheme}
-            className="px-3 py-1.5 rounded-lg border border-border hover:bg-input/65 transition-colors text-sm"
+            className="px-3 py-1.5 rounded-lg border border-black/10 dark:border-white/10 hover:bg-neutral-100/65 dark:hover:bg-neutral-700/65 transition-colors text-sm"
           >
             Переключить
           </button>
@@ -92,7 +107,7 @@ export function SettingsPage() {
 
         <div className="p-4">
           <p className="font-medium">Вид по умолчанию</p>
-          <p className="text-secondary text-sm mt-1">
+          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">
             {viewMode === "grid" ? "Сетка" : "Таблица"}
           </p>
         </div>
@@ -104,7 +119,7 @@ export function SettingsPage() {
               value={activeVaultId}
               disabled={isSavingVault}
               onChange={(event) => handleVaultChange(event.target.value)}
-              className="mt-2 w-full rounded-lg border border-border bg-input/20 px-3 py-2 text-sm"
+              className="mt-2 w-full rounded-lg border border-black/10 dark:border-white/10 bg-neutral-100/20 dark:bg-neutral-700/20 px-3 py-2 text-sm"
             >
               {vaults.map((vault) => (
                 <option key={vault.id} value={vault.id}>
@@ -114,45 +129,45 @@ export function SettingsPage() {
               ))}
             </select>
           ) : (
-            <p className="text-muted text-sm mt-1">Загрузка…</p>
+            <p className="text-neutral-500 text-sm mt-1">Загрузка…</p>
           )}
         </div>
 
         <div className="p-4">
           <p className="font-medium">Каталог данных</p>
           {appName && (
-            <p className="text-secondary text-sm mt-1">
+            <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">
               Среда: {appName.includes("Dev") ? "разработка" : "release"}
             </p>
           )}
           {dataDir ? (
-            <p className="text-secondary text-sm mt-1 break-all">{dataDir}</p>
+            <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1 break-all">{dataDir}</p>
           ) : (
-            <p className="text-muted text-sm mt-1">Загрузка…</p>
+            <p className="text-neutral-500 text-sm mt-1">Загрузка…</p>
           )}
         </div>
 
         <div className="p-4">
           <p className="font-medium">Настройки приложения</p>
           {configDir ? (
-            <p className="text-secondary text-sm mt-1 break-all">
+            <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1 break-all">
               {configDir}/settings.json
             </p>
           ) : (
-            <p className="text-muted text-sm mt-1">Загрузка…</p>
+            <p className="text-neutral-500 text-sm mt-1">Загрузка…</p>
           )}
         </div>
 
         <div className="p-4">
           <p className="font-medium">Версия</p>
-          <p className="text-secondary text-sm mt-1">{__APP_VERSION__}</p>
+          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">{__APP_VERSION__}</p>
         </div>
 
         <div className="p-4 space-y-3">
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="font-medium">Обновления</p>
-              <p className="text-secondary text-sm mt-1">
+              <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">
                 Канал: GitHub Releases (`latest.json`)
               </p>
             </div>
@@ -160,7 +175,7 @@ export function SettingsPage() {
               type="button"
               onClick={checkForUpdates}
               disabled={progress.stage === "checking" || progress.stage === "downloading" || progress.stage === "installing"}
-              className="px-3 py-1.5 rounded-lg border border-border hover:bg-input/65 transition-colors text-sm disabled:opacity-50"
+              className="px-3 py-1.5 rounded-lg border border-black/10 dark:border-white/10 hover:bg-neutral-100/65 dark:hover:bg-neutral-700/65 transition-colors text-sm disabled:opacity-50"
             >
               {progress.stage === "checking" ? "Проверка…" : "Проверить"}
             </button>
@@ -169,7 +184,7 @@ export function SettingsPage() {
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="font-medium text-sm">Проверять при запуске</p>
-              <p className="text-secondary text-sm mt-0.5">
+              <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-0.5">
                 {checkUpdatesOnStart ? "Включено" : "Выключено"}
               </p>
             </div>
@@ -181,7 +196,7 @@ export function SettingsPage() {
               className={`inline-flex items-center justify-center rounded-lg border p-2 transition-colors ${
                 checkUpdatesOnStart
                   ? "border-indigo-500/40 bg-indigo-500/10 text-indigo-400"
-                  : "border-border text-secondary hover:bg-input/65 hover:text-primary"
+                  : "border-black/10 dark:border-white/10 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100/65 dark:hover:bg-neutral-700/65 hover:text-neutral-900 dark:hover:text-neutral-100"
               }`}
             >
               <RefreshCw size={18} />
@@ -192,7 +207,7 @@ export function SettingsPage() {
             <div className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 p-3 text-sm space-y-2">
               <p>Доступна версия {progress.version}</p>
               {progress.notes && (
-                <p className="text-secondary whitespace-pre-wrap">{progress.notes}</p>
+                <p className="text-neutral-500 dark:text-neutral-400 whitespace-pre-wrap">{progress.notes}</p>
               )}
               <button
                 type="button"
@@ -205,11 +220,11 @@ export function SettingsPage() {
           )}
 
           {progress.stage === "uptodate" && (
-            <p className="text-secondary text-sm">Установлена последняя версия.</p>
+            <p className="text-neutral-500 dark:text-neutral-400 text-sm">Установлена последняя версия.</p>
           )}
 
           {progress.stage === "downloading" && (
-            <p className="text-secondary text-sm">
+            <p className="text-neutral-500 dark:text-neutral-400 text-sm">
               Загрузка…
               {progress.total
                 ? ` ${Math.round((progress.downloaded / progress.total) * 100)}%`
@@ -218,7 +233,7 @@ export function SettingsPage() {
           )}
 
           {progress.stage === "installing" && (
-            <p className="text-secondary text-sm">Установка…</p>
+            <p className="text-neutral-500 dark:text-neutral-400 text-sm">Установка…</p>
           )}
 
           {progress.stage === "error" && (

@@ -27,7 +27,7 @@ export function Alert({ tone, children, onDismiss }: AlertProps) {
         <button
           type="button"
           onClick={onDismiss}
-          className="shrink-0 text-secondary transition-colors hover:text-primary"
+          className="shrink-0 text-neutral-500 dark:text-neutral-400 transition-colors hover:text-neutral-900 dark:hover:text-neutral-100"
           aria-label="Скрыть"
         >
           <X size={16} />

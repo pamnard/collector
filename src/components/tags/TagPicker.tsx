@@ -107,7 +107,7 @@ export function TagPicker({ selectedTagIds, onChange }: TagPickerProps) {
                 className={`rounded-full px-3 py-1 text-sm border transition-colors ${
                   selected
                     ? "border-indigo-500/50 bg-indigo-500/15 text-indigo-300"
-                    : "border-border text-secondary hover:bg-input/65"
+                    : "border-black/10 dark:border-white/10 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100/65 dark:hover:bg-neutral-700/65"
                 }`}
                 style={
                   tag.color
@@ -120,7 +120,7 @@ export function TagPicker({ selectedTagIds, onChange }: TagPickerProps) {
               <button
                 type="button"
                 onClick={() => handleRenameTag(tag)}
-                className="text-muted hover:text-secondary text-sm px-1"
+                className="text-neutral-500 hover:text-neutral-500 dark:hover:text-neutral-400 text-sm px-1"
                 aria-label={`Переименовать ${tag.name}`}
               >
                 ✎
@@ -128,7 +128,7 @@ export function TagPicker({ selectedTagIds, onChange }: TagPickerProps) {
               <button
                 type="button"
                 onClick={() => handleDeleteTag(tag.id)}
-                className="text-muted hover:text-red-400 text-sm px-1"
+                className="text-neutral-500 hover:text-red-400 text-sm px-1"
                 aria-label={`Удалить ${tag.name}`}
               >
                 ×
@@ -144,13 +144,13 @@ export function TagPicker({ selectedTagIds, onChange }: TagPickerProps) {
           value={newTagName}
           onChange={(event) => setNewTagName(event.target.value)}
           placeholder="Новый тег"
-          className="flex-1 rounded-lg border border-border bg-input/20 px-3 py-2 text-sm"
+          className="flex-1 rounded-lg border border-black/10 dark:border-white/10 bg-neutral-100/20 dark:bg-neutral-700/20 px-3 py-2 text-sm"
         />
         <button
           type="button"
           onClick={handleCreateTag}
           disabled={!newTagName.trim()}
-          className="px-3 py-2 rounded-lg border border-border hover:bg-input/65 text-sm disabled:opacity-50"
+          className="px-3 py-2 rounded-lg border border-black/10 dark:border-white/10 hover:bg-neutral-100/65 dark:hover:bg-neutral-700/65 text-sm disabled:opacity-50"
         >
           Добавить
         </button>

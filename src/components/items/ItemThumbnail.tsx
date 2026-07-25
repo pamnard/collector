@@ -17,7 +17,7 @@ export function ItemThumbnail({
   item,
   className = "h-32 w-full object-cover",
   showLoadingPlaceholder = true,
-  loadingClassName = "flex h-32 w-full items-center justify-center bg-input/20 text-secondary",
+  loadingClassName = "flex h-32 w-full items-center justify-center bg-neutral-100/20 dark:bg-neutral-700/20 text-neutral-500 dark:text-neutral-400",
 }: ItemThumbnailProps) {
   const [src, setSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);

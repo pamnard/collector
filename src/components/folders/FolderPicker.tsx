@@ -28,7 +28,7 @@ export function FolderPicker({ value, onChange }: FolderPickerProps) {
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full rounded-lg border border-border bg-input/20 px-3 py-2 text-sm"
+        className="mt-1 w-full rounded-lg border border-black/10 dark:border-white/10 bg-neutral-100/20 dark:bg-neutral-700/20 px-3 py-2 text-sm"
       >
         <option value="">Без папки</option>
         {paths.map((path) => (

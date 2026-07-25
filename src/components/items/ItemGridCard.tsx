@@ -157,7 +157,7 @@ export function ItemGridCard({
     return (
       <div
         aria-hidden
-        className="min-h-[280px] animate-pulse rounded-lg border border-border-card bg-card/50"
+        className="min-h-[280px] animate-pulse rounded-lg border border-black/10 dark:border-white/10 bg-white/50 dark:bg-neutral-800/50"
       />
     );
   }
@@ -173,7 +173,7 @@ export function ItemGridCard({
         className={
           overlayLayout
             ? "mb-2 line-clamp-3 text-lg font-bold leading-snug text-white dark:text-neutral-900"
-            : "mb-2 line-clamp-3 text-lg font-bold leading-snug text-primary"
+            : "mb-2 line-clamp-3 text-lg font-bold leading-snug text-neutral-900 dark:text-neutral-100"
         }
       >
         {item.title}
@@ -184,7 +184,7 @@ export function ItemGridCard({
           className={
             overlayLayout
               ? "mb-4 line-clamp-3 flex-1 text-sm text-white/80 dark:text-neutral-700"
-              : "mb-4 line-clamp-3 flex-1 text-sm text-secondary"
+              : "mb-4 line-clamp-3 flex-1 text-sm text-neutral-500 dark:text-neutral-400"
           }
         >
           {item.description}
@@ -199,7 +199,7 @@ export function ItemGridCard({
               className={
                 overlayLayout
                   ? "rounded-md border border-white/25 bg-white/15 px-2 py-1 text-sm text-white dark:border-neutral-900/20 dark:bg-neutral-900/10 dark:text-neutral-800"
-                  : "rounded-md border border-border bg-input px-2 py-1 text-sm text-secondary"
+                  : "rounded-md border border-black/10 dark:border-white/10 bg-neutral-100 dark:bg-neutral-700 px-2 py-1 text-sm text-neutral-500 dark:text-neutral-400"
               }
               style={
                 !overlayLayout && tag.color ? { color: tag.color } : undefined
@@ -213,7 +213,7 @@ export function ItemGridCard({
               className={
                 overlayLayout
                   ? "rounded-md border border-white/25 bg-white/15 px-2 py-1 text-sm text-white dark:border-neutral-900/20 dark:bg-neutral-900/10 dark:text-neutral-800"
-                  : "rounded-md border border-border bg-input px-2 py-1 text-sm text-secondary"
+                  : "rounded-md border border-black/10 dark:border-white/10 bg-neutral-100 dark:bg-neutral-700 px-2 py-1 text-sm text-neutral-500 dark:text-neutral-400"
               }
             >
               +{tags.length - 3}
@@ -226,7 +226,7 @@ export function ItemGridCard({
         className={
           overlayLayout
             ? "mt-4 flex items-center text-sm leading-none text-white/70 dark:text-neutral-600"
-            : "mt-4 flex items-center text-sm leading-none text-muted"
+            : "mt-4 flex items-center text-sm leading-none text-neutral-500"
         }
       >
         <div className="flex items-center gap-2">
@@ -256,16 +256,16 @@ export function ItemGridCard({
       }}
       className={
         overlayLayout
-          ? "group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-lg border border-border-card bg-card hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/10 [content-visibility:auto] [contain-intrinsic-size:280px]"
-          : "group flex h-full cursor-pointer flex-col rounded-lg border border-border-card bg-card p-5 hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/10 [content-visibility:auto] [contain-intrinsic-size:280px]"
+          ? "group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 hover:border-indigo-500/50 dark:hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/10 [content-visibility:auto] [contain-intrinsic-size:280px]"
+          : "group flex h-full cursor-pointer flex-col rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 p-5 hover:border-indigo-500/50 dark:hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/10 [content-visibility:auto] [contain-intrinsic-size:280px]"
       }
     >
       {(showCover || coverPending) && (
         <div
           className={
             overlayLayout
-              ? "relative overflow-hidden bg-input"
-              : "relative -mx-5 -mt-5 mb-4 overflow-hidden rounded-t-lg bg-input"
+              ? "relative overflow-hidden bg-neutral-100 dark:bg-neutral-700"
+              : "relative -mx-5 -mt-5 mb-4 overflow-hidden rounded-t-lg bg-neutral-100 dark:bg-neutral-700"
           }
         >
           {showCover ? (
@@ -281,8 +281,8 @@ export function ItemGridCard({
               aria-hidden
               className={
                 overlayLayout
-                  ? "aspect-[3/4] w-full animate-pulse bg-input"
-                  : "aspect-video w-full animate-pulse bg-input"
+                  ? "aspect-[3/4] w-full animate-pulse bg-neutral-100 dark:bg-neutral-700"
+                  : "aspect-video w-full animate-pulse bg-neutral-100 dark:bg-neutral-700"
               }
             />
           )}

@@ -1,36 +1,72 @@
-import { useEffect, useState } from "react";
-import { Hash, Settings, X } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState, type CSSProperties } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import type { TagWithCount } from "@collector/core";
+import type { Theme } from "../../hooks/useTheme";
 import type { NavFilter } from "../../types/ui";
-import { navFilterKey } from "../../types/ui";
-import { Logo } from "./Logo";
-import { SidebarCollections } from "./SidebarCollections";
-import { SidebarMenu } from "./SidebarMenu";
+import type { SidebarMode } from "../../types/sidebar-mode";
+import { parseSettingsSection } from "../../types/sidebar-mode";
 import { getCollectorClient } from "../../services/collector-client";
+import {
+  Sidebar as ShadcnSidebar,
+  SidebarContent,
+  SidebarProvider,
+} from "../ui/sidebar";
+import { SidebarCollections } from "./SidebarCollections";
+import { SidebarIconRail } from "./SidebarIconRail";
+import { SidebarSearchPanel } from "./SidebarSearchPanel";
+import { SidebarSettingsNav } from "./SidebarSettingsNav";
+import { SidebarTags } from "./SidebarTags";
 
-interface SidebarProps {
+interface AppSidebarProps {
   variant?: "drawer" | "docked";
   isOpen: boolean;
   onClose: () => void;
+  mode: SidebarMode;
+  onModeChange: (mode: SidebarMode) => void;
   activeFilter: NavFilter;
   onFilterSelect: (filter: NavFilter) => void;
   vaultRevision: number;
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
+  searchIndexBuilding?: boolean;
+  theme: Theme;
+  onToggleTheme: () => void;
+}
+
+function panelTitle(mode: SidebarMode): string {
+  switch (mode) {
+    case "collections":
+      return "Коллекции";
+    case "tags":
+      return "Теги";
+    case "search":
+      return "Поиск";
+    case "settings":
+      return "Настройки";
+  }
 }
 
 export function Sidebar({
   variant = "drawer",
   isOpen,
   onClose,
+  mode,
+  onModeChange,
   activeFilter,
   onFilterSelect,
   vaultRevision,
-}: SidebarProps) {
+  searchQuery,
+  onSearchChange,
+  searchIndexBuilding = false,
+  theme,
+  onToggleTheme,
+}: AppSidebarProps) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isSettings = pathname === "/settings";
+  const settingsSection = parseSettingsSection(searchParams.get("section"));
   const [tags, setTags] = useState<TagWithCount[]>([]);
-  const activeKey = navFilterKey(activeFilter);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -46,14 +82,94 @@ export function Sidebar({
     onClose();
   };
 
-  const goToSettings = () => {
-    navigate("/settings");
+  const handleModeChange = (next: SidebarMode) => {
+    onModeChange(next);
+    if (next === "settings") {
+      navigate("/settings?section=general");
+      onClose();
+      return;
+    }
+    if (pathname === "/settings") {
+      navigate("/");
+    }
     onClose();
   };
 
-  const isTagSelected = (tagId: string) =>
-    !isSettings &&
-    activeKey === navFilterKey({ type: "tag", tagId });
+  const handleSettingsSection = (section: "general" | "mcp") => {
+    setSearchParams({ section });
+  };
+
+  const nested = (
+    <SidebarProvider
+      open
+      onOpenChange={() => {}}
+      className="!min-h-0 h-full w-full"
+      style={
+        {
+          "--sidebar-width": "100%",
+          "--sidebar-width-icon": "3rem",
+        } as CSSProperties
+      }
+    >
+      <ShadcnSidebar
+        collapsible="none"
+        className="flex h-full w-full flex-row overflow-hidden text-neutral-900 dark:text-neutral-100"
+      >
+        <SidebarIconRail
+          mode={mode}
+          onModeChange={handleModeChange}
+          theme={theme}
+          onToggleTheme={onToggleTheme}
+        />
+
+        <ShadcnSidebar collapsible="none" className="flex min-w-0 flex-1 flex-col bg-neutral-200 dark:bg-neutral-900">
+          <div className="flex h-16 shrink-0 items-center px-4 box-border">
+            <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+              {panelTitle(mode)}
+            </div>
+          </div>
+          {mode === "search" ? (
+            <SidebarSearchPanel
+              searchQuery={searchQuery}
+              onSearchChange={onSearchChange}
+              searchIndexBuilding={searchIndexBuilding}
+            />
+          ) : (
+            <SidebarContent className="custom-scrollbar gap-0">
+              {mode === "collections" ? (
+                <div className="px-2 py-2">
+                  <SidebarCollections
+                    activeFilter={activeFilter}
+                    isSettings={isSettings}
+                    onSelect={goToDashboard}
+                    vaultRevision={vaultRevision}
+                  />
+                </div>
+              ) : null}
+              {mode === "tags" ? (
+                <div className="px-2 py-2">
+                  <SidebarTags
+                    tags={tags}
+                    activeFilter={activeFilter}
+                    isSettings={isSettings}
+                    onSelect={goToDashboard}
+                  />
+                </div>
+              ) : null}
+              {mode === "settings" ? (
+                <div className="py-2">
+                  <SidebarSettingsNav
+                    section={settingsSection}
+                    onSectionChange={handleSettingsSection}
+                  />
+                </div>
+              ) : null}
+            </SidebarContent>
+          )}
+        </ShadcnSidebar>
+      </ShadcnSidebar>
+    </SidebarProvider>
+  );
 
   return (
     <>
@@ -69,79 +185,13 @@ export function Sidebar({
       <aside
         className={
           variant === "docked"
-            ? "flex h-full w-full flex-col bg-sidebar"
-            : `fixed md:static inset-y-0 left-0 z-50 w-72 bg-sidebar border-r border-border flex flex-col transition-all duration-300 ease-in-out shrink-0 ${
+            ? "flex h-full w-full flex-col"
+            : `fixed md:static inset-y-0 left-0 z-50 w-72 border-r border-black/10 dark:border-white/10 flex flex-col transition-all duration-300 ease-in-out shrink-0 ${
                 isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
               }`
         }
       >
-        <div className="h-16 px-6 flex items-center justify-between border-b border-border shrink-0 box-border">
-          <button
-            type="button"
-            onClick={() => goToDashboard("all")}
-            className="hover:opacity-80 transition-opacity"
-          >
-            <Logo size="md" />
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="md:hidden text-secondary hover:text-primary"
-            aria-label="Закрыть"
-          >
-            <X size={24} />
-          </button>
-        </div>
-
-        <nav className="flex-1 px-4 space-y-6 overflow-y-auto custom-scrollbar">
-          <SidebarMenu title="Коллекции">
-            <SidebarCollections
-              activeFilter={activeFilter}
-              isSettings={isSettings}
-              onSelect={goToDashboard}
-              vaultRevision={vaultRevision}
-            />
-          </SidebarMenu>
-
-          {tags.length > 0 && (
-            <SidebarMenu title="Теги">
-              <div className="flex flex-wrap gap-2 px-2">
-                {tags.map((tag) => (
-                  <button
-                    key={tag.id}
-                    type="button"
-                    onClick={() =>
-                      goToDashboard({ type: "tag", tagId: tag.id })
-                    }
-                    className={`flex items-center gap-1 text-sm transition-colors ${
-                      isTagSelected(tag.id)
-                        ? "text-indigo-600 dark:text-indigo-400"
-                        : "text-muted hover:text-primary"
-                    }`}
-                  >
-                    <Hash size={14} />
-                    <span className="truncate max-w-[150px]">{tag.name}</span>
-                  </button>
-                ))}
-              </div>
-            </SidebarMenu>
-          )}
-        </nav>
-
-        <div className="p-4 border-t border-border">
-          <button
-            type="button"
-            onClick={goToSettings}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-              isSettings
-                ? "bg-indigo-50 dark:bg-indigo-600/10 text-indigo-600 dark:text-indigo-400"
-                : "text-secondary hover:bg-input hover:text-primary"
-            }`}
-          >
-            <Settings size={18} />
-            <span>Настройки</span>
-          </button>
-        </div>
+        {nested}
       </aside>
     </>
   );

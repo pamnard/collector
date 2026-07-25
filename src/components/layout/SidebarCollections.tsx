@@ -25,7 +25,7 @@ function collectionButtonClass(selected: boolean): string {
   return `w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
     selected
       ? "bg-indigo-50 dark:bg-indigo-600/10 text-indigo-600 dark:text-indigo-400"
-      : "text-secondary hover:bg-input hover:text-primary"
+      : "text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:text-neutral-900 dark:hover:text-neutral-100"
   }`;
 }
 
@@ -73,7 +73,7 @@ export function SidebarCollections({
           >
             <Icon size={18} />
             <span className="truncate">{folder.name}</span>
-            <span className="ml-auto text-sm text-muted/65">
+            <span className="ml-auto text-sm text-neutral-500/65">
               {folder.item_count}
             </span>
           </button>

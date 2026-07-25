@@ -79,20 +79,18 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
     <>
       <div
         ref={tableTopRef}
-        className="rounded-lg border border-border overflow-x-auto"
+        className="rounded-lg border border-black/10 dark:border-white/10 overflow-x-auto"
       >
-        <table className="w-full min-w-[640px] text-sm">
-          <thead className="bg-input/30 text-secondary">
+        <table className="w-full table-fixed text-sm">
+          <thead className="bg-neutral-100/30 dark:bg-neutral-700/30 text-neutral-500 dark:text-neutral-400">
             <tr>
               <th className="text-left px-4 py-2 font-medium">Название</th>
-              <th className="text-left px-4 py-2 font-medium w-28">Тип</th>
-              <th className="text-left px-4 py-2 font-medium min-w-[120px]">
-                Теги
-              </th>
-              <th className="text-left px-4 py-2 font-medium w-28 whitespace-nowrap">
+              <th className="w-28 text-left px-4 py-2 font-medium">Тип</th>
+              <th className="w-40 text-left px-4 py-2 font-medium">Теги</th>
+              <th className="w-28 text-left px-4 py-2 font-medium whitespace-nowrap">
                 Обновлено
               </th>
-              <th className="text-right px-4 py-2 font-medium w-32">
+              <th className="w-32 text-right px-4 py-2 font-medium">
                 Действия
               </th>
             </tr>
@@ -111,23 +109,18 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
                   data-index={virtualRow.index}
                   ref={virtualizer.measureElement}
                   onClick={() => navigate(`/item/${item.id}`)}
-                  className="border-t border-border hover:bg-input/20 cursor-pointer"
+                  className="border-t border-black/10 dark:border-white/10 hover:bg-neutral-100/20 dark:hover:bg-neutral-700/20 cursor-pointer"
                 >
-                  <td className="px-4 py-3">
-                    <p className="font-medium truncate max-w-xs">{item.title}</p>
-                    {item.description && (
-                      <p className="text-secondary text-sm mt-1 line-clamp-1">
-                        {item.description}
-                      </p>
-                    )}
+                  <td className="overflow-hidden px-4 py-3">
+                    <p className="truncate font-medium">{item.title}</p>
                   </td>
-                  <td className="px-4 py-3 text-secondary whitespace-nowrap">
+                  <td className="px-4 py-3 text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
                     {item.content_type}
                   </td>
                   <td className="px-4 py-3">
                     <ItemTagBadges tagIds={item.tag_ids} tagsById={tagsById} />
                   </td>
-                  <td className="px-4 py-3 text-secondary whitespace-nowrap">
+                  <td className="px-4 py-3 text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
                     {formatItemDate(item.updated_at)}
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -146,7 +139,7 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
       </div>
 
       {dashboard.hasMore && (
-        <div ref={sentinelRef} className="py-6 text-center text-secondary text-sm">
+        <div ref={sentinelRef} className="py-6 text-center text-neutral-500 dark:text-neutral-400 text-sm">
           {dashboard.isLoadingMore ? "Загрузка…" : "Прокрутите для следующих элементов"}
         </div>
       )}

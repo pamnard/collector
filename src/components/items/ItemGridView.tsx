@@ -119,7 +119,7 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
       </Masonry>
 
       {dashboard.hasMore && (
-        <div ref={sentinelRef} className="py-8 text-center text-secondary text-sm">
+        <div ref={sentinelRef} className="py-8 text-center text-neutral-500 dark:text-neutral-400 text-sm">
           {dashboard.isLoadingMore ? "Загрузка…" : "Прокрутите для следующих элементов"}
         </div>
       )}
