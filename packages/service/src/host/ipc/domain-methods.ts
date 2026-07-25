@@ -19,6 +19,7 @@ export const DOMAIN_IPC_METHODS = {
   updateItem: "updateItem",
   deleteItem: "deleteItem",
   updateItemSource: "updateItemSource",
+  importDroppedFiles: "importDroppedFiles",
   // #157 tags
   listTags: "listTags",
   createTag: "createTag",

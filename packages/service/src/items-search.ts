@@ -431,7 +431,7 @@ export function createItemsSearchService(
         description: input.description ?? "",
         url: input.url ?? null,
         content_type: input.content_type,
-        source_type: "manual",
+        source_type: input.source_type ?? "manual",
         metadata: {},
         tag_ids: [],
         collection_ids: [],

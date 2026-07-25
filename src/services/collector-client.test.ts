@@ -25,6 +25,7 @@ const REQUIRED_METHODS: (keyof CollectorServiceApi)[] = [
   "createItem",
   "updateItem",
   "deleteItem",
+  "importDroppedFiles",
   "subscribeTags",
   "listTags",
   "createTag",

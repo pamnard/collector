@@ -6,6 +6,7 @@ import {
   createItemsSearchService,
   createTagsFoldersService,
   createMediaCoverService,
+  createDropImportService,
   createVaultIndexSyncStatusStore,
   createVaultsService,
   type VaultIndexSyncStatus,
@@ -31,6 +32,7 @@ import type {
 } from "@collector/core";
 import type { Tag } from "@collector/shared";
 import type { CreateItemInput, UpdateItemInput } from "../types/item";
+import type { ImportDroppedFilesInput, ImportDroppedFilesResult } from "@collector/api";
 import type { NavFilter } from "../types/ui";
 import { TauriFileSystemAdapter } from "../adapters/tauri-fs";
 import {
@@ -522,6 +524,12 @@ const mediaCover = createMediaCoverService({
     ),
 });
 
+const dropImport = createDropImportService({
+  createItem: (input) => itemsSearch.createItem(input),
+  attachMediaFiles: (itemId, files) => mediaCover.attachMediaFiles(itemId, files),
+  updateItemSource: (itemId, raw) => itemsSearch.updateItemSource(itemId, raw),
+});
+
 export { DASHBOARD_PREFETCH_SIZE };
 export type { DashboardIndexPage, DashboardItemIdsResult };
 
@@ -665,6 +673,12 @@ export async function updateItemSource(
 
 export async function createItem(input: CreateItemInput): Promise<ItemFile> {
   return itemsSearch.createItem(input);
+}
+
+export async function importDroppedFiles(
+  input: ImportDroppedFilesInput,
+): Promise<ImportDroppedFilesResult> {
+  return dropImport.importDroppedFiles(input);
 }
 
 export async function updateItem(

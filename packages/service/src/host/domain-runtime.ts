@@ -20,6 +20,7 @@ import { createCollectorIndexBoot } from "../index-boot.js";
 import { createDashboardSnapshotService } from "../dashboard-snapshot.js";
 import { createItemsSearchService } from "../items-search.js";
 import { createMediaCoverService } from "../media-cover.js";
+import { createDropImportService } from "../drop-import.js";
 import { createTagsFoldersService } from "../tags-folders.js";
 import { createVaultsService } from "../vaults.js";
 import {
@@ -95,6 +96,7 @@ export interface ServiceDomainRuntime {
   itemsSearch: ReturnType<typeof createItemsSearchService>;
   tagsFolders: ReturnType<typeof createTagsFoldersService>;
   mediaCover: ReturnType<typeof createMediaCoverService>;
+  dropImport: ReturnType<typeof createDropImportService>;
   vaults: ReturnType<typeof createVaultsService>;
   appSettings: ReturnType<typeof createAppSettingsService>;
   dashboardSnapshot: ReturnType<typeof createDashboardSnapshotService>;
@@ -477,6 +479,14 @@ export function createServiceDomainRuntime(
       resolveItemThumbnailPathsBatch(getContext().fs, vaultPath, items),
   });
 
+  const dropImport = createDropImportService({
+    createItem: (input) => itemsSearch.createItem(input),
+    attachMediaFiles: (itemId, files) =>
+      mediaCover.attachMediaFiles(itemId, files),
+    updateItemSource: (itemId, raw) =>
+      itemsSearch.updateItemSource(itemId, raw),
+  });
+
   return {
     dataDir,
     open: () => indexBoot.open(),
@@ -498,6 +508,7 @@ export function createServiceDomainRuntime(
     itemsSearch,
     tagsFolders,
     mediaCover,
+    dropImport,
     vaults,
     appSettings,
     dashboardSnapshot,
