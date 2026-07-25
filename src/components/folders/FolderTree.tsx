@@ -41,7 +41,7 @@ function FolderTreeNodeView({
           <button
             type="button"
             onClick={() => setOpen((value) => !value)}
-            className="rounded p-0.5 text-muted hover:text-primary"
+            className="rounded p-0.5 text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
             aria-label={open ? "Свернуть" : "Развернуть"}
           >
             {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -55,14 +55,14 @@ function FolderTreeNodeView({
           className={`flex-1 flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg transition-colors ${
             selected
               ? "bg-indigo-50 dark:bg-indigo-600/10 text-indigo-600 dark:text-indigo-400"
-              : "text-secondary hover:bg-input hover:text-primary"
+              : "text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:text-neutral-900 dark:hover:text-neutral-100"
           }`}
         >
           <span className="inline-flex items-center gap-2 min-w-0">
             <Folder size={16} className="shrink-0" />
             <span className="truncate">{node.name}</span>
           </span>
-          <span className="text-sm text-muted">{node.item_count}</span>
+          <span className="text-sm text-neutral-500">{node.item_count}</span>
         </button>
       </div>
       {open &&
@@ -126,13 +126,13 @@ export function FolderTree({
           value={newFolder}
           onChange={(event) => setNewFolder(event.target.value)}
           placeholder="Work/Articles"
-          className="flex-1 rounded-lg border border-border bg-input/20 px-2 py-1.5 text-sm"
+          className="flex-1 rounded-lg border border-black/10 dark:border-white/10 bg-neutral-100/20 dark:bg-neutral-700/20 px-2 py-1.5 text-sm"
         />
         <button
           type="button"
           onClick={handleCreate}
           disabled={!newFolder.trim()}
-          className="rounded-lg border border-border p-1.5 text-secondary hover:bg-input/65 disabled:opacity-50"
+          className="rounded-lg border border-black/10 dark:border-white/10 p-1.5 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100/65 dark:hover:bg-neutral-700/65 disabled:opacity-50"
           aria-label="Создать папку"
         >
           <FolderPlus size={16} />

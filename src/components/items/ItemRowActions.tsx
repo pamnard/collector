@@ -38,7 +38,7 @@ export function ItemRowActions({
         aria-label="Удалить"
         disabled={isDeleting}
         onClick={() => void handleDelete()}
-        className="rounded-lg p-1.5 text-secondary transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+        className="rounded-lg p-1.5 text-neutral-500 dark:text-neutral-400 transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
       >
         <Trash2 size={16} />
       </button>

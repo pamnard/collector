@@ -19,7 +19,7 @@ export function ItemTagBadges({ tagIds, tagsById }: ItemTagBadgesProps) {
       {visibleTags.map((tag) => (
         <span
           key={tag.id}
-          className="rounded-full bg-input/50 px-2 py-0.5 text-sm text-secondary"
+          className="rounded-full bg-neutral-100/50 dark:bg-neutral-700/50 px-2 py-0.5 text-sm text-neutral-500 dark:text-neutral-400"
           style={tag.color ? { color: tag.color } : undefined}
         >
           {tag.name}

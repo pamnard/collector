@@ -23,31 +23,31 @@ export function ItemDetailMetadata({ item }: ItemDetailMetadataProps) {
   );
 
   return (
-    <section className="space-y-3 rounded-lg border border-border bg-card p-4">
+    <section className="space-y-3 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 p-4">
       <h2 className="text-sm font-medium">Метаданные</h2>
 
       <dl className="grid gap-3 text-sm">
         <div>
-          <dt className="text-secondary">Тип</dt>
+          <dt className="text-neutral-500 dark:text-neutral-400">Тип</dt>
           <dd className="mt-1">{item.content_type}</dd>
         </div>
         <div>
-          <dt className="text-secondary">Создано</dt>
+          <dt className="text-neutral-500 dark:text-neutral-400">Создано</dt>
           <dd className="mt-1">{formatItemDate(item.created_at)}</dd>
         </div>
         <div>
-          <dt className="text-secondary">Обновлено</dt>
+          <dt className="text-neutral-500 dark:text-neutral-400">Обновлено</dt>
           <dd className="mt-1">{formatItemDate(item.updated_at)}</dd>
         </div>
         {item.folder_path && (
           <div>
-            <dt className="text-secondary">Папка</dt>
+            <dt className="text-neutral-500 dark:text-neutral-400">Папка</dt>
             <dd className="mt-1">{item.folder_path}</dd>
           </div>
         )}
         {item.url && (
           <div>
-            <dt className="text-secondary">URL</dt>
+            <dt className="text-neutral-500 dark:text-neutral-400">URL</dt>
             <dd className="mt-1">
               <ExternalAnchor
                 href={item.url}
@@ -62,7 +62,7 @@ export function ItemDetailMetadata({ item }: ItemDetailMetadataProps) {
 
       {item.tag_ids.length > 0 && (
         <div>
-          <p className="text-secondary text-sm mb-2">Теги</p>
+          <p className="text-neutral-500 dark:text-neutral-400 text-sm mb-2">Теги</p>
           <ItemTagBadges tagIds={item.tag_ids} tagsById={tagsById} />
         </div>
       )}

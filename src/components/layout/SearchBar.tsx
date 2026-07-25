@@ -52,8 +52,8 @@ export function SearchBar({
   return (
     <div
       ref={containerRef}
-      className={`flex items-center bg-input/80 backdrop-blur-md border rounded-lg transition-all duration-300 ${
-        expanded ? "border-border pr-1" : "border-transparent"
+      className={`flex items-center bg-neutral-100/80 dark:bg-neutral-700/80 backdrop-blur-md border rounded-lg transition-all duration-300 ${
+        expanded ? "border-black/10 dark:border-white/10 pr-1" : "border-transparent"
       }`}
     >
       <input
@@ -73,7 +73,7 @@ export function SearchBar({
             setIsOpen(false);
           }
         }}
-        className={`bg-transparent border-none outline-none text-primary text-sm placeholder-muted py-2 transition-all duration-200 ${
+        className={`bg-transparent border-none outline-none text-neutral-900 dark:text-neutral-100 text-sm placeholder:text-neutral-500 py-2 transition-all duration-200 ${
           expanded ? "w-60 opacity-100 pl-3" : "w-0 opacity-0 p-0"
         }`}
       />
@@ -87,7 +87,7 @@ export function SearchBar({
           }
           setIsOpen((current) => !current);
         }}
-        className="p-2 text-secondary hover:text-primary transition-colors"
+        className="p-2 text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
         title={searchQuery ? "Очистить" : "Поиск"}
       >
         {searchQuery ? <X size={20} /> : <Search size={20} />}

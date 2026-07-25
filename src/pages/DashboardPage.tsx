@@ -10,7 +10,7 @@ export function DashboardPage() {
       {dashboard.totalCount === 0 &&
         !dashboard.error &&
         !dashboard.isLoading && (
-        <p className="text-secondary">Ничего не найдено.</p>
+        <p className="text-neutral-500 dark:text-neutral-400">Ничего не найдено.</p>
       )}
 
       {viewMode === "grid" ? (

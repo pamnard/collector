@@ -35,7 +35,7 @@ export function ItemForm({ values, onChange }: ItemFormProps) {
           required
           value={values.title}
           onChange={(event) => update("title", event.target.value)}
-          className="mt-1 w-full rounded-lg border border-border bg-input/20 px-3 py-2 text-sm"
+          className="mt-1 w-full rounded-lg border border-black/10 dark:border-white/10 bg-neutral-100/20 dark:bg-neutral-700/20 px-3 py-2 text-sm"
         />
       </label>
 
@@ -46,7 +46,7 @@ export function ItemForm({ values, onChange }: ItemFormProps) {
           onChange={(event) =>
             update("content_type", event.target.value as ContentType)
           }
-          className="mt-1 w-full rounded-lg border border-border bg-input/20 px-3 py-2 text-sm"
+          className="mt-1 w-full rounded-lg border border-black/10 dark:border-white/10 bg-neutral-100/20 dark:bg-neutral-700/20 px-3 py-2 text-sm"
         >
           {CONTENT_TYPES.map((type) => (
             <option key={type} value={type}>
@@ -62,7 +62,7 @@ export function ItemForm({ values, onChange }: ItemFormProps) {
           value={values.description}
           onChange={(event) => update("description", event.target.value)}
           rows={2}
-          className="mt-1 w-full rounded-lg border border-border bg-input/20 px-3 py-2 text-sm resize-y"
+          className="mt-1 w-full rounded-lg border border-black/10 dark:border-white/10 bg-neutral-100/20 dark:bg-neutral-700/20 px-3 py-2 text-sm resize-y"
         />
       </label>
 
@@ -73,7 +73,7 @@ export function ItemForm({ values, onChange }: ItemFormProps) {
           value={values.url}
           onChange={(event) => update("url", event.target.value)}
           placeholder="https://"
-          className="mt-1 w-full rounded-lg border border-border bg-input/20 px-3 py-2 text-sm"
+          className="mt-1 w-full rounded-lg border border-black/10 dark:border-white/10 bg-neutral-100/20 dark:bg-neutral-700/20 px-3 py-2 text-sm"
         />
       </label>
 
@@ -89,7 +89,7 @@ export function ItemForm({ values, onChange }: ItemFormProps) {
           onChange={(event) => update("content", event.target.value)}
           rows={8}
           placeholder="Markdown…"
-          className="mt-1 w-full rounded-lg border border-border bg-input/20 px-3 py-2 text-sm font-mono resize-y"
+          className="mt-1 w-full rounded-lg border border-black/10 dark:border-white/10 bg-neutral-100/20 dark:bg-neutral-700/20 px-3 py-2 text-sm font-mono resize-y"
         />
       </label>
     </div>

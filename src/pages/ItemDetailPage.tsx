@@ -362,7 +362,7 @@ export function ItemDetailPage() {
       <button
         type="button"
         onClick={() => navigate(-1)}
-        className="inline-flex items-center gap-2 rounded-lg bg-input/80 px-3 py-2 text-sm text-secondary backdrop-blur-md transition-colors hover:text-primary"
+        className="inline-flex items-center gap-2 rounded-lg bg-neutral-100/80 dark:bg-neutral-700/80 px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400 backdrop-blur-md transition-colors hover:text-neutral-900 dark:hover:text-neutral-100"
       >
         <ArrowLeft size={20} />
         Назад
@@ -372,7 +372,7 @@ export function ItemDetailPage() {
         <div
           role="group"
           aria-label="Режим страницы"
-          className="flex items-center rounded-lg bg-input/80 p-1 backdrop-blur-sm"
+          className="flex items-center rounded-lg bg-neutral-100/80 dark:bg-neutral-700/80 p-1 backdrop-blur-sm"
         >
           <button
             type="button"
@@ -392,10 +392,10 @@ export function ItemDetailPage() {
             }
             className={`rounded-md p-1.5 transition-all ${
               idCopyFeedback === "copied"
-                ? "text-primary"
+                ? "text-neutral-900 dark:text-neutral-100"
                 : idCopyFeedback === "failed"
                   ? "text-red-400"
-                  : "text-secondary hover:text-primary"
+                  : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
             }`}
             onClick={() => void handleCopyItemId()}
           >
@@ -412,8 +412,8 @@ export function ItemDetailPage() {
             title="Просмотр"
             className={`rounded-md p-1.5 transition-all ${
               mode === "view"
-                ? "bg-header/70 text-primary shadow-sm"
-                : "text-secondary hover:text-primary"
+                ? "bg-white/70 dark:bg-neutral-800/70 text-neutral-900 dark:text-neutral-100 shadow-sm"
+                : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
             }`}
             onClick={switchToView}
             disabled={isSaving}
@@ -427,8 +427,8 @@ export function ItemDetailPage() {
             title="Редактирование формы"
             className={`rounded-md p-1.5 transition-all ${
               mode === "form"
-                ? "bg-header/70 text-primary shadow-sm"
-                : "text-secondary hover:text-primary"
+                ? "bg-white/70 dark:bg-neutral-800/70 text-neutral-900 dark:text-neutral-100 shadow-sm"
+                : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
             }`}
             onClick={switchToForm}
             disabled={isSaving}
@@ -442,8 +442,8 @@ export function ItemDetailPage() {
             title="Исходный текст"
             className={`rounded-md p-1.5 transition-all ${
               mode === "source"
-                ? "bg-header/70 text-primary shadow-sm"
-                : "text-secondary hover:text-primary"
+                ? "bg-white/70 dark:bg-neutral-800/70 text-neutral-900 dark:text-neutral-100 shadow-sm"
+                : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
             }`}
             onClick={switchToSource}
             disabled={isSaving}
