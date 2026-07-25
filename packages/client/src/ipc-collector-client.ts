@@ -16,6 +16,8 @@ import type {
   DashboardLoadHandlers,
   FolderTreeNode,
   GetItemResult,
+  ImportDroppedFilesInput,
+  ImportDroppedFilesResult,
   MediaWithPath,
   NavFilter,
   ServiceSubscribeHandlers,
@@ -228,6 +230,17 @@ export function createCollectorIpcClient(
     deleteItem: async (itemId: string): Promise<void> => {
       await transport.request("deleteItem", { itemId });
     },
+    importDroppedFiles: async (
+      input: ImportDroppedFilesInput,
+    ): Promise<ImportDroppedFilesResult> =>
+      transport.request("importDroppedFiles", {
+        folder_path: input.folder_path,
+        files: input.files.map((file) => ({
+          relativePath: file.relativePath,
+          filename: file.filename,
+          dataBase64: Buffer.from(file.data).toString("base64"),
+        })),
+      }) as Promise<ImportDroppedFilesResult>,
 
     // Tags
     subscribeTags(

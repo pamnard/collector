@@ -62,6 +62,7 @@ export function createLocalAdapter(): CollectorServiceApi {
     updateItem: (itemId, input) =>
       collector.updateItem(itemId, input as UiUpdateItemInput),
     deleteItem: collector.deleteItem,
+    importDroppedFiles: collector.importDroppedFiles,
 
     subscribeTags: collector.subscribeTags,
     listTags: collector.listTags,

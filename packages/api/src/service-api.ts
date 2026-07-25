@@ -3,6 +3,8 @@ import type {
   AttachMediaFileInput,
   CreateItemInput,
   FolderTreeNode,
+  ImportDroppedFilesInput,
+  ImportDroppedFilesResult,
   IndexSyncProgress,
   MediaWithPath,
   NavFilter,
@@ -109,6 +111,9 @@ export interface CollectorServiceApi {
   createItem(input: CreateItemInput): Promise<ItemFile>;
   updateItem(itemId: string, input: UpdateItemInput): Promise<ItemFile>;
   deleteItem(itemId: string): Promise<void>;
+  importDroppedFiles(
+    input: ImportDroppedFilesInput,
+  ): Promise<ImportDroppedFilesResult>;
 
   // Tags
   subscribeTags(

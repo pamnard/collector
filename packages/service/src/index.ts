@@ -63,3 +63,11 @@ export {
   type VaultsService,
   type VaultsServiceDeps,
 } from "./vaults.js";
+
+export {
+  createDropImportService,
+  prepareDroppedNoteMarkdown,
+  resolveImportItemFolder,
+  type DropImportService,
+  type DropImportServiceDeps,
+} from "./drop-import.js";

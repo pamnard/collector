@@ -1,4 +1,4 @@
-import type { ContentType } from "@collector/shared";
+import type { ContentType, SourceType } from "@collector/shared";
 import { INBOX_FOLDER_NAME } from "@collector/shared";
 
 export interface ItemFormValues {
@@ -18,6 +18,7 @@ export interface CreateItemInput {
   content_type: ContentType;
   content?: string | null;
   folder_path?: string;
+  source_type?: SourceType;
 }
 
 export interface UpdateItemInput {

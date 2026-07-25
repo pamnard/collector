@@ -143,6 +143,12 @@ export {
   ensureInboxLayout,
   resolveOrCreateInboxFolder,
 } from "./vault/inbox-layout.js";
+export {
+  classifyDropFilename,
+  resolveDropTitle,
+  titleStemFromFilename,
+} from "./vault/drop-import-classify.js";
+export type { DropImportClass } from "./vault/drop-import-classify.js";
 
 export {
   createTag,

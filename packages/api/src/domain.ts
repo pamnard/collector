@@ -3,7 +3,7 @@
  * Declared here so `@collector/api` stays free of core runtime.
  */
 
-import type { ItemFile, MediaFileMeta, Tag } from "@collector/shared";
+import type { ItemFile, MediaFileMeta, SourceType, Tag } from "@collector/shared";
 
 export type NavFilter =
   | "all"
@@ -45,6 +45,24 @@ export interface CreateItemInput {
   content_type: ItemFile["content_type"];
   content?: string | null;
   folder_path?: string;
+  source_type?: SourceType;
+}
+
+/** One file from a list/folder drop (relativePath includes filename within the drop tree). */
+export interface ImportDroppedFileInput {
+  relativePath: string;
+  filename: string;
+  data: Uint8Array;
+}
+
+export interface ImportDroppedFilesInput {
+  /** Target list folder; omit/empty → Inbox via createItem. */
+  folder_path?: string;
+  files: ImportDroppedFileInput[];
+}
+
+export interface ImportDroppedFilesResult {
+  createdIds: string[];
 }
 
 export interface UpdateItemInput {
