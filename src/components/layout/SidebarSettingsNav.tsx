@@ -12,7 +12,7 @@ const SECTIONS: Array<{
   icon: typeof Settings2;
 }> = [
   { id: "general", label: "Общие", icon: Settings2 },
-  { id: "mcp", label: "МЦП", icon: Cable },
+  { id: "mcp", label: "MCP", icon: Cable },
 ];
 
 export function SidebarSettingsNav({

@@ -70,7 +70,7 @@ export function SettingsPage() {
   if (section === "mcp") {
     return (
       <div className="p-4 md:p-8 max-w-2xl">
-        <h1 className="text-2xl font-semibold mb-6">МЦП</h1>
+        <h1 className="text-2xl font-semibold mb-6">MCP</h1>
         <section className="rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 p-4">
           <p className="text-sm text-neutral-500 dark:text-neutral-400">Скоро</p>
         </section>
