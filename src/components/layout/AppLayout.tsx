@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Menu } from "lucide-react";
 import { CreateItemDialog } from "../items/CreateItemDialog";
 import { useNavState } from "../../hooks/useNavState";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
@@ -135,13 +136,28 @@ export function AppLayout() {
     <main className="relative flex min-h-0 h-full flex-1 flex-col overflow-hidden">
       <MainScrollArea>
         <div className="box-border flex min-h-full flex-col p-2 md:pl-0">
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-white shadow-sm dark:bg-neutral-800">
-            <Header
-              onOpenSidebar={() => setIsSidebarOpen(true)}
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-              onAddClick={() => setIsCreateOpen(true)}
-            />
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-white px-4 pt-4 shadow-sm dark:bg-neutral-800 md:px-8 md:pt-8">
+            {pathname === "/" ? (
+              <Header
+                onOpenSidebar={() => setIsSidebarOpen(true)}
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
+                onAddClick={() => setIsCreateOpen(true)}
+              />
+            ) : (
+              !isDesktop && (
+                <div className="shrink-0 pb-4">
+                  <button
+                    type="button"
+                    onClick={() => setIsSidebarOpen(true)}
+                    className="text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+                    aria-label="Открыть меню"
+                  >
+                    <Menu size={24} />
+                  </button>
+                </div>
+              )
+            )}
             <Outlet />
           </div>
         </div>

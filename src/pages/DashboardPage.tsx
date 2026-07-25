@@ -6,7 +6,7 @@ export function DashboardPage() {
   const { viewMode, refreshVault, dashboardCache: dashboard } = useShell();
 
   return (
-    <div className="p-4 pb-20 md:p-8">
+    <div className="pb-20">
       {dashboard.totalCount === 0 &&
         !dashboard.error &&
         !dashboard.isLoading && (

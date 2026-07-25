@@ -1,4 +1,4 @@
-import { LayoutGrid, List, Menu, Plus } from "lucide-react";
+import { LayoutDashboard, List, Menu, Plus } from "lucide-react";
 import type { ViewMode } from "../../types/ui";
 
 interface HeaderProps {
@@ -15,8 +15,8 @@ export function Header({
   onAddClick,
 }: HeaderProps) {
   return (
-    <header className="relative shrink-0 transition-colors duration-200">
-      <div className="flex items-center justify-between gap-4 px-4 pt-4 md:px-8 md:pt-8">
+    <header className="relative shrink-0 pb-4 transition-colors duration-200 md:pb-8">
+      <div className="flex items-center justify-between gap-4">
         <div className="flex flex-1 items-center">
           <button
             type="button"
@@ -37,7 +37,7 @@ export function Header({
               }`}
               title="Сетка"
             >
-              <LayoutGrid size={18} />
+              <LayoutDashboard size={18} />
             </button>
             <button
               type="button"

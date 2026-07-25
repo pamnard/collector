@@ -466,7 +466,7 @@ export function ItemDetailPage() {
   );
 
   return (
-    <div className="@container w-full p-4 md:p-8">
+    <div className="@container w-full pb-4 md:pb-8">
       {idCopyFeedback !== null && (
         <AlertStack>
           <Alert
