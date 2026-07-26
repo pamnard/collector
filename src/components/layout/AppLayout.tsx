@@ -33,6 +33,9 @@ import { SmokeUiReadyBeacon } from "../startup/SmokeUiReadyBeacon";
 import { Header } from "./Header";
 import { IndexingStatusAlert } from "./IndexingStatusAlert";
 import { MainScrollArea } from "./MainScrollArea";
+import {
+  PanelHeaderProvider,
+} from "./panel-header-context";
 import { Sidebar } from "./Sidebar";
 
 interface ShellContextValue {
@@ -132,25 +135,39 @@ export function AppLayout() {
     onToggleTheme: toggleTheme,
   } as const;
 
+  const isItemRoute = pathname.startsWith("/item/");
+  const showCardHeader = pathname === "/" || isItemRoute;
+
+  const handleFolderSelectFromHeader = useCallback(
+    (folderPath: string) => {
+      void setActiveFilter({ type: "folder", folderPath });
+      setSidebarMode("collections");
+      navigate("/");
+    },
+    [navigate, setActiveFilter],
+  );
+
   const mainColumn = (
     <main className="relative flex min-h-0 h-full flex-1 flex-col overflow-hidden">
       <MainScrollArea>
         <div className="box-border flex min-h-full flex-col p-2 md:pl-0">
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-white px-4 pt-4 shadow-sm dark:bg-neutral-800 md:px-8 md:pt-8">
-            {pathname === "/" ? (
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-white shadow-sm dark:bg-neutral-800">
+            {showCardHeader ? (
               <Header
+                variant={pathname === "/" ? "list" : "item"}
                 onOpenSidebar={() => setIsSidebarOpen(true)}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
                 onAddClick={() => setIsCreateOpen(true)}
+                onFolderSelect={handleFolderSelectFromHeader}
               />
             ) : (
               !isDesktop && (
-                <div className="shrink-0 pb-4">
+                <div className="shrink-0 px-4 pt-4 md:px-8">
                   <button
                     type="button"
                     onClick={() => setIsSidebarOpen(true)}
-                    className="text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+                    className="text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
                     aria-label="Открыть меню"
                   >
                     <Menu size={24} />
@@ -158,7 +175,13 @@ export function AppLayout() {
                 </div>
               )
             )}
-            <Outlet />
+            <div
+              className={`flex min-h-0 flex-1 flex-col overflow-hidden px-4 pt-4 md:px-8 ${
+                showCardHeader ? "md:pt-6" : "md:pt-8"
+              }`}
+            >
+              <Outlet />
+            </div>
           </div>
         </div>
       </MainScrollArea>
@@ -176,106 +199,108 @@ export function AppLayout() {
         dashboardCache,
       }}
     >
-      <TooltipProvider>
-        {isDesktop ? (
-          <div
-            data-smoke-shell
-            className="h-screen overflow-hidden bg-neutral-200 font-sans text-neutral-900 transition-colors duration-200 dark:bg-neutral-900 dark:text-neutral-100"
-          >
-            <SmokeUiReadyBeacon />
-            <ResizablePanelGroup orientation="horizontal" className="h-full w-full">
-              <ResizablePanel
-                id="sidebar"
-                defaultSize={sidebarWidthPx}
-                minSize={`${SIDEBAR_WIDTH_MIN}px`}
-                maxSize={`${SIDEBAR_WIDTH_MAX}px`}
-                groupResizeBehavior="preserve-pixel-size"
-                className="min-h-0"
-                onResize={(panelSize) => {
-                  writeSidebarWidthPx(panelSize.inPixels);
-                }}
-              >
-                <Sidebar
-                  variant="docked"
-                  isOpen
-                  onClose={() => setIsSidebarOpen(false)}
-                  {...sidebarProps}
-                />
-              </ResizablePanel>
-              <ResizableHandle className="bg-transparent hover:bg-border data-[separator=active]:bg-border focus-visible:ring-0" />
-              <ResizablePanel
-                id="main"
-                minSize="50%"
-                groupResizeBehavior="preserve-relative-size"
-                className="min-h-0"
-              >
-                {mainColumn}
-              </ResizablePanel>
-            </ResizablePanelGroup>
-          </div>
-        ) : (
-          <div
-            data-smoke-shell
-            className="flex h-screen overflow-hidden bg-neutral-200 font-sans text-neutral-900 transition-colors duration-200 dark:bg-neutral-900 dark:text-neutral-100"
-          >
-            <SmokeUiReadyBeacon />
-            <Sidebar
-              variant="drawer"
-              isOpen={isSidebarOpen}
-              onClose={() => setIsSidebarOpen(false)}
-              {...sidebarProps}
-            />
-            {mainColumn}
-          </div>
-        )}
-      </TooltipProvider>
-
-      {showAlertStack && (
-        <AlertStack>
-          {showDashboardLoading && (
-            <IndexingStatusAlert label="Загрузка…" />
-          )}
-          {isMetadataIndexing && (
-            <IndexingStatusAlert label={indexingLabel} />
-          )}
-          {showErrorAlert && dashboardError !== null && (
-            <Alert
-              tone="danger"
-              onDismiss={() => setDismissedError(dashboardError)}
+      <PanelHeaderProvider>
+        <TooltipProvider>
+          {isDesktop ? (
+            <div
+              data-smoke-shell
+              className="h-screen overflow-hidden bg-neutral-200 font-sans text-neutral-900 transition-colors duration-200 dark:bg-neutral-900 dark:text-neutral-100"
             >
-              {dashboardError}
-            </Alert>
-          )}
-          {showUpdateAlert && startupUpdateVersion !== null && (
-            <Alert
-              tone="info"
-              onDismiss={() => setStartupUpdateVersion(null)}
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <span>Доступно обновление {startupUpdateVersion}.</span>
-                <button
-                  type="button"
-                  onClick={() => navigate("/settings")}
-                  className="rounded-lg border border-indigo-500/40 px-3 py-1 hover:bg-indigo-500/10 transition-colors"
+              <SmokeUiReadyBeacon />
+              <ResizablePanelGroup orientation="horizontal" className="h-full w-full">
+                <ResizablePanel
+                  id="sidebar"
+                  defaultSize={sidebarWidthPx}
+                  minSize={`${SIDEBAR_WIDTH_MIN}px`}
+                  maxSize={`${SIDEBAR_WIDTH_MAX}px`}
+                  groupResizeBehavior="preserve-pixel-size"
+                  className="min-h-0"
+                  onResize={(panelSize) => {
+                    writeSidebarWidthPx(panelSize.inPixels);
+                  }}
                 >
-                  Настройки
-                </button>
-              </div>
-            </Alert>
+                  <Sidebar
+                    variant="docked"
+                    isOpen
+                    onClose={() => setIsSidebarOpen(false)}
+                    {...sidebarProps}
+                  />
+                </ResizablePanel>
+                <ResizableHandle className="bg-transparent hover:bg-border data-[separator=active]:bg-border focus-visible:ring-0" />
+                <ResizablePanel
+                  id="main"
+                  minSize="50%"
+                  groupResizeBehavior="preserve-relative-size"
+                  className="min-h-0"
+                >
+                  {mainColumn}
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            </div>
+          ) : (
+            <div
+              data-smoke-shell
+              className="flex h-screen overflow-hidden bg-neutral-200 font-sans text-neutral-900 transition-colors duration-200 dark:bg-neutral-900 dark:text-neutral-100"
+            >
+              <SmokeUiReadyBeacon />
+              <Sidebar
+                variant="drawer"
+                isOpen={isSidebarOpen}
+                onClose={() => setIsSidebarOpen(false)}
+                {...sidebarProps}
+              />
+              {mainColumn}
+            </div>
           )}
-        </AlertStack>
-      )}
+        </TooltipProvider>
 
-      {isCreateOpen && (
-        <CreateItemDialog
-          onClose={() => setIsCreateOpen(false)}
-          onCreated={(itemId) => {
-            setIsCreateOpen(false);
-            setVaultRevision((value) => value + 1);
-            navigate(`/item/${itemId}`);
-          }}
-        />
-      )}
+        {showAlertStack && (
+          <AlertStack>
+            {showDashboardLoading && (
+              <IndexingStatusAlert label="Загрузка…" />
+            )}
+            {isMetadataIndexing && (
+              <IndexingStatusAlert label={indexingLabel} />
+            )}
+            {showErrorAlert && dashboardError !== null && (
+              <Alert
+                tone="danger"
+                onDismiss={() => setDismissedError(dashboardError)}
+              >
+                {dashboardError}
+              </Alert>
+            )}
+            {showUpdateAlert && startupUpdateVersion !== null && (
+              <Alert
+                tone="info"
+                onDismiss={() => setStartupUpdateVersion(null)}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span>Доступно обновление {startupUpdateVersion}.</span>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/settings")}
+                    className="rounded-lg border border-indigo-500/40 px-3 py-1 hover:bg-indigo-500/10 transition-colors"
+                  >
+                    Настройки
+                  </button>
+                </div>
+              </Alert>
+            )}
+          </AlertStack>
+        )}
+
+        {isCreateOpen && (
+          <CreateItemDialog
+            onClose={() => setIsCreateOpen(false)}
+            onCreated={(itemId) => {
+              setIsCreateOpen(false);
+              setVaultRevision((value) => value + 1);
+              navigate(`/item/${itemId}`);
+            }}
+          />
+        )}
+      </PanelHeaderProvider>
     </ShellContext.Provider>
   );
 }

@@ -1,69 +1,103 @@
 import { LayoutDashboard, List, Menu, Plus } from "lucide-react";
 import type { ViewMode } from "../../types/ui";
+import { Button } from "../ui/button";
+import { Tabs, TabsList, TabsTrigger } from "../ui/tabs";
+import { ItemHeaderActions } from "./ItemHeaderActions";
+import { ItemHeaderBreadcrumbs } from "./ItemHeaderBreadcrumbs";
+import { usePanelHeader } from "./panel-header-context";
 
 interface HeaderProps {
+  variant: "list" | "item";
   onOpenSidebar: () => void;
-  viewMode: ViewMode;
-  onViewModeChange: (mode: ViewMode) => void;
-  onAddClick: () => void;
+  viewMode?: ViewMode;
+  onViewModeChange?: (mode: ViewMode) => void;
+  onAddClick?: () => void;
+  onFolderSelect?: (folderPath: string) => void;
 }
 
 export function Header({
+  variant,
   onOpenSidebar,
   viewMode,
   onViewModeChange,
   onAddClick,
+  onFolderSelect,
 }: HeaderProps) {
+  const { itemHeader, itemActions } = usePanelHeader();
+
   return (
-    <header className="relative shrink-0 pb-4 transition-colors duration-200 md:pb-8">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex flex-1 items-center">
+    <header className="relative shrink-0 border-b border-neutral-200 bg-white transition-colors duration-200 dark:border-neutral-700 dark:bg-neutral-800">
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 md:gap-4 md:px-8">
+        <div className="flex min-w-0 flex-1 items-center">
           <button
             type="button"
             onClick={onOpenSidebar}
-            className="mr-4 text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 md:hidden"
+            className="mr-3 shrink-0 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100 md:hidden"
             aria-label="Открыть меню"
           >
             <Menu size={24} />
           </button>
-          <div className="flex items-center rounded-lg bg-neutral-100/80 dark:bg-neutral-700/80 p-1 backdrop-blur-sm">
-            <button
-              type="button"
-              onClick={() => onViewModeChange("grid")}
-              className={`rounded-md p-1.5 transition-all ${
-                viewMode === "grid"
-                  ? "bg-white/70 text-neutral-900 dark:bg-neutral-800/70 dark:text-neutral-100 shadow-sm"
-                  : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
-              }`}
-              title="Сетка"
+
+          {variant === "list" && viewMode && onViewModeChange ? (
+            <Tabs
+              value={viewMode}
+              onValueChange={(next) => {
+                if (next === "grid" || next === "table") {
+                  onViewModeChange(next);
+                }
+              }}
             >
-              <LayoutDashboard size={18} />
-            </button>
-            <button
-              type="button"
-              onClick={() => onViewModeChange("table")}
-              className={`rounded-md p-1.5 transition-all ${
-                viewMode === "table"
-                  ? "bg-white/70 text-neutral-900 dark:bg-neutral-800/70 dark:text-neutral-100 shadow-sm"
-                  : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
-              }`}
-              title="Таблица"
-            >
-              <List size={18} />
-            </button>
-          </div>
+              {/*
+                Icon 16 + pad to highlight 8/side (=32 trigger) + pad to track 4/side
+                → list h-10. Add button matches that height.
+              */}
+              <TabsList
+                aria-label="Вид списка"
+                className="h-10 p-1 dark:bg-neutral-700 group-data-horizontal/tabs:h-10"
+              >
+                <TabsTrigger
+                  value="grid"
+                  aria-label="Сетка"
+                  title="Сетка"
+                  className="size-8 h-8 flex-none shrink-0 basis-auto px-0 py-0 aspect-square [&_svg]:size-4"
+                >
+                  <LayoutDashboard size={16} />
+                </TabsTrigger>
+                <TabsTrigger
+                  value="table"
+                  aria-label="Таблица"
+                  title="Таблица"
+                  className="size-8 h-8 flex-none shrink-0 basis-auto px-0 py-0 aspect-square [&_svg]:size-4"
+                >
+                  <List size={16} />
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          ) : (
+            onFolderSelect && (
+              <ItemHeaderBreadcrumbs
+                state={itemHeader}
+                onFolderSelect={onFolderSelect}
+              />
+            )
+          )}
         </div>
 
-        <div className="flex items-center gap-3 md:gap-4">
-          <button
-            type="button"
-            onClick={onAddClick}
-            className="flex shrink-0 items-center gap-2 rounded-lg border border-emerald-600 px-3 py-2 font-medium text-emerald-600 transition-colors hover:bg-emerald-600/10 md:px-4 dark:border-emerald-500 dark:text-emerald-500 dark:hover:bg-emerald-500/10"
-          >
-            <Plus size={20} />
-            <span className="hidden md:inline">Добавить</span>
-          </button>
-        </div>
+        {variant === "list" && onAddClick && (
+          <div className="flex shrink-0 items-center gap-3 md:gap-4">
+            <Button
+              type="button"
+              variant="secondary"
+              // h-10 matches switcher; px-4 keeps H ≥ V (default px-2.5 + icon pl-2 looked tall).
+              className="h-10 gap-2 px-4 has-data-[icon=inline-start]:pl-4 has-data-[icon=inline-end]:pr-4 dark:bg-neutral-700 dark:hover:bg-neutral-600 dark:text-neutral-100"
+              onClick={onAddClick}
+            >
+              <Plus data-icon="inline-start" size={16} />
+              <span className="hidden md:inline">Добавить</span>
+            </Button>
+          </div>
+        )}
+        {variant === "item" && <ItemHeaderActions actions={itemActions} />}
       </div>
     </header>
   );

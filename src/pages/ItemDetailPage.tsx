@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, Code, Copy, Eye, Form, Trash2 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { ItemFile } from "@collector/shared";
 import type { MediaWithPath } from "@collector/core";
@@ -13,6 +12,7 @@ import { ItemDetailSourceEditor } from "../components/items/ItemDetailSourceEdit
 import { MediaGallery } from "../components/media/MediaGallery";
 import { MediaPlayerOverlay } from "../components/media/MediaPlayerOverlay";
 import { useShell } from "../components/layout/AppLayout";
+import { usePanelHeader } from "../components/layout/panel-header-context";
 import { useMediaPlayerOverlay } from "../hooks/useMediaPlayerOverlay";
 import type { ItemFormValues } from "../types/item";
 import { getCollectorClient } from "../services/collector-client";
@@ -65,6 +65,7 @@ export function ItemDetailPage() {
   const id = params["*"];
   const navigate = useNavigate();
   const { refreshVault } = useShell();
+  const { setItemHeader, setItemActions } = usePanelHeader();
   const [item, setItem] = useState<ItemFile | null>(null);
   const [content, setContent] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<ItemFormValues | null>(null);
@@ -133,15 +134,45 @@ export function ItemDetailPage() {
   };
 
   useEffect(() => {
+    setItemHeader({ status: "loading" });
+    return () => {
+      setItemHeader(null);
+      setItemActions(null);
+    };
+  }, [setItemHeader, setItemActions]);
+
+  useEffect(() => {
+    if (item) {
+      setItemHeader({
+        status: "ready",
+        folderPath: item.folder_path,
+        title: item.title,
+      });
+      return;
+    }
+    if (error) {
+      setItemHeader({
+        status: "ready",
+        folderPath: "",
+        title: "",
+      });
+    }
+  }, [item, error, setItemHeader]);
+
+  useEffect(() => {
     if (!id) {
       setError("Item id is missing");
       return;
     }
 
+    setItem(null);
+    setError(null);
+    setItemHeader({ status: "loading" });
+
     reloadItem(id).catch((err: unknown) => {
       setError(err instanceof Error ? err.message : String(err));
     });
-  }, [id]);
+  }, [id, setItemHeader]);
 
   const handleSave = async (): Promise<boolean> => {
     if (!id || !formValues) {
@@ -357,113 +388,31 @@ export function ItemDetailPage() {
     }
   };
 
-  const toolbar = (
-    <div className="flex items-center justify-between gap-4">
-      <button
-        type="button"
-        onClick={() => navigate(-1)}
-        className="inline-flex items-center gap-2 rounded-lg bg-neutral-100/80 dark:bg-neutral-700/80 px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400 backdrop-blur-md transition-colors hover:text-neutral-900 dark:hover:text-neutral-100"
-      >
-        <ArrowLeft size={20} />
-        Назад
-      </button>
-
-      {item && (
-        <div
-          role="group"
-          aria-label="Режим страницы"
-          className="flex items-center rounded-lg bg-neutral-100/80 dark:bg-neutral-700/80 p-1 backdrop-blur-sm"
-        >
-          <button
-            type="button"
-            aria-label={
-              idCopyFeedback === "copied"
-                ? "Id скопирован"
-                : idCopyFeedback === "failed"
-                  ? "Не удалось скопировать id"
-                  : "Скопировать id элемента"
-            }
-            title={
-              idCopyFeedback === "copied"
-                ? "Id скопирован"
-                : idCopyFeedback === "failed"
-                  ? "Не удалось скопировать id"
-                  : "Скопировать id элемента"
-            }
-            className={`rounded-md p-1.5 transition-all ${
-              idCopyFeedback === "copied"
-                ? "text-neutral-900 dark:text-neutral-100"
-                : idCopyFeedback === "failed"
-                  ? "text-red-400"
-                  : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
-            }`}
-            onClick={() => void handleCopyItemId()}
-          >
-            {idCopyFeedback === "copied" ? (
-              <Check size={18} />
-            ) : (
-              <Copy size={18} />
-            )}
-          </button>
-          <button
-            type="button"
-            aria-label="Просмотр"
-            aria-pressed={mode === "view"}
-            title="Просмотр"
-            className={`rounded-md p-1.5 transition-all ${
-              mode === "view"
-                ? "bg-white/70 dark:bg-neutral-800/70 text-neutral-900 dark:text-neutral-100 shadow-sm"
-                : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
-            }`}
-            onClick={switchToView}
-            disabled={isSaving}
-          >
-            <Eye size={18} />
-          </button>
-          <button
-            type="button"
-            aria-label="Редактирование формы"
-            aria-pressed={mode === "form"}
-            title="Редактирование формы"
-            className={`rounded-md p-1.5 transition-all ${
-              mode === "form"
-                ? "bg-white/70 dark:bg-neutral-800/70 text-neutral-900 dark:text-neutral-100 shadow-sm"
-                : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
-            }`}
-            onClick={switchToForm}
-            disabled={isSaving}
-          >
-            <Form size={18} />
-          </button>
-          <button
-            type="button"
-            aria-label="Исходный текст"
-            aria-pressed={mode === "source"}
-            title="Исходный текст"
-            className={`rounded-md p-1.5 transition-all ${
-              mode === "source"
-                ? "bg-white/70 dark:bg-neutral-800/70 text-neutral-900 dark:text-neutral-100 shadow-sm"
-                : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
-            }`}
-            onClick={switchToSource}
-            disabled={isSaving}
-          >
-            <Code size={18} />
-          </button>
-          <button
-            type="button"
-            aria-label="Удалить"
-            title="Удалить"
-            className="rounded-md p-1.5 text-red-400 transition-all hover:bg-red-500/10 hover:text-red-400"
-            onClick={() => void handleDelete()}
-            disabled={isDeleting || isSaving}
-          >
-            <Trash2 size={18} />
-          </button>
-        </div>
-      )}
-    </div>
-  );
+  useEffect(() => {
+    setItemActions({
+      mode,
+      idCopyFeedback,
+      isSaving,
+      isDeleting,
+      ready: item !== null,
+      onCopyId: () => {
+        void handleCopyItemId();
+      },
+      onView: switchToView,
+      onForm: switchToForm,
+      onSource: switchToSource,
+      onDelete: () => {
+        void handleDelete();
+      },
+    });
+  }, [
+    mode,
+    idCopyFeedback,
+    isSaving,
+    isDeleting,
+    item,
+    setItemActions,
+  ]);
 
   return (
     <div className="@container w-full pb-4 md:pb-8">
@@ -492,16 +441,8 @@ export function ItemDetailPage() {
         </pre>
       )}
 
-      {!item && (
-        <div className="mx-auto mb-4 w-full max-w-[900px]">{toolbar}</div>
-      )}
-
       {item && (
         <article className="grid grid-cols-1 gap-6 @[1100px]:grid-cols-12 @[1100px]:items-start @[1100px]:gap-8">
-          <div className="min-w-0 @[1100px]:col-span-9">
-            <div className="mx-auto w-full max-w-[900px]">{toolbar}</div>
-          </div>
-
           {mode === "view" && (
             <ItemDetailHero
               item={item}
