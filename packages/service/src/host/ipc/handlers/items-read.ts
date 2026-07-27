@@ -53,6 +53,10 @@ export function buildItemsReadHandlers(
       const query = typeof p.query === "string" ? p.query : undefined;
       await runtime.ensureInitialized();
       const result = await itemsSearch.listDashboardItemIds(filter, query);
+      // IPC cannot return the Promise; attach catch so dropped sync is not unhandled (#327).
+      void result.indexSync.catch((error: unknown) => {
+        console.error("[collector] index sync failed:", error);
+      });
       return { itemIds: result.itemIds, totalCount: result.totalCount };
     },
     [M.loadDashboardItems]: async (params) => {

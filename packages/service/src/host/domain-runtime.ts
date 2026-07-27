@@ -180,6 +180,8 @@ export function createServiceDomainRuntime(
     },
     openSql: async () => NodeSqliteExecutor.open(dbPath),
     onUnhealthyRebuildStart: async () => {
+      const pending = [...vaultSyncPromises.values()];
+      await Promise.allSettled(pending);
       syncedVaultIds.clear();
       vaultSyncPromises.clear();
       vaultSyncListeners.clear();
@@ -494,6 +496,7 @@ export function createServiceDomainRuntime(
     isHealthy: () => indexBoot.isHealthy(),
     async close() {
       runtimeClosed = true;
+      await Promise.allSettled([...vaultSyncPromises.values()]);
       await vaultFsWatcher.stop();
       const sql = indexBoot.getSql();
       if (sql) {

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   NodeSqliteExecutor,
+  SERVICE_IPC_EVENTS,
   buildDomainIpcHandlers,
   createDomainIpcDispatcher,
   createServiceDomainRuntime,
@@ -14,7 +15,10 @@ import {
 } from "@collector/service/host";
 import type { DashboardIndexPage, VaultIndexSyncStatus } from "@collector/api";
 import type { AppSettings } from "@collector/shared";
-import { createCollectorIpcClient } from "./ipc-collector-client.js";
+import {
+  createCollectorIpcClient,
+  type CollectorIpcClient,
+} from "./ipc-collector-client.js";
 import { connectCollectorIpcClient } from "./ipc-collector-client-node.js";
 
 /** Legacy incomplete schema — migrate leaves it unhealthy until rebuild. */
@@ -52,6 +56,32 @@ async function writeLegacyBrokenIndexDb(dbPath: string): Promise<void> {
     PRIMARY KEY (item_id, tag_id)
   )`);
   await db.close();
+}
+
+async function waitForVaultIndexSyncDone(
+  client: CollectorIpcClient,
+  timeoutMs = 5_000,
+): Promise<VaultIndexSyncStatus> {
+  if (client.getVaultIndexSyncStatus().status === "done") {
+    return client.getVaultIndexSyncStatus();
+  }
+  return new Promise<VaultIndexSyncStatus>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      unsub();
+      reject(
+        new Error(
+          `vault index sync did not reach done within ${timeoutMs}ms (status=${client.getVaultIndexSyncStatus().status})`,
+        ),
+      );
+    }, timeoutMs);
+    const unsub = client.subscribeVaultIndexSyncStatus((status) => {
+      if (status.status === "done") {
+        clearTimeout(timer);
+        unsub();
+        resolve(status);
+      }
+    });
+  });
 }
 
 describe("CollectorIpcClient", () => {
@@ -350,6 +380,11 @@ describe("CollectorIpcClient", () => {
         request: createDomainIpcDispatcher(buildDomainIpcHandlers(runtime)),
       },
     });
+    const stopSyncStatusBroadcast = runtime.vaultIndexSyncStatus.subscribe(
+      (status) => {
+        ipc.broadcastEvent(SERVICE_IPC_EVENTS.vaultIndexSyncStatus, status);
+      },
+    );
 
     try {
       const client = await connectCollectorIpcClient(ipc.path);
@@ -369,14 +404,16 @@ describe("CollectorIpcClient", () => {
 
         const active = await client.ensureActiveVault();
         expect(active.vault.id).toBeTruthy();
-        // Await filesystem sync before teardown (kickoff is fire-and-forget).
+        // Kick off filesystem sync; wait via status channel (#163), not stub indexSync (#327).
         await client.listDashboardItemIds("all");
+        expect((await waitForVaultIndexSyncDone(client)).status).toBe("done");
         const items = await client.listItems();
         expect(Array.isArray(items)).toBe(true);
       } finally {
         await client.close();
       }
     } finally {
+      stopSyncStatusBroadcast();
       await ipc.close();
       await runtime.close();
     }
@@ -438,18 +475,10 @@ describe("CollectorIpcClient", () => {
           seen.push(status);
         });
 
-        // Await filesystem sync; status should move through running/done.
+        // Kick off filesystem sync; status should move through running/done.
         await client.listDashboardItemIds("all");
 
-        const deadline = Date.now() + 5_000;
-        while (
-          Date.now() < deadline &&
-          client.getVaultIndexSyncStatus().status !== "done"
-        ) {
-          await new Promise((r) => setTimeout(r, 25));
-        }
-
-        const latest = client.getVaultIndexSyncStatus();
+        const latest = await waitForVaultIndexSyncDone(client);
         expect(latest.status).toBe("done");
         expect(latest.vaultId).toBeTruthy();
         expect(seen.some((s) => s.status === "done" || s.status === "running")).toBe(

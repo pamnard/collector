@@ -145,6 +145,7 @@ export function createCollectorIpcClient(
         filter,
         query,
       })) as { itemIds: string[]; totalCount: number };
+      // Over IPC `indexSync` is not a real wait — use vault index sync status (#163).
       return {
         itemIds: result.itemIds,
         totalCount: result.totalCount,
