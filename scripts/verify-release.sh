@@ -280,6 +280,18 @@ HOST_RES="$ROOT/src-tauri/resources/collector-service-host"
 [[ -d "$HOST_RES/node_modules/better-sqlite3" ]] || fail "packaged host missing better-sqlite3 at $HOST_RES"
 [[ -d "$HOST_RES/node_modules/sharp" ]] || fail "packaged host missing sharp at $HOST_RES"
 [[ -f "$HOST_RES/bin/ffmpeg" || -f "$HOST_RES/bin/ffmpeg.exe" ]] || fail "packaged host missing ffmpeg at $HOST_RES/bin (#267)"
+[[ -f "$HOST_RES/collector-cli.js" ]] || fail "packaged host missing collector-cli.js (#258)"
+[[ -f "$HOST_RES/collector-mcp.js" ]] || fail "packaged host missing collector-mcp.js (#258)"
+[[ -f "$HOST_RES/collector-cli" && -f "$HOST_RES/collector-mcp" ]] || fail "packaged host missing unix CLI/MCP wrappers (#258)"
+[[ -f "$HOST_RES/collector-cli.cmd" && -f "$HOST_RES/collector-mcp.cmd" ]] || fail "packaged host missing Windows CLI/MCP wrappers (#258)"
+HOST_NODE="$HOST_RES/node"
+[[ -f "$HOST_RES/node.exe" ]] && HOST_NODE="$HOST_RES/node.exe"
+cli_help_out="$("$HOST_NODE" "$HOST_RES/collector-cli.js" 2>&1 || true)"
+echo "$cli_help_out" | grep -qE 'Usage: collector-cli|Service endpoint required' \
+  || fail "collector-cli.js smoke failed (#258): $cli_help_out"
+mcp_help_out="$("$HOST_NODE" "$HOST_RES/collector-mcp.js" 2>&1 || true)"
+echo "$mcp_help_out" | grep -qE 'Service endpoint required|data-dir|ipc-path' \
+  || fail "collector-mcp.js smoke failed (#258): $mcp_help_out"
 
 step "typecheck"
 npm run typecheck

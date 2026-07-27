@@ -58,6 +58,18 @@ const ffmpegName = isWin ? "ffmpeg.exe" : "ffmpeg";
 if (!existsSync(join(hostSrc, "bin", ffmpegName))) {
   fail(`ffmpeg missing under ${hostSrc}/bin (#267)`);
 }
+for (const name of [
+  "collector-cli.js",
+  "collector-mcp.js",
+  "collector-cli",
+  "collector-mcp",
+  "collector-cli.cmd",
+  "collector-mcp.cmd",
+]) {
+  if (!existsSync(join(hostSrc, name))) {
+    fail(`packaged CLI/MCP artifact missing: ${join(hostSrc, name)} (#258)`);
+  }
+}
 
 const root = mkdtempSync(join(tmpdir(), "collector-packaged-host-"));
 const binDir = join(root, "bin");
@@ -115,6 +127,46 @@ await new Promise((resolvePromise, rejectPromise) => {
     else rejectPromise(new Error(`ABI probe failed code=${code}\n${out}\n${err}`));
   });
 }).catch((e) => fail(e.message));
+
+async function smokeEntrypoint(label, jsName, expectPattern) {
+  console.log(`==> ${label} smoke (#258)`);
+  await new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(nodeBin, [join(hostDir, jsName)], {
+      cwd: hostDir,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let out = "";
+    let err = "";
+    child.stdout.on("data", (c) => (out += c));
+    child.stderr.on("data", (c) => (err += c));
+    child.on("error", rejectPromise);
+    child.on("exit", (code) => {
+      const body = `${out}${err}`;
+      if (code === 0) {
+        rejectPromise(new Error(`${jsName} without endpoint exited 0\n${body}`));
+        return;
+      }
+      if (!expectPattern.test(body)) {
+        rejectPromise(
+          new Error(`${jsName} missing expected message\n${body}`),
+        );
+        return;
+      }
+      resolvePromise();
+    });
+  }).catch((e) => fail(e.message));
+}
+
+await smokeEntrypoint(
+  "collector-cli",
+  "collector-cli.js",
+  /Usage: collector-cli|Service endpoint required/,
+);
+await smokeEntrypoint(
+  "collector-mcp",
+  "collector-mcp.js",
+  /Service endpoint required|data-dir|ipc-path/,
+);
 
 console.log("==> collector-service serve (isolated, env inject)");
 const logPath = join(dataDir, "serve.log");

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "bin": {
-    "collector": "./dist/main.js"
+    "collector-cli": "./dist/main.js"
   },
   "main": "./dist/main.js",
   "types": "./dist/main.d.ts",

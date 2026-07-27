@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
- * `collector` CLI — thin client over the local service IPC (#172/#173).
+ * `collector-cli` — thin client over the local service IPC (#172/#173).
  */
 
 import { runCollectorCli } from "./run.js";
 
-const code = await runCollectorCli(process.argv.slice(2));
-process.exit(code);
+void runCollectorCli(process.argv.slice(2)).then((code) => {
+  process.exit(code);
+});

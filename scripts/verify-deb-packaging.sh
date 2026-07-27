@@ -60,5 +60,21 @@ if ! grep -qE 'collector-service-host/bin/(ffmpeg|ffmpeg\.exe)' <<<"$deb_content
   echo "FAIL: .deb missing bundled ffmpeg under collector-service-host/bin/ (#267)" >&2
   exit 1
 fi
+if ! grep -q 'collector-service-host/collector-cli.js' <<<"$deb_contents"; then
+  echo "FAIL: .deb missing collector-cli.js (#258)" >&2
+  exit 1
+fi
+if ! grep -q 'collector-service-host/collector-mcp.js' <<<"$deb_contents"; then
+  echo "FAIL: .deb missing collector-mcp.js (#258)" >&2
+  exit 1
+fi
+if ! grep -qE 'collector-service-host/collector-cli$' <<<"$deb_contents"; then
+  echo "FAIL: .deb missing collector-cli wrapper (#258)" >&2
+  exit 1
+fi
+if ! grep -qE 'collector-service-host/collector-mcp$' <<<"$deb_contents"; then
+  echo "FAIL: .deb missing collector-mcp wrapper (#258)" >&2
+  exit 1
+fi
 
 echo "OK: $DEB — no maintainer scripts, no bundled user data, sidecar + packaged host present"
