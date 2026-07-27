@@ -109,9 +109,9 @@ export function McpSettingsSection() {
                       : tool.params
                           .map(
                             (param) =>
-                              `${param.name}: ${param.typeLabel}${param.required ? " (required)" : " (optional)"}`,
+                              `${param.name}: ${param.typeLabel}${param.required ? " (required)" : " (optional)"}\n  ${param.description}`,
                           )
-                          .join("\n")}
+                          .join("\n\n")}
                   </pre>
                 </details>
               </div>

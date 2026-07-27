@@ -66,6 +66,19 @@ describe("MCP tools over service IPC (#174)", () => {
       mcpClient.connect(clientTransport),
     ]);
 
+    const listed = await mcpClient.listTools();
+    const getItemTool = listed.tools.find((tool) => tool.name === "collector_get_item");
+    expect(getItemTool?.description).toMatch(/not a bare UUID/i);
+    const itemIdSchema = getItemTool?.inputSchema as {
+      properties?: { itemId?: { description?: string } };
+    };
+    expect(itemIdSchema.properties?.itemId?.description).toMatch(
+      /vault-relative/i,
+    );
+    expect(itemIdSchema.properties?.itemId?.description).toMatch(
+      /not a bare UUID/i,
+    );
+
     const health = await mcpClient.callTool({ name: "collector_health", arguments: {} });
     expect(health.isError).toBeFalsy();
     const healthText = (health.content as { type: string; text: string }[])[0]?.text ?? "";
