@@ -151,7 +151,7 @@ export function AppLayout() {
     <main className="relative flex min-h-0 h-full flex-1 flex-col overflow-hidden">
       <MainScrollArea>
         <div className="box-border flex min-h-full flex-col p-2 md:pl-0">
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-white shadow-sm dark:bg-neutral-800">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-white shadow-xs dark:bg-neutral-800">
             {showCardHeader ? (
               <Header
                 variant={pathname === "/" ? "list" : "item"}

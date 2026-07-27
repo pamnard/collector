@@ -106,7 +106,7 @@ export function DashboardPage() {
 
       {(isDragging || isImporting) && (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-lg border-2 border-dashed border-emerald-500/60 bg-emerald-500/10">
-          <p className="rounded-lg bg-white/90 px-4 py-2 text-sm text-neutral-900 shadow-sm dark:bg-neutral-800/90 dark:text-neutral-100">
+          <p className="rounded-lg bg-white/90 px-4 py-2 text-sm text-neutral-900 shadow-xs dark:bg-neutral-800/90 dark:text-neutral-100">
             {isImporting
               ? "Импорт…"
               : "Отпустите, чтобы импортировать"}

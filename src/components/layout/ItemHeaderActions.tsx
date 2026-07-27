@@ -18,7 +18,7 @@ export interface ItemHeaderActionsModel {
 function modeButtonClass(active: boolean): string {
   return `inline-flex size-8 items-center justify-center rounded-md transition-all ${
     active
-      ? "bg-white/70 text-neutral-900 shadow-sm dark:bg-neutral-800/70 dark:text-neutral-100"
+      ? "bg-white/70 text-neutral-900 shadow-xs dark:bg-neutral-800/70 dark:text-neutral-100"
       : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
   }`;
 }
@@ -54,7 +54,7 @@ export function ItemHeaderActions({ actions }: ItemHeaderActionsProps) {
     <div
       role="group"
       aria-label="Режим страницы"
-      className="flex h-10 shrink-0 items-center rounded-lg bg-neutral-100/80 p-1 backdrop-blur-sm dark:bg-neutral-700/80"
+      className="flex h-10 shrink-0 items-center rounded-lg bg-neutral-100/80 p-1 backdrop-blur-xs dark:bg-neutral-700/80"
     >
       <button
         type="button"

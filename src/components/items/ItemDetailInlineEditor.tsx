@@ -38,7 +38,7 @@ export function ItemDetailInlineEditor({
         value={values.title}
         onChange={(event) => update("title", event.target.value)}
         placeholder="Название"
-        className="w-full bg-transparent text-2xl font-semibold outline-none border-b border-black/10 dark:border-white/10 pb-2 focus:border-indigo-500/50"
+        className="w-full bg-transparent text-2xl font-semibold outline-hidden border-b border-black/10 dark:border-white/10 pb-2 focus:border-indigo-500/50"
       />
 
       <textarea
@@ -96,7 +96,7 @@ export function ItemDetailInlineEditor({
           onChange={(event) => update("content", event.target.value)}
           rows={16}
           placeholder="Markdown…"
-          className="mt-2 w-full bg-transparent px-0 py-0 text-sm font-mono leading-relaxed resize-y min-h-[320px] outline-none"
+          className="mt-2 w-full bg-transparent px-0 py-0 text-sm font-mono leading-relaxed resize-y min-h-[320px] outline-hidden"
         />
       </label>
     </article>

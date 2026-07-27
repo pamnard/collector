@@ -177,7 +177,7 @@ export function Sidebar({
         <button
           type="button"
           aria-label="Закрыть меню"
-          className="fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm"
+          className="fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-xs"
           onClick={onClose}
         />
       )}

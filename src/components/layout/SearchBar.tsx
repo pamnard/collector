@@ -73,7 +73,7 @@ export function SearchBar({
             setIsOpen(false);
           }
         }}
-        className={`bg-transparent border-none outline-none text-neutral-900 dark:text-neutral-100 text-sm placeholder:text-neutral-500 py-2 transition-all duration-200 ${
+        className={`bg-transparent border-none outline-hidden text-neutral-900 dark:text-neutral-100 text-sm placeholder:text-neutral-500 py-2 transition-all duration-200 ${
           expanded ? "w-60 opacity-100 pl-3" : "w-0 opacity-0 p-0"
         }`}
       />

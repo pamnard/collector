@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import tailwindcss from "@tailwindcss/vite";
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import packageJson from "./package.json";
@@ -19,7 +20,7 @@ export default defineConfig(async ({ mode }) => {
   const host = process.env.TAURI_DEV_HOST;
 
   return {
-    plugins: [react(), collectorDevVaultPlugin()],
+    plugins: [tailwindcss(), react(), collectorDevVaultPlugin()],
     resolve: {
       // Match TypeScript customConditions — typecheck/dev resolve package source, not stale dist.
       conditions: ["@collector/source"],
