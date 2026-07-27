@@ -165,7 +165,13 @@ body {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  @apply bg-neutral-300 dark:bg-neutral-700 rounded-full;
+  @apply bg-neutral-300 rounded-full;
+}
+
+/* dark: on ::-webkit-scrollbar-* fails with `@custom-variant dark (&:is(.dark *))`
+   — pseudo-elements are not matched as `.dark *`. Use `.dark` ancestor. */
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-neutral-700;
 }
 
 :root {
@@ -178,13 +184,21 @@ body {
 }
 
 .main-scrollbar::-webkit-scrollbar-track {
-  @apply bg-neutral-200 dark:bg-neutral-900;
+  @apply bg-neutral-200;
 }
 
 .main-scrollbar::-webkit-scrollbar-thumb {
-  @apply bg-neutral-300 dark:bg-neutral-700 rounded-full;
+  @apply bg-neutral-300 rounded-full;
   border: 3px solid transparent;
   background-clip: content-box;
+}
+
+.dark .main-scrollbar::-webkit-scrollbar-track {
+  @apply bg-neutral-900;
+}
+
+.dark .main-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-neutral-700;
 }
 
 .scrollbar-none {

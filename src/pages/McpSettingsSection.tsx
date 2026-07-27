@@ -46,8 +46,6 @@ export function McpSettingsSection() {
 
   return (
     <div className="max-w-2xl pb-4 md:pb-8">
-      <h1 className="text-2xl font-semibold mb-6">MCP</h1>
-
       {error && (
         <pre className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-400 whitespace-pre-wrap">
           {error}
