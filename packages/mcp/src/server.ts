@@ -7,6 +7,7 @@ import type { CollectorIpcClient } from "@collector/client/node";
 import { CONTENT_TYPES } from "@collector/shared";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { requireMcpToolCatalogEntry } from "./tools-catalog.js";
 
 function textResult(payload: unknown) {
   return {
@@ -41,10 +42,11 @@ export function createCollectorMcpServer(
     version: "0.1.0",
   });
 
+  const health = requireMcpToolCatalogEntry("collector_health");
   server.registerTool(
-    "collector_health",
+    health.name,
     {
-      description: "Ping Collector service health over local IPC",
+      description: health.description,
       inputSchema: {},
     },
     async () => {
@@ -56,10 +58,11 @@ export function createCollectorMcpServer(
     },
   );
 
+  const search = requireMcpToolCatalogEntry("collector_search");
   server.registerTool(
-    "collector_search",
+    search.name,
     {
-      description: "Search items in the active vault",
+      description: search.description,
       inputSchema: {
         query: z.string().min(1),
       },
@@ -80,10 +83,11 @@ export function createCollectorMcpServer(
     },
   );
 
+  const getItem = requireMcpToolCatalogEntry("collector_get_item");
   server.registerTool(
-    "collector_get_item",
+    getItem.name,
     {
-      description: "Get an item by id (metadata + content)",
+      description: getItem.description,
       inputSchema: {
         itemId: z.string().min(1),
       },
@@ -97,10 +101,11 @@ export function createCollectorMcpServer(
     },
   );
 
+  const createItem = requireMcpToolCatalogEntry("collector_create_item");
   server.registerTool(
-    "collector_create_item",
+    createItem.name,
     {
-      description: "Create an item via the Collector service",
+      description: createItem.description,
       inputSchema: {
         title: z.string().min(1),
         content_type: contentTypeSchema.default("note"),
@@ -132,10 +137,11 @@ export function createCollectorMcpServer(
     },
   );
 
+  const updateItem = requireMcpToolCatalogEntry("collector_update_item");
   server.registerTool(
-    "collector_update_item",
+    updateItem.name,
     {
-      description: "Update an item via the Collector service",
+      description: updateItem.description,
       inputSchema: {
         itemId: z.string().min(1),
         title: z.string().optional(),
@@ -166,10 +172,11 @@ export function createCollectorMcpServer(
     },
   );
 
+  const deleteItem = requireMcpToolCatalogEntry("collector_delete_item");
   server.registerTool(
-    "collector_delete_item",
+    deleteItem.name,
     {
-      description: "Delete an item via the Collector service",
+      description: deleteItem.description,
       inputSchema: {
         itemId: z.string().min(1),
       },
@@ -184,10 +191,11 @@ export function createCollectorMcpServer(
     },
   );
 
+  const createTag = requireMcpToolCatalogEntry("collector_create_tag");
   server.registerTool(
-    "collector_create_tag",
+    createTag.name,
     {
-      description: "Create a tag via the Collector service",
+      description: createTag.description,
       inputSchema: {
         name: z.string().min(1),
         color: z.string().nullable().optional(),
@@ -207,10 +215,11 @@ export function createCollectorMcpServer(
     },
   );
 
+  const deleteTag = requireMcpToolCatalogEntry("collector_delete_tag");
   server.registerTool(
-    "collector_delete_tag",
+    deleteTag.name,
     {
-      description: "Delete a tag via the Collector service",
+      description: deleteTag.description,
       inputSchema: {
         tagId: z.string().min(1),
       },
@@ -225,10 +234,11 @@ export function createCollectorMcpServer(
     },
   );
 
+  const createFolder = requireMcpToolCatalogEntry("collector_create_folder");
   server.registerTool(
-    "collector_create_folder",
+    createFolder.name,
     {
-      description: "Create a folder path via the Collector service",
+      description: createFolder.description,
       inputSchema: {
         folderPath: z.string().min(1),
       },
@@ -243,10 +253,11 @@ export function createCollectorMcpServer(
     },
   );
 
+  const moveItem = requireMcpToolCatalogEntry("collector_move_item");
   server.registerTool(
-    "collector_move_item",
+    moveItem.name,
     {
-      description: "Move an item into a folder via the Collector service",
+      description: moveItem.description,
       inputSchema: {
         itemId: z.string().min(1),
         folderPath: z.string().min(1),

@@ -13,6 +13,11 @@
       "@collector/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./tools-catalog": {
+      "@collector/source": "./src/tools-catalog.ts",
+      "types": "./dist/tools-catalog.d.ts",
+      "import": "./dist/tools-catalog.js"
     }
   },
   "scripts": {
