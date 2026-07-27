@@ -185,6 +185,45 @@ fn resolve_packaged_host_runtime(
     find_packaged_host_in_roots(&roots)
 }
 
+/// Absolute path to the packaged stdio MCP wrapper under `host_dir`, if present.
+///
+/// Windows: `collector-mcp.cmd`; Unix: `collector-mcp`.
+fn mcp_command_from_host_dir(host_dir: &std::path::Path) -> Option<PathBuf> {
+    #[cfg(windows)]
+    let wrapper = host_dir.join("collector-mcp.cmd");
+    #[cfg(not(windows))]
+    let wrapper = host_dir.join("collector-mcp");
+    if wrapper.is_file() {
+        Some(wrapper.canonicalize().unwrap_or(wrapper))
+    } else {
+        None
+    }
+}
+
+/// Resolve packaged `collector-mcp` for Settings → MCP (#273).
+///
+/// - `Ok(None)` — no packaged host (web / unpackaged dev); UI shows fallback.
+/// - `Ok(Some(path))` — absolute path to the wrapper.
+/// - `Err` — packaged host present but MCP wrapper missing (broken install).
+fn resolve_mcp_stdio_command_from_host(
+    host: Option<&PackagedHostRuntime>,
+) -> Result<Option<PathBuf>, String> {
+    let Some(host) = host else {
+        return Ok(None);
+    };
+    let host_dir = host
+        .node_cli
+        .parent()
+        .ok_or_else(|| format!("packaged host cli has no parent: {}", host.node_cli.display()))?;
+    match mcp_command_from_host_dir(host_dir) {
+        Some(path) => Ok(Some(path)),
+        None => Err(format!(
+            "packaged host dir {} present but collector-mcp wrapper missing",
+            host_dir.display()
+        )),
+    }
+}
+
 #[cfg(test)]
 mod packaged_host_resolve_tests {
     use super::*;
@@ -224,6 +263,69 @@ mod packaged_host_resolve_tests {
         assert!(found.is_none());
         let _ = fs::remove_dir_all(root);
     }
+
+    #[test]
+    fn mcp_command_none_without_packaged_host() {
+        let resolved = resolve_mcp_stdio_command_from_host(None).expect("resolve");
+        assert!(resolved.is_none());
+    }
+
+    #[test]
+    fn mcp_command_resolves_wrapper_beside_cli() {
+        let root = std::env::temp_dir().join(format!(
+            "collector-mcp-wrapper-{}",
+            std::process::id()
+        ));
+        let host = root.join("collector-service-host");
+        fs::create_dir_all(&host).unwrap();
+        fs::write(host.join("cli.js"), b"// marker").unwrap();
+        #[cfg(windows)]
+        {
+            fs::write(host.join("node.exe"), b"").unwrap();
+            fs::write(host.join("collector-mcp.cmd"), b"@echo off").unwrap();
+        }
+        #[cfg(not(windows))]
+        {
+            fs::write(host.join("node"), b"").unwrap();
+            fs::write(host.join("collector-mcp"), b"#!/bin/sh\n").unwrap();
+        }
+        let runtime = packaged_host_from_cli(host.join("cli.js")).expect("host");
+        let cmd = resolve_mcp_stdio_command_from_host(Some(&runtime))
+            .expect("resolve")
+            .expect("wrapper");
+        #[cfg(windows)]
+        assert!(cmd.ends_with("collector-mcp.cmd"));
+        #[cfg(not(windows))]
+        assert!(cmd.ends_with("collector-mcp"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn mcp_command_errors_when_host_missing_wrapper() {
+        let root = std::env::temp_dir().join(format!(
+            "collector-mcp-missing-{}",
+            std::process::id()
+        ));
+        let host = root.join("collector-service-host");
+        fs::create_dir_all(&host).unwrap();
+        fs::write(host.join("cli.js"), b"// marker").unwrap();
+        #[cfg(windows)]
+        fs::write(host.join("node.exe"), b"").unwrap();
+        #[cfg(not(windows))]
+        fs::write(host.join("node"), b"").unwrap();
+        let runtime = packaged_host_from_cli(host.join("cli.js")).expect("host");
+        let err = resolve_mcp_stdio_command_from_host(Some(&runtime)).expect_err("broken");
+        assert!(err.contains("collector-mcp"));
+        let _ = fs::remove_dir_all(root);
+    }
+}
+
+/// Absolute path to packaged `collector-mcp` for Settings → MCP (#273).
+#[tauri::command]
+fn get_mcp_stdio_command(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let host = resolve_packaged_host_runtime(&app)?;
+    let path = resolve_mcp_stdio_command_from_host(host.as_ref())?;
+    Ok(path.map(|p| p.to_string_lossy().into_owned()))
 }
 
 #[tauri::command]
@@ -376,6 +478,7 @@ pub fn run() {
             fs_write_text_exclusive,
             start_vault_items_watcher,
             stop_vault_items_watcher,
+            get_mcp_stdio_command,
             service_supervise_is_enabled,
             service_supervise_spawn,
             service_supervise_stop,

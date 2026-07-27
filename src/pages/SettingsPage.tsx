@@ -10,6 +10,7 @@ import { useCheckUpdatesOnStart } from "../hooks/useUpdaterSettings";
 import { useViewMode } from "../hooks/useViewMode";
 import { getCollectorClient } from "../services/collector-client";
 import { parseSettingsSection } from "../types/sidebar-mode";
+import { McpSettingsSection } from "./McpSettingsSection";
 
 export function SettingsPage() {
   const [searchParams] = useSearchParams();
@@ -68,14 +69,7 @@ export function SettingsPage() {
   };
 
   if (section === "mcp") {
-    return (
-      <div className="max-w-2xl pb-4 md:pb-8">
-        <h1 className="text-2xl font-semibold mb-6">MCP</h1>
-        <section className="rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 p-4">
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">Скоро</p>
-        </section>
-      </div>
-    );
+    return <McpSettingsSection />;
   }
 
   return (
