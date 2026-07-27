@@ -7,7 +7,10 @@ import type { CollectorIpcClient } from "@collector/client/node";
 import { CONTENT_TYPES } from "@collector/shared";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { requireMcpToolCatalogEntry } from "./tools-catalog.js";
+import {
+  requireMcpToolCatalogEntry,
+  requireMcpToolParamDescription,
+} from "./tools-catalog.js";
 
 function textResult(payload: unknown) {
   return {
@@ -27,6 +30,10 @@ function errorResult(error: unknown) {
     content: [{ type: "text" as const, text: message }],
     isError: true as const,
   };
+}
+
+function paramDescribe(toolName: string, paramName: string) {
+  return requireMcpToolParamDescription(toolName, paramName);
 }
 
 const contentTypeSchema = z.enum(CONTENT_TYPES);
@@ -64,7 +71,10 @@ export function createCollectorMcpServer(
     {
       description: search.description,
       inputSchema: {
-        query: z.string().min(1),
+        query: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(search.name, "query")),
       },
     },
     async ({ query }) => {
@@ -89,7 +99,10 @@ export function createCollectorMcpServer(
     {
       description: getItem.description,
       inputSchema: {
-        itemId: z.string().min(1),
+        itemId: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(getItem.name, "itemId")),
       },
     },
     async ({ itemId }) => {
@@ -107,12 +120,31 @@ export function createCollectorMcpServer(
     {
       description: createItem.description,
       inputSchema: {
-        title: z.string().min(1),
-        content_type: contentTypeSchema.default("note"),
-        description: z.string().optional(),
-        url: z.string().nullable().optional(),
-        content: z.string().nullable().optional(),
-        folder_path: z.string().optional(),
+        title: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(createItem.name, "title")),
+        content_type: contentTypeSchema
+          .default("note")
+          .describe(paramDescribe(createItem.name, "content_type")),
+        description: z
+          .string()
+          .optional()
+          .describe(paramDescribe(createItem.name, "description")),
+        url: z
+          .string()
+          .nullable()
+          .optional()
+          .describe(paramDescribe(createItem.name, "url")),
+        content: z
+          .string()
+          .nullable()
+          .optional()
+          .describe(paramDescribe(createItem.name, "content")),
+        folder_path: z
+          .string()
+          .optional()
+          .describe(paramDescribe(createItem.name, "folder_path")),
       },
     },
     async (input) => {
@@ -143,12 +175,32 @@ export function createCollectorMcpServer(
     {
       description: updateItem.description,
       inputSchema: {
-        itemId: z.string().min(1),
-        title: z.string().optional(),
-        description: z.string().optional(),
-        url: z.string().nullable().optional(),
-        content: z.string().nullable().optional(),
-        folder_path: z.string().optional(),
+        itemId: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(updateItem.name, "itemId")),
+        title: z
+          .string()
+          .optional()
+          .describe(paramDescribe(updateItem.name, "title")),
+        description: z
+          .string()
+          .optional()
+          .describe(paramDescribe(updateItem.name, "description")),
+        url: z
+          .string()
+          .nullable()
+          .optional()
+          .describe(paramDescribe(updateItem.name, "url")),
+        content: z
+          .string()
+          .nullable()
+          .optional()
+          .describe(paramDescribe(updateItem.name, "content")),
+        folder_path: z
+          .string()
+          .optional()
+          .describe(paramDescribe(updateItem.name, "folder_path")),
       },
     },
     async (input) => {
@@ -178,7 +230,10 @@ export function createCollectorMcpServer(
     {
       description: deleteItem.description,
       inputSchema: {
-        itemId: z.string().min(1),
+        itemId: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(deleteItem.name, "itemId")),
       },
     },
     async ({ itemId }) => {
@@ -197,8 +252,15 @@ export function createCollectorMcpServer(
     {
       description: createTag.description,
       inputSchema: {
-        name: z.string().min(1),
-        color: z.string().nullable().optional(),
+        name: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(createTag.name, "name")),
+        color: z
+          .string()
+          .nullable()
+          .optional()
+          .describe(paramDescribe(createTag.name, "color")),
       },
     },
     async (input) => {
@@ -221,7 +283,10 @@ export function createCollectorMcpServer(
     {
       description: deleteTag.description,
       inputSchema: {
-        tagId: z.string().min(1),
+        tagId: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(deleteTag.name, "tagId")),
       },
     },
     async ({ tagId }) => {
@@ -240,7 +305,10 @@ export function createCollectorMcpServer(
     {
       description: createFolder.description,
       inputSchema: {
-        folderPath: z.string().min(1),
+        folderPath: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(createFolder.name, "folderPath")),
       },
     },
     async ({ folderPath }) => {
@@ -259,8 +327,14 @@ export function createCollectorMcpServer(
     {
       description: moveItem.description,
       inputSchema: {
-        itemId: z.string().min(1),
-        folderPath: z.string().min(1),
+        itemId: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(moveItem.name, "itemId")),
+        folderPath: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(moveItem.name, "folderPath")),
       },
     },
     async ({ itemId, folderPath }) => {
