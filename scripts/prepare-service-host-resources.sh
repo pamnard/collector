@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Build a self-contained Node domain host tree for Tauri resources.
-# Output: src-tauri/resources/collector-service-host/{cli.js,node,node_modules/better-sqlite3,…}
+# Output: src-tauri/resources/collector-service-host/
+#   {cli.js, collector-cli.js, collector-mcp.js, wrappers, node, node_modules/…}
+# User-facing CLI/MCP (#258) reuse the same bundled Node; not separate sidecars.
 #
 # ABI: better-sqlite3 is rebuilt against the *bundled* Node + matching headers
 # (not the system Node used for the rest of the monorepo).
@@ -126,10 +128,23 @@ npm run build --workspace @collector/api
 npm run build --workspace @collector/db
 npm run build --workspace @collector/core
 npm run build --workspace @collector/service
+npm run build --workspace @collector/client
+npm run build --workspace @collector/cli
+npm run build --workspace @collector/mcp
 
 HOST_CLI_SRC="$ROOT/packages/service/dist/host/cli.js"
+USER_CLI_SRC="$ROOT/packages/cli/dist/main.js"
+MCP_SRC="$ROOT/packages/mcp/dist/main.js"
 if [[ ! -f "$HOST_CLI_SRC" ]]; then
   echo "FAIL: missing $HOST_CLI_SRC" >&2
+  exit 1
+fi
+if [[ ! -f "$USER_CLI_SRC" ]]; then
+  echo "FAIL: missing $USER_CLI_SRC" >&2
+  exit 1
+fi
+if [[ ! -f "$MCP_SRC" ]]; then
+  echo "FAIL: missing $MCP_SRC" >&2
   exit 1
 fi
 if [[ ! -x "$ESBUILD" && ! -f "$ESBUILD" ]]; then
@@ -149,6 +164,54 @@ echo "==> esbuild domain host → $HOST_OUT/cli.js"
   --external:better-sqlite3 \
   --external:sharp \
   --outfile="$HOST_OUT/cli.js"
+
+echo "==> esbuild user CLI + MCP (#258) → $HOST_OUT/collector-{cli,mcp}.js"
+"$ESBUILD" "$USER_CLI_SRC" \
+  --bundle \
+  --platform=node \
+  --format=cjs \
+  --packages=bundle \
+  --external:better-sqlite3 \
+  --external:sharp \
+  --outfile="$HOST_OUT/collector-cli.js"
+"$ESBUILD" "$MCP_SRC" \
+  --bundle \
+  --platform=node \
+  --format=cjs \
+  --packages=bundle \
+  --external:better-sqlite3 \
+  --external:sharp \
+  --outfile="$HOST_OUT/collector-mcp.js"
+
+# Thin wrappers: invoke bundled Node + JS (always ship unix + .cmd).
+write_unix_wrapper() {
+  local name="$1"
+  local js="$2"
+  cat >"$HOST_OUT/${name}" <<EOF
+#!/bin/sh
+DIR=\$(CDPATH= cd -- "\$(dirname "\$0")" && pwd)
+NODE="\$DIR/node"
+if [ -f "\$DIR/node.exe" ]; then
+  NODE="\$DIR/node.exe"
+fi
+exec "\$NODE" "\$DIR/${js}" "\$@"
+EOF
+  chmod +x "$HOST_OUT/${name}"
+}
+
+write_cmd_wrapper() {
+  local name="$1"
+  local js="$2"
+  cat >"$HOST_OUT/${name}.cmd" <<EOF
+@echo off
+"%~dp0node.exe" "%~dp0${js}" %*
+EOF
+}
+
+write_unix_wrapper "collector-cli" "collector-cli.js"
+write_unix_wrapper "collector-mcp" "collector-mcp.js"
+write_cmd_wrapper "collector-cli" "collector-cli.js"
+write_cmd_wrapper "collector-mcp" "collector-mcp.js"
 
 cat >"$HOST_OUT/package.json" <<'EOF'
 {
@@ -298,8 +361,55 @@ echo "==> smoke: bundled host --help"
   "./${NODE_BIN_NAME}" ./cli.js 2>&1 | head -5 || true
 )
 
+echo "==> smoke: packaged CLI/MCP entrypoints (#258)"
+(
+  cd "$HOST_OUT"
+  set +e
+  out_cli="$("./${NODE_BIN_NAME}" ./collector-cli.js 2>&1)"
+  code_cli=$?
+  out_mcp="$("./${NODE_BIN_NAME}" ./collector-mcp.js 2>&1)"
+  code_mcp=$?
+  set -e
+  echo "$out_cli" | head -3
+  echo "$out_mcp" | head -3
+  if [[ "$code_cli" -eq 0 ]]; then
+    echo "FAIL: collector-cli.js without endpoint should be non-zero" >&2
+    exit 1
+  fi
+  if ! grep -q 'Usage: collector-cli\|Service endpoint required' <<<"$out_cli"; then
+    echo "FAIL: collector-cli.js missing usage/endpoint message" >&2
+    echo "$out_cli" >&2
+    exit 1
+  fi
+  if [[ "$code_mcp" -eq 0 ]]; then
+    echo "FAIL: collector-mcp.js without endpoint should be non-zero" >&2
+    exit 1
+  fi
+  if ! grep -q 'Service endpoint required\|data-dir\|ipc-path' <<<"$out_mcp"; then
+    echo "FAIL: collector-mcp.js missing endpoint message" >&2
+    echo "$out_mcp" >&2
+    exit 1
+  fi
+)
+
 if [[ ! -f "$HOST_OUT/cli.js" ]]; then
   echo "FAIL: missing $HOST_OUT/cli.js" >&2
+  exit 1
+fi
+if [[ ! -f "$HOST_OUT/collector-cli.js" ]]; then
+  echo "FAIL: missing $HOST_OUT/collector-cli.js (#258)" >&2
+  exit 1
+fi
+if [[ ! -f "$HOST_OUT/collector-mcp.js" ]]; then
+  echo "FAIL: missing $HOST_OUT/collector-mcp.js (#258)" >&2
+  exit 1
+fi
+if [[ ! -f "$HOST_OUT/collector-cli" || ! -f "$HOST_OUT/collector-mcp" ]]; then
+  echo "FAIL: missing unix wrappers collector-cli / collector-mcp (#258)" >&2
+  exit 1
+fi
+if [[ ! -f "$HOST_OUT/collector-cli.cmd" || ! -f "$HOST_OUT/collector-mcp.cmd" ]]; then
+  echo "FAIL: missing Windows .cmd wrappers (#258)" >&2
   exit 1
 fi
 if [[ ! -f "$HOST_OUT/${NODE_BIN_NAME}" ]]; then

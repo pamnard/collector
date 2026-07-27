@@ -140,7 +140,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   const [command, ...rest] = positional;
   if (command === undefined) {
     throw new CliUsageError(
-      "Usage: collector [--data-dir <dir>|--ipc-path <path>] <command> …",
+      "Usage: collector-cli [--data-dir <dir>|--ipc-path <path>] <command> …",
     );
   }
 
@@ -154,7 +154,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   if (command === "search") {
     const query = rest.join(" ").trim();
     if (!query) {
-      throw new CliUsageError("Usage: collector search <query>");
+      throw new CliUsageError("Usage: collector-cli search <query>");
     }
     return withEndpoint({ name: "search", query }, dataDir, ipcPath);
   }
@@ -162,7 +162,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   if (command === "get-item") {
     const itemId = rest[0];
     if (!itemId || rest.length !== 1) {
-      throw new CliUsageError("Usage: collector get-item <item-id>");
+      throw new CliUsageError("Usage: collector-cli get-item <item-id>");
     }
     return withEndpoint({ name: "get-item", itemId }, dataDir, ipcPath);
   }
@@ -170,7 +170,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   if (command === "create-item") {
     if (rest.length > 0) {
       throw new CliUsageError(
-        "Usage: collector create-item --title <title> [--type note|…] [--content …] [--url …] [--folder …] [--description …]",
+        "Usage: collector-cli create-item --title <title> [--type note|…] [--content …] [--url …] [--folder …] [--description …]",
       );
     }
     const title = readOpt(argv, "--title");
@@ -200,7 +200,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     const itemId = rest[0];
     if (!itemId || rest.length !== 1) {
       throw new CliUsageError(
-        "Usage: collector update-item <item-id> [--title …] [--content …] [--url …] [--folder …] [--description …]",
+        "Usage: collector-cli update-item <item-id> [--title …] [--content …] [--url …] [--folder …] [--description …]",
       );
     }
     const title = readOpt(argv, "--title");
@@ -235,7 +235,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   if (command === "delete-item") {
     const itemId = rest[0];
     if (!itemId || rest.length !== 1) {
-      throw new CliUsageError("Usage: collector delete-item <item-id>");
+      throw new CliUsageError("Usage: collector-cli delete-item <item-id>");
     }
     return withEndpoint({ name: "delete-item", itemId }, dataDir, ipcPath);
   }
@@ -243,7 +243,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   if (command === "create-tag") {
     if (rest.length > 0) {
       throw new CliUsageError(
-        "Usage: collector create-tag --name <name> [--color <color>]",
+        "Usage: collector-cli create-tag --name <name> [--color <color>]",
       );
     }
     const tagName = readOpt(argv, "--name");
@@ -265,7 +265,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   if (command === "delete-tag") {
     const tagId = rest[0];
     if (!tagId || rest.length !== 1) {
-      throw new CliUsageError("Usage: collector delete-tag <tag-id>");
+      throw new CliUsageError("Usage: collector-cli delete-tag <tag-id>");
     }
     return withEndpoint({ name: "delete-tag", tagId }, dataDir, ipcPath);
   }
@@ -273,7 +273,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   if (command === "create-folder") {
     const folderPath = rest.join(" ").trim();
     if (!folderPath) {
-      throw new CliUsageError("Usage: collector create-folder <path>");
+      throw new CliUsageError("Usage: collector-cli create-folder <path>");
     }
     return withEndpoint({ name: "create-folder", folderPath }, dataDir, ipcPath);
   }
@@ -283,7 +283,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     const folderPath = readOpt(argv, "--folder");
     if (!itemId || rest.length !== 1 || folderPath === undefined) {
       throw new CliUsageError(
-        "Usage: collector move-item <item-id> --folder <path>",
+        "Usage: collector-cli move-item <item-id> --folder <path>",
       );
     }
     return withEndpoint(

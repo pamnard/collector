@@ -57,7 +57,7 @@ npm run tauri:dev
 
 ### Service sidecar (internal)
 
-Release builds package a `collector-service` sidecar (`bundle.externalBin`) plus a self-contained Node domain host under `resources/collector-service-host/` (bundled Node + `better-sqlite3`). Both are **internal** — not a user-facing daemon to install or configure.
+Release builds package a `collector-service` sidecar (`bundle.externalBin`) plus a self-contained Node domain host under `resources/collector-service-host/` (bundled Node + `better-sqlite3`). The same host tree also ships user-facing **`collector-cli`** and **`collector-mcp`** wrappers (see [CLI and MCP](#cli-and-mcp-installed-app)). The sidecar and domain host are **internal** — not a separate daemon to install or configure.
 
 Desktop app default is **service mode**: on start the UI bootstraps the supervised host over local IPC (opt out with `COLLECTOR_SERVICE_MODE=0`). The host is the sole SQLite writer.
 
@@ -106,6 +106,49 @@ Settings file: `…/collector/settings.json`. Index DB: `…/collector.db` (same
 **Upgrade** replaces the app binary only — vaults stay in place (`.deb` over `.deb`, or in-app updater).
 
 **Uninstall** removes the app only; data dirs above are kept unless you delete them manually.
+
+### CLI and MCP (installed app)
+
+Release installers ship **`collector-cli`** and **`collector-mcp`** inside the same host tree as the internal domain host (bundled Node + JS entrypoints). They are thin IPC clients: the desktop app must be **running** so the local service is up. They never open SQLite themselves.
+
+**Install location** (wrappers + `*.js` + bundled `node`):
+
+| Platform | Path |
+|----------|------|
+| Linux (`.deb`) | `/usr/lib/Collector/resources/collector-service-host/` |
+| macOS | `Collector.app/Contents/Resources/` — look for `collector-service-host/` (or `resources/collector-service-host/`) |
+| Windows | under the app install dir, `resources\collector-service-host\` |
+
+Point MCP clients and shells at the **wrapper** in that folder (`collector-mcp` / `collector-cli` on Unix; `collector-mcp.cmd` / `collector-cli.cmd` on Windows). Use an absolute path — the installer does not put them on the system `PATH`.
+
+`--data-dir` is the **vault data** directory from the table above (release column), e.g. Linux `~/.local/share/com.collector.app/collector/`. Settings → «Каталог данных» shows the active path. Or pass `--ipc-path` / `COLLECTOR_IPC_PATH` if you already know the socket.
+
+```bash
+# CLI health check (app must be running)
+/usr/lib/Collector/resources/collector-service-host/collector-cli \
+  --data-dir "$HOME/.local/share/com.collector.app/collector" \
+  health
+```
+
+Example MCP stdio config (any client that supports stdio MCP):
+
+```json
+{
+  "mcpServers": {
+    "collector": {
+      "command": "/usr/lib/Collector/resources/collector-service-host/collector-mcp",
+      "args": [
+        "--data-dir",
+        "/home/YOU/.local/share/com.collector.app/collector"
+      ]
+    }
+  }
+}
+```
+
+Replace the command path and data-dir for your OS/user. In-app Settings → MCP setup copy is tracked separately (#273).
+
+**Contributors** can still run from a checkout: `npm run build:packages`, then `npx collector-cli` / `npx collector-mcp` against a running app or out-of-band host. That path is optional; end users should use the installer artifacts above.
 
 ### Build
 
