@@ -1,6 +1,8 @@
 import { Folder } from "lucide-react";
+import { cn } from "../../lib/utils";
 import type { PanelItemHeaderState } from "./panel-header-context";
 import { folderPathSegments } from "./folder-path-segments";
+import { headerPathChrome } from "./header-chrome";
 
 const UNTITLED_FALLBACK = "Без названия";
 
@@ -16,7 +18,10 @@ export function ItemHeaderBreadcrumbs({
   if (!state || state.status === "loading") {
     return (
       <div
-        className="flex h-10 min-w-0 flex-1 items-center gap-1.5"
+        className={cn(
+          headerPathChrome,
+          "flex h-8 min-w-0 flex-1 items-center gap-1.5",
+        )}
         aria-hidden
       >
         <span className="size-4 shrink-0 animate-pulse rounded bg-neutral-200 dark:bg-neutral-700" />
@@ -33,7 +38,10 @@ export function ItemHeaderBreadcrumbs({
   return (
     <nav
       aria-label="Путь"
-      className="flex h-10 min-w-0 flex-1 items-center overflow-hidden"
+      className={cn(
+        headerPathChrome,
+        "flex h-8 min-w-0 flex-1 items-center overflow-hidden",
+      )}
     >
       <ol className="flex min-w-0 flex-1 items-center overflow-hidden text-sm">
         {folders.map((segment, index) => (
@@ -58,7 +66,7 @@ export function ItemHeaderBreadcrumbs({
             <button
               type="button"
               onClick={() => onFolderSelect(segment.path)}
-              className="min-w-0 overflow-hidden whitespace-nowrap text-neutral-500 transition-colors hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+              className="min-w-0 truncate text-neutral-500 transition-colors hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
               title={segment.name}
             >
               {segment.name}
@@ -76,7 +84,7 @@ export function ItemHeaderBreadcrumbs({
             </span>
           )}
           <span
-            className="min-w-0 flex-1 overflow-hidden whitespace-nowrap font-medium text-neutral-900 dark:text-neutral-100"
+            className="min-w-0 flex-1 truncate font-medium text-neutral-900 dark:text-neutral-100"
             title={title}
           >
             {title}

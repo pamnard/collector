@@ -21,6 +21,8 @@ interface AppSidebarProps {
   variant?: "drawer" | "docked";
   isOpen: boolean;
   onClose: () => void;
+  collapsed?: boolean;
+  onRequestExpand?: () => void;
   mode: SidebarMode;
   onModeChange: (mode: SidebarMode) => void;
   activeFilter: NavFilter;
@@ -50,6 +52,8 @@ export function Sidebar({
   variant = "drawer",
   isOpen,
   onClose,
+  collapsed = false,
+  onRequestExpand,
   mode,
   onModeChange,
   activeFilter,
@@ -84,6 +88,9 @@ export function Sidebar({
 
   const handleModeChange = (next: SidebarMode) => {
     onModeChange(next);
+    if (collapsed) {
+      onRequestExpand?.();
+    }
     if (next === "settings") {
       navigate("/settings?section=general");
       onClose();
@@ -122,51 +129,53 @@ export function Sidebar({
           onToggleTheme={onToggleTheme}
         />
 
-        <ShadcnSidebar collapsible="none" className="flex min-w-0 flex-1 flex-col bg-neutral-200 dark:bg-neutral-900">
-          <div className="flex h-12 shrink-0 items-center px-4 box-border">
-            <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-              {panelTitle(mode)}
+        {!collapsed ? (
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-neutral-200 dark:bg-neutral-900">
+            <div className="flex h-12 shrink-0 items-center px-4 box-border">
+              <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                {panelTitle(mode)}
+              </div>
             </div>
+            {mode === "search" ? (
+              <SidebarSearchPanel
+                searchQuery={searchQuery}
+                onSearchChange={onSearchChange}
+                searchIndexBuilding={searchIndexBuilding}
+              />
+            ) : (
+              <SidebarContent className="custom-scrollbar gap-0">
+                {mode === "collections" ? (
+                  <div className="px-2 py-2">
+                    <SidebarCollections
+                      activeFilter={activeFilter}
+                      isSettings={isSettings}
+                      onSelect={goToDashboard}
+                      vaultRevision={vaultRevision}
+                    />
+                  </div>
+                ) : null}
+                {mode === "tags" ? (
+                  <div className="px-2 py-2">
+                    <SidebarTags
+                      tags={tags}
+                      activeFilter={activeFilter}
+                      isSettings={isSettings}
+                      onSelect={goToDashboard}
+                    />
+                  </div>
+                ) : null}
+                {mode === "settings" ? (
+                  <div className="py-2">
+                    <SidebarSettingsNav
+                      section={settingsSection}
+                      onSectionChange={handleSettingsSection}
+                    />
+                  </div>
+                ) : null}
+              </SidebarContent>
+            )}
           </div>
-          {mode === "search" ? (
-            <SidebarSearchPanel
-              searchQuery={searchQuery}
-              onSearchChange={onSearchChange}
-              searchIndexBuilding={searchIndexBuilding}
-            />
-          ) : (
-            <SidebarContent className="custom-scrollbar gap-0">
-              {mode === "collections" ? (
-                <div className="px-2 py-2">
-                  <SidebarCollections
-                    activeFilter={activeFilter}
-                    isSettings={isSettings}
-                    onSelect={goToDashboard}
-                    vaultRevision={vaultRevision}
-                  />
-                </div>
-              ) : null}
-              {mode === "tags" ? (
-                <div className="px-2 py-2">
-                  <SidebarTags
-                    tags={tags}
-                    activeFilter={activeFilter}
-                    isSettings={isSettings}
-                    onSelect={goToDashboard}
-                  />
-                </div>
-              ) : null}
-              {mode === "settings" ? (
-                <div className="py-2">
-                  <SidebarSettingsNav
-                    section={settingsSection}
-                    onSectionChange={handleSettingsSection}
-                  />
-                </div>
-              ) : null}
-            </SidebarContent>
-          )}
-        </ShadcnSidebar>
+        ) : null}
       </ShadcnSidebar>
     </SidebarProvider>
   );

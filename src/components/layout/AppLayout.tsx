@@ -1,5 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Menu } from "lucide-react";
 import { CreateItemDialog } from "../items/CreateItemDialog";
 import { useNavState } from "../../hooks/useNavState";
@@ -13,20 +20,27 @@ import { useViewMode } from "../../hooks/useViewMode";
 import { useDashboardItems } from "../../hooks/useDashboardItems";
 import { useVaultIndexSyncStatus } from "../../hooks/useVaultIndexSyncStatus";
 import {
+  SIDEBAR_RAIL_WIDTH_PX,
   SIDEBAR_WIDTH_MAX,
   SIDEBAR_WIDTH_MIN,
+  readSidebarCollapsed,
   readSidebarWidthPx,
+  writeSidebarCollapsed,
   writeSidebarWidthPx,
 } from "../../lib/sidebar-width";
 import { formatIndexingBannerLabel } from "@collector/core";
 import type { NavFilter, ViewMode } from "../../types/ui";
-import type { SidebarMode } from "../../types/sidebar-mode";
+import {
+  parseSettingsSection,
+  type SidebarMode,
+} from "../../types/sidebar-mode";
 import { Alert } from "../alerts/Alert";
 import { AlertStack } from "../alerts/AlertStack";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  usePanelRef,
 } from "../ui/resizable";
 import { TooltipProvider } from "../ui/tooltip";
 import { SmokeUiReadyBeacon } from "../startup/SmokeUiReadyBeacon";
@@ -60,11 +74,17 @@ export function useShell(): ShellContextValue {
 export function AppLayout() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const [searchParams] = useSearchParams();
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [vaultRevision, setVaultRevision] = useState(0);
-  const [sidebarWidthPx] = useState(() => readSidebarWidthPx());
+  const [sidebarWidthPx, setSidebarWidthPx] = useState(() => readSidebarWidthPx());
+  const sidebarWidthRef = useRef(sidebarWidthPx);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
+    readSidebarCollapsed(),
+  );
+  const sidebarPanelRef = usePanelRef();
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(() =>
     pathname === "/settings" ? "settings" : "collections",
   );
@@ -136,7 +156,9 @@ export function AppLayout() {
   } as const;
 
   const isItemRoute = pathname.startsWith("/item/");
-  const showCardHeader = pathname === "/" || isItemRoute;
+  const isSettingsRoute = pathname === "/settings";
+  const settingsSection = parseSettingsSection(searchParams.get("section"));
+  const showCardHeader = pathname === "/" || isItemRoute || isSettingsRoute;
 
   const handleFolderSelectFromHeader = useCallback(
     (folderPath: string) => {
@@ -147,19 +169,64 @@ export function AppLayout() {
     [navigate, setActiveFilter],
   );
 
+  const setCollapsed = useCallback((collapsed: boolean) => {
+    setSidebarCollapsed(collapsed);
+    writeSidebarCollapsed(collapsed);
+  }, []);
+
+  const persistSidebarWidth = useCallback((inPixels: number) => {
+    if (inPixels < SIDEBAR_WIDTH_MIN) {
+      return;
+    }
+    sidebarWidthRef.current = inPixels;
+    writeSidebarWidthPx(inPixels);
+  }, []);
+
+  const handleToggleSidebarCollapse = useCallback(() => {
+    if (sidebarCollapsed) {
+      // Remount uses last persisted width; sync state so defaultSize matches.
+      setSidebarWidthPx(sidebarWidthRef.current);
+      setCollapsed(false);
+      return;
+    }
+    const panel = sidebarPanelRef.current;
+    if (panel) {
+      const { inPixels } = panel.getSize();
+      if (inPixels >= SIDEBAR_WIDTH_MIN) {
+        persistSidebarWidth(inPixels);
+        setSidebarWidthPx(inPixels);
+      }
+    }
+    setCollapsed(true);
+  }, [persistSidebarWidth, setCollapsed, sidebarCollapsed, sidebarPanelRef]);
+
+  const handleExpandSidebar = useCallback(() => {
+    setSidebarWidthPx(sidebarWidthRef.current);
+    setCollapsed(false);
+  }, [setCollapsed]);
+
+  const headerVariant = pathname === "/"
+    ? "list"
+    : isSettingsRoute
+      ? "settings"
+      : "item";
+
   const mainColumn = (
     <main className="relative flex min-h-0 h-full flex-1 flex-col overflow-hidden">
       <MainScrollArea>
-        <div className="box-border flex min-h-full flex-col p-2 md:pl-0">
+        <div className="box-border flex min-h-full flex-col p-2">
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-white shadow-xs dark:bg-neutral-800">
             {showCardHeader ? (
               <Header
-                variant={pathname === "/" ? "list" : "item"}
+                variant={headerVariant}
                 onOpenSidebar={() => setIsSidebarOpen(true)}
+                sidebarCollapsed={sidebarCollapsed}
+                onToggleSidebarCollapse={handleToggleSidebarCollapse}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
                 onAddClick={() => setIsCreateOpen(true)}
                 onFolderSelect={handleFolderSelectFromHeader}
+                settingsSection={settingsSection}
               />
             ) : (
               !isDesktop && (
@@ -207,35 +274,70 @@ export function AppLayout() {
               className="h-screen overflow-hidden bg-neutral-200 font-sans text-neutral-900 transition-colors duration-200 dark:bg-neutral-900 dark:text-neutral-100"
             >
               <SmokeUiReadyBeacon />
-              <ResizablePanelGroup orientation="horizontal" className="h-full w-full">
-                <ResizablePanel
-                  id="sidebar"
-                  defaultSize={sidebarWidthPx}
-                  minSize={`${SIDEBAR_WIDTH_MIN}px`}
-                  maxSize={`${SIDEBAR_WIDTH_MAX}px`}
-                  groupResizeBehavior="preserve-pixel-size"
-                  className="min-h-0"
-                  onResize={(panelSize) => {
-                    writeSidebarWidthPx(panelSize.inPixels);
+              {sidebarCollapsed ? (
+                <div className="flex h-full w-full">
+                  <div
+                    className="h-full shrink-0 overflow-hidden"
+                    style={{ width: SIDEBAR_RAIL_WIDTH_PX }}
+                  >
+                    <Sidebar
+                      variant="docked"
+                      isOpen
+                      collapsed
+                      onRequestExpand={handleExpandSidebar}
+                      onClose={() => setIsSidebarOpen(false)}
+                      {...sidebarProps}
+                    />
+                  </div>
+                  <div className="min-h-0 min-w-0 flex-1">{mainColumn}</div>
+                </div>
+              ) : (
+                <ResizablePanelGroup
+                  orientation="horizontal"
+                  className="h-full w-full"
+                  onLayoutChanged={(_layout, meta) => {
+                    if (!meta.isUserInteraction) {
+                      return;
+                    }
+                    const panel = sidebarPanelRef.current;
+                    if (!panel) {
+                      return;
+                    }
+                    // Persist only — do not setState(defaultSize). Updating
+                    // defaultSize mid-session re-registers the panel group and
+                    // the first drag after expand gets eaten (library #729).
+                    persistSidebarWidth(panel.getSize().inPixels);
                   }}
                 >
-                  <Sidebar
-                    variant="docked"
-                    isOpen
-                    onClose={() => setIsSidebarOpen(false)}
-                    {...sidebarProps}
-                  />
-                </ResizablePanel>
-                <ResizableHandle className="bg-transparent hover:bg-border data-[separator=active]:bg-border focus-visible:ring-0" />
-                <ResizablePanel
-                  id="main"
-                  minSize="50%"
-                  groupResizeBehavior="preserve-relative-size"
-                  className="min-h-0"
-                >
-                  {mainColumn}
-                </ResizablePanel>
-              </ResizablePanelGroup>
+                  <ResizablePanel
+                    id="sidebar"
+                    panelRef={sidebarPanelRef}
+                    defaultSize={sidebarWidthPx}
+                    minSize={SIDEBAR_WIDTH_MIN}
+                    maxSize={SIDEBAR_WIDTH_MAX}
+                    groupResizeBehavior="preserve-pixel-size"
+                    className="min-h-0 overflow-hidden"
+                  >
+                    <Sidebar
+                      variant="docked"
+                      isOpen
+                      collapsed={false}
+                      onRequestExpand={handleExpandSidebar}
+                      onClose={() => setIsSidebarOpen(false)}
+                      {...sidebarProps}
+                    />
+                  </ResizablePanel>
+                  <ResizableHandle className="bg-transparent hover:bg-border data-[separator=active]:bg-border focus-visible:ring-0" />
+                  <ResizablePanel
+                    id="main"
+                    minSize="50%"
+                    groupResizeBehavior="preserve-relative-size"
+                    className="min-h-0"
+                  >
+                    {mainColumn}
+                  </ResizablePanel>
+                </ResizablePanelGroup>
+              )}
             </div>
           ) : (
             <div

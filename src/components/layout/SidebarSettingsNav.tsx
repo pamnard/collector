@@ -1,5 +1,8 @@
 import { Cable, Settings2 } from "lucide-react";
-import type { SettingsSection } from "../../types/sidebar-mode";
+import {
+  SETTINGS_SECTION_LABELS,
+  type SettingsSection,
+} from "../../types/sidebar-mode";
 
 interface SidebarSettingsNavProps {
   section: SettingsSection;
@@ -8,11 +11,10 @@ interface SidebarSettingsNavProps {
 
 const SECTIONS: Array<{
   id: SettingsSection;
-  label: string;
   icon: typeof Settings2;
 }> = [
-  { id: "general", label: "Общие", icon: Settings2 },
-  { id: "mcp", label: "MCP", icon: Cable },
+  { id: "general", icon: Settings2 },
+  { id: "mcp", icon: Cable },
 ];
 
 export function SidebarSettingsNav({
@@ -36,7 +38,7 @@ export function SidebarSettingsNav({
             }`}
           >
             <Icon size={16} />
-            <span>{item.label}</span>
+            <span>{SETTINGS_SECTION_LABELS[item.id]}</span>
           </button>
         );
       })}

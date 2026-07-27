@@ -1,4 +1,8 @@
 import { Check, Code, Copy, Eye, Form, Trash2 } from "lucide-react";
+import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
+import { ButtonGroup } from "../ui/button-group";
+import { headerChromeBtn, headerChromeBtnActive } from "./header-chrome";
 
 export type ItemDetailMode = "view" | "form" | "source";
 
@@ -15,23 +19,18 @@ export interface ItemHeaderActionsModel {
   onDelete: () => void;
 }
 
-function modeButtonClass(active: boolean): string {
-  return `inline-flex size-8 items-center justify-center rounded-md transition-all ${
-    active
-      ? "bg-white/70 text-neutral-900 shadow-xs dark:bg-neutral-800/70 dark:text-neutral-100"
-      : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
-  }`;
-}
-
 interface ItemHeaderActionsProps {
   actions: ItemHeaderActionsModel | null;
 }
+
+/** Square hit target — do not mix with h/w overrides (fights size="icon"). */
+const iconBtn = "border-transparent";
 
 export function ItemHeaderActions({ actions }: ItemHeaderActionsProps) {
   if (!actions) {
     return (
       <div
-        className="h-10 w-[10.5rem] shrink-0 animate-pulse rounded-lg bg-neutral-100/80 dark:bg-neutral-700/80"
+        className="h-8 w-[10rem] shrink-0 animate-pulse rounded-lg bg-secondary dark:bg-neutral-700"
         aria-hidden
       />
     );
@@ -51,13 +50,11 @@ export function ItemHeaderActions({ actions }: ItemHeaderActionsProps) {
   } = actions;
 
   return (
-    <div
-      role="group"
-      aria-label="Режим страницы"
-      className="flex h-10 shrink-0 items-center rounded-lg bg-neutral-100/80 p-1 backdrop-blur-xs dark:bg-neutral-700/80"
-    >
-      <button
+    <ButtonGroup aria-label="Режим страницы">
+      <Button
         type="button"
+        variant="secondary"
+        size="icon"
         aria-label={
           idCopyFeedback === "copied"
             ? "Id скопирован"
@@ -72,61 +69,81 @@ export function ItemHeaderActions({ actions }: ItemHeaderActionsProps) {
               ? "Не удалось скопировать id"
               : "Скопировать id элемента"
         }
-        className={`inline-flex size-8 items-center justify-center rounded-md transition-all ${
-          idCopyFeedback === "copied"
-            ? "text-neutral-900 dark:text-neutral-100"
-            : idCopyFeedback === "failed"
-              ? "text-red-400"
-              : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
-        }`}
+        className={cn(
+          iconBtn,
+          headerChromeBtn,
+          idCopyFeedback === "copied" && "text-neutral-900 dark:text-neutral-100",
+          idCopyFeedback === "failed" && "text-red-400 dark:text-red-400",
+        )}
         onClick={onCopyId}
         disabled={!ready || isSaving}
       >
         {idCopyFeedback === "copied" ? <Check size={16} /> : <Copy size={16} />}
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
+        variant="secondary"
+        size="icon"
         aria-label="Просмотр"
         aria-pressed={mode === "view"}
         title="Просмотр"
-        className={modeButtonClass(mode === "view")}
+        className={cn(
+          iconBtn,
+          mode === "view" ? headerChromeBtnActive : headerChromeBtn,
+        )}
         onClick={onView}
         disabled={!ready || isSaving}
       >
         <Eye size={16} />
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
+        variant="secondary"
+        size="icon"
         aria-label="Редактирование формы"
         aria-pressed={mode === "form"}
         title="Редактирование формы"
-        className={modeButtonClass(mode === "form")}
+        className={cn(
+          iconBtn,
+          mode === "form" ? headerChromeBtnActive : headerChromeBtn,
+        )}
         onClick={onForm}
         disabled={!ready || isSaving}
       >
         <Form size={16} />
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
+        variant="secondary"
+        size="icon"
         aria-label="Исходный текст"
         aria-pressed={mode === "source"}
         title="Исходный текст"
-        className={modeButtonClass(mode === "source")}
+        className={cn(
+          iconBtn,
+          mode === "source" ? headerChromeBtnActive : headerChromeBtn,
+        )}
         onClick={onSource}
         disabled={!ready || isSaving}
       >
         <Code size={16} />
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
+        variant="secondary"
+        size="icon"
         aria-label="Удалить"
         title="Удалить"
-        className="inline-flex size-8 items-center justify-center rounded-md text-red-400 transition-all hover:bg-red-500/10 hover:text-red-400"
+        className={cn(
+          iconBtn,
+          // bg only — headerChromeBtn's text would win over red via CSS order
+          "dark:bg-neutral-700 text-red-400 hover:bg-red-500/10 hover:text-red-400 dark:text-red-400 dark:hover:bg-red-500/10 dark:hover:text-red-400",
+        )}
         onClick={onDelete}
         disabled={!ready || isDeleting || isSaving}
       >
         <Trash2 size={16} />
-      </button>
-    </div>
+      </Button>
+    </ButtonGroup>
   );
 }
