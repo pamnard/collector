@@ -26,6 +26,9 @@ interface AppSettingsContextValue {
   settings: AppSettings;
   setTheme: (theme: Theme) => Promise<void>;
   setViewMode: (mode: ViewMode) => Promise<void>;
+  setTableColumnVisibility: (
+    table_column_visibility: Record<string, boolean>,
+  ) => Promise<void>;
   setNavFilter: (filter: NavFilter) => Promise<void>;
   setNavSearch: (query: string) => Promise<void>;
   setCheckUpdatesOnStart: (enabled: boolean) => Promise<void>;
@@ -94,6 +97,8 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       settings,
       setTheme: (theme) => patch({ theme }),
       setViewMode: (view_mode) => patch({ view_mode }),
+      setTableColumnVisibility: (table_column_visibility) =>
+        patch({ table_column_visibility }),
       setNavFilter: (filter) => patch({ nav_filter: navFilterToSetting(filter) }),
       setNavSearch: (nav_search) => patch({ nav_search }),
       setCheckUpdatesOnStart: (check_updates_on_start) =>
