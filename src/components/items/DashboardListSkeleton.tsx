@@ -20,34 +20,25 @@ export function DashboardTableSkeleton() {
       <table className="w-full table-fixed text-sm">
         <thead className="bg-neutral-100/30 dark:bg-neutral-700/30 text-neutral-500 dark:text-neutral-400">
           <tr>
-            <th className="text-left px-4 py-2 font-medium">Название</th>
-            <th className="w-28 text-left px-4 py-2 font-medium">Тип</th>
-            <th className="w-40 text-left px-4 py-2 font-medium">Теги</th>
-            <th className="w-28 text-left px-4 py-2 font-medium whitespace-nowrap">
-              Обновлено
+            <th className="h-10 px-3 text-left font-medium">Название</th>
+            <th className="h-10 w-28 px-3 text-left font-medium whitespace-nowrap">
+              Создано
             </th>
-            <th className="w-32 text-right px-4 py-2 font-medium">
-              Действия
+            <th className="h-10 w-16 px-3 text-right font-medium">
+              <span className="sr-only">Действия</span>
             </th>
           </tr>
         </thead>
         <tbody>
           {Array.from({ length: SKELETON_COUNT }, (_, index) => (
             <tr key={index} className="border-t border-black/10 dark:border-white/10" aria-hidden>
-              <td className="px-4 py-3">
+              <td className="px-3 py-2">
                 <div className="h-4 w-48 max-w-full animate-pulse rounded-md bg-neutral-100 dark:bg-neutral-700" />
-                <div className="mt-2 h-3 w-32 max-w-full animate-pulse rounded-md bg-neutral-100/70 dark:bg-neutral-700/70" />
               </td>
-              <td className="px-4 py-3">
-                <div className="h-4 w-16 animate-pulse rounded-md bg-neutral-100 dark:bg-neutral-700" />
-              </td>
-              <td className="px-4 py-3">
-                <div className="h-4 w-24 animate-pulse rounded-md bg-neutral-100 dark:bg-neutral-700" />
-              </td>
-              <td className="px-4 py-3">
+              <td className="px-3 py-2">
                 <div className="h-4 w-20 animate-pulse rounded-md bg-neutral-100 dark:bg-neutral-700" />
               </td>
-              <td className="px-4 py-3" />
+              <td className="px-3 py-2" />
             </tr>
           ))}
         </tbody>

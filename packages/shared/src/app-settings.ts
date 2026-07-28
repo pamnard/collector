@@ -8,6 +8,7 @@ export const appSettingsSchema = z.object({
   theme: z.enum(["light", "dark"]).default("light"),
   active_vault_id: z.string().uuid().nullable().optional(),
   view_mode: z.enum(["grid", "table"]).default("grid"),
+  table_column_visibility: z.record(z.string(), z.boolean()).default({}),
   nav_filter: navFilterSettingSchema.default("all"),
   nav_search: z.string().default(""),
   check_updates_on_start: z.boolean().default(false),
