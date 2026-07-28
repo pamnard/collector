@@ -25,6 +25,8 @@ function syntheticSnapshot(
     vault_id: VAULT_ID,
     nav_filter: "all",
     search: "",
+    sort_key: "created_at",
+    sort_dir: "desc",
     item_ids: [ITEM_ID],
     items: [
       {
@@ -111,6 +113,16 @@ describe("dashboard-snapshot-io", () => {
         vaultId: VAULT_ID,
         navFilter: { type: "tag", tag_id: "33333333-3333-4333-8333-333333333333" },
         search: "other",
+      }),
+    ).toBe(false);
+
+    expect(
+      dashboardSnapshotMatchesQuery(snapshot, {
+        vaultId: VAULT_ID,
+        navFilter: { type: "tag", tag_id: "33333333-3333-4333-8333-333333333333" },
+        search: "notes",
+        sortKey: "title",
+        sortDir: "asc",
       }),
     ).toBe(false);
   });

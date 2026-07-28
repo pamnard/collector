@@ -8,6 +8,7 @@ import {
   type CreateItemInput,
   type DashboardIndexPage,
   type DashboardItemIdsResult,
+  type DashboardItemSort,
   type DashboardLoadHandlers,
   type GetItemResult,
   type NavFilter,
@@ -17,6 +18,8 @@ import type { ItemFile, VaultMeta } from "@collector/shared";
 import {
   createFolder as createFolderOnVault,
   deleteItem as deleteItemOnDisk,
+  isItemIdSortDir,
+  isItemIdSortKey,
   itemMarkdownPath,
   listItemsByIds,
   listItemsOnDisk,
@@ -32,13 +35,13 @@ import {
 } from "@collector/core";
 
 export { DASHBOARD_PREFETCH_SIZE };
-export type { DashboardIndexPage, DashboardItemIdsResult };
+export type { DashboardIndexPage, DashboardItemIdsResult, DashboardItemSort };
 
 export interface ItemsIndexPort {
   listItemIdsByNavFilter(
     vaultId: string,
     filter: NavFilter,
-    page?: { limit: number; offset: number },
+    page?: { limit: number; offset: number; sort?: DashboardItemSort },
   ): Promise<string[]>;
   countItemIdsByNavFilter(vaultId: string, filter: NavFilter): Promise<number>;
   searchItemIds(
@@ -131,12 +134,14 @@ export async function queryDashboardIndexPage(
   filter: NavFilter,
   query: string,
   page: { limit: number; offset: number },
+  sort?: DashboardItemSort,
 ): Promise<DashboardIndexPage> {
   const trimmedSearch = query.trim();
+  const listPage = sort ? { ...page, sort } : page;
 
   if (!trimmedSearch) {
     const [itemIds, totalCount] = await Promise.all([
-      index.listItemIdsByNavFilter(vaultId, filter, page),
+      index.listItemIdsByNavFilter(vaultId, filter, listPage),
       index.countItemIdsByNavFilter(vaultId, filter),
     ]);
     return { itemIds, totalCount, offset: page.offset };
@@ -145,12 +150,13 @@ export async function queryDashboardIndexPage(
   const ftsQuery = buildSearchFtsQuery(trimmedSearch, vaultId);
   if (!ftsQuery) {
     const [itemIds, totalCount] = await Promise.all([
-      index.listItemIdsByNavFilter(vaultId, filter, page),
+      index.listItemIdsByNavFilter(vaultId, filter, listPage),
       index.countItemIdsByNavFilter(vaultId, filter),
     ]);
     return { itemIds, totalCount, offset: page.offset };
   }
 
+  // FTS keeps ORDER BY rank; user column sort applies only to nav list path.
   const [itemIds, totalCount] = await Promise.all([
     index.searchItemIds(vaultId, ftsQuery, filter, page),
     index.countSearchItemIds(vaultId, ftsQuery, filter),
@@ -165,16 +171,19 @@ export interface ItemsSearchService {
     filter: NavFilter,
     query: string | undefined,
     page: { limit: number; offset: number },
+    sort?: DashboardItemSort,
   ): Promise<DashboardIndexPage>;
   listDashboardItemIds(
     filter: NavFilter,
     query?: string,
+    sort?: DashboardItemSort,
   ): Promise<DashboardItemIdsResult>;
   subscribeDashboardLoad(
     filter: NavFilter,
     query: string,
     handlers: DashboardLoadHandlers,
     signal?: AbortSignal,
+    sort?: DashboardItemSort,
   ): void;
   streamDashboardItems(
     itemIds: string[],
@@ -194,6 +203,21 @@ export interface ItemsSearchService {
   createItem(input: CreateItemInput): Promise<ItemFile>;
   updateItem(itemId: string, input: UpdateItemInput): Promise<ItemFile>;
   deleteItem(itemId: string): Promise<void>;
+}
+
+export function assertDashboardItemSort(
+  sort: DashboardItemSort | undefined,
+): DashboardItemSort | undefined {
+  if (sort === undefined) {
+    return undefined;
+  }
+  if (!isItemIdSortKey(sort.key)) {
+    throw new Error(`Unsupported item id sort key: ${sort.key}`);
+  }
+  if (!isItemIdSortDir(sort.dir)) {
+    throw new Error(`Unsupported item id sort dir: ${String(sort.dir)}`);
+  }
+  return sort;
 }
 
 export function createItemsSearchService(
@@ -233,6 +257,7 @@ export function createItemsSearchService(
     filter: NavFilter,
     query = "",
     page: { limit: number; offset: number },
+    sort?: DashboardItemSort,
   ): Promise<DashboardIndexPage> => {
     const { vault } = await deps.resolveActiveVault();
     return queryDashboardIndexPage(
@@ -242,17 +267,24 @@ export function createItemsSearchService(
       filter,
       query,
       page,
+      assertDashboardItemSort(sort),
     );
   };
 
   const listDashboardItemIds = async (
     filter: NavFilter,
     query = "",
+    sort?: DashboardItemSort,
   ): Promise<DashboardItemIdsResult> => {
-    const page = await fetchDashboardIndexPage(filter, query, {
-      limit: DASHBOARD_PREFETCH_SIZE,
-      offset: 0,
-    });
+    const page = await fetchDashboardIndexPage(
+      filter,
+      query,
+      {
+        limit: DASHBOARD_PREFETCH_SIZE,
+        offset: 0,
+      },
+      sort,
+    );
     const { vault, path } = await deps.resolveActiveVault();
     const indexSync = deps.startVaultIndexSync(vault.id, path);
     // Prevent unhandled rejection when callers (incl. IPC) drop the promise (#327).
@@ -267,7 +299,9 @@ export function createItemsSearchService(
     query: string,
     handlers: DashboardLoadHandlers,
     signal?: AbortSignal,
+    sort?: DashboardItemSort,
   ): void => {
+    const resolvedSort = assertDashboardItemSort(sort);
     void (async () => {
       const { vault, path } = await deps.resolveActiveVault();
       if (signal?.aborted) {
@@ -286,6 +320,7 @@ export function createItemsSearchService(
             filter,
             query,
             pageRequest,
+            resolvedSort,
           );
           if (!signal?.aborted) {
             handlers.onIndexPage(page);

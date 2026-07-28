@@ -18,6 +18,14 @@ import type { MediaFileMeta } from "@collector/shared";
 /** Matches `collector-service` `DASHBOARD_PREFETCH_SIZE`. */
 export const DASHBOARD_PREFETCH_SIZE = 60;
 
+/** Server-side dashboard ID list sort (#339). Keys must be allowlisted by the index. */
+export type DashboardItemSortDir = "asc" | "desc";
+
+export interface DashboardItemSort {
+  key: string;
+  dir: DashboardItemSortDir;
+}
+
 export interface VaultIndexSyncStatus {
   vaultId: string | null;
   status: "idle" | "rebuilding" | "running" | "done";
@@ -82,16 +90,19 @@ export interface CollectorServiceApi {
     filter: NavFilter,
     query: string | undefined,
     page: { limit: number; offset: number },
+    sort?: DashboardItemSort,
   ): Promise<DashboardIndexPage>;
   listDashboardItemIds(
     filter: NavFilter,
     query?: string,
+    sort?: DashboardItemSort,
   ): Promise<DashboardItemIdsResult>;
   subscribeDashboardLoad(
     filter: NavFilter,
     query: string,
     handlers: DashboardLoadHandlers,
     signal?: AbortSignal,
+    sort?: DashboardItemSort,
   ): void;
   streamDashboardItems(
     itemIds: string[],
@@ -180,6 +191,7 @@ export interface CollectorServiceApi {
     vaultId: string;
     filter: NavFilter;
     search: string;
+    sort?: DashboardItemSort;
   }): DashboardSnapshot | null;
   persistDashboardSnapshot(snapshot: DashboardSnapshot): Promise<void>;
   clearDashboardSnapshot(): Promise<void>;
@@ -187,6 +199,7 @@ export interface CollectorServiceApi {
     vaultId: string;
     filter: NavFilter;
     search: string;
+    sort?: DashboardItemSort;
     itemIds: string[];
     items: DashboardSnapshot["items"];
     totalCount: number;

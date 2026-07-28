@@ -13,6 +13,7 @@ import type {
   CreateItemInput,
   DashboardIndexPage,
   DashboardItemIdsResult,
+  DashboardItemSort,
   DashboardLoadHandlers,
   FolderTreeNode,
   GetItemResult,
@@ -134,19 +135,23 @@ export function createCollectorIpcClient(
       filter: NavFilter,
       query: string | undefined,
       page: { limit: number; offset: number },
+      sort?: DashboardItemSort,
     ): Promise<DashboardIndexPage> =>
       transport.request("fetchDashboardIndexPage", {
         filter,
         query,
         page,
+        sort,
       }) as Promise<DashboardIndexPage>,
     listDashboardItemIds: async (
       filter: NavFilter,
       query?: string,
+      sort?: DashboardItemSort,
     ): Promise<DashboardItemIdsResult> => {
       const result = (await transport.request("listDashboardItemIds", {
         filter,
         query,
+        sort,
       })) as { itemIds: string[]; totalCount: number };
       // Over IPC `indexSync` is not a real wait — use vault index sync status (#163).
       return {
@@ -160,6 +165,7 @@ export function createCollectorIpcClient(
       query: string,
       handlers: DashboardLoadHandlers,
       signal?: AbortSignal,
+      sort?: DashboardItemSort,
     ): void {
       void (async () => {
         try {
@@ -170,6 +176,7 @@ export function createCollectorIpcClient(
             filter,
             query,
             page: { limit: DASHBOARD_PREFETCH_SIZE, offset: 0 },
+            sort,
           })) as DashboardIndexPage;
           if (signal?.aborted) {
             return;
@@ -462,6 +469,7 @@ export function createCollectorIpcClient(
       vaultId: string;
       filter: NavFilter;
       search: string;
+      sort?: DashboardItemSort;
     }): DashboardSnapshot | null {
       if (!snapshotCacheLoaded || !snapshotCache) {
         return null;
@@ -471,6 +479,8 @@ export function createCollectorIpcClient(
           vaultId: input.vaultId,
           navFilter: navFilterToSetting(input.filter),
           search: input.search,
+          sortKey: input.sort?.key,
+          sortDir: input.sort?.dir,
         })
       ) {
         return null;
@@ -493,6 +503,7 @@ export function createCollectorIpcClient(
       vaultId: string;
       filter: NavFilter;
       search: string;
+      sort?: DashboardItemSort;
       itemIds: string[];
       items: DashboardSnapshot["items"];
       totalCount: number;
@@ -503,6 +514,8 @@ export function createCollectorIpcClient(
         vault_id: input.vaultId,
         nav_filter: navFilterToSetting(input.filter),
         search: input.search,
+        sort_key: input.sort?.key ?? "created_at",
+        sort_dir: input.sort?.dir ?? "desc",
         item_ids: input.itemIds,
         items: input.items,
         total_count: input.totalCount,

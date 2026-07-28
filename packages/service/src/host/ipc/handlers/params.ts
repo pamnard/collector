@@ -2,7 +2,8 @@
  * Shared IPC params helpers for domain handlers.
  */
 
-import type { NavFilter } from "@collector/api";
+import type { DashboardItemSort, NavFilter } from "@collector/api";
+import { isItemIdSortDir, isItemIdSortKey } from "@collector/core";
 import { serviceIpcError } from "../errors.js";
 
 export function badRequest(message: string): never {
@@ -51,4 +52,27 @@ export function parseNavFilter(value: unknown, method: string): NavFilter {
     }
   }
   badRequest(`${method}: invalid NavFilter`);
+}
+
+export function parseDashboardItemSort(
+  value: unknown,
+  method: string,
+): DashboardItemSort | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    badRequest(`${method}: sort must be an object`);
+  }
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.key !== "string" || typeof obj.dir !== "string") {
+    badRequest(`${method}: sort.key and sort.dir required`);
+  }
+  if (!isItemIdSortKey(obj.key)) {
+    badRequest(`${method}: unsupported sort.key`);
+  }
+  if (!isItemIdSortDir(obj.dir)) {
+    badRequest(`${method}: unsupported sort.dir`);
+  }
+  return { key: obj.key, dir: obj.dir };
 }

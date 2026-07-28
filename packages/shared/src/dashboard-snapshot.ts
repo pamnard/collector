@@ -10,6 +10,8 @@ export const dashboardSnapshotSchema = z.object({
   vault_id: z.string().uuid(),
   nav_filter: navFilterSettingSchema,
   search: z.string().default(""),
+  sort_key: z.string().default("created_at"),
+  sort_dir: z.enum(["asc", "desc"]).default("desc"),
   item_ids: z.array(z.string().min(1)),
   items: z.array(itemFileSchema),
   total_count: z.number().int().nonnegative(),
@@ -37,12 +39,18 @@ export function dashboardSnapshotMatchesQuery(
     vaultId: string;
     navFilter: z.infer<typeof navFilterSettingSchema>;
     search: string;
+    sortKey?: string;
+    sortDir?: "asc" | "desc";
   },
 ): boolean {
+  const sortKey = query.sortKey ?? "created_at";
+  const sortDir = query.sortDir ?? "desc";
   return (
     snapshot.vault_id === query.vaultId &&
     navFilterSettingKey(snapshot.nav_filter) ===
       navFilterSettingKey(query.navFilter) &&
-    snapshot.search === query.search
+    snapshot.search === query.search &&
+    snapshot.sort_key === sortKey &&
+    snapshot.sort_dir === sortDir
   );
 }

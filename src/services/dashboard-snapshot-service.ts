@@ -45,6 +45,8 @@ function seedQueryCacheFromSnapshot(snapshot: DashboardSnapshot): void {
   const key = dashboardQueryCacheKey(
     navFilterSettingKey(snapshot.nav_filter),
     snapshot.search,
+    snapshot.sort_key ?? "created_at",
+    snapshot.sort_dir ?? "desc",
   );
   if (getDashboardQueryCache(key)) {
     return;
@@ -76,11 +78,13 @@ export function peekMatchingDashboardSnapshot(
   vaultId: string,
   filter: NavFilter,
   search: string,
+  sort?: { key: string; dir: "asc" | "desc" },
 ): DashboardSnapshot | null {
   return dashboardSnapshot.peekMatchingDashboardSnapshot({
     vaultId,
     filter,
     search,
+    sort,
   });
 }
 
@@ -98,6 +102,7 @@ export function buildDashboardSnapshot(input: {
   vaultId: string;
   filter: NavFilter;
   search: string;
+  sort?: { key: string; dir: "asc" | "desc" };
   itemIds: string[];
   items: DashboardSnapshot["items"];
   totalCount: number;

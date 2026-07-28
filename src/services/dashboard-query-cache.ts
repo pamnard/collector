@@ -14,8 +14,10 @@ export interface DashboardQueryCacheEntry {
 export function dashboardQueryCacheKey(
   filterKey: string,
   search: string,
+  sortKey = "created_at",
+  sortDir: "asc" | "desc" = "desc",
 ): string {
-  return `${filterKey}|${search.trim()}`;
+  return `${filterKey}|${search.trim()}|${sortKey}|${sortDir}`;
 }
 
 const entries = new Map<string, DashboardQueryCacheEntry>();

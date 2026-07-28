@@ -5,6 +5,7 @@
 import {
   asObject,
   badRequest,
+  parseDashboardItemSort,
   parseNavFilter,
   requireString,
 } from "./params.js";
@@ -41,18 +42,25 @@ export function buildItemsReadHandlers(
       if (typeof page.limit !== "number" || typeof page.offset !== "number") {
         badRequest(`${M.fetchDashboardIndexPage}: page.limit/offset required`);
       }
+      const sort = parseDashboardItemSort(p.sort, M.fetchDashboardIndexPage);
       await runtime.ensureInitialized();
-      return itemsSearch.fetchDashboardIndexPage(filter, query, {
-        limit: page.limit,
-        offset: page.offset,
-      });
+      return itemsSearch.fetchDashboardIndexPage(
+        filter,
+        query,
+        {
+          limit: page.limit,
+          offset: page.offset,
+        },
+        sort,
+      );
     },
     [M.listDashboardItemIds]: async (params) => {
       const p = asObject(params, M.listDashboardItemIds);
       const filter = parseNavFilter(p.filter, M.listDashboardItemIds);
       const query = typeof p.query === "string" ? p.query : undefined;
+      const sort = parseDashboardItemSort(p.sort, M.listDashboardItemIds);
       await runtime.ensureInitialized();
-      const result = await itemsSearch.listDashboardItemIds(filter, query);
+      const result = await itemsSearch.listDashboardItemIds(filter, query, sort);
       // IPC cannot return the Promise; attach catch so dropped sync is not unhandled (#327).
       void result.indexSync.catch((error: unknown) => {
         console.error("[collector] index sync failed:", error);

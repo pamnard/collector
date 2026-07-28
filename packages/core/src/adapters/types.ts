@@ -178,6 +178,8 @@ export interface VaultIndexAdapter {
 export interface ItemIdPageOptions {
   limit?: number;
   offset?: number;
+  /** Server-side ORDER BY for listItemIds* (#339). Unknown keys rejected. */
+  sort?: { key: string; dir: "asc" | "desc" };
 }
 
 export type ItemIdListOptions = ItemIdPageOptions;

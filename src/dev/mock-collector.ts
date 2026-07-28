@@ -2,6 +2,7 @@ import type { FolderTreeNode, MediaWithPath, TagWithCount } from "@collector/cor
 import {
   buildCanonicalFrontmatter,
   contentTypeFromFrontmatter,
+  isItemIdSortKey,
   itemMediaManifestPath,
   mediaFilePath,
   parseDocumentMarkdown,
@@ -10,6 +11,7 @@ import {
   serializeDocumentMarkdown,
 } from "@collector/core";
 import { mediaManifestSchema, type ItemFile, type VaultMeta } from "@collector/shared";
+import type { DashboardItemSort } from "@collector/api";
 import type { NavFilter } from "../types/ui";
 import { isFolderFilter, isTagFilter } from "../types/ui";
 import type { UpdateItemInput } from "../types/item";
@@ -85,12 +87,48 @@ export async function ensureActiveVault(): Promise<{
   return { vault: mockStore.getVault(), path: "/dev-mock/vault" };
 }
 
-function listFilteredDashboardIds(filter: NavFilter, query = ""): string[] {
+function compareDashboardItems(
+  a: ItemFile,
+  b: ItemFile,
+  sort?: DashboardItemSort,
+): number {
+  const key = sort?.key ?? "created_at";
+  const dir = sort?.dir ?? "desc";
+  if (!isItemIdSortKey(key)) {
+    throw new Error(`Unsupported item id sort key: ${key}`);
+  }
+  let cmp = 0;
+  switch (key) {
+    case "title":
+      cmp = a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+      break;
+    case "content_type":
+      cmp = a.content_type.localeCompare(b.content_type);
+      break;
+    case "updated_at":
+      cmp = a.updated_at.localeCompare(b.updated_at);
+      break;
+    case "created_at":
+    default:
+      cmp = a.created_at.localeCompare(b.created_at);
+      break;
+  }
+  if (cmp === 0) {
+    cmp = a.id.localeCompare(b.id);
+  }
+  return dir === "asc" ? cmp : -cmp;
+}
+
+function listFilteredDashboardIds(
+  filter: NavFilter,
+  query = "",
+  sort?: DashboardItemSort,
+): string[] {
   return mockStore
     .getItems()
     .filter((item) => matchesNavFilter(item, filter))
     .filter((item) => matchesSearch(item, query))
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .sort((a, b) => compareDashboardItems(a, b, sort))
     .map((item) => item.id);
 }
 
@@ -98,9 +136,10 @@ export async function fetchDashboardIndexPage(
   filter: NavFilter,
   query = "",
   page: { limit: number; offset: number },
+  sort?: DashboardItemSort,
 ): Promise<{ itemIds: string[]; totalCount: number; offset: number }> {
   ensureWarmedUp();
-  const allIds = listFilteredDashboardIds(filter, query);
+  const allIds = listFilteredDashboardIds(filter, query, sort);
   const itemIds = allIds.slice(page.offset, page.offset + page.limit);
   return {
     itemIds,
@@ -112,9 +151,10 @@ export async function fetchDashboardIndexPage(
 export async function listDashboardItemIds(
   filter: NavFilter,
   query = "",
+  sort?: DashboardItemSort,
 ): Promise<string[]> {
   ensureWarmedUp();
-  return listFilteredDashboardIds(filter, query);
+  return listFilteredDashboardIds(filter, query, sort);
 }
 
 export async function streamDashboardItems(
