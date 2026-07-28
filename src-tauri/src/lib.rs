@@ -392,11 +392,12 @@ fn service_supervise_kill(
 
 #[tauri::command]
 fn service_ipc_connect(
+    app: tauri::AppHandle,
     ipc_state: tauri::State<'_, ServiceIpcState>,
     ipc_path: String,
 ) -> Result<String, String> {
     let path = PathBuf::from(&ipc_path);
-    let client = ServiceIpcClient::connect(&path, Duration::from_secs(15))
+    let client = ServiceIpcClient::connect(&path, Duration::from_secs(15), Some(app))
         .map_err(|e| e.to_string())?;
     let mut guard = ipc_state.client.lock().map_err(|e| e.to_string())?;
     if let Some(existing) = guard.take() {

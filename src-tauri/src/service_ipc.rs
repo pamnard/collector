@@ -11,13 +11,18 @@
 //! (`std::fs::File`), those timeouts are **not** enforced — overlapped I/O is
 //! out of scope for this crate.
 
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
+use serde::Serialize;
 use serde_json::{json, Value};
+use tauri::{AppHandle, Emitter};
 
 const PROTOCOL_VERSION: u32 = 1;
 const MAX_FRAME_BYTES: usize = 1024 * 1024;
@@ -120,6 +125,12 @@ impl IpcStream {
         #[cfg(windows)]
         {}
     }
+
+    fn try_clone(&self) -> std::io::Result<Self> {
+        Ok(Self {
+            inner: self.inner.try_clone()?,
+        })
+    }
 }
 
 fn encode_frame(message: &Value) -> Result<Vec<u8>, ServiceIpcError> {
@@ -151,11 +162,31 @@ fn read_frame(stream: &mut IpcStream) -> Result<Value, ServiceIpcError> {
     serde_json::from_slice(&body).map_err(|e| ServiceIpcError::Framing(e.to_string()))
 }
 
-/// Decode one reply frame for an in-flight request.
+/// Tauri event name for host→WebView IPC push (#329).
+pub const SERVICE_IPC_EVENT: &str = "service-ipc-event";
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceIpcEventPayload {
+    pub event: String,
+    pub payload: Value,
+}
+
+enum ClassifiedFrame {
+    Event {
+        event: String,
+        payload: Value,
+    },
+    Response {
+        id: String,
+        result: Result<Value, ServiceIpcError>,
+    },
+}
+
+/// Classify one demuxed frame (`evt` / `res` / `err`).
 ///
-/// Returns `Ok(None)` only for `evt` (keep reading). Wrong version / wrong id /
-/// missing `result` on `res` are hard framing errors — never invent defaults.
-fn interpret_reply(reply: &Value, expected_id: &str) -> Result<Option<Value>, ServiceIpcError> {
+/// Wrong version / missing fields are hard framing errors — never invent defaults.
+fn classify_frame(reply: &Value) -> Result<ClassifiedFrame, ServiceIpcError> {
     let version = reply
         .get("v")
         .and_then(|v| v.as_u64())
@@ -170,23 +201,28 @@ fn interpret_reply(reply: &Value, expected_id: &str) -> Result<Option<Value>, Se
         .and_then(|v| v.as_str())
         .ok_or_else(|| ServiceIpcError::Framing("missing type".into()))?;
     if typ == "evt" {
-        return Ok(None);
+        let event = reply
+            .get("event")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ServiceIpcError::Framing("missing event".into()))?
+            .to_string();
+        let payload = reply.get("payload").cloned().unwrap_or(Value::Null);
+        return Ok(ClassifiedFrame::Event { event, payload });
     }
-    let reply_id = reply
+    let id = reply
         .get("id")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| ServiceIpcError::Framing("missing id".into()))?;
-    if reply_id != expected_id {
-        return Err(ServiceIpcError::Framing(format!(
-            "unexpected id {reply_id} (expected {expected_id})"
-        )));
-    }
+        .ok_or_else(|| ServiceIpcError::Framing("missing id".into()))?
+        .to_string();
     if typ == "res" {
         let result = reply
             .get("result")
             .ok_or_else(|| ServiceIpcError::Framing("missing result".into()))?
             .clone();
-        return Ok(Some(result));
+        return Ok(ClassifiedFrame::Response {
+            id,
+            result: Ok(result),
+        });
     }
     if typ == "err" {
         let err = reply
@@ -207,13 +243,46 @@ fn interpret_reply(reply: &Value, expected_id: &str) -> Result<Option<Value>, Se
             .and_then(|v| v.as_str())
             .ok_or_else(|| ServiceIpcError::Framing("missing error.message".into()))?
             .to_string();
-        return Err(ServiceIpcError::Remote {
-            layer,
-            code,
-            message,
+        return Ok(ClassifiedFrame::Response {
+            id,
+            result: Err(ServiceIpcError::Remote {
+                layer,
+                code,
+                message,
+            }),
         });
     }
     Err(ServiceIpcError::Framing(format!("unexpected type {typ}")))
+}
+
+/// Decode one reply frame for an in-flight request (tests / legacy helper).
+///
+/// Returns `Ok(None)` only for `evt` (keep reading). Wrong id on `res`/`err`
+/// is a hard framing error.
+#[cfg(test)]
+fn interpret_reply(reply: &Value, expected_id: &str) -> Result<Option<Value>, ServiceIpcError> {
+    match classify_frame(reply)? {
+        ClassifiedFrame::Event { .. } => Ok(None),
+        ClassifiedFrame::Response { id, result } => {
+            if id != expected_id {
+                return Err(ServiceIpcError::Framing(format!(
+                    "unexpected id {id} (expected {expected_id})"
+                )));
+            }
+            result.map(Some)
+        }
+    }
+}
+
+type PendingTx = Sender<Result<Value, ServiceIpcError>>;
+
+fn fail_all_pending(pending: &Mutex<HashMap<String, PendingTx>>, message: &str) {
+    let Ok(mut map) = pending.lock() else {
+        return;
+    };
+    for (_, tx) in map.drain() {
+        let _ = tx.send(Err(ServiceIpcError::Protocol(message.to_string())));
+    }
 }
 
 pub fn default_ipc_path(data_dir: &Path) -> PathBuf {
@@ -232,14 +301,22 @@ pub fn default_ipc_path(data_dir: &Path) -> PathBuf {
     }
 }
 
-/// Blocking request/response client (one connection; serialized).
+/// Multiplexed request/response client with host→UI event fan-out (#329).
+///
+/// One write half + dedicated reader thread (Node `connectServiceIpc` shape).
 pub struct ServiceIpcClient {
-    stream: Mutex<IpcStream>,
+    writer: Mutex<IpcStream>,
+    pending: Arc<Mutex<HashMap<String, PendingTx>>>,
     next_id: AtomicU64,
+    reader_join: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl ServiceIpcClient {
-    pub fn connect(path: &Path, timeout: Duration) -> Result<Self, ServiceIpcError> {
+    pub fn connect(
+        path: &Path,
+        timeout: Duration,
+        app: Option<AppHandle>,
+    ) -> Result<Self, ServiceIpcError> {
         let deadline = std::time::Instant::now() + timeout;
         let stream = loop {
             match IpcStream::connect(path) {
@@ -254,9 +331,53 @@ impl ServiceIpcClient {
         };
         stream.set_read_timeout(Some(Duration::from_secs(30)))?;
         stream.set_write_timeout(Some(Duration::from_secs(30)))?;
+
+        let mut reader_stream = stream.try_clone()?;
+        reader_stream.set_read_timeout(None)?;
+
+        let pending: Arc<Mutex<HashMap<String, PendingTx>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let pending_reader = Arc::clone(&pending);
+
+        let join = thread::spawn(move || {
+            loop {
+                let frame = match read_frame(&mut reader_stream) {
+                    Ok(frame) => frame,
+                    Err(_) => {
+                        fail_all_pending(&pending_reader, "IPC connection closed");
+                        break;
+                    }
+                };
+                match classify_frame(&frame) {
+                    Ok(ClassifiedFrame::Event { event, payload }) => {
+                        if let Some(ref app) = app {
+                            let _ = app.emit(
+                                SERVICE_IPC_EVENT,
+                                ServiceIpcEventPayload { event, payload },
+                            );
+                        }
+                    }
+                    Ok(ClassifiedFrame::Response { id, result }) => {
+                        let Ok(mut map) = pending_reader.lock() else {
+                            break;
+                        };
+                        if let Some(tx) = map.remove(&id) {
+                            let _ = tx.send(result);
+                        }
+                    }
+                    Err(err) => {
+                        fail_all_pending(&pending_reader, &err.to_string());
+                        break;
+                    }
+                }
+            }
+        });
+
         Ok(Self {
-            stream: Mutex::new(stream),
+            writer: Mutex::new(stream),
+            pending,
             next_id: AtomicU64::new(1),
+            reader_join: Mutex::new(Some(join)),
         })
     }
 
@@ -276,28 +397,57 @@ impl ServiceIpcClient {
                 .insert("params".into(), params);
         }
         let frame = encode_frame(&msg)?;
-        let mut guard = self
-            .stream
+        let (tx, rx): (PendingTx, Receiver<Result<Value, ServiceIpcError>>) = mpsc::channel();
+        self.pending
             .lock()
-            .map_err(|_| ServiceIpcError::Protocol("ipc mutex poisoned".into()))?;
-        guard.write_all(&frame)?;
-        guard.flush()?;
+            .map_err(|_| ServiceIpcError::Protocol("ipc mutex poisoned".into()))?
+            .insert(id.clone(), tx);
 
-        loop {
-            let reply = read_frame(&mut guard)?;
-            match interpret_reply(&reply, &id)? {
-                None => continue,
-                Some(result) => return Ok(result),
+        {
+            let mut guard = self
+                .writer
+                .lock()
+                .map_err(|_| ServiceIpcError::Protocol("ipc mutex poisoned".into()))?;
+            if let Err(err) = guard.write_all(&frame).and_then(|()| guard.flush()) {
+                let _ = self
+                    .pending
+                    .lock()
+                    .map(|mut map| map.remove(&id))
+                    .ok();
+                return Err(ServiceIpcError::Io(err));
+            }
+        }
+
+        match rx.recv_timeout(Duration::from_secs(30)) {
+            Ok(result) => result,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                let _ = self
+                    .pending
+                    .lock()
+                    .map(|mut map| map.remove(&id))
+                    .ok();
+                Err(ServiceIpcError::Timeout)
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                Err(ServiceIpcError::Protocol("IPC reader stopped".into()))
             }
         }
     }
 
     pub fn close(&self) -> Result<(), ServiceIpcError> {
-        let guard = self
-            .stream
-            .lock()
-            .map_err(|_| ServiceIpcError::Protocol("ipc mutex poisoned".into()))?;
-        guard.shutdown_both();
+        {
+            let guard = self
+                .writer
+                .lock()
+                .map_err(|_| ServiceIpcError::Protocol("ipc mutex poisoned".into()))?;
+            guard.shutdown_both();
+        }
+        fail_all_pending(&self.pending, "IPC connection closed by client");
+        if let Ok(mut join) = self.reader_join.lock() {
+            if let Some(handle) = join.take() {
+                let _ = handle.join();
+            }
+        }
         Ok(())
     }
 }
@@ -498,7 +648,8 @@ mod tests {
         }
         let ipc_path = ipc_path.expect("READY ipcPath");
 
-        let client = ServiceIpcClient::connect(&ipc_path, Duration::from_secs(5)).expect("connect");
+        let client =
+            ServiceIpcClient::connect(&ipc_path, Duration::from_secs(5), None).expect("connect");
         let ping = client.request("ping", None).expect("ping");
         assert_eq!(ping.get("ok"), Some(&serde_json::json!(true)));
         assert_eq!(ping.get("pong"), Some(&serde_json::json!(true)));
@@ -515,5 +666,38 @@ mod tests {
         let _ = child.kill();
         let _ = child.wait();
         let _ = std::fs::remove_dir_all(&data_dir);
+    }
+
+    #[test]
+    fn classify_evt_extracts_event_and_payload() {
+        let reply = json!({
+            "v": PROTOCOL_VERSION,
+            "type": "evt",
+            "event": "vaultIndexSyncStatus",
+            "payload": { "status": "running" },
+        });
+        match classify_frame(&reply).expect("evt") {
+            ClassifiedFrame::Event { event, payload } => {
+                assert_eq!(event, "vaultIndexSyncStatus");
+                assert_eq!(payload.get("status"), Some(&json!("running")));
+            }
+            ClassifiedFrame::Response { .. } => panic!("expected event"),
+        }
+    }
+
+    #[test]
+    fn classify_evt_allows_missing_payload() {
+        let reply = json!({
+            "v": PROTOCOL_VERSION,
+            "type": "evt",
+            "event": "tick",
+        });
+        match classify_frame(&reply).expect("evt") {
+            ClassifiedFrame::Event { event, payload } => {
+                assert_eq!(event, "tick");
+                assert_eq!(payload, Value::Null);
+            }
+            ClassifiedFrame::Response { .. } => panic!("expected event"),
+        }
     }
 }

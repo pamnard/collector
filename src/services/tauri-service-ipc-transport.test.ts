@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invoke = vi.fn();
+const listen = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => invoke(...args),
+}));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: (...args: unknown[]) => listen(...args),
 }));
 
 import {
   createTauriServiceIpcTransport,
+  TAURI_SERVICE_IPC_EVENT,
   tauriServiceIpcConnect,
   tauriServiceIpcDisconnect,
   tauriServiceIpcHealth,
@@ -14,9 +19,11 @@ import {
   tauriServiceIpcRequest,
 } from "./tauri-service-ipc-transport";
 
-describe("tauriServiceIpcTransport (#239/#240)", () => {
+describe("tauriServiceIpcTransport (#239/#240/#329)", () => {
   beforeEach(() => {
     invoke.mockReset();
+    listen.mockReset();
+    listen.mockResolvedValue(() => {});
   });
 
   it("connect/request/disconnect use invoke without node net", async () => {
@@ -45,17 +52,44 @@ describe("tauriServiceIpcTransport (#239/#240)", () => {
     expect(invoke).toHaveBeenCalledWith("service_ipc_disconnect");
   });
 
-  it("createTauriServiceIpcTransport implements ServiceIpcClient", async () => {
+  it("createTauriServiceIpcTransport onEvent listens for host push", async () => {
     invoke.mockResolvedValueOnce("/tmp/x.sock");
     invoke.mockResolvedValueOnce({ ok: true, pong: true });
     invoke.mockResolvedValueOnce("/data");
     invoke.mockResolvedValueOnce(undefined);
 
+    let eventHandler:
+      | ((event: { payload: { event: string; payload: unknown } }) => void)
+      | null = null;
+    const unlisten = vi.fn();
+    listen.mockImplementation(async (_name: string, handler: typeof eventHandler) => {
+      eventHandler = handler;
+      return unlisten;
+    });
+
     const transport = await createTauriServiceIpcTransport("/tmp/x.sock");
     await expect(transport.ping()).resolves.toEqual({ ok: true, pong: true });
     await expect(transport.request("getDataDirectory")).resolves.toBe("/data");
-    const unsub = transport.onEvent("vaultIndexSyncStatus", () => {});
+
+    const seen: unknown[] = [];
+    const unsub = transport.onEvent("vaultIndexSyncStatus", (payload) => {
+      seen.push(payload);
+    });
+    await vi.waitFor(() => {
+      expect(listen).toHaveBeenCalledWith(
+        TAURI_SERVICE_IPC_EVENT,
+        expect.any(Function),
+      );
+    });
+    eventHandler?.({
+      payload: {
+        event: "vaultIndexSyncStatus",
+        payload: { status: "running" },
+      },
+    });
+    expect(seen).toEqual([{ status: "running" }]);
     unsub();
     await transport.close();
+    expect(unlisten).toHaveBeenCalled();
   });
 });

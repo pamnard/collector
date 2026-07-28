@@ -1,18 +1,29 @@
 /**
- * WebView-safe Collector service IPC transport (#239/#240).
+ * WebView-safe Collector service IPC transport (#239/#240/#329).
  *
  * Uses Tauri `invoke` → Rust Unix-socket proxy → local host framing.
  * Implements {@link ServiceIpcClient} for {@link createIpcAdapter}.
- * Does **not** import Node `net`. Not the default UI client until #170.
+ * Host→client push: Rust demux emits `service-ipc-event`; this transport
+ * listens and fans out via {@link ServiceIpcClient.onEvent}.
+ * Does **not** import Node `net`.
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   ServiceIpcClient,
   ServiceIpcHealthResult,
   ServiceIpcRequestOptions,
 } from "@collector/service/ipc";
 import { serviceIpcError } from "@collector/service/ipc";
+
+/** Must match `SERVICE_IPC_EVENT` in `src-tauri/src/service_ipc.rs`. */
+export const TAURI_SERVICE_IPC_EVENT = "service-ipc-event";
+
+export type TauriServiceIpcEventPayload = {
+  event: string;
+  payload: unknown;
+};
 
 export async function tauriServiceIpcConnect(ipcPath: string): Promise<string> {
   return invoke<string>("service_ipc_connect", { ipcPath });
@@ -117,12 +128,43 @@ async function requestWithOptions(
 
 /**
  * Connect via Tauri proxy and return a {@link ServiceIpcClient} for the UI.
- * Host→client push events are not forwarded yet (subscribe surface is #241).
+ * Host push events are forwarded through {@link TAURI_SERVICE_IPC_EVENT} (#329).
  */
 export async function createTauriServiceIpcTransport(
   ipcPath: string,
 ): Promise<ServiceIpcClient> {
   await tauriServiceIpcConnect(ipcPath);
+
+  const handlers = new Map<string, Set<(payload: unknown) => void>>();
+  let unlisten: UnlistenFn | null = null;
+  let listenFailed = false;
+
+  const ensureListen = async (): Promise<void> => {
+    if (unlisten || listenFailed) {
+      return;
+    }
+    try {
+      unlisten = await listen<TauriServiceIpcEventPayload>(
+        TAURI_SERVICE_IPC_EVENT,
+        (event) => {
+          const body = event.payload;
+          if (!body || typeof body.event !== "string") {
+            return;
+          }
+          const set = handlers.get(body.event);
+          if (!set) {
+            return;
+          }
+          for (const handler of set) {
+            handler(body.payload);
+          }
+        },
+      );
+    } catch {
+      listenFailed = true;
+    }
+  };
+
   return {
     request: (method, params, options) =>
       requestWithOptions(method, params, options),
@@ -133,9 +175,28 @@ export async function createTauriServiceIpcTransport(
       },
     health: async (options) =>
       (await requestWithOptions("health", undefined, options)) as ServiceIpcHealthResult,
-    onEvent: () => () => {
-      // Push fan-out over Tauri is not part of #239/#240 transport.
+    onEvent(event, handler) {
+      let set = handlers.get(event);
+      if (!set) {
+        set = new Set();
+        handlers.set(event, set);
+      }
+      set.add(handler);
+      void ensureListen();
+      return () => {
+        set!.delete(handler);
+        if (set!.size === 0) {
+          handlers.delete(event);
+        }
+      };
     },
-    close: () => tauriServiceIpcDisconnect(),
+    close: async () => {
+      if (unlisten) {
+        unlisten();
+        unlisten = null;
+      }
+      handlers.clear();
+      await tauriServiceIpcDisconnect();
+    },
   };
 }
