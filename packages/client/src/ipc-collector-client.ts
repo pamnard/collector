@@ -27,6 +27,7 @@ import type {
 } from "@collector/api";
 import { DASHBOARD_PREFETCH_SIZE } from "@collector/api";
 import type { AppSettings, DashboardSnapshot, ItemFile, MediaFileMeta, Tag, VaultMeta } from "@collector/shared";
+import { dashboardSnapshotMatchesQuery } from "@collector/shared";
 import {
   SERVICE_IPC_EVENTS,
   type ServiceIpcClient,
@@ -82,6 +83,8 @@ export function createCollectorIpcClient(
     ftsReady: true,
   };
   let settingsCache: AppSettings | null = null;
+  let snapshotCache: DashboardSnapshot | null = null;
+  let snapshotCacheLoaded = false;
 
   return {
     // Transport (host-backed)
@@ -416,46 +419,75 @@ export function createCollectorIpcClient(
     subscribeAppSettings(
       onUpdate: (settings: AppSettings) => void,
     ): () => void {
-      let cancelled = false;
-      const tick = async () => {
-        while (!cancelled) {
-          try {
-            settingsCache = (await transport.request(
-              "ensureAppSettings",
-            )) as AppSettings;
-            onUpdate(settingsCache);
-          } catch {
-            // Keep last cache; next tick retries.
+      if (settingsCache) {
+        onUpdate(settingsCache);
+      }
+      let sawPush = false;
+      const unsubEvent = transport.onEvent(
+        SERVICE_IPC_EVENTS.appSettings,
+        (payload) => {
+          sawPush = true;
+          settingsCache = payload as AppSettings;
+          onUpdate(settingsCache);
+        },
+      );
+      void transport
+        .request("ensureAppSettings")
+        .then((settings) => {
+          // Do not clobber a newer host push that arrived during seed (#329).
+          if (sawPush) {
+            return;
           }
-          await new Promise((r) => setTimeout(r, 1000));
-        }
-      };
-      void tick();
-      return () => {
-        cancelled = true;
-      };
+          settingsCache = settings as AppSettings;
+          onUpdate(settingsCache);
+        })
+        .catch(() => {
+          // Subscribe still receives push events; seed fetch is best-effort.
+        });
+      return unsubEvent;
     },
     getAppConfigDirectory: async (): Promise<string> =>
       transport.request("getAppConfigDirectory") as Promise<string>,
 
     // Dashboard snapshot
-    ensureDashboardSnapshot: async (): Promise<DashboardSnapshot | null> =>
-      transport.request("ensureDashboardSnapshot") as Promise<DashboardSnapshot | null>,
-    peekMatchingDashboardSnapshot(_input: {
+    ensureDashboardSnapshot: async (): Promise<DashboardSnapshot | null> => {
+      const snapshot = (await transport.request(
+        "ensureDashboardSnapshot",
+      )) as DashboardSnapshot | null;
+      snapshotCache = snapshot;
+      snapshotCacheLoaded = true;
+      return snapshot;
+    },
+    peekMatchingDashboardSnapshot(input: {
       vaultId: string;
       filter: NavFilter;
       search: string;
     }): DashboardSnapshot | null {
-      // Sync peek has no IPC equivalent; async ensureDashboardSnapshot is the host path.
-      return null;
+      if (!snapshotCacheLoaded || !snapshotCache) {
+        return null;
+      }
+      if (
+        !dashboardSnapshotMatchesQuery(snapshotCache, {
+          vaultId: input.vaultId,
+          navFilter: navFilterToSetting(input.filter),
+          search: input.search,
+        })
+      ) {
+        return null;
+      }
+      return snapshotCache;
     },
     persistDashboardSnapshot: async (
       snapshot: DashboardSnapshot,
     ): Promise<void> => {
       await transport.request("persistDashboardSnapshot", { snapshot });
+      snapshotCache = snapshot;
+      snapshotCacheLoaded = true;
     },
     clearDashboardSnapshot: async (): Promise<void> => {
       await transport.request("clearDashboardSnapshot");
+      snapshotCache = null;
+      snapshotCacheLoaded = true;
     },
     buildDashboardSnapshot(input: {
       vaultId: string;

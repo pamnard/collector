@@ -540,7 +540,7 @@ describe("CollectorIpcClient", () => {
     }
   });
 
-  it("settings subscribe + dashboard load work over IPC (#241)", async () => {
+  it("settings subscribe + dashboard peek work over IPC (#241/#329)", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "collector-ipc-ui-surface-"));
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
@@ -558,8 +558,26 @@ describe("CollectorIpcClient", () => {
         while (subscribed === null && Date.now() < deadline) {
           await new Promise((r) => setTimeout(r, 50));
         }
-        unsub();
         expect(subscribed).toEqual(settings);
+
+        const peer = await connectCollectorIpcClient(host.ipcPath!);
+        try {
+          const patched = await peer.updateAppSettings({
+            ...settings,
+            theme: settings.theme === "dark" ? "light" : "dark",
+          });
+          const pushDeadline = Date.now() + 3_000;
+          while (
+            (subscribed as AppSettings | null)?.theme !== patched.theme &&
+            Date.now() < pushDeadline
+          ) {
+            await new Promise((r) => setTimeout(r, 20));
+          }
+          expect(subscribed?.theme).toBe(patched.theme);
+        } finally {
+          await peer.close();
+        }
+        unsub();
 
         const active = await client.ensureActiveVault();
         let page: DashboardIndexPage | null = null;
@@ -591,11 +609,28 @@ describe("CollectorIpcClient", () => {
         });
         expect(snap.vault_id).toBe(active.vault.id);
         expect(snap.nav_filter).toBe("all");
-        expect(client.peekMatchingDashboardSnapshot({
-          vaultId: active.vault.id,
-          filter: "all",
-          search: "",
-        })).toBeNull();
+        expect(
+          client.peekMatchingDashboardSnapshot({
+            vaultId: active.vault.id,
+            filter: "all",
+            search: "",
+          }),
+        ).toBeNull();
+        await client.persistDashboardSnapshot(snap);
+        expect(
+          client.peekMatchingDashboardSnapshot({
+            vaultId: active.vault.id,
+            filter: "all",
+            search: "",
+          }),
+        ).toEqual(snap);
+        expect(
+          client.peekMatchingDashboardSnapshot({
+            vaultId: active.vault.id,
+            filter: "all",
+            search: "other",
+          }),
+        ).toBeNull();
       } finally {
         await client.close();
       }

@@ -139,6 +139,7 @@ export async function startServiceHost(
 
   let ipc: ServiceIpcServer | null = null;
   let stopSyncStatusBroadcast: (() => void) | null = null;
+  let stopAppSettingsBroadcast: (() => void) | null = null;
   if (options.ipcPath !== false) {
     ipc = await startServiceIpcServer({
       dataDir: layout.dataDir,
@@ -154,6 +155,11 @@ export async function startServiceHost(
         ipc?.broadcastEvent(SERVICE_IPC_EVENTS.vaultIndexSyncStatus, status);
       },
     );
+    stopAppSettingsBroadcast = runtime.appSettings.subscribeAppSettings(
+      (settings) => {
+        ipc?.broadcastEvent(SERVICE_IPC_EVENTS.appSettings, settings);
+      },
+    );
   }
 
   let closed = false;
@@ -164,6 +170,8 @@ export async function startServiceHost(
     closed = true;
     stopSyncStatusBroadcast?.();
     stopSyncStatusBroadcast = null;
+    stopAppSettingsBroadcast?.();
+    stopAppSettingsBroadcast = null;
     if (ipc) {
       await ipc.close();
       ipc = null;

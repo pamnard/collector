@@ -58,6 +58,7 @@ export type ServiceIpcMessage =
 /** Well-known host→client event names. */
 export const SERVICE_IPC_EVENTS = {
   vaultIndexSyncStatus: "vaultIndexSyncStatus",
+  appSettings: "appSettings",
 } as const;
 
 const MAX_FRAME_BYTES = 1024 * 1024;
