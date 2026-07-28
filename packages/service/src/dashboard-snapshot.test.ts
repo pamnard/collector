@@ -74,6 +74,8 @@ describe("createDashboardSnapshotService", () => {
       vault_id: "v1",
       nav_filter: "all",
       search: "x",
+      sort_key: "created_at",
+      sort_dir: "desc",
       item_ids: [],
       items: [],
       total_count: 0,
@@ -96,6 +98,14 @@ describe("createDashboardSnapshotService", () => {
         vaultId: "v1",
         filter: "all",
         search: "other",
+      }),
+    ).toBeNull();
+    expect(
+      service.peekMatchingDashboardSnapshot({
+        vaultId: "v1",
+        filter: "all",
+        search: "x",
+        sort: { key: "title", dir: "asc" },
       }),
     ).toBeNull();
   });

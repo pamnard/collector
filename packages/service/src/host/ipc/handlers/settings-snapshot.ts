@@ -7,6 +7,7 @@ import type { NavFilter } from "@collector/api";
 import {
   asObject,
   badRequest,
+  parseDashboardItemSort,
   parseNavFilter,
   requireString,
 } from "./params.js";
@@ -75,12 +76,17 @@ export function buildSettingsSnapshotHandlers(
           : badRequest(
               `${M.peekMatchingDashboardSnapshot}: search must be a string`,
             );
+      const sort = parseDashboardItemSort(
+        p.sort,
+        M.peekMatchingDashboardSnapshot,
+      );
       await runtime.ensureInitialized();
       await dashboardSnapshot.ensureDashboardSnapshot();
       return dashboardSnapshot.peekMatchingDashboardSnapshot({
         vaultId,
         filter,
         search,
+        sort,
       });
     },
     [M.buildDashboardSnapshot]: async (params) => {
@@ -108,11 +114,13 @@ export function buildSettingsSnapshotHandlers(
           `${M.buildDashboardSnapshot}: streamEndOffset must be a number`,
         );
       }
+      const sort = parseDashboardItemSort(p.sort, M.buildDashboardSnapshot);
       await runtime.ensureInitialized();
       return dashboardSnapshot.buildDashboardSnapshot({
         vaultId,
         filter: filter as NavFilter,
         search: p.search,
+        sort,
         itemIds: p.itemIds,
         items: p.items as DashboardSnapshot["items"],
         totalCount: p.totalCount,

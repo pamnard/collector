@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import type { DashboardSnapshot, ItemFile } from "@collector/shared";
+import type { DashboardItemSort } from "@collector/api";
 import { useAppSettings } from "../context/AppSettingsContext";
 import {
   isDashboardPrefetchWindowReady,
@@ -31,6 +32,11 @@ import { reportServiceError } from "../services/runtime-error";
 import { useVaultIndexSyncStatus } from "./useVaultIndexSyncStatus";
 
 export { DASHBOARD_PREFETCH_SIZE } from "../services/collector-client";
+
+export const DEFAULT_DASHBOARD_SORT: DashboardItemSort = {
+  key: "created_at",
+  dir: "desc",
+};
 
 interface UseDashboardItemsResult {
   items: ItemFile[];
@@ -60,8 +66,14 @@ function snapshotToCacheEntry(
 function readInitialCacheEntry(
   filter: NavFilter,
   searchQuery: string,
+  sort: DashboardItemSort,
 ): DashboardQueryCacheEntry | null {
-  const key = dashboardQueryCacheKey(navFilterKey(filter), searchQuery);
+  const key = dashboardQueryCacheKey(
+    navFilterKey(filter),
+    searchQuery,
+    sort.key,
+    sort.dir,
+  );
   const cached = getDashboardQueryCache(key);
   if (cached) {
     return cached;
@@ -71,7 +83,12 @@ function readInitialCacheEntry(
   if (!vaultId) {
     return null;
   }
-  const warm = getCollectorClient().peekMatchingDashboardSnapshot({ vaultId, filter, search: searchQuery });
+  const warm = getCollectorClient().peekMatchingDashboardSnapshot({
+    vaultId,
+    filter,
+    search: searchQuery,
+    sort,
+  });
   if (!warm) {
     return null;
   }
@@ -120,10 +137,13 @@ export function useDashboardItems(
   filter: NavFilter,
   searchQuery: string,
   vaultRevision: number,
+  sort: DashboardItemSort = DEFAULT_DASHBOARD_SORT,
 ): UseDashboardItemsResult {
   const { settings } = useAppSettings();
 
-  const [initial] = useState(() => readInitialCacheEntry(filter, searchQuery));
+  const [initial] = useState(() =>
+    readInitialCacheEntry(filter, searchQuery, sort),
+  );
   const [itemIds, setItemIds] = useState(() => initial?.itemIds ?? []);
   const [itemsById, setItemsById] = useState(
     () => initial?.itemsById ?? new Map<string, ItemFile>(),
@@ -169,7 +189,12 @@ export function useDashboardItems(
   const committedThumbnailPathsRef = useRef(committedThumbnailPaths);
   const committedTotalCountRef = useRef(committedTotalCount);
   const queryKeyRef = useRef(
-    dashboardQueryCacheKey(navFilterKey(filter), searchQuery),
+    dashboardQueryCacheKey(
+      navFilterKey(filter),
+      searchQuery,
+      sort.key,
+      sort.dir,
+    ),
   );
   const streamAbortRef = useRef<AbortController | null>(null);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -443,7 +468,12 @@ export function useDashboardItems(
   // depend on filterKey only (#82). Do not re-add `filter` to deps (#114 / #78 regression).
   const filterKey = navFilterKey(filter);
   const vaultId = settings.active_vault_id ?? null;
-  const queryKey = dashboardQueryCacheKey(filterKey, searchQuery);
+  const queryKey = dashboardQueryCacheKey(
+    filterKey,
+    searchQuery,
+    sort.key,
+    sort.dir,
+  );
 
   useLayoutEffect(() => {
     if (queryKeyRef.current === queryKey) {
@@ -461,7 +491,12 @@ export function useDashboardItems(
     }
 
     if (vaultId) {
-      const warm = getCollectorClient().peekMatchingDashboardSnapshot({ vaultId, filter, search: searchQuery });
+      const warm = getCollectorClient().peekMatchingDashboardSnapshot({
+        vaultId,
+        filter,
+        search: searchQuery,
+        sort,
+      });
       if (warm) {
         const entry = snapshotToCacheEntry(warm);
         setDashboardQueryCache(queryKey, entry);
@@ -491,7 +526,7 @@ export function useDashboardItems(
       committedTotalCountRef.current = 0;
     }
     setIsLoading(true);
-  }, [applyCacheEntryToState, filter, queryKey, searchQuery, vaultId]);
+  }, [applyCacheEntryToState, filter, queryKey, searchQuery, sort, vaultId]);
 
   useEffect(() => {
     const requestVersion = requestVersionRef.current + 1;
@@ -584,6 +619,7 @@ export function useDashboardItems(
         },
       },
       controller.signal,
+      sort,
     );
 
     return () => {
@@ -601,6 +637,7 @@ export function useDashboardItems(
     searchQuery,
     setLoadedItemIds,
     setStreamWindowEnd,
+    sort,
     vaultId,
     vaultRevision,
   ]);
@@ -636,6 +673,7 @@ export function useDashboardItems(
           vaultId,
           filter,
           search: searchQuery,
+          sort,
           itemIds,
           items: workingItems,
           totalCount,
@@ -665,6 +703,7 @@ export function useDashboardItems(
     workingItems,
     queryKey,
     searchQuery,
+    sort,
     streamEndOffset,
     totalCount,
     vaultId,
@@ -708,10 +747,16 @@ export function useDashboardItems(
     };
 
     if (needsMoreIds && hasUnloadedIds) {
-      void getCollectorClient().fetchDashboardIndexPage(filter, searchQuery, {
-        offset: loadedCount,
-        limit: DASHBOARD_PREFETCH_SIZE,
-      })
+      void getCollectorClient()
+        .fetchDashboardIndexPage(
+          filter,
+          searchQuery,
+          {
+            offset: loadedCount,
+            limit: DASHBOARD_PREFETCH_SIZE,
+          },
+          sort,
+        )
         .then((page) => {
           if (requestVersionRef.current !== requestVersion) {
             return;
@@ -735,6 +780,7 @@ export function useDashboardItems(
 
     streamNextWindow(itemIds);
   }, [
+    filter,
     filterKey,
     isLoading,
     isLoadingMore,
@@ -742,6 +788,7 @@ export function useDashboardItems(
     searchQuery,
     setLoadedItemIds,
     setStreamWindowEnd,
+    sort,
     streamEndOffset,
     streamSlice,
     totalCount,

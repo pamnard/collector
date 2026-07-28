@@ -33,6 +33,8 @@ export {
   type CollectorServiceApi,
   type DashboardIndexPage,
   type DashboardItemIdsResult,
+  type DashboardItemSort,
+  type DashboardItemSortDir,
   type DashboardLoadHandlers,
   type GetItemResult,
   type ServiceSubscribeHandlers,

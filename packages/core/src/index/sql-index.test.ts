@@ -64,6 +64,112 @@ describe("listItemIdsByNavFilter", () => {
   });
 });
 
+describe("listItemIdsByNavFilter sort", () => {
+  let dataDir = "";
+  const fs = new NodeFileSystemAdapter();
+
+  afterEach(async () => {
+    if (dataDir) {
+      await rm(dataDir, { recursive: true, force: true });
+      dataDir = "";
+    }
+  });
+
+  it("orders by title and created_at and rejects unknown keys", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-nav-sort-"));
+    const sortDb = BetterSqliteMigrator.open(join(dataDir, "collector-nav-sort.db"));
+    await runMigrations(sortDb);
+    const index = new SqlVaultIndexStore(sortDb);
+    const ctx = { fs, index };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    const older = "2020-01-01T00:00:00.000Z";
+    const newer = "2021-01-01T00:00:00.000Z";
+    const bananaId = `${createId()}.md`;
+    const appleId = `${createId()}.md`;
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: bananaId,
+        vault_id: meta.id,
+        title: "Banana",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        created_at: newer,
+        updated_at: newer,
+      },
+    });
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: appleId,
+        vault_id: meta.id,
+        title: "Apple",
+        description: "",
+        content_type: "bookmark",
+        source_type: "manual",
+        metadata: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        created_at: older,
+        updated_at: older,
+      },
+    });
+
+    expect(await index.listItemIdsByNavFilter(meta.id, "all")).toEqual([
+      bananaId,
+      appleId,
+    ]);
+    expect(
+      await index.listItemIdsByNavFilter(meta.id, "all", {
+        sort: { key: "created_at", dir: "asc" },
+      }),
+    ).toEqual([appleId, bananaId]);
+    expect(
+      await index.listItemIdsByNavFilter(meta.id, "all", {
+        sort: { key: "title", dir: "asc" },
+      }),
+    ).toEqual([appleId, bananaId]);
+    expect(
+      await index.listItemIdsByNavFilter(meta.id, "all", {
+        sort: { key: "title", dir: "desc" },
+      }),
+    ).toEqual([bananaId, appleId]);
+    expect(
+      await index.listItemIdsByNavFilter(meta.id, "all", {
+        sort: { key: "content_type", dir: "asc" },
+      }),
+    ).toEqual([appleId, bananaId]);
+
+    const page = await index.listItemIdsByNavFilter(meta.id, "all", {
+      limit: 1,
+      offset: 0,
+      sort: { key: "title", dir: "asc" },
+    });
+    const page2 = await index.listItemIdsByNavFilter(meta.id, "all", {
+      limit: 1,
+      offset: 1,
+      sort: { key: "title", dir: "asc" },
+    });
+    expect([...page, ...page2]).toEqual([appleId, bananaId]);
+
+    await expect(
+      index.listItemIdsByNavFilter(meta.id, "all", {
+        sort: { key: "nope", dir: "asc" },
+      }),
+    ).rejects.toThrow(/Unsupported item id sort key/);
+
+    sortDb.close();
+  });
+});
+
 describe("dashboard item id pagination", () => {
   let dataDir = "";
   const fs = new NodeFileSystemAdapter();

@@ -71,7 +71,8 @@ function columnWidthClass(columnId: string): string {
 
 export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
   const navigate = useNavigate();
-  const { vaultRevision, activeFilter } = useShell();
+  const { vaultRevision, activeFilter, dashboardSort, setDashboardSort } =
+    useShell();
   const { settings, setTableColumnVisibility } = useAppSettings();
   const [tags, setTags] = useState<TagWithCount[]>([]);
   const scrollElement = useMainScrollElement();
@@ -93,6 +94,8 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
     vaultId: settings.active_vault_id ?? "",
     filterKey: navFilterKey(activeFilter),
     search: "",
+    sortKey: dashboardSort.key,
+    sortDir: dashboardSort.dir,
   });
 
   const selection = useDashboardTableSelection({
@@ -128,6 +131,10 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
           onToggleRow: selection.toggleRow,
           onSetLoadedSelected: selection.setLoadedSelected,
         },
+        sort: {
+          sort: dashboardSort,
+          onSortChange: setDashboardSort,
+        },
       }),
     [
       tagsById,
@@ -136,6 +143,8 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
       selection.isRowSelected,
       selection.toggleRow,
       selection.setLoadedSelected,
+      dashboardSort,
+      setDashboardSort,
     ],
   );
 
@@ -163,6 +172,8 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
     },
     getCoreRowModel: getCoreRowModel(),
     getRowId: (row) => row.id,
+    manualSorting: true,
+    enableSortingRemoval: false,
   });
 
   const rows = table.getRowModel().rows;

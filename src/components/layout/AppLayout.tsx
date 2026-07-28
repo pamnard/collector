@@ -17,7 +17,9 @@ import {
   useStartupUpdateCheck,
 } from "../../hooks/useUpdaterSettings";
 import { useViewMode } from "../../hooks/useViewMode";
-import { useDashboardItems } from "../../hooks/useDashboardItems";
+import { useDashboardItems, DEFAULT_DASHBOARD_SORT } from "../../hooks/useDashboardItems";
+import type { DashboardItemSort } from "@collector/api";
+import { useAppSettings } from "../../context/AppSettingsContext";
 import { useVaultIndexSyncStatus } from "../../hooks/useVaultIndexSyncStatus";
 import {
   SIDEBAR_RAIL_WIDTH_PX,
@@ -59,6 +61,8 @@ interface ShellContextValue {
   vaultRevision: number;
   refreshVault: () => void;
   dashboardCache: ReturnType<typeof useDashboardItems>;
+  dashboardSort: DashboardItemSort;
+  setDashboardSort: (sort: DashboardItemSort) => void;
 }
 
 const ShellContext = createContext<ShellContextValue | null>(null);
@@ -96,6 +100,21 @@ export function AppLayout() {
   } = useNavState();
   const { viewMode, setViewMode } = useViewMode();
   const { theme, toggleTheme } = useTheme();
+  const { settings } = useAppSettings();
+  const [dashboardSort, setDashboardSort] = useState<DashboardItemSort>(
+    DEFAULT_DASHBOARD_SORT,
+  );
+  const activeVaultId = settings.active_vault_id ?? null;
+  const prevVaultIdRef = useRef(activeVaultId);
+
+  useEffect(() => {
+    if (prevVaultIdRef.current === activeVaultId) {
+      return;
+    }
+    prevVaultIdRef.current = activeVaultId;
+    setDashboardSort(DEFAULT_DASHBOARD_SORT);
+  }, [activeVaultId]);
+
   const { enabled: checkUpdatesOnStart } = useCheckUpdatesOnStart();
   const [startupUpdateVersion, setStartupUpdateVersion] = useState<string | null>(
     null,
@@ -128,6 +147,7 @@ export function AppLayout() {
     activeFilter,
     "",
     vaultRevision,
+    dashboardSort,
   );
 
   const indexingLabel = formatIndexingBannerLabel(indexSync);
@@ -264,6 +284,8 @@ export function AppLayout() {
         vaultRevision,
         refreshVault: () => setVaultRevision((value) => value + 1),
         dashboardCache,
+        dashboardSort,
+        setDashboardSort,
       }}
     >
       <PanelHeaderProvider>

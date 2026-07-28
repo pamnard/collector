@@ -87,4 +87,50 @@ describe("queryDashboardIndexPage", () => {
       page,
     );
   });
+
+  it("passes sort into listItemIdsByNavFilter options", async () => {
+    const index = createIndexMock();
+    const buildFts = vi.fn(() => "MATCH");
+    const sort = { key: "title", dir: "asc" as const };
+
+    await queryDashboardIndexPage(
+      index,
+      buildFts,
+      "vault-1",
+      filter,
+      "",
+      page,
+      sort,
+    );
+
+    expect(index.listItemIdsByNavFilter).toHaveBeenCalledWith(
+      "vault-1",
+      filter,
+      { ...page, sort },
+    );
+  });
+
+  it("ignores sort on FTS search path", async () => {
+    const index = createIndexMock();
+    const buildFts = vi.fn(() => "hello*");
+    const sort = { key: "title", dir: "asc" as const };
+
+    await queryDashboardIndexPage(
+      index,
+      buildFts,
+      "vault-1",
+      filter,
+      "hello",
+      page,
+      sort,
+    );
+
+    expect(index.searchItemIds).toHaveBeenCalledWith(
+      "vault-1",
+      "hello*",
+      filter,
+      page,
+    );
+    expect(index.listItemIdsByNavFilter).not.toHaveBeenCalled();
+  });
 });

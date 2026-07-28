@@ -32,6 +32,7 @@ export interface DashboardSnapshotService {
     vaultId: string;
     filter: NavFilter;
     search: string;
+    sort?: { key: string; dir: "asc" | "desc" };
   }): DashboardSnapshot | null;
   persistDashboardSnapshot(snapshot: DashboardSnapshot): Promise<void>;
   clearDashboardSnapshot(): Promise<void>;
@@ -39,6 +40,7 @@ export interface DashboardSnapshotService {
     vaultId: string;
     filter: NavFilter;
     search: string;
+    sort?: { key: string; dir: "asc" | "desc" };
     itemIds: string[];
     items: DashboardSnapshot["items"];
     totalCount: number;
@@ -92,6 +94,8 @@ export function createDashboardSnapshotService(
           vaultId: input.vaultId,
           navFilter: navFilterToSetting(input.filter),
           search: input.search,
+          sortKey: input.sort?.key,
+          sortDir: input.sort?.dir,
         })
       ) {
         return null;
@@ -134,6 +138,8 @@ export function createDashboardSnapshotService(
         vault_id: input.vaultId,
         nav_filter: navFilterToSetting(input.filter),
         search: input.search,
+        sort_key: input.sort?.key ?? "created_at",
+        sort_dir: input.sort?.dir ?? "desc",
         item_ids: input.itemIds,
         items: input.items,
         total_count: input.totalCount,

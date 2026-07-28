@@ -34,7 +34,14 @@ function entry(
 
 describe("dashboardQueryCacheKey", () => {
   it("trims search", () => {
-    assert.equal(dashboardQueryCacheKey("folder:a", "  q  "), "folder:a|q");
+    assert.equal(
+      dashboardQueryCacheKey("folder:a", "  q  "),
+      "folder:a|q|created_at|desc",
+    );
+    assert.equal(
+      dashboardQueryCacheKey("all", "", "title", "asc"),
+      "all||title|asc",
+    );
   });
 });
 

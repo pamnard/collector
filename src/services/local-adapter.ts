@@ -41,16 +41,17 @@ export function createLocalAdapter(): CollectorServiceApi {
     listItems: collector.listItems,
     searchItems: (query, filter) =>
       collector.searchItems(query, asUiNavFilter(filter)),
-    fetchDashboardIndexPage: (filter, query, page) =>
-      collector.fetchDashboardIndexPage(asUiNavFilter(filter), query, page),
-    listDashboardItemIds: (filter, query) =>
-      collector.listDashboardItemIds(asUiNavFilter(filter), query),
-    subscribeDashboardLoad: (filter, query, handlers, signal) =>
+    fetchDashboardIndexPage: (filter, query, page, sort) =>
+      collector.fetchDashboardIndexPage(asUiNavFilter(filter), query, page, sort),
+    listDashboardItemIds: (filter, query, sort) =>
+      collector.listDashboardItemIds(asUiNavFilter(filter), query, sort),
+    subscribeDashboardLoad: (filter, query, handlers, signal, sort) =>
       collector.subscribeDashboardLoad(
         asUiNavFilter(filter),
         query,
         handlers,
         signal,
+        sort,
       ),
     streamDashboardItems: collector.streamDashboardItems,
     loadDashboardItems: collector.loadDashboardItems,
@@ -105,6 +106,7 @@ export function createLocalAdapter(): CollectorServiceApi {
         input.vaultId,
         asUiNavFilter(input.filter),
         input.search,
+        input.sort,
       ),
     persistDashboardSnapshot,
     clearDashboardSnapshot,

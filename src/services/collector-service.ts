@@ -13,6 +13,7 @@ import {
   DASHBOARD_PREFETCH_SIZE,
   type DashboardIndexPage,
   type DashboardItemIdsResult,
+  type DashboardItemSort,
   type VaultIndexSyncStatus,
 } from "@collector/api";
 import { createVaultIndexSyncStatusStore } from "@collector/service";
@@ -97,20 +98,27 @@ export async function fetchDashboardIndexPage(
   filter: NavFilter,
   query = "",
   page: { limit: number; offset: number },
+  sort?: DashboardItemSort,
 ): Promise<DashboardIndexPage> {
   refuseUnlessDevMock();
-  return devMockCollector.fetchDashboardIndexPage(filter, query, page);
+  return devMockCollector.fetchDashboardIndexPage(filter, query, page, sort);
 }
 
 export async function listDashboardItemIds(
   filter: NavFilter,
   query = "",
+  sort?: DashboardItemSort,
 ): Promise<DashboardItemIdsResult> {
   refuseUnlessDevMock();
-  const page = await fetchDashboardIndexPage(filter, query, {
-    limit: DASHBOARD_PREFETCH_SIZE,
-    offset: 0,
-  });
+  const page = await fetchDashboardIndexPage(
+    filter,
+    query,
+    {
+      limit: DASHBOARD_PREFETCH_SIZE,
+      offset: 0,
+    },
+    sort,
+  );
   return {
     itemIds: page.itemIds,
     totalCount: page.totalCount,
@@ -128,6 +136,7 @@ export function subscribeDashboardLoad(
     onError?: (scope: string, error: unknown) => void;
   },
   signal?: AbortSignal,
+  sort?: DashboardItemSort,
 ): void {
   if (!isDevMock()) {
     refuseInProcess();
@@ -137,10 +146,15 @@ export function subscribeDashboardLoad(
       if (signal?.aborted) {
         return;
       }
-      const page = await devMockCollector.fetchDashboardIndexPage(filter, query, {
-        limit: DASHBOARD_PREFETCH_SIZE,
-        offset: 0,
-      });
+      const page = await devMockCollector.fetchDashboardIndexPage(
+        filter,
+        query,
+        {
+          limit: DASHBOARD_PREFETCH_SIZE,
+          offset: 0,
+        },
+        sort,
+      );
       if (signal?.aborted) {
         return;
       }

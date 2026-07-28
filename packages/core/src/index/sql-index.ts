@@ -19,6 +19,7 @@ import type {
   VaultIndexAdapter,
 } from "../adapters/types.js";
 import type { NavSearchFilter } from "../search/nav-filter.js";
+import { resolveItemIdOrderByClause } from "./item-id-sort.js";
 import { isFolderFilter, isTagFilter } from "../search/nav-filter.js";
 import {
   INDEX_SYNC_WRITE_BATCH,
@@ -1251,13 +1252,14 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     options?: ItemIdListOptions,
   ): Promise<string[]> {
     const page = sqlPageClause(options);
+    const orderBy = resolveItemIdOrderByClause(options?.sort);
     const rows = await this.selector.select<SqlSelectRow>(
       `SELECT i.id
        FROM items i
        INNER JOIN item_tags it ON it.item_id = i.id
        WHERE i.vault_id = ?
          AND it.tag_id = ?
-       ORDER BY i.created_at DESC
+       ${orderBy}
        ${page.sql}`,
       [vaultId, tagId, ...page.binds],
     );
@@ -1270,12 +1272,13 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     options?: ItemIdListOptions,
   ): Promise<string[]> {
     const page = sqlPageClause(options);
+    const orderBy = resolveItemIdOrderByClause(options?.sort);
     const rows = await this.selector.select<SqlSelectRow>(
       `SELECT i.id
        FROM items i
        WHERE i.vault_id = ?
          AND (i.folder_path = ? OR i.folder_path LIKE ?)
-       ORDER BY i.created_at DESC
+       ${orderBy}
        ${page.sql}`,
       [vaultId, folderPath, `${folderPath}/%`, ...page.binds],
     );
@@ -1295,11 +1298,12 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     }
 
     const page = sqlPageClause(options);
+    const orderBy = resolveItemIdOrderByClause(options?.sort);
     const rows = await this.selector.select<SqlSelectRow>(
       `SELECT i.id
        FROM items i
        WHERE i.vault_id = ?
-       ORDER BY i.created_at DESC
+       ${orderBy}
        ${page.sql}`,
       [vaultId, ...page.binds],
     );

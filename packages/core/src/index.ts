@@ -190,6 +190,16 @@ export { SqlVaultIndexAdapter, SqlVaultIndexStore } from "./index/sql-index.js";
 export type { SqlSelector } from "./index/sql-index.js";
 
 export {
+  DEFAULT_ITEM_ID_SORT,
+  ITEM_ID_SORT_KEYS,
+  isItemIdSortDir,
+  isItemIdSortKey,
+  primarySortDirForKey,
+  resolveItemIdOrderByClause,
+} from "./index/item-id-sort.js";
+export type { ItemIdSort, ItemIdSortDir } from "./index/item-id-sort.js";
+
+export {
   createDefaultAppSettings,
   mergeAppSettings,
   readAppSettings,

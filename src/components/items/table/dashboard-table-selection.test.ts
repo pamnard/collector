@@ -158,5 +158,18 @@ describe("dashboard-table-selection", () => {
         "v1|folder:a|q",
       );
     });
+
+    it("includes sort when provided", () => {
+      assert.equal(
+        selectionQueryKey({
+          vaultId: "v1",
+          filterKey: "all",
+          search: "",
+          sortKey: "title",
+          sortDir: "asc",
+        }),
+        "v1|all||title|asc",
+      );
+    });
   });
 });

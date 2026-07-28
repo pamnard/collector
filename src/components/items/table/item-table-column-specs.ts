@@ -1,8 +1,13 @@
+import type { DashboardItemSort } from "@collector/api";
+import {
+  isItemIdSortKey,
+  primarySortDirForKey,
+} from "@collector/core";
 import type { ColumnVisibilitySpec } from "./resolve-column-visibility";
 
 export interface ItemTableColumnSpec extends ColumnVisibilitySpec {
   label: string;
-  /** Reserved for server-side sort (#339); unused in this slice. */
+  /** Server-side sort key; must also be allowlisted in core (#339). */
   sortKey?: string;
 }
 
@@ -48,3 +53,24 @@ export const ITEM_TABLE_COLUMN_SPECS: readonly ItemTableColumnSpec[] = [
     enableHiding: false,
   },
 ] as const;
+
+export function isColumnSortable(spec: ItemTableColumnSpec): boolean {
+  return spec.sortKey !== undefined && isItemIdSortKey(spec.sortKey);
+}
+
+/** Toggle same column; activate another with its primary direction. */
+export function nextDashboardSort(
+  current: DashboardItemSort,
+  sortKey: string,
+): DashboardItemSort {
+  if (!isItemIdSortKey(sortKey)) {
+    return current;
+  }
+  if (current.key === sortKey) {
+    return {
+      key: sortKey,
+      dir: current.dir === "asc" ? "desc" : "asc",
+    };
+  }
+  return { key: sortKey, dir: primarySortDirForKey(sortKey) };
+}
