@@ -12,15 +12,18 @@ import type { TagWithCount } from "@collector/core";
 import type { ItemFile } from "@collector/shared";
 import { Columns3 } from "lucide-react";
 import { DashboardTableSkeleton } from "./DashboardListSkeleton";
+import { selectionQueryKey } from "./table/dashboard-table-selection";
 import { ITEM_TABLE_COLUMN_SPECS } from "./table/item-table-column-specs";
 import { createItemTableColumns } from "./table/item-table-columns";
 import { resolveColumnVisibility } from "./table/resolve-column-visibility";
+import { useDashboardTableSelection } from "./table/use-dashboard-table-selection";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
 import { useMainScrollElement } from "../../hooks/useMainScrollElement";
 import { useAppSettings } from "../../context/AppSettingsContext";
 import { useShell } from "../layout/AppLayout";
 import type { useDashboardItems } from "../../hooks/useDashboardItems";
 import { getCollectorClient } from "../../services/collector-client";
+import { navFilterKey } from "../../types/ui";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,
@@ -50,6 +53,8 @@ const ROW_OVERSCAN = 10;
 
 function columnWidthClass(columnId: string): string {
   switch (columnId) {
+    case "select":
+      return "w-10";
     case "content_type":
       return "w-28";
     case "tags":
@@ -66,7 +71,7 @@ function columnWidthClass(columnId: string): string {
 
 export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
   const navigate = useNavigate();
-  const { vaultRevision } = useShell();
+  const { vaultRevision, activeFilter } = useShell();
   const { settings, setTableColumnVisibility } = useAppSettings();
   const [tags, setTags] = useState<TagWithCount[]>([]);
   const scrollElement = useMainScrollElement();
@@ -77,6 +82,23 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
     hasMore: dashboard.hasMore,
     isLoading: dashboard.isLoading || dashboard.isLoadingMore,
     onLoadMore: dashboard.loadMore,
+  });
+
+  const loadedIds = useMemo(
+    () => dashboard.items.map((item) => item.id),
+    [dashboard.items],
+  );
+
+  const queryKey = selectionQueryKey({
+    vaultId: settings.active_vault_id ?? "",
+    filterKey: navFilterKey(activeFilter),
+    search: "",
+  });
+
+  const selection = useDashboardTableSelection({
+    queryKey,
+    loadedIds,
+    totalCount: dashboard.totalCount,
   });
 
   useEffect(() => {
@@ -96,8 +118,25 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
   );
 
   const columns = useMemo<ColumnDef<ItemFile>[]>(
-    () => createItemTableColumns({ tagsById, onUpdated }),
-    [tagsById, onUpdated],
+    () =>
+      createItemTableColumns({
+        tagsById,
+        onUpdated,
+        selection: {
+          loadedState: selection.loadedState,
+          isRowSelected: selection.isRowSelected,
+          onToggleRow: selection.toggleRow,
+          onSetLoadedSelected: selection.setLoadedSelected,
+        },
+      }),
+    [
+      tagsById,
+      onUpdated,
+      selection.loadedState,
+      selection.isRowSelected,
+      selection.toggleRow,
+      selection.setLoadedSelected,
+    ],
   );
 
   const columnVisibility = useMemo(
@@ -157,7 +196,27 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
 
   return (
     <>
-      <div className="mb-3 flex justify-end">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="min-h-7 flex items-center gap-3 text-sm text-neutral-600 dark:text-neutral-300">
+          {selection.selectedCount > 0 ? (
+            <>
+              <span>Выбрано {selection.selectedCount}</span>
+              {selection.showSelectAllMatching ? (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0"
+                  onClick={() => {
+                    selection.selectAllMatching();
+                  }}
+                >
+                  Выбрать все {dashboard.totalCount}
+                </Button>
+              ) : null}
+            </>
+          ) : null}
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -206,6 +265,7 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
                       "px-3",
                       columnWidthClass(header.column.id),
                       header.column.id === "actions" && "text-right",
+                      header.column.id === "select" && "px-2",
                     )}
                   >
                     {header.isPlaceholder
@@ -231,10 +291,12 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
             {virtualRows.map((virtualRow) => {
               const row = rows[virtualRow.index]!;
               const item = row.original;
+              const selected = selection.isRowSelected(item.id);
               return (
                 <TableRow
                   key={row.id}
                   data-index={virtualRow.index}
+                  data-state={selected ? "selected" : undefined}
                   ref={virtualizer.measureElement}
                   onClick={() => navigate(`/item/${item.id}`)}
                   className="border-black/10 dark:border-white/10 hover:bg-neutral-100/20 dark:hover:bg-neutral-700/20 cursor-pointer"
@@ -246,6 +308,7 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
                         "overflow-hidden px-3 py-2",
                         columnWidthClass(cell.column.id),
                         cell.column.id === "actions" && "text-right",
+                        cell.column.id === "select" && "px-2",
                         cell.column.id === "tags" && "whitespace-normal",
                         cell.column.id === "title" && "whitespace-normal",
                       )}
