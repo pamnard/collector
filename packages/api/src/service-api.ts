@@ -60,6 +60,16 @@ export interface GetItemResult {
   content: string | null;
 }
 
+export interface AdjacentItemRef {
+  id: string;
+  title: string;
+}
+
+export interface AdjacentItemsResult {
+  prev: AdjacentItemRef | null;
+  next: AdjacentItemRef | null;
+}
+
 export interface DashboardLoadHandlers {
   onIndexPage: (page: DashboardIndexPage) => void;
   getLoadedIdCount?: () => number;
@@ -117,6 +127,8 @@ export interface CollectorServiceApi {
     limit?: number,
   ): Promise<ItemFile[]>;
   getItemById(itemId: string): Promise<GetItemResult>;
+  /** Exact-folder chronological neighbors (#344). */
+  getAdjacentItems(itemId: string): Promise<AdjacentItemsResult>;
   getItemSource(itemId: string): Promise<string>;
   updateItemSource(itemId: string, rawMarkdown: string): Promise<ItemFile>;
   createItem(input: CreateItemInput): Promise<ItemFile>;

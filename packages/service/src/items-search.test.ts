@@ -14,6 +14,7 @@ function createIndexMock(
     searchItemIds: vi.fn(async () => ["a.md"]),
     countSearchItemIds: vi.fn(async () => 1),
     listItemFilesByIds: vi.fn(async () => []),
+    getAdjacentItems: vi.fn(async () => ({ prev: null, next: null })),
     ...overrides,
   };
 }

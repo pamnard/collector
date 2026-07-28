@@ -88,6 +88,12 @@ export function buildItemsReadHandlers(
       await runtime.ensureInitialized();
       return itemsSearch.getItemById(itemId);
     },
+    [M.getAdjacentItems]: async (params) => {
+      const p = asObject(params, M.getAdjacentItems);
+      const itemId = requireString(p.itemId, "itemId", M.getAdjacentItems);
+      await runtime.ensureInitialized();
+      return itemsSearch.getAdjacentItems(itemId);
+    },
     [M.getItemSource]: async (params) => {
       const p = asObject(params, M.getItemSource);
       const itemId = requireString(p.itemId, "itemId", M.getItemSource);

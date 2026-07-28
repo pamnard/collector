@@ -56,6 +56,7 @@ export function createLocalAdapter(): CollectorServiceApi {
     streamDashboardItems: collector.streamDashboardItems,
     loadDashboardItems: collector.loadDashboardItems,
     getItemById: collector.getItemById,
+    getAdjacentItems: collector.getAdjacentItems,
     getItemSource: collector.getItemSource,
     updateItemSource: collector.updateItemSource,
     createItem: (input) =>

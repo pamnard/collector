@@ -11,6 +11,8 @@ import type {
   IndexedItem,
   IndexedItemMetadata,
   ItemContentUpsert,
+  AdjacentItemAnchor,
+  AdjacentItemsResult,
   ItemIdListOptions,
   ItemIdPageOptions,
   ItemIdRewriteMapping,
@@ -625,6 +627,15 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
   ): Promise<string[]> {
     throw new Error(
       "listItemIdsByFolderPrefix requires select(); use SqlVaultIndexStore instead",
+    );
+  }
+
+  async getAdjacentItems(
+    _vaultId: string,
+    _anchor: AdjacentItemAnchor,
+  ): Promise<AdjacentItemsResult> {
+    throw new Error(
+      "getAdjacentItems requires select(); use SqlVaultIndexStore instead",
     );
   }
 
@@ -1283,6 +1294,56 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
       [vaultId, folderPath, `${folderPath}/%`, ...page.binds],
     );
     return rows.map((row) => row.id);
+  }
+
+  override async getAdjacentItems(
+    vaultId: string,
+    anchor: AdjacentItemAnchor,
+  ): Promise<AdjacentItemsResult> {
+    const prevRows = await this.selector.select<{ id: string; title: string }>(
+      `SELECT id, title
+       FROM items
+       WHERE vault_id = ?
+         AND folder_path = ?
+         AND (
+           created_at < ?
+           OR (created_at = ? AND id < ?)
+         )
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1`,
+      [
+        vaultId,
+        anchor.folder_path,
+        anchor.created_at,
+        anchor.created_at,
+        anchor.id,
+      ],
+    );
+    const nextRows = await this.selector.select<{ id: string; title: string }>(
+      `SELECT id, title
+       FROM items
+       WHERE vault_id = ?
+         AND folder_path = ?
+         AND (
+           created_at > ?
+           OR (created_at = ? AND id > ?)
+         )
+       ORDER BY created_at ASC, id ASC
+       LIMIT 1`,
+      [
+        vaultId,
+        anchor.folder_path,
+        anchor.created_at,
+        anchor.created_at,
+        anchor.id,
+      ],
+    );
+    const prev = prevRows[0];
+    const next = nextRows[0];
+    return {
+      prev: prev ? { id: prev.id, title: prev.title } : null,
+      next: next ? { id: next.id, title: next.title } : null,
+    };
   }
 
   override async listItemIdsByNavFilter(

@@ -5,6 +5,7 @@
 
 import {
   DASHBOARD_PREFETCH_SIZE,
+  type AdjacentItemsResult,
   type CreateItemInput,
   type DashboardIndexPage,
   type DashboardItemIdsResult,
@@ -30,6 +31,7 @@ import {
   resolveOrCreateInboxFolder,
   upsertItem,
   writeItemRawMarkdown,
+  type AdjacentItemAnchor,
   type IndexSyncProgress,
   type VaultContext,
 } from "@collector/core";
@@ -56,6 +58,10 @@ export interface ItemsIndexPort {
     filter: NavFilter,
   ): Promise<number>;
   listItemFilesByIds(vaultId: string, itemIds: string[]): Promise<ItemFile[]>;
+  getAdjacentItems(
+    vaultId: string,
+    anchor: AdjacentItemAnchor,
+  ): Promise<AdjacentItemsResult>;
 }
 
 export type VaultSyncBatchListener = {
@@ -198,6 +204,7 @@ export interface ItemsSearchService {
     limit?: number,
   ): Promise<ItemFile[]>;
   getItemById(itemId: string): Promise<GetItemResult>;
+  getAdjacentItems(itemId: string): Promise<AdjacentItemsResult>;
   getItemSource(itemId: string): Promise<string>;
   updateItemSource(itemId: string, rawMarkdown: string): Promise<ItemFile>;
   createItem(input: CreateItemInput): Promise<ItemFile>;
@@ -426,6 +433,37 @@ export function createItemsSearchService(
     return { item, content };
   };
 
+  const getAdjacentItems = async (
+    itemId: string,
+  ): Promise<AdjacentItemsResult> => {
+    const { vault, path } = await deps.resolveActiveVault();
+    const index = deps.getIndex();
+    const indexed = await index.listItemFilesByIds(vault.id, [itemId]);
+    let anchor: AdjacentItemAnchor | null = null;
+    const fromIndex = indexed[0];
+    if (fromIndex) {
+      anchor = {
+        id: fromIndex.id,
+        folder_path: fromIndex.folder_path,
+        created_at: fromIndex.created_at,
+      };
+    } else {
+      const ctx = deps.getContext();
+      if (await ctx.fs.exists(itemMarkdownPath(path, itemId))) {
+        const item = await readItemFile(ctx.fs, path, itemId, vault.id);
+        anchor = {
+          id: item.id,
+          folder_path: item.folder_path,
+          created_at: item.created_at,
+        };
+      }
+    }
+    if (!anchor) {
+      return { prev: null, next: null };
+    }
+    return index.getAdjacentItems(vault.id, anchor);
+  };
+
   const getItemSource = async (itemId: string): Promise<string> => {
     const { path } = await deps.resolveActiveVault();
     const ctx = deps.getContext();
@@ -536,6 +574,7 @@ export function createItemsSearchService(
     streamDashboardItems,
     loadDashboardItems,
     getItemById,
+    getAdjacentItems,
     getItemSource,
     updateItemSource,
     createItem,

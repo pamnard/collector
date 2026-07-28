@@ -102,6 +102,23 @@ export interface ItemIdRewriteMapping {
   folderPath: string;
 }
 
+/** Anchor for exact-folder chronological neighbors (#344). */
+export interface AdjacentItemAnchor {
+  id: string;
+  folder_path: string;
+  created_at: string;
+}
+
+export interface AdjacentItemRef {
+  id: string;
+  title: string;
+}
+
+export interface AdjacentItemsResult {
+  prev: AdjacentItemRef | null;
+  next: AdjacentItemRef | null;
+}
+
 export interface VaultIndexAdapter {
   upsertVault(meta: VaultMeta, vaultPath: string): Promise<void>;
   deleteVault(vaultId: string): Promise<void>;
@@ -134,6 +151,14 @@ export interface VaultIndexAdapter {
     folderPath: string,
     options?: ItemIdListOptions,
   ): Promise<string[]>;
+  /**
+   * Chronological neighbors in the exact same folder (#344).
+   * `prev` = older, `next` = newer; tie-break by `id`.
+   */
+  getAdjacentItems(
+    vaultId: string,
+    anchor: AdjacentItemAnchor,
+  ): Promise<AdjacentItemsResult>;
   listItemIdsByNavFilter(
     vaultId: string,
     filter: NavSearchFilter,

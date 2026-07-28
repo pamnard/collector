@@ -201,6 +201,11 @@ export async function getItemById(
   return devMockCollector.getItemById(itemId);
 }
 
+export async function getAdjacentItems(itemId: string) {
+  refuseUnlessDevMock();
+  return devMockCollector.getAdjacentItems(itemId);
+}
+
 export async function getItemSource(itemId: string): Promise<string> {
   refuseUnlessDevMock();
   return devMockCollector.getItemSource(itemId);
