@@ -20,6 +20,7 @@ export function DashboardTableSkeleton() {
       <table className="w-full table-fixed text-sm">
         <thead className="bg-neutral-100/30 dark:bg-neutral-700/30 text-neutral-500 dark:text-neutral-400">
           <tr>
+            <th className="h-10 w-10 px-2" aria-hidden />
             <th className="h-10 px-3 text-left font-medium">Название</th>
             <th className="h-10 w-28 px-3 text-left font-medium whitespace-nowrap">
               Создано
@@ -32,6 +33,9 @@ export function DashboardTableSkeleton() {
         <tbody>
           {Array.from({ length: SKELETON_COUNT }, (_, index) => (
             <tr key={index} className="border-t border-black/10 dark:border-white/10" aria-hidden>
+              <td className="px-2 py-2">
+                <div className="size-4 animate-pulse rounded-[4px] bg-neutral-100 dark:bg-neutral-700" />
+              </td>
               <td className="px-3 py-2">
                 <div className="h-4 w-48 max-w-full animate-pulse rounded-md bg-neutral-100 dark:bg-neutral-700" />
               </td>

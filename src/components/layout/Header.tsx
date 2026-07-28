@@ -1,4 +1,4 @@
-import { LayoutDashboard, List, Menu, PanelLeft, Plus } from "lucide-react";
+import { LayoutDashboard, Menu, PanelLeft, Plus, Table } from "lucide-react";
 import type { SettingsSection } from "../../types/sidebar-mode";
 import type { ViewMode } from "../../types/ui";
 import { cn } from "../../lib/utils";
@@ -95,7 +95,7 @@ export function Header({
               )}
               onClick={() => onViewModeChange("table")}
             >
-              <List size={16} />
+              <Table size={16} />
             </Button>
           </ButtonGroup>
         ) : variant === "settings" ? (
