@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { toDisplayAssetSrc } from "../../utils/asset-src";
 import { formatItemDate } from "../../utils/formatItemDate";
 import { getYouTubeThumbnail } from "../../utils/youtube-thumbnail";
+import { itemGridCoverSlot } from "./item-grid-cover-slot";
 
 /** Cover is portrait when height/width >= this (1.2 ≈ «чуть выше квадрата»). */
 const PORTRAIT_COVER_RATIO = 1.2;
@@ -70,7 +71,8 @@ export function ItemGridCard({
   const optimisticPortrait =
     item.content_type === "image" || item.content_type === "video";
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
-  const [isMediaLoaded, setIsMediaLoaded] = useState(false);
+  /** Attempt finished (ok or fail). Fail must not leave the gray teaser forever. */
+  const [coverSettled, setCoverSettled] = useState(false);
   const [isPortraitCover, setIsPortraitCover] = useState(optimisticPortrait);
   const coverSrcRef = useRef(coverSrc);
 
@@ -86,7 +88,11 @@ export function ItemGridCard({
     thumbnailPath === undefined
       ? null
       : resolveCoverSrc(thumbnailPath, item.url ?? undefined);
-  const coverPending = Boolean(expectedCoverSrc) && !isMediaLoaded;
+  const { coverPending, showCover } = itemGridCoverSlot({
+    expectedCoverSrc,
+    coverSrc,
+    coverSettled,
+  });
 
   useEffect(() => {
     coverSrcRef.current = coverSrc;
@@ -99,48 +105,45 @@ export function ItemGridCard({
     }
 
     const src = resolveCoverSrc(thumbnailPath, item.url ?? undefined);
-    if (src === coverSrcRef.current) {
+    // Skip only when the same successful src is already shown (ref holds coverSrc).
+    if (src !== null && src === coverSrcRef.current) {
       return;
     }
 
     setCoverSrc(null);
-    setIsMediaLoaded(false);
+    setCoverSettled(false);
     setIsPortraitCover(optimisticPortrait);
 
     if (!src) {
+      setCoverSettled(true);
       return;
     }
 
     let cancelled = false;
     let settled = false;
     const img = new Image();
-    const finish = (next: {
-      src: string | null;
-      loaded: boolean;
-      portrait: boolean;
-    }) => {
+    const finish = (next: { src: string | null; portrait: boolean }) => {
       if (cancelled || settled) {
         return;
       }
       settled = true;
       clearTimeout(timer);
       setCoverSrc(next.src);
-      setIsMediaLoaded(next.loaded);
+      setCoverSettled(true);
       setIsPortraitCover(next.portrait);
     };
     const timer = setTimeout(() => {
       console.warn("[ItemGridCard] cover decode timed out", { src });
-      finish({ src: null, loaded: false, portrait: false });
+      finish({ src: null, portrait: false });
     }, 4_000);
     img.onload = () => {
       finish({
         src,
-        loaded: true,
         portrait: isPortraitNaturalSize(img),
       });
     };
     img.onerror = () => {
-      finish({ src: null, loaded: false, portrait: false });
+      finish({ src: null, portrait: false });
     };
     img.src = src;
 
@@ -163,7 +166,6 @@ export function ItemGridCard({
     );
   }
 
-  const showCover = Boolean(coverSrc && isMediaLoaded);
   const overlayLayout = Boolean(
     (showCover && isPortraitCover) || (coverPending && optimisticPortrait),
   );
