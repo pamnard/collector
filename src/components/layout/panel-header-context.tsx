@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { AdjacentItemsResult } from "@collector/api";
 import type { ItemHeaderActionsModel } from "./ItemHeaderActions";
 
 export type PanelItemHeaderState =
@@ -17,6 +18,8 @@ interface PanelHeaderContextValue {
   setItemHeader: (next: PanelItemHeaderState | null) => void;
   itemActions: ItemHeaderActionsModel | null;
   setItemActions: (next: ItemHeaderActionsModel | null) => void;
+  itemAdjacent: AdjacentItemsResult | null;
+  setItemAdjacent: (next: AdjacentItemsResult | null) => void;
 }
 
 const PanelHeaderContext = createContext<PanelHeaderContextValue | null>(null);
@@ -27,6 +30,8 @@ export function PanelHeaderProvider({ children }: { children: ReactNode }) {
   );
   const [itemActions, setItemActionsState] =
     useState<ItemHeaderActionsModel | null>(null);
+  const [itemAdjacent, setItemAdjacentState] =
+    useState<AdjacentItemsResult | null>(null);
 
   const setItemHeader = useCallback((next: PanelItemHeaderState | null) => {
     setItemHeaderState(next);
@@ -36,9 +41,27 @@ export function PanelHeaderProvider({ children }: { children: ReactNode }) {
     setItemActionsState(next);
   }, []);
 
+  const setItemAdjacent = useCallback((next: AdjacentItemsResult | null) => {
+    setItemAdjacentState(next);
+  }, []);
+
   const value = useMemo(
-    () => ({ itemHeader, setItemHeader, itemActions, setItemActions }),
-    [itemHeader, setItemHeader, itemActions, setItemActions],
+    () => ({
+      itemHeader,
+      setItemHeader,
+      itemActions,
+      setItemActions,
+      itemAdjacent,
+      setItemAdjacent,
+    }),
+    [
+      itemHeader,
+      setItemHeader,
+      itemActions,
+      setItemActions,
+      itemAdjacent,
+      setItemAdjacent,
+    ],
   );
 
   return (

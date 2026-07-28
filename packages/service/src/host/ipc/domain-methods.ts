@@ -13,6 +13,7 @@ export const DOMAIN_IPC_METHODS = {
   listDashboardItemIds: "listDashboardItemIds",
   loadDashboardItems: "loadDashboardItems",
   getItemById: "getItemById",
+  getAdjacentItems: "getAdjacentItems",
   getItemSource: "getItemSource",
   // #156 writes
   createItem: "createItem",

@@ -227,6 +227,42 @@ export async function getItemById(
   return { item, content };
 }
 
+export async function getAdjacentItems(itemId: string): Promise<{
+  prev: { id: string; title: string } | null;
+  next: { id: string; title: string } | null;
+}> {
+  ensureWarmedUp();
+  const current = mockStore.getItemById(itemId);
+  if (!current) {
+    return { prev: null, next: null };
+  }
+
+  const siblings = mockStore
+    .getItems()
+    .filter((item) => item.folder_path === current.folder_path)
+    .slice()
+    .sort((a, b) => {
+      if (a.created_at !== b.created_at) {
+        return a.created_at < b.created_at ? -1 : 1;
+      }
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
+
+  const index = siblings.findIndex((item) => item.id === current.id);
+  if (index < 0) {
+    return { prev: null, next: null };
+  }
+
+  const prevItem = index > 0 ? siblings[index - 1] : undefined;
+  const nextItem =
+    index < siblings.length - 1 ? siblings[index + 1] : undefined;
+
+  return {
+    prev: prevItem ? { id: prevItem.id, title: prevItem.title } : null,
+    next: nextItem ? { id: nextItem.id, title: nextItem.title } : null,
+  };
+}
+
 export async function getItemSource(itemId: string): Promise<string> {
   ensureWarmedUp();
   const item = mockStore.getItemById(itemId);

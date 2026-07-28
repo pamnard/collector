@@ -30,6 +30,8 @@ export type {
 export {
   DASHBOARD_PREFETCH_SIZE,
   type ActiveVaultResult,
+  type AdjacentItemRef,
+  type AdjacentItemsResult,
   type CollectorServiceApi,
   type DashboardIndexPage,
   type DashboardItemIdsResult,

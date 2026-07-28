@@ -20,6 +20,7 @@ const REQUIRED_METHODS: (keyof CollectorServiceApi)[] = [
   "streamDashboardItems",
   "loadDashboardItems",
   "getItemById",
+  "getAdjacentItems",
   "getItemSource",
   "updateItemSource",
   "createItem",

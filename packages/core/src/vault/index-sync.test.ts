@@ -32,6 +32,7 @@ function createNoopVaultIndex(): VaultIndexAdapter {
     listTagsWithCounts: async () => [],
     listItemIdsByTag: async () => [],
     listItemIdsByFolderPrefix: async () => [],
+    getAdjacentItems: async () => ({ prev: null, next: null }),
     listItemIdsByNavFilter: async () => [],
     countItemIdsByNavFilter: async () => 0,
     listFolderItemCounts: async () => [],

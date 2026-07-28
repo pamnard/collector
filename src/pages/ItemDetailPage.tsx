@@ -65,7 +65,7 @@ export function ItemDetailPage() {
   const id = params["*"];
   const navigate = useNavigate();
   const { refreshVault } = useShell();
-  const { setItemHeader, setItemActions } = usePanelHeader();
+  const { setItemHeader, setItemActions, setItemAdjacent } = usePanelHeader();
   const [item, setItem] = useState<ItemFile | null>(null);
   const [content, setContent] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<ItemFormValues | null>(null);
@@ -138,8 +138,9 @@ export function ItemDetailPage() {
     return () => {
       setItemHeader(null);
       setItemActions(null);
+      setItemAdjacent(null);
     };
-  }, [setItemHeader, setItemActions]);
+  }, [setItemHeader, setItemActions, setItemAdjacent]);
 
   useEffect(() => {
     if (item) {
@@ -166,13 +167,38 @@ export function ItemDetailPage() {
     }
 
     setItem(null);
+    setItemAdjacent(null);
     setError(null);
     setItemHeader({ status: "loading" });
 
     reloadItem(id).catch((err: unknown) => {
       setError(err instanceof Error ? err.message : String(err));
     });
-  }, [id, setItemHeader]);
+  }, [id, setItemHeader, setItemAdjacent]);
+
+  useEffect(() => {
+    if (!id || mode !== "view") {
+      setItemAdjacent(null);
+      return;
+    }
+    let cancelled = false;
+    setItemAdjacent(null);
+    void getCollectorClient()
+      .getAdjacentItems(id)
+      .then((result) => {
+        if (!cancelled) {
+          setItemAdjacent(result);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setItemAdjacent(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, mode, setItemAdjacent]);
 
   const handleSave = async (): Promise<boolean> => {
     if (!id || !formValues) {

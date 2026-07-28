@@ -884,3 +884,95 @@ describe("rewriteItemIds", () => {
     expect(loaded[0]?.title).toBe("Rewrite me");
   });
 });
+
+describe("getAdjacentItems", () => {
+  let dataDir = "";
+  const fs = new NodeFileSystemAdapter();
+
+  afterEach(async () => {
+    if (dataDir) {
+      await rm(dataDir, { recursive: true, force: true });
+      dataDir = "";
+    }
+  });
+
+  it("returns exact-folder chronological neighbors with id tie-break", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-adjacent-"));
+    const db = BetterSqliteMigrator.open(join(dataDir, "collector-adjacent.db"));
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    const ctx = { fs, index };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    const t1 = "2020-01-01T00:00:00.000Z";
+    const t2 = "2020-06-01T00:00:00.000Z";
+    const t3 = "2021-01-01T00:00:00.000Z";
+
+    const olderId = "notes/a.md";
+    const middleId = "notes/b.md";
+    const newerId = "notes/c.md";
+    const nestedId = "notes/sub/d.md";
+
+    for (const [id, title, created_at, folder_path] of [
+      [olderId, "Older", t1, "notes"],
+      [middleId, "Middle", t2, "notes"],
+      [newerId, "Newer", t3, "notes"],
+      [nestedId, "Nested", t2, "notes/sub"],
+    ] as const) {
+      await upsertItem(ctx, path, meta.id, {
+        item: {
+          id,
+          vault_id: meta.id,
+          title,
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          tag_ids: [],
+          collection_ids: [],
+          folder_path,
+          content_revision: 1,
+          created_at,
+          updated_at: created_at,
+        },
+      });
+    }
+
+    const middle = await index.getAdjacentItems(meta.id, {
+      id: middleId,
+      folder_path: "notes",
+      created_at: t2,
+    });
+    expect(middle).toEqual({
+      prev: { id: olderId, title: "Older" },
+      next: { id: newerId, title: "Newer" },
+    });
+
+    const first = await index.getAdjacentItems(meta.id, {
+      id: olderId,
+      folder_path: "notes",
+      created_at: t1,
+    });
+    expect(first).toEqual({
+      prev: null,
+      next: { id: middleId, title: "Middle" },
+    });
+
+    const last = await index.getAdjacentItems(meta.id, {
+      id: newerId,
+      folder_path: "notes",
+      created_at: t3,
+    });
+    expect(last).toEqual({
+      prev: { id: middleId, title: "Middle" },
+      next: null,
+    });
+
+    const nested = await index.getAdjacentItems(meta.id, {
+      id: nestedId,
+      folder_path: "notes/sub",
+      created_at: t2,
+    });
+    expect(nested).toEqual({ prev: null, next: null });
+  });
+});

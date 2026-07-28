@@ -17,6 +17,7 @@ import type {
   DashboardLoadHandlers,
   FolderTreeNode,
   GetItemResult,
+  AdjacentItemsResult,
   ImportDroppedFilesInput,
   ImportDroppedFilesResult,
   MediaWithPath,
@@ -221,6 +222,10 @@ export function createCollectorIpcClient(
       }) as Promise<ItemFile[]>,
     getItemById: async (itemId: string): Promise<GetItemResult> =>
       transport.request("getItemById", { itemId }) as Promise<GetItemResult>,
+    getAdjacentItems: async (itemId: string): Promise<AdjacentItemsResult> =>
+      transport.request("getAdjacentItems", {
+        itemId,
+      }) as Promise<AdjacentItemsResult>,
     getItemSource: async (itemId: string): Promise<string> =>
       transport.request("getItemSource", { itemId }) as Promise<string>,
     updateItemSource: async (
