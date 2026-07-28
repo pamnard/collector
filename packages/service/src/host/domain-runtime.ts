@@ -1,6 +1,8 @@
 /**
- * Out-of-band Node domain runtime for service host IPC (#155+).
- * Not used by the Tauri in-process app path.
+ * Sole domain runtime for vault-index sync / watcher / SQLite (#328).
+ *
+ * Service host (desktop IPC, CLI, MCP) composes this once. UI is a thin
+ * client over IPC — do not re-create sync/watcher orchestration in the UI.
  */
 
 import { mkdir } from "node:fs/promises";

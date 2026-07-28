@@ -1,8 +1,8 @@
 /**
- * In-process LocalAdapter for web/dev-mock and unit tests (#169 / #171).
+ * In-process LocalAdapter for web/dev-mock and unit tests (#169 / #171 / #328).
  *
- * Desktop Tauri default path uses IPC (#170). Opening the index via this
- * adapter throws — UI in-process SQLite was removed (#171).
+ * Desktop Tauri default path uses IPC (#170). This adapter is a thin mock
+ * facade — UI in-process SQLite and vault-index sync were removed (#171 / #328).
  */
 
 import type { CollectorServiceApi, NavFilter as ApiNavFilter } from "@collector/api";
