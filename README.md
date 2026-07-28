@@ -170,8 +170,8 @@ npm run test:large-empty-index
 Before tagging a GitHub release, run the full local gate (typecheck, unit tests, index smokes, frontend build, signed `tauri build`, headless binary smoke, Linux `.deb` packaging check):
 
 ```bash
-export TAURI_SIGNING_PRIVATE_KEY=…   # required for signed updater artifacts
-export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=…
+# Signing key is picked up from ~/.tauri/collector.key when unset
+# (optional passphrase file: ~/.tauri/collector.key.password)
 npm run verify:release
 ```
 

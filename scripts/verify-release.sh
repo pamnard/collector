@@ -6,7 +6,9 @@
 #   ./scripts/verify-release.sh
 #
 # Optional:
-#   TAURI_SIGNING_PRIVATE_KEY  — if set, tauri build must exit 0 (updater artifacts signed)
+#   TAURI_SIGNING_PRIVATE_KEY  — if set, tauri build must exit 0 (updater artifacts signed).
+#                                If unset, loads ~/.tauri/collector.key when that file exists.
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — passphrase for an encrypted key (empty if none)
 #   TAURI_BUNDLE_ARGS            — passed to `tauri build` (default: platform smoke bundle, deb on Linux)
 #   SKIP_TAURI_BUILD=1           — skip full tauri build (faster; not for final release sign-off)
 #   SKIP_RELEASE_SMOKE=1         — skip headless binary smoke (e.g. no xvfb on minimal CI image)
@@ -31,6 +33,24 @@ export RUSTUP_HOME="${USER_HOME}/.rustup"
 export CARGO_HOME="${USER_HOME}/.cargo"
 export PATH="${CARGO_HOME}/bin:${PATH}"
 unset CARGO_TARGET_DIR
+
+# Maintainer convenience: use the local signer key without a manual export.
+if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+  _collector_signing_key="${USER_HOME}/.tauri/collector.key"
+  if [[ -f "${_collector_signing_key}" ]]; then
+    TAURI_SIGNING_PRIVATE_KEY="$(<"$_collector_signing_key")"
+    export TAURI_SIGNING_PRIVATE_KEY
+  fi
+  unset _collector_signing_key
+fi
+if [[ -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" ]]; then
+  _collector_signing_pw="${USER_HOME}/.tauri/collector.key.password"
+  if [[ -f "${_collector_signing_pw}" ]]; then
+    TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(<"$_collector_signing_pw")"
+    export TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+  fi
+  unset _collector_signing_pw
+fi
 
 # One free slot is enough for tauri-cli's temporary Cargo.toml watcher.
 INOTIFY_INSTANCES_NEEDED=1
