@@ -19,6 +19,7 @@ import {
   AttachmentTitle,
   AttachmentTrigger,
 } from "@/components/ui/attachment";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toDisplayAssetSrc } from "../../utils/asset-src";
 import type { PlayableMediaKind } from "../../utils/local-media-playback";
 import {
@@ -66,6 +67,11 @@ export function MediaGallery({
   const [isUploading, setIsUploading] = useState(false);
   const [coverMediaId, setCoverMediaId] = useState<string | null>(null);
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{
+    id: string;
+    filename: string;
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadMedia = useCallback(async () => {
     setError(null);
@@ -142,18 +148,25 @@ export function MediaGallery({
     }
   };
 
-  const handleDelete = async (mediaId: string) => {
-    if (!window.confirm("Удалить файл?")) {
+  const handleConfirmDelete = async () => {
+    if (!pendingDelete) {
       return;
     }
 
+    setIsDeleting(true);
     setError(null);
     try {
-      await getCollectorService().media.deleteItemMedia(itemId, mediaId);
+      await getCollectorService().media.deleteItemMedia(
+        itemId,
+        pendingDelete.id,
+      );
       await loadMedia();
       onUpdated?.();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
+      throw err;
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -181,6 +194,19 @@ export function MediaGallery({
 
   return (
     <section className="mt-4 space-y-3">
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDelete(null);
+          }
+        }}
+        title={pendingDelete?.filename.trim() || "Файл"}
+        description="Удалить файл?"
+        busy={isDeleting}
+        onConfirm={handleConfirmDelete}
+      />
+
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-medium">Медиа</h2>
         <button
@@ -269,7 +295,12 @@ export function MediaGallery({
                       </AttachmentAction>
                       <AttachmentAction
                         aria-label={`Удалить ${file.filename}`}
-                        onClick={() => void handleDelete(file.id)}
+                        onClick={() =>
+                          setPendingDelete({
+                            id: file.id,
+                            filename: file.filename,
+                          })
+                        }
                       >
                         <Trash2 />
                       </AttachmentAction>
@@ -311,7 +342,12 @@ export function MediaGallery({
                     <AttachmentActions>
                       <AttachmentAction
                         aria-label={`Удалить ${file.filename}`}
-                        onClick={() => void handleDelete(file.id)}
+                        onClick={() =>
+                          setPendingDelete({
+                            id: file.id,
+                            filename: file.filename,
+                          })
+                        }
                       >
                         <Trash2 />
                       </AttachmentAction>

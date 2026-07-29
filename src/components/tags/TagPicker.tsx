@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import type { TagWithCount } from "@collector/core";
 import { getCollectorService } from "../../services/collector-client";
+import { Button } from "../ui/button";
+import { ConfirmDialog } from "../ui/confirm-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
+import { Input } from "../ui/input";
 
 interface TagPickerProps {
   selectedTagNames: string[];
@@ -15,6 +26,11 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
   const [tags, setTags] = useState<TagWithCount[]>([]);
   const [newTagName, setNewTagName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<TagWithCount | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [pendingRename, setPendingRename] = useState<TagWithCount | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [isRenaming, setIsRenaming] = useState(false);
 
   useEffect(() => {
     getCollectorService().tags
@@ -54,38 +70,60 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
     setNewTagName("");
   };
 
-  const handleDeleteTag = async (tag: TagWithCount) => {
-    if (!window.confirm("Удалить тег? Он будет снят со всех элементов.")) {
+  const handleConfirmDelete = async () => {
+    if (!pendingDelete) {
       return;
     }
 
+    setIsDeleting(true);
     setError(null);
     try {
-      await getCollectorService().tags.deleteTag(tag.id);
-      setTags((current) => current.filter((entry) => entry.id !== tag.id));
+      await getCollectorService().tags.deleteTag(pendingDelete.id);
+      setTags((current) =>
+        current.filter((entry) => entry.id !== pendingDelete.id),
+      );
       onChange(
-        selectedTagNames.filter((selected) => !sameName(selected, tag.name)),
+        selectedTagNames.filter(
+          (selected) => !sameName(selected, pendingDelete.name),
+        ),
       );
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
+      throw err;
+    } finally {
+      setIsDeleting(false);
     }
   };
 
-  const handleRenameTag = async (tag: TagWithCount) => {
-    const nextName = window.prompt("Новое имя тега", tag.name)?.trim();
-    if (!nextName || nextName === tag.name) {
+  const openRename = (tag: TagWithCount) => {
+    setPendingRename(tag);
+    setRenameValue(tag.name);
+  };
+
+  const handleConfirmRename = async () => {
+    if (!pendingRename) {
       return;
     }
 
+    const nextName = renameValue.trim();
+    if (!nextName || nextName === pendingRename.name) {
+      setPendingRename(null);
+      return;
+    }
+
+    setIsRenaming(true);
     setError(null);
     try {
-      const updated = await getCollectorService().tags.updateTagRecord(tag.id, {
-        name: nextName,
-      });
+      const updated = await getCollectorService().tags.updateTagRecord(
+        pendingRename.id,
+        {
+          name: nextName,
+        },
+      );
       setTags((current) =>
         current
           .map((entry) =>
-            entry.id === tag.id
+            entry.id === pendingRename.id
               ? { ...entry, ...updated, item_count: entry.item_count }
               : entry,
           )
@@ -93,11 +131,14 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
       );
       onChange(
         selectedTagNames.map((selected) =>
-          sameName(selected, tag.name) ? nextName : selected,
+          sameName(selected, pendingRename.name) ? nextName : selected,
         ),
       );
+      setPendingRename(null);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsRenaming(false);
     }
   };
 
@@ -135,7 +176,7 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
                 <>
                   <button
                     type="button"
-                    onClick={() => handleRenameTag(known)}
+                    onClick={() => openRename(known)}
                     className="text-neutral-500 hover:text-neutral-500 dark:hover:text-neutral-400 text-sm px-1"
                     aria-label={`Переименовать ${known.name}`}
                   >
@@ -143,7 +184,7 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleDeleteTag(known)}
+                    onClick={() => setPendingDelete(known)}
                     className="text-neutral-500 hover:text-red-400 text-sm px-1"
                     aria-label={`Удалить ${known.name}`}
                   >
@@ -179,6 +220,69 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
           Добавить
         </button>
       </div>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDelete(null);
+          }
+        }}
+        title={pendingDelete?.name.trim() || "Тег"}
+        description="Удалить тег? Он будет снят со всех элементов."
+        busy={isDeleting}
+        onConfirm={handleConfirmDelete}
+      />
+
+      <Dialog
+        open={pendingRename !== null}
+        onOpenChange={(open) => {
+          if (isRenaming) {
+            return;
+          }
+          if (!open) {
+            setPendingRename(null);
+          }
+        }}
+      >
+        <DialogContent showCloseButton={!isRenaming}>
+          <DialogHeader>
+            <DialogTitle>Переименовать тег</DialogTitle>
+            <DialogDescription>
+              Новое имя для «{pendingRename?.name ?? ""}».
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={renameValue}
+            onChange={(event) => setRenameValue(event.target.value)}
+            disabled={isRenaming}
+            autoFocus
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void handleConfirmRename();
+              }
+            }}
+          />
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isRenaming}
+              onClick={() => setPendingRename(null)}
+            >
+              Отмена
+            </Button>
+            <Button
+              type="button"
+              disabled={isRenaming || !renameValue.trim()}
+              onClick={() => void handleConfirmRename()}
+            >
+              Сохранить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

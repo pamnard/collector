@@ -203,7 +203,11 @@ export function createItemTableColumns({
       enableHiding: false,
       enableSorting: false,
       cell: ({ row }) => (
-        <ItemRowActions itemId={row.original.id} onUpdated={onUpdated} />
+        <ItemRowActions
+          itemId={row.original.id}
+          itemTitle={row.original.title}
+          onUpdated={onUpdated}
+        />
       ),
     },
   ];

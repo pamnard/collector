@@ -2,6 +2,7 @@ import { MoreHorizontal } from "lucide-react";
 import { useState } from "react";
 import { getCollectorService } from "../../services/collector-client";
 import { Button } from "../ui/button";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,20 +12,19 @@ import {
 
 interface ItemRowActionsProps {
   itemId: string;
+  itemTitle: string;
   onUpdated?: () => void;
 }
 
 export function ItemRowActions({
   itemId,
+  itemTitle,
   onUpdated,
 }: ItemRowActionsProps) {
   const [isDeleting, setIsDeleting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const handleDelete = async () => {
-    if (!window.confirm("Удалить элемент без возможности восстановления?")) {
-      return;
-    }
-
+  const handleConfirmDelete = async () => {
     setIsDeleting(true);
     try {
       await getCollectorService().items.deleteItem(itemId);
@@ -59,12 +59,21 @@ export function ItemRowActions({
           <DropdownMenuItem
             variant="destructive"
             disabled={isDeleting}
-            onClick={() => void handleDelete()}
+            onClick={() => setConfirmOpen(true)}
           >
             Удалить
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={itemTitle.trim() || "Элемент"}
+        description="Удалить элемент без возможности восстановления?"
+        busy={isDeleting}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 }
