@@ -376,6 +376,145 @@ export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] = [
       },
     ],
   },
+  {
+    name: "collector_list_item_media",
+    description:
+      "List media files attached to an item (MediaWithPath[]: id, filename, media_type, created_at, absolute_path). " +
+      "Same listItemMedia service surface as the UI gallery. " +
+      "Use media `id` values for replace/delete/set-cover. Cover auto-syncs after attach/delete/replace.",
+    params: [
+      {
+        name: "itemId",
+        required: true,
+        typeLabel: "string",
+        description: ITEM_ID_DESCRIPTION,
+      },
+    ],
+  },
+  {
+    name: "collector_attach_media",
+    description:
+      "Attach one media file to an existing item (same on-disk sidecar layout as UI upload). " +
+      "Provide exactly one of dataBase64 or sourcePath. " +
+      "filename is required with dataBase64; with sourcePath it defaults to the path basename. " +
+      "Returns the created MediaFileMeta (stable media id). Auto-syncs item cover from first image/video.",
+    params: [
+      {
+        name: "itemId",
+        required: true,
+        typeLabel: "string",
+        description: ITEM_ID_DESCRIPTION,
+      },
+      {
+        name: "filename",
+        required: false,
+        typeLabel: "string",
+        description:
+          "Original filename including extension (used for mime/type inference and on-disk name). " +
+          "Required when dataBase64 is set; optional when sourcePath is set (defaults to basename).",
+      },
+      {
+        name: "dataBase64",
+        required: false,
+        typeLabel: "string",
+        description:
+          "File bytes as standard base64 (no data: URL prefix). Mutually exclusive with sourcePath.",
+      },
+      {
+        name: "sourcePath",
+        required: false,
+        typeLabel: "string",
+        description:
+          "Absolute path on the Collector host filesystem to read bytes from. Mutually exclusive with dataBase64.",
+      },
+    ],
+  },
+  {
+    name: "collector_replace_media",
+    description:
+      "Replace an existing media file's bytes (and optionally filename) while keeping the same media id. " +
+      "Same replaceItemMedia host path as the shared API. Provide exactly one of dataBase64 or sourcePath. " +
+      "Auto-syncs item cover afterward.",
+    params: [
+      {
+        name: "itemId",
+        required: true,
+        typeLabel: "string",
+        description: ITEM_ID_DESCRIPTION,
+      },
+      {
+        name: "mediaId",
+        required: true,
+        typeLabel: "string",
+        description:
+          "Opaque media id from collector_list_item_media / collector_attach_media (UUID). Not an item path.",
+      },
+      {
+        name: "filename",
+        required: false,
+        typeLabel: "string",
+        description:
+          "Replacement filename including extension. Required with dataBase64; optional with sourcePath (defaults to basename).",
+      },
+      {
+        name: "dataBase64",
+        required: false,
+        typeLabel: "string",
+        description:
+          "Replacement file bytes as standard base64. Mutually exclusive with sourcePath.",
+      },
+      {
+        name: "sourcePath",
+        required: false,
+        typeLabel: "string",
+        description:
+          "Absolute host path to read replacement bytes from. Mutually exclusive with dataBase64.",
+      },
+    ],
+  },
+  {
+    name: "collector_delete_media",
+    description:
+      "Delete one media file from an item by media id. Same deleteItemMedia path as the UI. " +
+      "Auto-syncs item cover afterward (clears cover when no image/video remains).",
+    params: [
+      {
+        name: "itemId",
+        required: true,
+        typeLabel: "string",
+        description: ITEM_ID_DESCRIPTION,
+      },
+      {
+        name: "mediaId",
+        required: true,
+        typeLabel: "string",
+        description:
+          "Opaque media id from list/attach (UUID). Not an item path.",
+      },
+    ],
+  },
+  {
+    name: "collector_set_item_cover",
+    description:
+      "Manually regenerate the item cover.webp from a specific attached image or video " +
+      "(same as the UI gallery star). Not required for a default cover — attach alone auto-syncs " +
+      "from the first image/video. Subsequent attach/delete/replace may overwrite this choice via auto-sync.",
+    params: [
+      {
+        name: "itemId",
+        required: true,
+        typeLabel: "string",
+        description: ITEM_ID_DESCRIPTION,
+      },
+      {
+        name: "mediaId",
+        required: true,
+        typeLabel: "string",
+        description:
+          "Opaque media id of an image or video attachment to use as cover source.",
+      },
+    ],
+  },
 ] as const;
 
 const byName = new Map(

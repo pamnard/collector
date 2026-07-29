@@ -11,6 +11,7 @@ import {
   clearItemCover,
   deleteMediaFile,
   listItemMediaWithPaths,
+  replaceMediaFile,
   type VaultContext,
 } from "@collector/core";
 
@@ -43,6 +44,11 @@ export interface MediaCoverService {
     itemId: string,
     files: AttachMediaFileInput[],
   ): Promise<MediaFileMeta[]>;
+  replaceItemMedia(
+    itemId: string,
+    mediaId: string,
+    file: AttachMediaFileInput,
+  ): Promise<MediaFileMeta>;
   deleteItemMedia(itemId: string, mediaId: string): Promise<void>;
 }
 
@@ -205,6 +211,20 @@ export function createMediaCoverService(
     return attached;
   };
 
+  const replaceItemMedia = async (
+    itemId: string,
+    mediaId: string,
+    file: AttachMediaFileInput,
+  ): Promise<MediaFileMeta> => {
+    const { path } = await deps.resolveActiveVault();
+    const replaced = await replaceMediaFile(deps.getContext(), path, itemId, mediaId, {
+      filename: file.filename,
+      data: file.data,
+    });
+    await syncItemCover(itemId);
+    return replaced;
+  };
+
   const deleteItemMedia = async (
     itemId: string,
     mediaId: string,
@@ -220,6 +240,7 @@ export function createMediaCoverService(
     resolveItemThumbnailPaths,
     setItemCoverFromMedia,
     attachMediaFiles,
+    replaceItemMedia,
     deleteItemMedia,
   };
 }

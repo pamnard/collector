@@ -176,6 +176,11 @@ export interface CollectorServiceApi {
     itemId: string,
     files: AttachMediaFileInput[],
   ): Promise<MediaFileMeta[]>;
+  replaceItemMedia(
+    itemId: string,
+    mediaId: string,
+    file: AttachMediaFileInput,
+  ): Promise<MediaFileMeta>;
   deleteItemMedia(itemId: string, mediaId: string): Promise<void>;
 
   // Vaults

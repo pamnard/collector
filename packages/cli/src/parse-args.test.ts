@@ -178,6 +178,90 @@ describe("parseCliArgs (#172/#173)", () => {
     });
   });
 
+  it("parses media CRUD commands (#353)", () => {
+    expect(
+      parseCliArgs(["--data-dir", "/data", "list-item-media", "Inbox/a.md"]),
+    ).toEqual({
+      command: { name: "list-item-media", itemId: "Inbox/a.md" },
+      dataDir: "/data",
+    });
+
+    expect(
+      parseCliArgs([
+        "--data-dir",
+        "/data",
+        "attach-media",
+        "Inbox/a.md",
+        "--file",
+        "/tmp/shot.png",
+        "--filename",
+        "cover.png",
+      ]),
+    ).toEqual({
+      command: {
+        name: "attach-media",
+        itemId: "Inbox/a.md",
+        filePath: "/tmp/shot.png",
+        filename: "cover.png",
+      },
+      dataDir: "/data",
+    });
+
+    expect(
+      parseCliArgs([
+        "--data-dir",
+        "/data",
+        "replace-media",
+        "Inbox/a.md",
+        "media-1",
+        "--file",
+        "/tmp/new.jpg",
+      ]),
+    ).toEqual({
+      command: {
+        name: "replace-media",
+        itemId: "Inbox/a.md",
+        mediaId: "media-1",
+        filePath: "/tmp/new.jpg",
+      },
+      dataDir: "/data",
+    });
+
+    expect(
+      parseCliArgs([
+        "--data-dir",
+        "/data",
+        "delete-media",
+        "Inbox/a.md",
+        "media-1",
+      ]),
+    ).toEqual({
+      command: {
+        name: "delete-media",
+        itemId: "Inbox/a.md",
+        mediaId: "media-1",
+      },
+      dataDir: "/data",
+    });
+
+    expect(
+      parseCliArgs([
+        "--data-dir",
+        "/data",
+        "set-item-cover",
+        "Inbox/a.md",
+        "media-1",
+      ]),
+    ).toEqual({
+      command: {
+        name: "set-item-cover",
+        itemId: "Inbox/a.md",
+        mediaId: "media-1",
+      },
+      dataDir: "/data",
+    });
+  });
+
   it("rejects missing endpoint", () => {
     expect(() => parseCliArgs(["health"])).toThrow(CliUsageError);
   });

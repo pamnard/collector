@@ -75,6 +75,44 @@ export async function deleteMediaFile(
   await ctx.index.deleteMedia(mediaId);
 }
 
+export async function replaceMediaFile(
+  ctx: VaultContext,
+  vaultPath: string,
+  itemId: string,
+  mediaId: string,
+  input: { filename: string; data: Uint8Array; mediaType?: MediaFileMeta["media_type"] },
+): Promise<MediaFileMeta> {
+  const manifest = await readMediaManifest(ctx.fs, vaultPath, itemId);
+  const index = manifest.files.findIndex((file) => file.id === mediaId);
+  if (index < 0) {
+    throw new Error(`Media not found: ${mediaId}`);
+  }
+
+  const previous = manifest.files[index]!;
+  const oldPath = mediaFilePath(vaultPath, itemId, mediaId, previous.filename);
+  if (await ctx.fs.exists(oldPath)) {
+    await ctx.fs.remove(oldPath);
+  }
+
+  const mediaType = input.mediaType ?? inferMediaType(input.filename);
+  const entry: MediaFileMeta = {
+    id: mediaId,
+    item_id: previous.item_id,
+    filename: input.filename,
+    media_type: mediaType,
+    created_at: previous.created_at,
+  };
+
+  const destination = mediaFilePath(vaultPath, itemId, mediaId, input.filename);
+  await ctx.fs.mkdir(itemMediaRoot(vaultPath, itemId));
+  await ctx.fs.writeBinary(destination, input.data);
+
+  manifest.files[index] = entry;
+  await writeMediaManifest(ctx.fs, vaultPath, itemId, manifest);
+  await ctx.index.upsertMedia(entry);
+  return entry;
+}
+
 export async function syncItemMediaToIndex(
   ctx: VaultContext,
   vaultPath: string,

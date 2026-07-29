@@ -81,6 +81,17 @@ export function buildMediaHandlers(
       await runtime.ensureInitialized();
       return mediaCover.attachMediaFiles(itemId, files);
     },
+    [M.replaceItemMedia]: async (params) => {
+      const p = asObject(params, M.replaceItemMedia);
+      const itemId = requireString(p.itemId, "itemId", M.replaceItemMedia);
+      const mediaId = requireString(p.mediaId, "mediaId", M.replaceItemMedia);
+      if (!p.file || typeof p.file !== "object" || Array.isArray(p.file)) {
+        badRequest(`${M.replaceItemMedia}: file object required`);
+      }
+      const [decoded] = decodeMediaFiles([p.file], M.replaceItemMedia);
+      await runtime.ensureInitialized();
+      return mediaCover.replaceItemMedia(itemId, mediaId, decoded!);
+    },
     [M.deleteItemMedia]: async (params) => {
       const p = asObject(params, M.deleteItemMedia);
       const itemId = requireString(p.itemId, "itemId", M.deleteItemMedia);

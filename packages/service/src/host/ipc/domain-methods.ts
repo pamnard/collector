@@ -37,6 +37,7 @@ export const DOMAIN_IPC_METHODS = {
   listItemMedia: "listItemMedia",
   setItemCoverFromMedia: "setItemCoverFromMedia",
   attachMediaFiles: "attachMediaFiles",
+  replaceItemMedia: "replaceItemMedia",
   deleteItemMedia: "deleteItemMedia",
   resolveItemThumbnailPath: "resolveItemThumbnailPath",
   resolveItemThumbnailPaths: "resolveItemThumbnailPaths",

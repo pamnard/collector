@@ -165,6 +165,7 @@ export {
   attachMediaFile,
   deleteMediaFile,
   listItemMediaWithPaths,
+  replaceMediaFile,
   syncItemMediaToIndex,
 } from "./vault/media-operations.js";
 export type { MediaWithPath } from "./vault/media-operations.js";

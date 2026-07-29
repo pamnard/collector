@@ -302,6 +302,54 @@ describe("CollectorIpcClient", () => {
     }
   });
 
+  it("media replace keeps stable id over IPC (#353)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-ipc-media-replace-"));
+    dirs.push(dataDir);
+    const host = await startServiceHost({ dataDir, port: 0 });
+    try {
+      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
+      try {
+        const item = await client.createItem({
+          title: "Replace media note",
+          content_type: "note",
+          content: "m",
+        });
+
+        const png = Uint8Array.from(
+          Buffer.from(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+            "base64",
+          ),
+        );
+        const attached = await client.attachMediaFiles(item.id, [
+          { filename: "dot.png", data: png },
+        ]);
+        expect(attached.length).toBe(1);
+        const mediaId = attached[0]!.id;
+
+        const replaced = await client.replaceItemMedia(item.id, mediaId, {
+          filename: "dot2.png",
+          data: png,
+        });
+        expect(replaced.id).toBe(mediaId);
+        expect(replaced.filename).toBe("dot2.png");
+
+        const listed = await client.listItemMedia(item.id);
+        expect(listed).toHaveLength(1);
+        expect(listed[0]!.id).toBe(mediaId);
+        expect(listed[0]!.filename).toBe("dot2.png");
+
+        const covered = await client.setItemCoverFromMedia(item.id, mediaId);
+        expect(covered.id).toBe(item.id);
+        expect(covered.thumbnail).toBeTruthy();
+      } finally {
+        await client.close();
+      }
+    } finally {
+      await host.close();
+    }
+  });
+
   it("vaults list/switch/ensure work over IPC (#160)", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "collector-ipc-vaults-"));
     dirs.push(dataDir);

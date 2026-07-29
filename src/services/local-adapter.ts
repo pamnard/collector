@@ -85,6 +85,7 @@ export function createLocalAdapter(): CollectorServiceApi {
     resolveItemThumbnailPaths: collector.resolveItemThumbnailPaths,
     setItemCoverFromMedia: collector.setItemCoverFromMedia,
     attachMediaFiles: collector.attachMediaFiles,
+    replaceItemMedia: collector.replaceItemMedia,
     deleteItemMedia: collector.deleteItemMedia,
 
     listVaults: collector.listVaults,

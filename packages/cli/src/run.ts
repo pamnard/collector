@@ -8,6 +8,8 @@ import {
   defaultServiceIpcPath,
   isServiceIpcError,
 } from "@collector/service/host";
+import { readFile } from "node:fs/promises";
+import { basename } from "node:path";
 import { CliUsageError, parseCliArgs, type ParsedCliArgs } from "./parse-args.js";
 
 export { parseCliArgs, CliUsageError };
@@ -176,6 +178,40 @@ export async function runCollectorCli(
           folder_path: cmd.folderPath,
         }),
       );
+      return 0;
+    }
+    if (cmd.name === "list-item-media") {
+      const media = await client.listItemMedia(cmd.itemId);
+      io.stdout(JSON.stringify(media, null, 2));
+      return 0;
+    }
+    if (cmd.name === "attach-media") {
+      const data = new Uint8Array(await readFile(cmd.filePath));
+      const filename = cmd.filename ?? basename(cmd.filePath);
+      const attached = await client.attachMediaFiles(cmd.itemId, [
+        { filename, data },
+      ]);
+      io.stdout(JSON.stringify(attached[0] ?? attached, null, 2));
+      return 0;
+    }
+    if (cmd.name === "replace-media") {
+      const data = new Uint8Array(await readFile(cmd.filePath));
+      const filename = cmd.filename ?? basename(cmd.filePath);
+      const replaced = await client.replaceItemMedia(cmd.itemId, cmd.mediaId, {
+        filename,
+        data,
+      });
+      io.stdout(JSON.stringify(replaced, null, 2));
+      return 0;
+    }
+    if (cmd.name === "delete-media") {
+      await client.deleteItemMedia(cmd.itemId, cmd.mediaId);
+      io.stdout(JSON.stringify({ ok: true, deleted: cmd.mediaId }));
+      return 0;
+    }
+    if (cmd.name === "set-item-cover") {
+      const item = await client.setItemCoverFromMedia(cmd.itemId, cmd.mediaId);
+      io.stdout(JSON.stringify(item, null, 2));
       return 0;
     }
     const _exhaustive: never = cmd;

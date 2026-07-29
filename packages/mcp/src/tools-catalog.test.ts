@@ -22,6 +22,11 @@ const REGISTERED_TOOL_NAMES = [
   "collector_move_folder",
   "collector_delete_folder",
   "collector_move_item",
+  "collector_list_item_media",
+  "collector_attach_media",
+  "collector_replace_media",
+  "collector_delete_media",
+  "collector_set_item_cover",
 ] as const;
 
 describe("COLLECTOR_MCP_TOOLS catalog (#273 / #265)", () => {
@@ -127,5 +132,41 @@ describe("COLLECTOR_MCP_TOOLS catalog (#273 / #265)", () => {
     );
     expect(del).toBeDefined();
     expect(del!.description).toMatch(/empty/i);
+  });
+
+  it("exposes media list/attach/replace/delete/set-cover (#353)", () => {
+    const list = COLLECTOR_MCP_TOOLS.find(
+      (tool) => tool.name === "collector_list_item_media",
+    );
+    expect(list).toBeDefined();
+    expect(list!.params.map((p) => p.name)).toEqual(["itemId"]);
+
+    const attach = COLLECTOR_MCP_TOOLS.find(
+      (tool) => tool.name === "collector_attach_media",
+    );
+    expect(attach).toBeDefined();
+    expect(attach!.params.map((p) => p.name)).toEqual(
+      expect.arrayContaining(["itemId", "filename", "dataBase64", "sourcePath"]),
+    );
+    expect(attach!.description).toMatch(/exactly one of dataBase64 or sourcePath/i);
+
+    const replace = COLLECTOR_MCP_TOOLS.find(
+      (tool) => tool.name === "collector_replace_media",
+    );
+    expect(replace).toBeDefined();
+    expect(replace!.params.map((p) => p.name)).toEqual(
+      expect.arrayContaining(["itemId", "mediaId", "dataBase64", "sourcePath"]),
+    );
+
+    const del = COLLECTOR_MCP_TOOLS.find(
+      (tool) => tool.name === "collector_delete_media",
+    );
+    expect(del).toBeDefined();
+
+    const cover = COLLECTOR_MCP_TOOLS.find(
+      (tool) => tool.name === "collector_set_item_cover",
+    );
+    expect(cover).toBeDefined();
+    expect(cover!.description).toMatch(/not required for a default cover/i);
   });
 });
