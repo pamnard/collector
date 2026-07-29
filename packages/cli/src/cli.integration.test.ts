@@ -40,7 +40,9 @@ describe("collector CLI IPC (#172)", () => {
       },
     );
     expect(missing).toBe(1);
-    expect(err.join("\n")).toMatch(/not running|not_connected|IPC connect failed/i);
+    expect(err.join("\n")).toMatch(
+      /not running|not_connected|IPC connect failed|token file missing/i,
+    );
   });
 
   it("search and get-item round-trip via IPC (empty vault)", async () => {
@@ -154,6 +156,8 @@ describe("collector CLI IPC (#172)", () => {
       [
         "--ipc-path",
         defaultServiceIpcPath(dataDir) + ".missing",
+        "--token",
+        "unused",
         "create-item",
         "--title",
         "nope",
@@ -164,7 +168,9 @@ describe("collector CLI IPC (#172)", () => {
       },
     );
     expect(refuseCode).toBe(1);
-    expect(refuse.join("\n")).toMatch(/not running|not_connected|IPC connect failed/i);
+    expect(refuse.join("\n")).toMatch(
+      /not running|not_connected|IPC connect failed|token file missing/i,
+    );
 
     await host.close();
   });

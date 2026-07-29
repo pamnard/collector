@@ -28,9 +28,12 @@ describe("tauriServiceIpcTransport (#239/#240/#329)", () => {
 
   it("connect/request/disconnect use invoke without node net", async () => {
     invoke.mockResolvedValueOnce("/tmp/x.sock");
-    await expect(tauriServiceIpcConnect("/tmp/x.sock")).resolves.toBe("/tmp/x.sock");
+    await expect(tauriServiceIpcConnect("/tmp/x.sock", "/data")).resolves.toBe(
+      "/tmp/x.sock",
+    );
     expect(invoke).toHaveBeenCalledWith("service_ipc_connect", {
       ipcPath: "/tmp/x.sock",
+      dataDir: "/data",
     });
 
     invoke.mockResolvedValueOnce({ ok: true, pong: true });
@@ -67,7 +70,7 @@ describe("tauriServiceIpcTransport (#239/#240/#329)", () => {
       return unlisten;
     });
 
-    const transport = await createTauriServiceIpcTransport("/tmp/x.sock");
+    const transport = await createTauriServiceIpcTransport("/tmp/x.sock", "/data");
     await expect(transport.ping()).resolves.toEqual({ ok: true, pong: true });
     await expect(transport.request("getDataDirectory")).resolves.toBe("/data");
 

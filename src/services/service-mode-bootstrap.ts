@@ -37,7 +37,10 @@ export async function bootstrapServiceModeCutover(): Promise<boolean> {
     dataDir: layout.dataDir,
     configDir: layout.configDir,
   });
-  const transport = await createTauriServiceIpcTransport(ipcPath);
+  const transport = await createTauriServiceIpcTransport(
+    ipcPath,
+    layout.dataDir,
+  );
   setCollectorClient(createIpcAdapter(transport));
   return true;
 }

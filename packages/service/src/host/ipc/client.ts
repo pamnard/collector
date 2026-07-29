@@ -1,11 +1,16 @@
 /**
- * Service IPC client dialer (#152/#153) — test harness / future LocalAdapter transport.
- * Not used by the Tauri in-process production path.
+ * Service IPC client dialer (#152/#153/#336) — test harness / MCP / CLI transport.
+ * Not used by the Tauri in-process production path (Rust proxy).
  *
+ * After dial, performs mandatory `auth` handshake with the host token.
  * Rejections are always {@link ServiceIpcError} (see `./errors.ts` mapping table).
  */
 
 import { createConnection, type Socket } from "node:net";
+import {
+  SERVICE_IPC_AUTH_METHOD,
+  resolveServiceIpcToken,
+} from "./auth.js";
 import {
   SERVICE_IPC_PROTOCOL_VERSION,
   ServiceIpcFrameReader,
@@ -62,6 +67,32 @@ export async function connectServiceIpc(
 ): Promise<ServiceIpcClient> {
   const connectTimeoutMs = options.connectTimeoutMs ?? 5_000;
   const defaultRequestTimeoutMs = options.requestTimeoutMs;
+
+  let token: string;
+  try {
+    token = await resolveServiceIpcToken(path, {
+      token: options.token,
+      tokenFile: options.tokenFile,
+      dataDir: options.dataDir,
+    });
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err && err.code === "ENOENT") {
+      throw serviceIpcError({
+        layer: "transport",
+        code: "not_connected",
+        message:
+          error instanceof Error
+            ? error.message
+            : "IPC token file missing (service not running)",
+      });
+    }
+    throw serviceIpcError({
+      layer: "auth",
+      code: "token_missing",
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   const socket = await new Promise<Socket>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -282,7 +313,7 @@ export async function connectServiceIpc(
     });
   };
 
-  return {
+  const client: ServiceIpcClient = {
     request,
     async ping(requestOptions) {
       return (await request("ping", undefined, requestOptions)) as {
@@ -324,6 +355,15 @@ export async function connectServiceIpc(
       socket.destroy();
     },
   };
+
+  try {
+    await request(SERVICE_IPC_AUTH_METHOD, { token });
+  } catch (error) {
+    await client.close().catch(() => undefined);
+    throw error;
+  }
+
+  return client;
 }
 
 export { ServiceIpcError };

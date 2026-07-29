@@ -14,6 +14,8 @@ import {
 import { encodeServiceIpcFrame } from "./framing.js";
 import { startServiceIpcServer } from "./server.js";
 
+const TEST_TOKEN = "unit-test-ipc-token";
+
 describe("IPC error mapping helpers", () => {
   it("maps connect errno to not_connected", () => {
     const err = mapNodeIpcErrno(
@@ -64,6 +66,7 @@ describe("IPC failure modes over the wire", () => {
   it("request timeout → transport timeout", async () => {
     const server = await startServiceIpcServer({
       dataDir: tempDir(),
+      token: TEST_TOKEN,
       handler: {
         ping: () => ({ ok: true, pong: true }),
         health: () =>
@@ -74,7 +77,9 @@ describe("IPC failure modes over the wire", () => {
     });
 
     try {
-      const client = await connectServiceIpc(server.path);
+      const client = await connectServiceIpc(server.path, {
+        token: TEST_TOKEN,
+      });
       try {
         await expect(client.health({ timeoutMs: 50 })).rejects.toMatchObject({
           name: "ServiceIpcError",
@@ -92,6 +97,7 @@ describe("IPC failure modes over the wire", () => {
   it("AbortSignal → transport cancelled", async () => {
     const server = await startServiceIpcServer({
       dataDir: tempDir(),
+      token: TEST_TOKEN,
       handler: {
         ping: () => ({ ok: true, pong: true }),
         health: () =>
@@ -102,7 +108,9 @@ describe("IPC failure modes over the wire", () => {
     });
 
     try {
-      const client = await connectServiceIpc(server.path);
+      const client = await connectServiceIpc(server.path, {
+        token: TEST_TOKEN,
+      });
       try {
         const ac = new AbortController();
         const pending = client.health({ signal: ac.signal });
@@ -122,6 +130,7 @@ describe("IPC failure modes over the wire", () => {
   it("peer disconnect mid-request → transport disconnected", async () => {
     const server = await startServiceIpcServer({
       dataDir: tempDir(),
+      token: TEST_TOKEN,
       handler: {
         ping: () => ({ ok: true, pong: true }),
         health: () =>
@@ -131,7 +140,7 @@ describe("IPC failure modes over the wire", () => {
       },
     });
 
-    const client = await connectServiceIpc(server.path);
+    const client = await connectServiceIpc(server.path, { token: TEST_TOKEN });
     const outcome = client.health({ timeoutMs: 5_000 }).then(
       (value) => ({ ok: true as const, value }),
       (error: unknown) => ({ ok: false as const, error }),
@@ -150,6 +159,7 @@ describe("IPC failure modes over the wire", () => {
   it("closed client → not_connected", async () => {
     const server = await startServiceIpcServer({
       dataDir: tempDir(),
+      token: TEST_TOKEN,
       handler: {
         ping: () => ({ ok: true, pong: true }),
         health: () => ({
@@ -162,7 +172,9 @@ describe("IPC failure modes over the wire", () => {
     });
 
     try {
-      const client = await connectServiceIpc(server.path);
+      const client = await connectServiceIpc(server.path, {
+        token: TEST_TOKEN,
+      });
       await client.close();
       await expect(client.ping()).rejects.toMatchObject({
         code: "not_connected",
@@ -175,7 +187,12 @@ describe("IPC failure modes over the wire", () => {
 
   it("connect to missing endpoint → not_connected", async () => {
     const missing = join(tempDir(), "missing.sock");
-    await expect(connectServiceIpc(missing, { connectTimeoutMs: 500 })).rejects.toMatchObject({
+    await expect(
+      connectServiceIpc(missing, {
+        connectTimeoutMs: 500,
+        token: TEST_TOKEN,
+      }),
+    ).rejects.toMatchObject({
       code: "not_connected",
       layer: "transport",
     });
@@ -184,6 +201,7 @@ describe("IPC failure modes over the wire", () => {
   it("domain error from handler is returned as err frame", async () => {
     const server = await startServiceIpcServer({
       dataDir: tempDir(),
+      token: TEST_TOKEN,
       handler: {
         ping: () => ({ ok: true, pong: true }),
         health: () => {
@@ -197,7 +215,9 @@ describe("IPC failure modes over the wire", () => {
     });
 
     try {
-      const client = await connectServiceIpc(server.path);
+      const client = await connectServiceIpc(server.path, {
+        token: TEST_TOKEN,
+      });
       try {
         await expect(client.health()).rejects.toMatchObject({
           layer: "domain",
@@ -215,6 +235,7 @@ describe("IPC failure modes over the wire", () => {
   it("unknown method → validation unknown_method", async () => {
     const server = await startServiceIpcServer({
       dataDir: tempDir(),
+      token: TEST_TOKEN,
       handler: {
         ping: () => ({ ok: true, pong: true }),
         health: () => ({
@@ -235,6 +256,15 @@ describe("IPC failure modes over the wire", () => {
           socket.write(
             encodeServiceIpcFrame({
               v: 1,
+              id: "a",
+              type: "req",
+              method: "auth",
+              params: { token: TEST_TOKEN },
+            }),
+          );
+          socket.write(
+            encodeServiceIpcFrame({
+              v: 1,
               id: "u",
               type: "req",
               method: "nope" as never,
@@ -242,13 +272,23 @@ describe("IPC failure modes over the wire", () => {
           );
         });
         let buf = Buffer.alloc(0);
+        let seen = 0;
         socket.on("data", (chunk) => {
           buf = Buffer.concat([buf, chunk]);
-          if (buf.length < 4) return;
-          const len = buf.readUInt32BE(0);
-          if (buf.length < 4 + len) return;
-          resolve(JSON.parse(buf.subarray(4, 4 + len).toString("utf8")));
-          socket.end();
+          while (buf.length >= 4) {
+            const len = buf.readUInt32BE(0);
+            if (buf.length < 4 + len) return;
+            const message = JSON.parse(
+              buf.subarray(4, 4 + len).toString("utf8"),
+            );
+            buf = buf.subarray(4 + len);
+            seen += 1;
+            if (seen === 2) {
+              resolve(message);
+              socket.end();
+              return;
+            }
+          }
         });
         socket.on("error", reject);
       });

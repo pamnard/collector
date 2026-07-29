@@ -1,9 +1,10 @@
-//! Local Service IPC proxy for WebView → host (#239 / epic #142).
+//! Local Service IPC proxy for WebView → host (#239 / epic #142 / #336).
 //!
 //! Unix domain socket on Unix; Windows named pipe (`\\.\pipe\…`) matching
 //! `@collector/service` `defaultServiceIpcPath`.
 //!
 //! Wire format: 4-byte BE length + UTF-8 JSON.
+//! Private bus: dialers must `auth` with the host token before other methods.
 //!
 //! # Platform notes
 //!
@@ -45,6 +46,8 @@ pub enum ServiceIpcError {
     Timeout,
     #[error("service IPC not connected")]
     NotConnected,
+    #[error("service IPC auth token missing: {0}")]
+    TokenMissing(String),
 }
 
 struct IpcStream {
@@ -301,6 +304,26 @@ pub fn default_ipc_path(data_dir: &Path) -> PathBuf {
     }
 }
 
+/// Token file written by the Node host under `dataDir` (#336).
+pub fn default_ipc_token_path(data_dir: &Path) -> PathBuf {
+    data_dir.join("collector-service.ipc-token")
+}
+
+pub fn read_ipc_token(data_dir: &Path) -> Result<String, ServiceIpcError> {
+    let path = default_ipc_token_path(data_dir);
+    let raw = std::fs::read_to_string(&path).map_err(|err| {
+        ServiceIpcError::TokenMissing(format!("{}: {err}", path.display()))
+    })?;
+    let token = raw.trim();
+    if token.is_empty() {
+        return Err(ServiceIpcError::TokenMissing(format!(
+            "empty token file {}",
+            path.display()
+        )));
+    }
+    Ok(token.to_string())
+}
+
 /// Multiplexed request/response client with host→UI event fan-out (#329).
 ///
 /// One write half + dedicated reader thread (Node `connectServiceIpc` shape).
@@ -316,6 +339,7 @@ impl ServiceIpcClient {
         path: &Path,
         timeout: Duration,
         app: Option<AppHandle>,
+        token: &str,
     ) -> Result<Self, ServiceIpcError> {
         let deadline = std::time::Instant::now() + timeout;
         let stream = loop {
@@ -373,12 +397,17 @@ impl ServiceIpcClient {
             }
         });
 
-        Ok(Self {
+        let client = Self {
             writer: Mutex::new(stream),
             pending,
             next_id: AtomicU64::new(1),
             reader_join: Mutex::new(Some(join)),
-        })
+        };
+        if let Err(err) = client.request("auth", Some(json!({ "token": token }))) {
+            let _ = client.close();
+            return Err(err);
+        }
+        Ok(client)
     }
 
     pub fn request(&self, method: &str, params: Option<Value>) -> Result<Value, ServiceIpcError> {
@@ -584,6 +613,10 @@ mod tests {
                 default_ipc_path(Path::new("/data")),
                 PathBuf::from("/data/collector-service.sock")
             );
+            assert_eq!(
+                default_ipc_token_path(Path::new("/data")),
+                PathBuf::from("/data/collector-service.ipc-token")
+            );
         }
     }
 
@@ -647,9 +680,15 @@ mod tests {
             }
         }
         let ipc_path = ipc_path.expect("READY ipcPath");
+        let token = read_ipc_token(&data_dir).expect("ipc token");
 
-        let client =
-            ServiceIpcClient::connect(&ipc_path, Duration::from_secs(5), None).expect("connect");
+        let client = ServiceIpcClient::connect(
+            &ipc_path,
+            Duration::from_secs(5),
+            None,
+            &token,
+        )
+        .expect("connect");
         let ping = client.request("ping", None).expect("ping");
         assert_eq!(ping.get("ok"), Some(&serde_json::json!(true)));
         assert_eq!(ping.get("pong"), Some(&serde_json::json!(true)));

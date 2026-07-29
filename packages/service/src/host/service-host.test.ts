@@ -41,7 +41,9 @@ describe("startServiceHost", () => {
         healthy: true,
       });
 
-      const ipc = await connectServiceIpc(host.ipcPath!);
+      const ipc = await connectServiceIpc(host.ipcPath!, {
+        dataDir,
+      });
       try {
         expect(await ipc.ping()).toEqual({ ok: true, pong: true });
         expect(await ipc.health()).toMatchObject({ healthy: true });

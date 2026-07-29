@@ -11,6 +11,8 @@
  * | Client already closed / not dialed   | transport   | not_connected      |
  * | Length/JSON framing failure          | transport   | framing            |
  * | Unsupported protocol `v`             | transport   | protocol_mismatch  |
+ * | Missing handshake token (client)     | auth        | token_missing      |
+ * | Peer skipped / failed `auth`         | auth        | auth_required / auth_failed |
  * | Unknown method / bad req shape       | validation  | unknown_method / bad_request |
  * | Handler throws `CollectorApiError`   | (as thrown) | (as thrown)        |
  * | Handler throws other Error           | domain      | failed             |

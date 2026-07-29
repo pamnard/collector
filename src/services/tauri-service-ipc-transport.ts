@@ -25,8 +25,11 @@ export type TauriServiceIpcEventPayload = {
   payload: unknown;
 };
 
-export async function tauriServiceIpcConnect(ipcPath: string): Promise<string> {
-  return invoke<string>("service_ipc_connect", { ipcPath });
+export async function tauriServiceIpcConnect(
+  ipcPath: string,
+  dataDir: string,
+): Promise<string> {
+  return invoke<string>("service_ipc_connect", { ipcPath, dataDir });
 }
 
 export async function tauriServiceIpcRequest(
@@ -132,8 +135,9 @@ async function requestWithOptions(
  */
 export async function createTauriServiceIpcTransport(
   ipcPath: string,
+  dataDir: string,
 ): Promise<ServiceIpcClient> {
-  await tauriServiceIpcConnect(ipcPath);
+  await tauriServiceIpcConnect(ipcPath, dataDir);
 
   const handlers = new Map<string, Set<(payload: unknown) => void>>();
   let unlisten: UnlistenFn | null = null;

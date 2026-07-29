@@ -99,7 +99,7 @@ describe("CollectorIpcClient", () => {
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
       expect(host.ipcPath).toBeTruthy();
-      const client = await connectCollectorIpcClient(host.ipcPath!);
+      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
       try {
         expect(await client.ping()).toEqual({ ok: true, pong: true });
         expect(await client.health()).toMatchObject({
@@ -120,7 +120,7 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!);
+      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
       try {
         const items = await client.listItems();
         expect(items.length).toBeGreaterThan(0);
@@ -161,7 +161,7 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!);
+      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
       try {
         const created = await client.createItem({
           title: "IPC Note",
@@ -196,7 +196,7 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!);
+      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
       try {
         const created = await client.createTag({ name: "ipc-tag" });
         expect(created.name).toBe("ipc-tag");
@@ -225,7 +225,7 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!);
+      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
       try {
         const createdPath = await client.createFolder("ipc-folder");
         expect(createdPath).toBe("ipc-folder");
@@ -260,7 +260,7 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!);
+      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
       try {
         const item = await client.createItem({
           title: "Media note",
@@ -307,7 +307,7 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!);
+      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
       try {
         expect(await client.getDataDirectory()).toBe(dataDir);
 
@@ -337,7 +337,7 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!);
+      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
       try {
         // Host already opened + healed on start; methods are idempotent.
         await client.openCollectorDatabase();
@@ -366,6 +366,7 @@ describe("CollectorIpcClient", () => {
     const runtime = createServiceDomainRuntime(selfContainedCollectorProfileLayout(dataDir));
     const ipc = await startServiceIpcServer({
       dataDir,
+      token: "rebuild-test-ipc-token",
       handler: {
         ping: () => ({ ok: true, pong: true }),
         health: () => {
@@ -387,7 +388,9 @@ describe("CollectorIpcClient", () => {
     );
 
     try {
-      const client = await connectCollectorIpcClient(ipc.path);
+      const client = await connectCollectorIpcClient(ipc.path, {
+        token: "rebuild-test-ipc-token",
+      });
       try {
         await client.openCollectorDatabase();
         expect(await client.health()).toMatchObject({
@@ -424,7 +427,7 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!);
+      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
       try {
         const settings = await client.ensureAppSettings();
         expect(settings).toBeTruthy();
@@ -468,7 +471,7 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!);
+      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
       try {
         const seen: VaultIndexSyncStatus[] = [];
         const unsub = client.subscribeVaultIndexSyncStatus((status) => {
@@ -498,7 +501,7 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!);
+      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
       try {
         const active = await client.ensureActiveVault();
         await client.listDashboardItemIds("all");
@@ -545,7 +548,7 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!);
+      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
       try {
         const settings = await client.ensureAppSettings();
         expect(client.getAppSettingsSync()).toEqual(settings);
@@ -560,7 +563,7 @@ describe("CollectorIpcClient", () => {
         }
         expect(subscribed).toEqual(settings);
 
-        const peer = await connectCollectorIpcClient(host.ipcPath!);
+        const peer = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
         try {
           const patched = await peer.updateAppSettings({
             ...settings,

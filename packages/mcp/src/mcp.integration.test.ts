@@ -55,6 +55,7 @@ describe("MCP tools over service IPC (#174)", () => {
     const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
     const ipc = connectCollectorIpcClient(resolveMcpIpcPath({ dataDir }), {
       connectTimeoutMs: 2_000,
+      dataDir,
     });
     const client = await ipc;
     const mcp = createCollectorMcpServer(client);

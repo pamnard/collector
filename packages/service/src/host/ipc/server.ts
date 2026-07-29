@@ -1,11 +1,20 @@
 /**
- * Service host IPC listener (#152/#153): Unix socket / Windows named pipe.
- * Handler failures map to wire `CollectorApiError` shapes (see `./errors.ts`).
+ * Service host IPC listener (#152/#153/#336): Unix socket / Windows named pipe.
+ *
+ * Private bus: peers must pass an `auth` handshake with the host token before
+ * any other request or event traffic. Public contact is only via explicitly
+ * published surfaces (MCP today). Handler failures map to wire
+ * `CollectorApiError` shapes (see `./errors.ts`).
  */
 
 import { unlink } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
 import type { CollectorApiError } from "@collector/api";
+import {
+  SERVICE_IPC_AUTH_METHOD,
+  extractAuthToken,
+  tokensEqual,
+} from "./auth.js";
 import {
   SERVICE_IPC_PROTOCOL_VERSION,
   ServiceIpcFrameReader,
@@ -40,10 +49,15 @@ export interface ServiceIpcHandler {
 
 export interface ServiceIpcServer {
   path: string;
-  /** Push an event frame to every connected client (#163). */
+  /** Push an event frame to every authenticated connected client (#163/#336). */
   broadcastEvent: (event: string, payload: unknown) => void;
   close: () => Promise<void>;
 }
+
+type SocketState = {
+  socket: Socket;
+  authenticated: boolean;
+};
 
 function errorResponse(
   id: string,
@@ -118,19 +132,45 @@ async function removeStaleUnixSocket(path: string): Promise<void> {
   });
 }
 
+function handleAuthRequest(
+  message: ServiceIpcRequest,
+  expectedToken: string,
+  state: SocketState,
+): ServiceIpcResponse | ServiceIpcErrorResponse {
+  assertProtocolVersion(message.v);
+  const provided = extractAuthToken(message.params);
+  if (provided === null || !tokensEqual(expectedToken, provided)) {
+    return errorResponse(message.id, {
+      layer: "auth",
+      code: "auth_failed",
+      message: "IPC authentication failed",
+    });
+  }
+  state.authenticated = true;
+  return {
+    v: SERVICE_IPC_PROTOCOL_VERSION,
+    id: message.id,
+    type: "res",
+    result: { ok: true },
+  };
+}
+
 export async function startServiceIpcServer(
   options: {
     path?: string;
     dataDir: string;
+    /** Shared secret; peers must `auth` with this token before other methods. */
+    token: string;
     handler: ServiceIpcHandler;
   },
 ): Promise<ServiceIpcServer> {
   const path = options.path ?? defaultServiceIpcPath(options.dataDir);
   await removeStaleUnixSocket(path);
 
-  const sockets = new Set<Socket>();
+  const sockets = new Set<SocketState>();
   const server: Server = createServer((socket) => {
-    sockets.add(socket);
+    const state: SocketState = { socket, authenticated: false };
+    sockets.add(state);
     const reader = new ServiceIpcFrameReader();
     let queue: Promise<void> = Promise.resolve();
 
@@ -172,6 +212,39 @@ export async function startServiceIpcServer(
           }
 
           try {
+            if (!state.authenticated) {
+              if (String(message.method) === SERVICE_IPC_AUTH_METHOD) {
+                const response = handleAuthRequest(
+                  message,
+                  options.token,
+                  state,
+                );
+                writeMessage(socket, response);
+                if (response.type === "err") {
+                  socket.destroy();
+                }
+                continue;
+              }
+              writeMessage(
+                socket,
+                errorResponse(message.id, {
+                  layer: "auth",
+                  code: "auth_required",
+                  message: "IPC authentication required before other methods",
+                }),
+              );
+              socket.destroy();
+              continue;
+            }
+
+            if (String(message.method) === SERVICE_IPC_AUTH_METHOD) {
+              writeMessage(
+                socket,
+                handleAuthRequest(message, options.token, state),
+              );
+              continue;
+            }
+
             writeMessage(
               socket,
               await handleRequest(message, options.handler),
@@ -187,10 +260,10 @@ export async function startServiceIpcServer(
     });
 
     socket.on("close", () => {
-      sockets.delete(socket);
+      sockets.delete(state);
     });
     socket.on("error", () => {
-      sockets.delete(socket);
+      sockets.delete(state);
     });
   });
 
@@ -210,8 +283,11 @@ export async function startServiceIpcServer(
         event,
         payload,
       };
-      for (const socket of sockets) {
-        writeMessage(socket, message);
+      for (const state of sockets) {
+        if (!state.authenticated) {
+          continue;
+        }
+        writeMessage(state.socket, message);
       }
     },
     async close() {
@@ -219,8 +295,8 @@ export async function startServiceIpcServer(
         return;
       }
       closed = true;
-      for (const socket of sockets) {
-        socket.destroy();
+      for (const state of sockets) {
+        state.socket.destroy();
       }
       sockets.clear();
       await new Promise<void>((resolve, reject) => {

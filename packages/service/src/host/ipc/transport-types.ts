@@ -19,6 +19,15 @@ export interface ServiceIpcClientOptions {
   connectTimeoutMs?: number;
   /** Default per-request timeout when `request` options omit `timeoutMs`. */
   requestTimeoutMs?: number;
+  /**
+   * Explicit IPC handshake token (#336). When omitted, resolved from
+   * `tokenFile` / `COLLECTOR_IPC_TOKEN` / `dataDir` token file / sock sibling.
+   */
+  token?: string;
+  /** Read token from this path instead of the default dataDir file. */
+  tokenFile?: string;
+  /** Profile dataDir used to locate `collector-service.ipc-token`. */
+  dataDir?: string;
 }
 
 /**

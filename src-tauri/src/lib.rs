@@ -7,7 +7,7 @@ pub mod service_logs;
 pub mod service_mode;
 pub mod service_supervise;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -395,10 +395,14 @@ fn service_ipc_connect(
     app: tauri::AppHandle,
     ipc_state: tauri::State<'_, ServiceIpcState>,
     ipc_path: String,
+    data_dir: String,
 ) -> Result<String, String> {
     let path = PathBuf::from(&ipc_path);
-    let client = ServiceIpcClient::connect(&path, Duration::from_secs(15), Some(app))
+    let token = crate::service_ipc::read_ipc_token(Path::new(&data_dir))
         .map_err(|e| e.to_string())?;
+    let client =
+        ServiceIpcClient::connect(&path, Duration::from_secs(15), Some(app), &token)
+            .map_err(|e| e.to_string())?;
     let mut guard = ipc_state.client.lock().map_err(|e| e.to_string())?;
     if let Some(existing) = guard.take() {
         let _ = existing.close();

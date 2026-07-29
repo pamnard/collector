@@ -1,18 +1,17 @@
 /**
- * Local IPC transport smoke (#152).
+ * Local IPC transport smoke (#152/#336).
  *
- * Spawns `collector-service serve`, dials the READY `ipcPath`, runs health/ping
- * over framed IPC, then SIGTERM for a clean exit.
+ * Spawns `collector-service serve`, dials the READY `ipcPath` with auth token
+ * from dataDir, runs health/ping over framed IPC, then SIGTERM for a clean exit.
  *
  * Local / CI:
  *   npm run test:service-ipc
  *
  * Also run from `npm run verify:release`.
- * App production path must stay in-process (does not dial this host).
  */
 import { spawn } from "node:child_process";
 import { createConnection } from "node:net";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -36,15 +35,21 @@ function encodeFrame(message) {
   return Buffer.concat([header, body]);
 }
 
-async function ipcRequest(path, method) {
+function readToken(dataDir) {
+  return readFileSync(join(dataDir, "collector-service.ipc-token"), "utf8").trim();
+}
+
+function ipcRequest(path, method, params) {
   return new Promise((resolve, reject) => {
+    const id = "1";
     const socket = createConnection({ path }, () => {
       socket.write(
         encodeFrame({
           v: PROTOCOL_VERSION,
-          id: "1",
+          id,
           type: "req",
           method,
+          ...(params === undefined ? {} : { params }),
         }),
       );
     });
@@ -69,6 +74,66 @@ async function ipcRequest(path, method) {
       clearTimeout(timer);
       reject(error);
     });
+  });
+}
+
+/** One connection: auth, then sequential requests, then close. */
+function ipcAuthedRequests(path, token, methods) {
+  return new Promise((resolve, reject) => {
+    const results = [];
+    let nextId = 1;
+    let queue = [{ method: "auth", params: { token } }, ...methods];
+    let pendingId = null;
+    let buf = Buffer.alloc(0);
+
+    const sendNext = (socket) => {
+      if (queue.length === 0) {
+        socket.end();
+        resolve(results);
+        return;
+      }
+      const next = queue.shift();
+      pendingId = String(nextId++);
+      socket.write(
+        encodeFrame({
+          v: PROTOCOL_VERSION,
+          id: pendingId,
+          type: "req",
+          method: next.method,
+          ...(next.params === undefined ? {} : { params: next.params }),
+        }),
+      );
+    };
+
+    const socket = createConnection({ path }, () => sendNext(socket));
+    const timer = setTimeout(() => {
+      socket.destroy();
+      reject(new Error("IPC session timed out"));
+    }, 15_000);
+
+    socket.on("data", (chunk) => {
+      buf = Buffer.concat([buf, chunk]);
+      while (buf.length >= 4) {
+        const len = buf.readUInt32BE(0);
+        if (buf.length < 4 + len) return;
+        const message = JSON.parse(buf.subarray(4, 4 + len).toString("utf8"));
+        buf = buf.subarray(4 + len);
+        if (message.id !== pendingId) continue;
+        results.push(message);
+        if (message.type === "err") {
+          clearTimeout(timer);
+          socket.destroy();
+          reject(new Error(`IPC error: ${JSON.stringify(message)}`));
+          return;
+        }
+        sendNext(socket);
+      }
+    });
+    socket.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    socket.on("close", () => clearTimeout(timer));
   });
 }
 
@@ -133,13 +198,26 @@ try {
     throw new Error(`READY missing ipcPath: ${JSON.stringify(ready)}`);
   }
 
-  const ping = await ipcRequest(ready.ipcPath, "ping");
-  if (ping.type !== "res" || !ping.result?.pong) {
-    throw new Error(`IPC ping failed: ${JSON.stringify(ping)}`);
+  const token = readToken(dataDir);
+  const unauth = await ipcRequest(ready.ipcPath, "ping");
+  if (unauth.type !== "err" || unauth.error?.code !== "auth_required") {
+    throw new Error(`expected auth_required, got ${JSON.stringify(unauth)}`);
   }
 
-  const health = await ipcRequest(ready.ipcPath, "health");
-  if (health.type !== "res" || !health.result?.healthy) {
+  const results = await ipcAuthedRequests(ready.ipcPath, token, [
+    { method: "ping" },
+    { method: "health" },
+  ]);
+  const auth = results[0];
+  const ping = results[1];
+  const health = results[2];
+  if (auth?.type !== "res") {
+    throw new Error(`IPC auth failed: ${JSON.stringify(auth)}`);
+  }
+  if (ping?.type !== "res" || !ping.result?.pong) {
+    throw new Error(`IPC ping failed: ${JSON.stringify(ping)}`);
+  }
+  if (health?.type !== "res" || !health.result?.healthy) {
     throw new Error(`IPC health failed: ${JSON.stringify(health)}`);
   }
 
@@ -152,7 +230,7 @@ try {
   }
 
   console.log(
-    "OK: service host READY → IPC ping+health → clean SIGTERM exit",
+    "OK: service host READY → IPC auth_required + auth+ping+health → clean SIGTERM exit",
   );
 } catch (error) {
   try {

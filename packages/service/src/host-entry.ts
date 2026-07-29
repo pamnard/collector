@@ -35,6 +35,19 @@ export {
 } from "./host/ipc/paths.js";
 
 export {
+  SERVICE_IPC_AUTH_METHOD,
+  SERVICE_IPC_TOKEN_ENV,
+  SERVICE_IPC_TOKEN_FILENAME,
+  defaultServiceIpcTokenPath,
+  generateServiceIpcToken,
+  readServiceIpcTokenFile,
+  removeServiceIpcTokenFile,
+  resolveServiceIpcToken,
+  siblingServiceIpcTokenPath,
+  writeServiceIpcTokenFile,
+} from "./host/ipc/auth.js";
+
+export {
   startServiceIpcServer,
   type ServiceIpcHandler,
   type ServiceIpcServer,
