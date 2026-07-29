@@ -1,0 +1,62 @@
+/**
+ * Host port→wire coverage (#366).
+ */
+import { describe, expect, it } from "vitest";
+import {
+  BOOT_PORT_KEYS,
+  DASHBOARD_SNAPSHOT_PORT_KEYS,
+  FOLDERS_PORT_KEYS,
+  INDEX_PORT_KEYS,
+  ITEMS_PORT_KEYS,
+  MEDIA_PORT_KEYS,
+  SETTINGS_PORT_KEYS,
+  TAGS_PORT_KEYS,
+  VAULTS_PORT_KEYS,
+} from "@collector/api";
+import { DOMAIN_IPC_METHODS } from "./domain-methods.js";
+import {
+  ALL_PORT_METHOD_KEYS,
+  assertHostPortWireCoverage,
+  CLIENT_ORCHESTRATED_PORT_METHODS,
+  HOST_WIRE_PORT_METHODS,
+} from "./domain-port-wire.js";
+
+describe("domain port→wire map (#366)", () => {
+  it("ALL_PORT_METHOD_KEYS unions every *_PORT_KEYS entry", () => {
+    const expected = new Set<string>([
+      ...BOOT_PORT_KEYS,
+      ...ITEMS_PORT_KEYS,
+      ...TAGS_PORT_KEYS,
+      ...FOLDERS_PORT_KEYS,
+      ...MEDIA_PORT_KEYS,
+      ...VAULTS_PORT_KEYS,
+      ...INDEX_PORT_KEYS,
+      ...SETTINGS_PORT_KEYS,
+      ...DASHBOARD_SNAPSHOT_PORT_KEYS,
+    ]);
+    expect(new Set(ALL_PORT_METHOD_KEYS)).toEqual(expected);
+  });
+
+  it("HOST_WIRE_PORT_METHODS excludes client-orchestrated methods", () => {
+    for (const method of CLIENT_ORCHESTRATED_PORT_METHODS) {
+      expect(HOST_WIRE_PORT_METHODS).not.toContain(method);
+    }
+  });
+
+  it("every host-wire port method is in DOMAIN_IPC_METHODS", () => {
+    expect(() => assertHostPortWireCoverage()).not.toThrow();
+    for (const method of HOST_WIRE_PORT_METHODS) {
+      expect(
+        Object.values(DOMAIN_IPC_METHODS),
+        method,
+      ).toContain(method);
+    }
+  });
+
+  it("client-orchestrated methods are absent from DOMAIN_IPC_METHODS", () => {
+    const catalog = new Set(Object.values(DOMAIN_IPC_METHODS));
+    for (const method of CLIENT_ORCHESTRATED_PORT_METHODS) {
+      expect(catalog.has(method), method).toBe(false);
+    }
+  });
+});

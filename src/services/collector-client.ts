@@ -33,5 +33,9 @@ export {
   createLocalCollectorService,
   createLocalDashboardSnapshotPort,
 } from "./local-adapter";
-export { createIpcAdapter } from "./ipc-adapter";
+export {
+  createIpcAdapter,
+  createIpcCollectorService,
+  createIpcDashboardSnapshotPort,
+} from "./ipc-adapter";
 export { DASHBOARD_PREFETCH_SIZE } from "@collector/api";

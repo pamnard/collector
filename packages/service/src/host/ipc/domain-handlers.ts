@@ -1,9 +1,13 @@
 /**
  * Aggregate domain IPC handlers for the service host (#155+).
+ *
+ * Flat method names are transitional aliases for domain ports (#366).
+ * Coverage vs `*_PORT_KEYS` is asserted by {@link assertHostPortWireCoverage}.
  */
 
 import type { ServiceDomainRuntime } from "../domain-runtime.js";
 import type { DomainIpcHandlerMap } from "./domain-methods.js";
+import { assertHostPortWireCoverage } from "./domain-port-wire.js";
 import { buildItemsReadHandlers } from "./handlers/items-read.js";
 import { buildItemsWriteHandlers } from "./handlers/items-write.js";
 import { buildTagsHandlers } from "./handlers/tags.js";
@@ -18,7 +22,8 @@ import { buildWatcherHandlers } from "./handlers/watcher.js";
 export function buildDomainIpcHandlers(
   runtime: ServiceDomainRuntime,
 ): DomainIpcHandlerMap {
-  return {
+  // Port-grouped builders; keys remain flat camelCase wire aliases (#366).
+  const handlers: DomainIpcHandlerMap = {
     ...buildIndexBootHandlers(runtime),
     ...buildItemsReadHandlers(runtime),
     ...buildItemsWriteHandlers(runtime),
@@ -30,6 +35,8 @@ export function buildDomainIpcHandlers(
     ...buildSyncStatusHandlers(runtime),
     ...buildWatcherHandlers(runtime),
   };
+  assertHostPortWireCoverage(handlers);
+  return handlers;
 }
 
 export function createDomainIpcDispatcher(
