@@ -16,6 +16,8 @@ export type { CollectorClient } from "../services/collector-client";
 export {
   createCollectorClient,
   createLocalAdapter,
+  createLocalCollectorService,
+  createLocalDashboardSnapshotPort,
   getCollectorClient,
   setCollectorClient,
 } from "../services/collector-client";

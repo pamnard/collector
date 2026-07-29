@@ -28,6 +28,10 @@ export function createCollectorClient(
   return adapter;
 }
 
-export { createLocalAdapter } from "./local-adapter";
+export {
+  createLocalAdapter,
+  createLocalCollectorService,
+  createLocalDashboardSnapshotPort,
+} from "./local-adapter";
 export { createIpcAdapter } from "./ipc-adapter";
 export { DASHBOARD_PREFETCH_SIZE } from "@collector/api";
