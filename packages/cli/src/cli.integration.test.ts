@@ -119,6 +119,83 @@ describe("collector CLI IPC (#172)", () => {
     expect(updateCode).toBe(0);
     expect(JSON.parse(updatedOut.join("\n")).title).toBe("CLI note edited");
 
+    const typedOut: string[] = [];
+    const typedCode = await runCollectorCli(
+      [
+        "--data-dir",
+        dataDir,
+        "update-item",
+        created.id,
+        "--type",
+        "article",
+      ],
+      {
+        stdout: (line) => typedOut.push(line),
+        stderr: (line) => typedOut.push(`ERR:${line}`),
+      },
+    );
+    expect(typedCode).toBe(0);
+    expect(JSON.parse(typedOut.join("\n")).content_type).toBe("article");
+
+    const tagOut: string[] = [];
+    const tagCode = await runCollectorCli(
+      ["--data-dir", dataDir, "create-tag", "--name", "cli-351"],
+      {
+        stdout: (line) => tagOut.push(line),
+        stderr: (line) => tagOut.push(`ERR:${line}`),
+      },
+    );
+    expect(tagCode).toBe(0);
+    const tag = JSON.parse(tagOut.join("\n")) as { id: string };
+
+    const taggedOut: string[] = [];
+    const taggedCode = await runCollectorCli(
+      [
+        "--data-dir",
+        dataDir,
+        "update-item",
+        created.id,
+        "--tag-ids",
+        tag.id,
+      ],
+      {
+        stdout: (line) => taggedOut.push(line),
+        stderr: (line) => taggedOut.push(`ERR:${line}`),
+      },
+    );
+    expect(taggedCode).toBe(0);
+    expect(JSON.parse(taggedOut.join("\n")).tag_ids).toEqual([tag.id]);
+
+    const sourceOut: string[] = [];
+    const sourceCode = await runCollectorCli(
+      ["--data-dir", dataDir, "get-item-source", created.id],
+      {
+        stdout: (line) => sourceOut.push(line),
+        stderr: (line) => sourceOut.push(`ERR:${line}`),
+      },
+    );
+    expect(sourceCode).toBe(0);
+    const raw = sourceOut.join("\n");
+    expect(raw).toMatch(/title:/);
+
+    const sourceUpdatedOut: string[] = [];
+    const sourceUpdatedCode = await runCollectorCli(
+      [
+        "--data-dir",
+        dataDir,
+        "update-item-source",
+        created.id,
+        "--content",
+        raw.replace(/CLI note edited/g, "CLI via source"),
+      ],
+      {
+        stdout: (line) => sourceUpdatedOut.push(line),
+        stderr: (line) => sourceUpdatedOut.push(`ERR:${line}`),
+      },
+    );
+    expect(sourceUpdatedCode).toBe(0);
+    expect(JSON.parse(sourceUpdatedOut.join("\n")).title).toBe("CLI via source");
+
     const folderOut: string[] = [];
     const folderCode = await runCollectorCli(
       ["--data-dir", dataDir, "create-folder", "Inbox"],

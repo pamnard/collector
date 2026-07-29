@@ -120,4 +120,97 @@ describe("MCP tools over service IPC (#174)", () => {
     await client.close();
     await host.close();
   });
+
+  it("update content_type + tag_ids and source round-trip (#351 / #348)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-mcp-351-"));
+    dirs.push(dataDir);
+    const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
+    const client = await connectCollectorIpcClient(
+      resolveMcpIpcPath({ dataDir }),
+      { connectTimeoutMs: 2_000, dataDir },
+    );
+    const mcp = createCollectorMcpServer(client);
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const mcpClient = new Client({ name: "test", version: "0.0.1" });
+    await Promise.all([
+      mcp.connect(serverTransport),
+      mcpClient.connect(clientTransport),
+    ]);
+
+    const created = await mcpClient.callTool({
+      name: "collector_create_item",
+      arguments: {
+        title: "Misclassified",
+        content_type: "image",
+        content: "actually an article",
+        url: "https://example.com/a",
+      },
+    });
+    expect(created.isError).toBeFalsy();
+    const createdBody = JSON.parse(
+      (created.content as { text: string }[])[0]!.text,
+    ) as { id: string; content_type: string };
+    expect(createdBody.content_type).toBe("image");
+
+    const tag = await mcpClient.callTool({
+      name: "collector_create_tag",
+      arguments: { name: "triage-351" },
+    });
+    expect(tag.isError).toBeFalsy();
+    const tagBody = JSON.parse(
+      (tag.content as { text: string }[])[0]!.text,
+    ) as { id: string };
+
+    const updated = await mcpClient.callTool({
+      name: "collector_update_item",
+      arguments: {
+        itemId: createdBody.id,
+        content_type: "article",
+        tag_ids: [tagBody.id],
+      },
+    });
+    expect(updated.isError).toBeFalsy();
+    const updatedBody = JSON.parse(
+      (updated.content as { text: string }[])[0]!.text,
+    ) as { content_type: string; tag_ids: string[] };
+    expect(updatedBody.content_type).toBe("article");
+    expect(updatedBody.tag_ids).toEqual([tagBody.id]);
+
+    const got = await mcpClient.callTool({
+      name: "collector_get_item",
+      arguments: { itemId: createdBody.id },
+    });
+    expect(got.isError).toBeFalsy();
+    const gotBody = JSON.parse(
+      (got.content as { text: string }[])[0]!.text,
+    ) as { item: { content_type: string; tag_ids: string[] } };
+    expect(gotBody.item.content_type).toBe("article");
+    expect(gotBody.item.tag_ids).toEqual([tagBody.id]);
+
+    const source = await mcpClient.callTool({
+      name: "collector_get_item_source",
+      arguments: { itemId: createdBody.id },
+    });
+    expect(source.isError).toBeFalsy();
+    const sourceText = (source.content as { text: string }[])[0]!.text;
+    expect(sourceText).toMatch(/title:/);
+    expect(sourceText).toMatch(/article|content_type|type:/);
+
+    const rewritten = sourceText.replace(/Misclassified/g, "Fixed title");
+    const sourceUpdated = await mcpClient.callTool({
+      name: "collector_update_item_source",
+      arguments: { itemId: createdBody.id, rawMarkdown: rewritten },
+    });
+    expect(sourceUpdated.isError).toBeFalsy();
+    const sourceUpdatedBody = JSON.parse(
+      (sourceUpdated.content as { text: string }[])[0]!.text,
+    ) as { title: string };
+    expect(sourceUpdatedBody.title).toBe("Fixed title");
+
+    await mcpClient.close();
+    await mcp.close();
+    await client.close();
+    await host.close();
+  });
 });

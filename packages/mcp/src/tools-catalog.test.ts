@@ -11,6 +11,8 @@ const REGISTERED_TOOL_NAMES = [
   "collector_get_item",
   "collector_create_item",
   "collector_update_item",
+  "collector_get_item_source",
+  "collector_update_item_source",
   "collector_delete_item",
   "collector_create_tag",
   "collector_delete_tag",
@@ -67,5 +69,33 @@ describe("COLLECTOR_MCP_TOOLS catalog (#273 / #265)", () => {
     const tagId = deleteTag!.params.find((param) => param.name === "tagId");
     expect(tagId?.description).toMatch(/UUID/i);
     expect(tagId?.description).toMatch(/not an item path/i);
+  });
+
+  it("exposes full UpdateItemInput on collector_update_item (#351)", () => {
+    const update = COLLECTOR_MCP_TOOLS.find(
+      (tool) => tool.name === "collector_update_item",
+    );
+    expect(update).toBeDefined();
+    const names = update!.params.map((param) => param.name);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "itemId",
+        "title",
+        "description",
+        "url",
+        "content",
+        "content_type",
+        "tag_ids",
+        "folder_path",
+      ]),
+    );
+  });
+
+  it("documents move as alias of update folder_path (#351)", () => {
+    const move = COLLECTOR_MCP_TOOLS.find(
+      (tool) => tool.name === "collector_move_item",
+    );
+    expect(move).toBeDefined();
+    expect(move!.description).toMatch(/alias of collector_update_item/i);
   });
 });
