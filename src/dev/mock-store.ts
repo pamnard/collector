@@ -133,11 +133,9 @@ export const mockStore = {
     }
     const created: TagWithCount = {
       id: crypto.randomUUID(),
-      vault_id: vault.id,
       name: normalized,
       color: null,
       created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
       item_count: 0,
     };
     tags = [...current, created].sort((a, b) => a.name.localeCompare(b.name));

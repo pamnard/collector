@@ -98,6 +98,27 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       return this.deleteByField("vaults", "id", bindValues[0]);
     }
 
+    if (
+      normalized.startsWith(
+        "INSERT OR IGNORE INTO item_tags (item_id, tag_id) SELECT item_id, ?",
+      )
+    ) {
+      const newTagId = bindValues[0];
+      const oldTagId = String(bindValues[1]);
+      const table = this.getTable("item_tags");
+      let inserted = 0;
+      for (const row of [...table.values()]) {
+        if (String(row.tag_id) !== oldTagId) {
+          continue;
+        }
+        inserted += this.insertRow("item_tags", {
+          item_id: row.item_id,
+          tag_id: newTagId,
+        });
+      }
+      return inserted;
+    }
+
     if (normalized.startsWith("INSERT INTO item_tags")) {
       let inserted = 0;
       for (let i = 0; i < bindValues.length; i += 2) {
@@ -325,6 +346,25 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
           created_at: row.created_at,
           updated_at: row.updated_at,
         })) as T[];
+    }
+
+    if (
+      normalized.startsWith(
+        "SELECT id FROM tags WHERE vault_id = ? AND name = ? AND id != ?",
+      )
+    ) {
+      const vaultId = bindValues[0];
+      const name = bindValues[1];
+      const excludeId = String(bindValues[2]);
+      const table = this.tables.get("tags") ?? new Map();
+      return [...table.values()]
+        .filter(
+          (row) =>
+            row.vault_id === vaultId &&
+            row.name === name &&
+            String(row.id) !== excludeId,
+        )
+        .map((row) => ({ id: row.id })) as T[];
     }
 
     if (normalized.startsWith("SELECT item_id, tag_id FROM item_tags WHERE item_id IN")) {

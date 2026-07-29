@@ -1,6 +1,6 @@
 /**
- * @collector/api — frozen transport-agnostic Collector service API types (#145).
- * Types / constants only. No host, IPC, or UI wiring.
+ * @collector/api — transport-agnostic Collector service API (#145 / #361).
+ * Types, constants, and thin port-compose helpers. No host, IPC, or UI wiring.
  */
 
 export type {
@@ -33,13 +33,37 @@ export {
   type ActiveVaultResult,
   type AdjacentItemRef,
   type AdjacentItemsResult,
+  type BootPort,
+  type CollectorService,
   type CollectorServiceApi,
   type DashboardIndexPage,
   type DashboardItemIdsResult,
   type DashboardItemSort,
   type DashboardItemSortDir,
   type DashboardLoadHandlers,
+  type DashboardSnapshotPort,
+  type FoldersPort,
   type GetItemResult,
+  type IndexPort,
+  type ItemsPort,
+  type MediaPort,
   type ServiceSubscribeHandlers,
+  type SettingsPort,
+  type TagsPort,
   type VaultIndexSyncStatus,
+  type VaultsPort,
 } from "./service-api.js";
+
+export {
+  BOOT_PORT_KEYS,
+  DASHBOARD_SNAPSHOT_PORT_KEYS,
+  FOLDERS_PORT_KEYS,
+  INDEX_PORT_KEYS,
+  ITEMS_PORT_KEYS,
+  MEDIA_PORT_KEYS,
+  SETTINGS_PORT_KEYS,
+  TAGS_PORT_KEYS,
+  toCollectorService,
+  toCollectorServiceApi,
+  VAULTS_PORT_KEYS,
+} from "./service-compose.js";

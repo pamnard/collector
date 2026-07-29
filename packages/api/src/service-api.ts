@@ -81,19 +81,16 @@ export interface ServiceSubscribeHandlers {
   onError?: (scope: string, error: unknown) => void;
 }
 
-/**
- * Full service API surface matching today's UI facade (`collector-service` +
- * settings/snapshot entrypoints the UI already uses).
- * Methods are the contract; implementations come later (LocalAdapter / IPC).
- */
-export interface CollectorServiceApi {
-  // Boot / DB
+/** Boot / DB port (#361). */
+export interface BootPort {
   openCollectorDatabase(): Promise<void>;
   ensureCollectorDatabaseHealthy(): Promise<void>;
   ensureActiveVault(): Promise<ActiveVaultResult>;
   getDataDirectory(): Promise<string>;
+}
 
-  // Items / search / dashboard
+/** Items / search / dashboard loaders (#361). */
+export interface ItemsPort {
   listItems(): Promise<ItemFile[]>;
   searchItems(query: string, filter: NavFilter): Promise<ItemFile[]>;
   fetchDashboardIndexPage(
@@ -137,8 +134,10 @@ export interface CollectorServiceApi {
   importDroppedFiles(
     input: ImportDroppedFilesInput,
   ): Promise<ImportDroppedFilesResult>;
+}
 
-  // Tags
+/** Tags port (#361). */
+export interface TagsPort {
   subscribeTags(
     onUpdate: (tags: TagWithCount[]) => void,
     handlers?: ServiceSubscribeHandlers,
@@ -151,8 +150,10 @@ export interface CollectorServiceApi {
     input: { name?: string; color?: string | null },
   ): Promise<Tag>;
   deleteTag(tagId: string): Promise<void>;
+}
 
-  // Folders
+/** Folders port (#361). */
+export interface FoldersPort {
   subscribeFolderTree(
     onUpdate: (tree: FolderTreeNode[]) => void,
     handlers?: ServiceSubscribeHandlers,
@@ -164,8 +165,10 @@ export interface CollectorServiceApi {
   renameFolder(oldPath: string, newPath: string): Promise<string>;
   deleteFolder(folderPath: string): Promise<void>;
   moveItemToFolderPath(itemId: string, folderPath: string): Promise<ItemFile>;
+}
 
-  // Media / cover
+/** Media / cover port (#361). */
+export interface MediaPort {
   listItemMedia(itemId: string): Promise<MediaWithPath[]>;
   resolveItemThumbnailPath(item: ItemFile): Promise<string | null>;
   resolveItemThumbnailPaths(
@@ -182,27 +185,38 @@ export interface CollectorServiceApi {
     file: AttachMediaFileInput,
   ): Promise<MediaFileMeta>;
   deleteItemMedia(itemId: string, mediaId: string): Promise<void>;
+}
 
-  // Vaults
+/** Vaults port (#361). */
+export interface VaultsPort {
   listVaults(): Promise<VaultMeta[]>;
   getActiveVaultMeta(): Promise<VaultMeta>;
   switchVault(vaultId: string): Promise<VaultMeta>;
   setDefaultVault(vaultId: string): Promise<void>;
+}
 
-  // Sync / status
+/** Index sync status port (#361). */
+export interface IndexPort {
   subscribeVaultIndexSyncStatus(
     onUpdate: (status: VaultIndexSyncStatus) => void,
   ): () => void;
   getVaultIndexSyncStatus(): VaultIndexSyncStatus;
+}
 
-  // Settings (UI facade beside collector-service)
+/** App settings persistence port (#361). */
+export interface SettingsPort {
   ensureAppSettings(): Promise<AppSettings>;
   getAppSettingsSync(): AppSettings | null;
   updateAppSettings(patch: Partial<AppSettings>): Promise<AppSettings>;
   subscribeAppSettings(onUpdate: (settings: AppSettings) => void): () => void;
   getAppConfigDirectory(): Promise<string>;
+}
 
-  // Dashboard snapshot
+/**
+ * Dashboard snapshot cache — transitional flat-only surface (#361).
+ * Leaves the host for UiSession in #363; not a `CollectorService` key.
+ */
+export interface DashboardSnapshotPort {
   ensureDashboardSnapshot(): Promise<DashboardSnapshot | null>;
   peekMatchingDashboardSnapshot(input: {
     vaultId: string;
@@ -223,3 +237,35 @@ export interface CollectorServiceApi {
     streamEndOffset: number;
   }): DashboardSnapshot;
 }
+
+/**
+ * Port-segmented sole-writer service contract (#361 / #360).
+ * UI takes the composite; CLI/MCP take only the ports they need.
+ */
+export interface CollectorService {
+  boot: BootPort;
+  items: ItemsPort;
+  tags: TagsPort;
+  folders: FoldersPort;
+  media: MediaPort;
+  vaults: VaultsPort;
+  index: IndexPort;
+  settings: SettingsPort;
+}
+
+/**
+ * Full service API surface matching today's UI facade (`collector-service` +
+ * settings/snapshot entrypoints the UI already uses).
+ *
+ * @deprecated Use {@link CollectorService} ports. Transitional flat facade (#145 → #360).
+ * `DashboardSnapshotPort` is flat-only until UiSession (#363).
+ */
+export type CollectorServiceApi = BootPort &
+  ItemsPort &
+  TagsPort &
+  FoldersPort &
+  MediaPort &
+  VaultsPort &
+  IndexPort &
+  SettingsPort &
+  DashboardSnapshotPort;

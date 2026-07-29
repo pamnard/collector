@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import type { CollectorServiceApi } from "@collector/api";
+import {
+  toCollectorService,
+  type CollectorServiceApi,
+} from "@collector/api";
 import {
   createCollectorClient,
   getCollectorClient,
@@ -7,6 +10,7 @@ import {
 } from "./collector-client";
 import { createLocalAdapter } from "./local-adapter";
 
+/** Transitional flat checklist (#145); remove with god-interface (#360/#370). */
 const REQUIRED_METHODS: (keyof CollectorServiceApi)[] = [
   "openCollectorDatabase",
   "ensureCollectorDatabaseHealthy",
@@ -88,5 +92,25 @@ describe("CollectorClient / LocalAdapter (#169)", () => {
   it("createCollectorClient returns the provided adapter", () => {
     const adapter = createLocalAdapter();
     expect(createCollectorClient(adapter)).toBe(adapter);
+  });
+
+  it("toCollectorService lifts LocalAdapter into eight ports (#361)", () => {
+    const adapter = createLocalAdapter();
+    const service = toCollectorService(adapter);
+    expect(Object.keys(service).sort()).toEqual(
+      [
+        "boot",
+        "folders",
+        "index",
+        "items",
+        "media",
+        "settings",
+        "tags",
+        "vaults",
+      ].sort(),
+    );
+    expect(typeof service.items.listItems).toBe("function");
+    expect(typeof service.boot.getDataDirectory).toBe("function");
+    expect(typeof service.settings.getAppSettingsSync).toBe("function");
   });
 });
