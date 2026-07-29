@@ -391,6 +391,14 @@ export async function attachMediaFiles(
   refuseInProcess();
 }
 
+export async function replaceItemMedia(
+  _itemId: string,
+  _mediaId: string,
+  _file: { filename: string; data: Uint8Array },
+): Promise<MediaFileMeta> {
+  refuseInProcess();
+}
+
 export async function deleteItemMedia(
   _itemId: string,
   _mediaId: string,

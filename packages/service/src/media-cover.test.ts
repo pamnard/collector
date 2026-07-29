@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const listItemMediaWithPaths = vi.fn();
 const attachMediaFile = vi.fn();
+const replaceMediaFile = vi.fn();
 const deleteMediaFile = vi.fn();
 const applyItemCover = vi.fn();
 const clearItemCover = vi.fn();
@@ -13,6 +14,7 @@ vi.mock("@collector/core", async (importOriginal) => {
     listItemMediaWithPaths: (...args: unknown[]) =>
       listItemMediaWithPaths(...args),
     attachMediaFile: (...args: unknown[]) => attachMediaFile(...args),
+    replaceMediaFile: (...args: unknown[]) => replaceMediaFile(...args),
     deleteMediaFile: (...args: unknown[]) => deleteMediaFile(...args),
     applyItemCover: (...args: unknown[]) => applyItemCover(...args),
     clearItemCover: (...args: unknown[]) => clearItemCover(...args),
@@ -40,6 +42,7 @@ describe("createMediaCoverService", () => {
   beforeEach(() => {
     listItemMediaWithPaths.mockReset();
     attachMediaFile.mockReset();
+    replaceMediaFile.mockReset();
     deleteMediaFile.mockReset();
     applyItemCover.mockReset();
     clearItemCover.mockReset();
@@ -107,5 +110,34 @@ describe("createMediaCoverService", () => {
     await expect(
       createService().setItemCoverFromMedia("note.md", "missing"),
     ).rejects.toThrow(/Media not found/);
+  });
+
+  it("replaceItemMedia replaces then syncs cover (#353)", async () => {
+    replaceMediaFile.mockResolvedValue({ id: "m1", filename: "b.png" });
+    listItemMediaWithPaths.mockResolvedValue([
+      {
+        id: "m1",
+        media_type: "image",
+        filename: "b.png",
+        absolute_path: "/vault/note.media/b.png",
+      },
+    ]);
+    applyItemCover.mockResolvedValue({ id: "note.md" });
+
+    const result = await createService().replaceItemMedia("note.md", "m1", {
+      filename: "b.png",
+      data: new Uint8Array([2]),
+    });
+
+    expect(replaceMediaFile).toHaveBeenCalledWith(
+      ctx,
+      "/vault",
+      "note.md",
+      "m1",
+      { filename: "b.png", data: new Uint8Array([2]) },
+    );
+    expect(generateCoverFromMedia).toHaveBeenCalled();
+    expect(applyItemCover).toHaveBeenCalled();
+    expect(result).toEqual({ id: "m1", filename: "b.png" });
   });
 });

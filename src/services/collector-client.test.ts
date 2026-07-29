@@ -44,6 +44,7 @@ const REQUIRED_METHODS: (keyof CollectorServiceApi)[] = [
   "resolveItemThumbnailPaths",
   "setItemCoverFromMedia",
   "attachMediaFiles",
+  "replaceItemMedia",
   "deleteItemMedia",
   "listVaults",
   "getActiveVaultMeta",

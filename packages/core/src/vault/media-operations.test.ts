@@ -9,6 +9,7 @@ import {
   attachMediaFile,
   deleteMediaFile,
   listItemMediaWithPaths,
+  replaceMediaFile,
 } from "../vault/media-operations.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import { createId } from "../util/ids.js";
@@ -64,5 +65,62 @@ describe("media operations", () => {
     await deleteMediaFile(ctx, path, itemId, media.id);
     expect(await listItemMediaWithPaths(ctx, path, itemId)).toHaveLength(0);
     expect(await fs.exists(itemMediaManifestPath(path, itemId))).toBe(true);
+  });
+
+  it("replaces media bytes keeping stable id and created_at (#353)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-media-replace-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemId = `${createId()}.md`;
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Photo note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    });
+
+    const attached = await attachMediaFile(ctx, path, itemId, {
+      filename: "old.png",
+      data: Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    });
+    const oldPath = (await listItemMediaWithPaths(ctx, path, itemId))[0]!
+      .absolute_path;
+
+    const replaced = await replaceMediaFile(ctx, path, itemId, attached.id, {
+      filename: "new.jpg",
+      data: Uint8Array.from([1, 2, 3, 4]),
+    });
+
+    expect(replaced.id).toBe(attached.id);
+    expect(replaced.created_at).toBe(attached.created_at);
+    expect(replaced.filename).toBe("new.jpg");
+    expect(replaced.media_type).toBe("image");
+
+    const listed = await listItemMediaWithPaths(ctx, path, itemId);
+    expect(listed).toHaveLength(1);
+    expect(listed[0]!.id).toBe(attached.id);
+    expect(listed[0]!.filename).toBe("new.jpg");
+    expect(await fs.exists(listed[0]!.absolute_path)).toBe(true);
+    expect(await fs.exists(oldPath)).toBe(false);
+
+    await expect(
+      replaceMediaFile(ctx, path, itemId, "missing-id", {
+        filename: "x.png",
+        data: Uint8Array.from([1]),
+      }),
+    ).rejects.toThrow(/Media not found/);
   });
 });

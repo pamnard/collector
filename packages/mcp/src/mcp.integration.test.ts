@@ -291,4 +291,95 @@ describe("MCP tools over service IPC (#174)", () => {
     await client.close();
     await host.close();
   });
+
+  it("media attach/list/replace/delete/set-cover via MCP tools (#353)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-mcp-353-"));
+    dirs.push(dataDir);
+    const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
+    const client = await connectCollectorIpcClient(
+      resolveMcpIpcPath({ dataDir }),
+      { connectTimeoutMs: 2_000, dataDir },
+    );
+    const mcp = createCollectorMcpServer(client);
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const mcpClient = new Client({ name: "test", version: "0.0.1" });
+    await Promise.all([
+      mcp.connect(serverTransport),
+      mcpClient.connect(clientTransport),
+    ]);
+
+    const created = await mcpClient.callTool({
+      name: "collector_create_item",
+      arguments: { title: "Media MCP", content: "body" },
+    });
+    expect(created.isError).toBeFalsy();
+    const createdBody = JSON.parse(
+      (created.content as { text: string }[])[0]!.text,
+    ) as { id: string };
+
+    const pngBase64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+    const attached = await mcpClient.callTool({
+      name: "collector_attach_media",
+      arguments: {
+        itemId: createdBody.id,
+        filename: "dot.png",
+        dataBase64: pngBase64,
+      },
+    });
+    expect(attached.isError).toBeFalsy();
+    const attachedBody = JSON.parse(
+      (attached.content as { text: string }[])[0]!.text,
+    ) as { id: string; filename: string };
+    expect(attachedBody.filename).toBe("dot.png");
+
+    const listed = await mcpClient.callTool({
+      name: "collector_list_item_media",
+      arguments: { itemId: createdBody.id },
+    });
+    expect(listed.isError).toBeFalsy();
+    const listedBody = JSON.parse(
+      (listed.content as { text: string }[])[0]!.text,
+    ) as Array<{ id: string }>;
+    expect(listedBody.some((m) => m.id === attachedBody.id)).toBe(true);
+
+    const replaced = await mcpClient.callTool({
+      name: "collector_replace_media",
+      arguments: {
+        itemId: createdBody.id,
+        mediaId: attachedBody.id,
+        filename: "dot2.png",
+        dataBase64: pngBase64,
+      },
+    });
+    expect(replaced.isError).toBeFalsy();
+    const replacedBody = JSON.parse(
+      (replaced.content as { text: string }[])[0]!.text,
+    ) as { id: string; filename: string };
+    expect(replacedBody.id).toBe(attachedBody.id);
+    expect(replacedBody.filename).toBe("dot2.png");
+
+    const cover = await mcpClient.callTool({
+      name: "collector_set_item_cover",
+      arguments: { itemId: createdBody.id, mediaId: attachedBody.id },
+    });
+    expect(cover.isError).toBeFalsy();
+    const coverBody = JSON.parse(
+      (cover.content as { text: string }[])[0]!.text,
+    ) as { thumbnail: string | null };
+    expect(coverBody.thumbnail).toBeTruthy();
+
+    const deleted = await mcpClient.callTool({
+      name: "collector_delete_media",
+      arguments: { itemId: createdBody.id, mediaId: attachedBody.id },
+    });
+    expect(deleted.isError).toBeFalsy();
+
+    await mcpClient.close();
+    await mcp.close();
+    await client.close();
+    await host.close();
+  });
 });

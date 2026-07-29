@@ -368,6 +368,19 @@ export function createCollectorIpcClient(
           dataBase64: Buffer.from(file.data).toString("base64"),
         })),
       }) as Promise<MediaFileMeta[]>,
+    replaceItemMedia: async (
+      itemId: string,
+      mediaId: string,
+      file: AttachMediaFileInput,
+    ): Promise<MediaFileMeta> =>
+      transport.request("replaceItemMedia", {
+        itemId,
+        mediaId,
+        file: {
+          filename: file.filename,
+          dataBase64: Buffer.from(file.data).toString("base64"),
+        },
+      }) as Promise<MediaFileMeta>,
     deleteItemMedia: async (itemId: string, mediaId: string): Promise<void> => {
       await transport.request("deleteItemMedia", { itemId, mediaId });
     },

@@ -43,7 +43,23 @@ export type CliCommand =
   | { name: "rename-folder"; oldPath: string; newPath: string }
   | { name: "move-folder"; oldPath: string; newPath: string }
   | { name: "delete-folder"; folderPath: string }
-  | { name: "move-item"; itemId: string; folderPath: string };
+  | { name: "move-item"; itemId: string; folderPath: string }
+  | { name: "list-item-media"; itemId: string }
+  | {
+      name: "attach-media";
+      itemId: string;
+      filePath: string;
+      filename?: string;
+    }
+  | {
+      name: "replace-media";
+      itemId: string;
+      mediaId: string;
+      filePath: string;
+      filename?: string;
+    }
+  | { name: "delete-media"; itemId: string; mediaId: string }
+  | { name: "set-item-cover"; itemId: string; mediaId: string };
 
 export interface ParsedCliArgs {
   command: CliCommand;
@@ -80,6 +96,8 @@ const UPDATE_ITEM_FLAGS = new Set([
 const UPDATE_ITEM_SOURCE_FLAGS = new Set(["--content"]);
 const CREATE_TAG_FLAGS = new Set(["--name", "--color"]);
 const MOVE_ITEM_FLAGS = new Set(["--folder"]);
+const ATTACH_MEDIA_FLAGS = new Set(["--file", "--filename"]);
+const REPLACE_MEDIA_FLAGS = new Set(["--file", "--filename"]);
 
 function readOpt(argv: string[], name: string): string | undefined {
   const idx = argv.indexOf(name);
@@ -189,6 +207,8 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       ...UPDATE_ITEM_SOURCE_FLAGS,
       ...CREATE_TAG_FLAGS,
       ...MOVE_ITEM_FLAGS,
+      ...ATTACH_MEDIA_FLAGS,
+      ...REPLACE_MEDIA_FLAGS,
     ]),
   );
   const [command, ...rest] = positional;
@@ -446,6 +466,97 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     }
     return withEndpoint(
       { name: "move-item", itemId, folderPath },
+      dataDir,
+      ipcPath,
+      resolvedToken,
+    );
+  }
+
+  if (command === "list-item-media") {
+    const itemId = rest[0];
+    if (!itemId || rest.length !== 1) {
+      throw new CliUsageError("Usage: collector-cli list-item-media <item-id>");
+    }
+    return withEndpoint(
+      { name: "list-item-media", itemId },
+      dataDir,
+      ipcPath,
+      resolvedToken,
+    );
+  }
+
+  if (command === "attach-media") {
+    const itemId = rest[0];
+    const filePath = readOpt(argv, "--file");
+    const filename = readOpt(argv, "--filename");
+    if (!itemId || rest.length !== 1 || filePath === undefined) {
+      throw new CliUsageError(
+        "Usage: collector-cli attach-media <item-id> --file <path> [--filename <name>]",
+      );
+    }
+    return withEndpoint(
+      {
+        name: "attach-media",
+        itemId,
+        filePath,
+        ...(filename === undefined ? {} : { filename }),
+      },
+      dataDir,
+      ipcPath,
+      resolvedToken,
+    );
+  }
+
+  if (command === "replace-media") {
+    const itemId = rest[0];
+    const mediaId = rest[1];
+    const filePath = readOpt(argv, "--file");
+    const filename = readOpt(argv, "--filename");
+    if (!itemId || !mediaId || rest.length !== 2 || filePath === undefined) {
+      throw new CliUsageError(
+        "Usage: collector-cli replace-media <item-id> <media-id> --file <path> [--filename <name>]",
+      );
+    }
+    return withEndpoint(
+      {
+        name: "replace-media",
+        itemId,
+        mediaId,
+        filePath,
+        ...(filename === undefined ? {} : { filename }),
+      },
+      dataDir,
+      ipcPath,
+      resolvedToken,
+    );
+  }
+
+  if (command === "delete-media") {
+    const itemId = rest[0];
+    const mediaId = rest[1];
+    if (!itemId || !mediaId || rest.length !== 2) {
+      throw new CliUsageError(
+        "Usage: collector-cli delete-media <item-id> <media-id>",
+      );
+    }
+    return withEndpoint(
+      { name: "delete-media", itemId, mediaId },
+      dataDir,
+      ipcPath,
+      resolvedToken,
+    );
+  }
+
+  if (command === "set-item-cover") {
+    const itemId = rest[0];
+    const mediaId = rest[1];
+    if (!itemId || !mediaId || rest.length !== 2) {
+      throw new CliUsageError(
+        "Usage: collector-cli set-item-cover <item-id> <media-id>",
+      );
+    }
+    return withEndpoint(
+      { name: "set-item-cover", itemId, mediaId },
       dataDir,
       ipcPath,
       resolvedToken,

@@ -6,6 +6,8 @@
 import type { CollectorIpcClient } from "@collector/client/node";
 import { CONTENT_TYPES } from "@collector/shared";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { readFile } from "node:fs/promises";
+import { basename } from "node:path";
 import { z } from "zod";
 import {
   requireMcpToolCatalogEntry,
@@ -37,6 +39,35 @@ function paramDescribe(toolName: string, paramName: string) {
 }
 
 const contentTypeSchema = z.enum(CONTENT_TYPES);
+
+async function resolveMediaFileInput(args: {
+  filename?: string;
+  dataBase64?: string;
+  sourcePath?: string;
+}): Promise<{ filename: string; data: Uint8Array }> {
+  const hasBase64 = args.dataBase64 !== undefined && args.dataBase64 !== "";
+  const hasPath = args.sourcePath !== undefined && args.sourcePath !== "";
+  if (hasBase64 === hasPath) {
+    throw new Error("Provide exactly one of dataBase64 or sourcePath");
+  }
+  if (hasPath) {
+    const sourcePath = args.sourcePath!;
+    const data = new Uint8Array(await readFile(sourcePath));
+    const filename = args.filename?.trim() || basename(sourcePath);
+    if (!filename) {
+      throw new Error("filename is required when sourcePath has no basename");
+    }
+    return { filename, data };
+  }
+  const filename = args.filename?.trim();
+  if (!filename) {
+    throw new Error("filename is required when dataBase64 is set");
+  }
+  return {
+    filename,
+    data: Uint8Array.from(Buffer.from(args.dataBase64!, "base64")),
+  };
+}
 
 /**
  * Build an MCP server whose tools dial the Collector service API via IPC.
@@ -492,6 +523,159 @@ export function createCollectorMcpServer(
       try {
         await client.moveItemToFolderPath(itemId, folderPath);
         return textResult({ ok: true, itemId, folder_path: folderPath });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  const listItemMedia = requireMcpToolCatalogEntry("collector_list_item_media");
+  server.registerTool(
+    listItemMedia.name,
+    {
+      description: listItemMedia.description,
+      inputSchema: {
+        itemId: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(listItemMedia.name, "itemId")),
+      },
+    },
+    async ({ itemId }) => {
+      try {
+        return textResult(await client.listItemMedia(itemId));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  const attachMedia = requireMcpToolCatalogEntry("collector_attach_media");
+  server.registerTool(
+    attachMedia.name,
+    {
+      description: attachMedia.description,
+      inputSchema: {
+        itemId: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(attachMedia.name, "itemId")),
+        filename: z
+          .string()
+          .optional()
+          .describe(paramDescribe(attachMedia.name, "filename")),
+        dataBase64: z
+          .string()
+          .optional()
+          .describe(paramDescribe(attachMedia.name, "dataBase64")),
+        sourcePath: z
+          .string()
+          .optional()
+          .describe(paramDescribe(attachMedia.name, "sourcePath")),
+      },
+    },
+    async ({ itemId, filename, dataBase64, sourcePath }) => {
+      try {
+        const file = await resolveMediaFileInput({
+          filename,
+          dataBase64,
+          sourcePath,
+        });
+        const attached = await client.attachMediaFiles(itemId, [file]);
+        return textResult(attached[0] ?? attached);
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  const replaceMedia = requireMcpToolCatalogEntry("collector_replace_media");
+  server.registerTool(
+    replaceMedia.name,
+    {
+      description: replaceMedia.description,
+      inputSchema: {
+        itemId: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(replaceMedia.name, "itemId")),
+        mediaId: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(replaceMedia.name, "mediaId")),
+        filename: z
+          .string()
+          .optional()
+          .describe(paramDescribe(replaceMedia.name, "filename")),
+        dataBase64: z
+          .string()
+          .optional()
+          .describe(paramDescribe(replaceMedia.name, "dataBase64")),
+        sourcePath: z
+          .string()
+          .optional()
+          .describe(paramDescribe(replaceMedia.name, "sourcePath")),
+      },
+    },
+    async ({ itemId, mediaId, filename, dataBase64, sourcePath }) => {
+      try {
+        const file = await resolveMediaFileInput({
+          filename,
+          dataBase64,
+          sourcePath,
+        });
+        return textResult(await client.replaceItemMedia(itemId, mediaId, file));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  const deleteMedia = requireMcpToolCatalogEntry("collector_delete_media");
+  server.registerTool(
+    deleteMedia.name,
+    {
+      description: deleteMedia.description,
+      inputSchema: {
+        itemId: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(deleteMedia.name, "itemId")),
+        mediaId: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(deleteMedia.name, "mediaId")),
+      },
+    },
+    async ({ itemId, mediaId }) => {
+      try {
+        await client.deleteItemMedia(itemId, mediaId);
+        return textResult({ ok: true, deleted: mediaId });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  const setItemCover = requireMcpToolCatalogEntry("collector_set_item_cover");
+  server.registerTool(
+    setItemCover.name,
+    {
+      description: setItemCover.description,
+      inputSchema: {
+        itemId: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(setItemCover.name, "itemId")),
+        mediaId: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(setItemCover.name, "mediaId")),
+      },
+    },
+    async ({ itemId, mediaId }) => {
+      try {
+        return textResult(await client.setItemCoverFromMedia(itemId, mediaId));
       } catch (error) {
         return errorResult(error);
       }
