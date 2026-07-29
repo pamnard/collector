@@ -152,6 +152,21 @@ export async function runCollectorCli(
       io.stdout(JSON.stringify({ ok: true, path }, null, 2));
       return 0;
     }
+    if (cmd.name === "list-folders") {
+      const tree = await client.listFolderTree();
+      io.stdout(JSON.stringify(tree, null, 2));
+      return 0;
+    }
+    if (cmd.name === "rename-folder" || cmd.name === "move-folder") {
+      const path = await client.renameFolder(cmd.oldPath, cmd.newPath);
+      io.stdout(JSON.stringify({ ok: true, path }, null, 2));
+      return 0;
+    }
+    if (cmd.name === "delete-folder") {
+      await client.deleteFolder(cmd.folderPath);
+      io.stdout(JSON.stringify({ ok: true, deleted: cmd.folderPath }));
+      return 0;
+    }
     if (cmd.name === "move-item") {
       await client.moveItemToFolderPath(cmd.itemId, cmd.folderPath);
       io.stdout(

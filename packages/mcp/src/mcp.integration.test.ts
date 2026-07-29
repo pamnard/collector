@@ -213,4 +213,82 @@ describe("MCP tools over service IPC (#174)", () => {
     await client.close();
     await host.close();
   });
+
+  it("folder list/rename/move/delete via MCP tools (#352)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-mcp-352-"));
+    dirs.push(dataDir);
+    const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
+    const client = await connectCollectorIpcClient(
+      resolveMcpIpcPath({ dataDir }),
+      { connectTimeoutMs: 2_000, dataDir },
+    );
+    const mcp = createCollectorMcpServer(client);
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const mcpClient = new Client({ name: "test", version: "0.0.1" });
+    await Promise.all([
+      mcp.connect(serverTransport),
+      mcpClient.connect(clientTransport),
+    ]);
+
+    const created = await mcpClient.callTool({
+      name: "collector_create_folder",
+      arguments: { folderPath: "Work/Drafts" },
+    });
+    expect(created.isError).toBeFalsy();
+    const createdBody = JSON.parse(
+      (created.content as { text: string }[])[0]!.text,
+    ) as { ok: boolean; path: string };
+    expect(createdBody.path).toBe("Work/Drafts");
+
+    const listed = await mcpClient.callTool({
+      name: "collector_list_folders",
+      arguments: {},
+    });
+    expect(listed.isError).toBeFalsy();
+    expect(Array.isArray(
+      JSON.parse((listed.content as { text: string }[])[0]!.text),
+    )).toBe(true);
+
+    const renamed = await mcpClient.callTool({
+      name: "collector_rename_folder",
+      arguments: { oldPath: "Work/Drafts", newPath: "Work/Ready" },
+    });
+    expect(renamed.isError).toBeFalsy();
+    const renamedBody = JSON.parse(
+      (renamed.content as { text: string }[])[0]!.text,
+    ) as { path: string };
+    expect(renamedBody.path).toBe("Work/Ready");
+
+    const archive = await mcpClient.callTool({
+      name: "collector_create_folder",
+      arguments: { folderPath: "Archive" },
+    });
+    expect(archive.isError).toBeFalsy();
+
+    const moved = await mcpClient.callTool({
+      name: "collector_move_folder",
+      arguments: { oldPath: "Work/Ready", newPath: "Archive/Ready" },
+    });
+    expect(moved.isError).toBeFalsy();
+    const movedBody = JSON.parse(
+      (moved.content as { text: string }[])[0]!.text,
+    ) as { path: string };
+    expect(movedBody.path).toBe("Archive/Ready");
+
+    const deleted = await mcpClient.callTool({
+      name: "collector_delete_folder",
+      arguments: { folderPath: "Archive/Ready" },
+    });
+    expect(deleted.isError).toBeFalsy();
+    const deletedBody = JSON.parse(
+      (deleted.content as { text: string }[])[0]!.text,
+    ) as { ok: boolean; deleted: string };
+    expect(deletedBody).toEqual({ ok: true, deleted: "Archive/Ready" });
+
+    await mcpClient.close();
+    await mcp.close();
+    await client.close();
+    await host.close();
+  });
 });

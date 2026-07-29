@@ -17,6 +17,10 @@ const REGISTERED_TOOL_NAMES = [
   "collector_create_tag",
   "collector_delete_tag",
   "collector_create_folder",
+  "collector_list_folders",
+  "collector_rename_folder",
+  "collector_move_folder",
+  "collector_delete_folder",
   "collector_move_item",
 ] as const;
 
@@ -97,5 +101,31 @@ describe("COLLECTOR_MCP_TOOLS catalog (#273 / #265)", () => {
     );
     expect(move).toBeDefined();
     expect(move!.description).toMatch(/alias of collector_update_item/i);
+  });
+
+  it("exposes folder list/rename/move/delete (#352)", () => {
+    const list = COLLECTOR_MCP_TOOLS.find(
+      (tool) => tool.name === "collector_list_folders",
+    );
+    expect(list).toBeDefined();
+    expect(list!.params).toEqual([]);
+
+    const rename = COLLECTOR_MCP_TOOLS.find(
+      (tool) => tool.name === "collector_rename_folder",
+    );
+    expect(rename).toBeDefined();
+    expect(rename!.params.map((p) => p.name)).toEqual(["oldPath", "newPath"]);
+
+    const moveFolder = COLLECTOR_MCP_TOOLS.find(
+      (tool) => tool.name === "collector_move_folder",
+    );
+    expect(moveFolder).toBeDefined();
+    expect(moveFolder!.description).toMatch(/alias of collector_rename_folder/i);
+
+    const del = COLLECTOR_MCP_TOOLS.find(
+      (tool) => tool.name === "collector_delete_folder",
+    );
+    expect(del).toBeDefined();
+    expect(del!.description).toMatch(/empty/i);
   });
 });
