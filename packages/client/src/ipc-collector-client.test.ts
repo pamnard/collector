@@ -28,12 +28,12 @@ import {
 } from "@collector/api";
 import type { AppSettings } from "@collector/shared";
 import {
-  createCollectorIpcClient,
   createCollectorIpcDashboardSnapshotPort,
   createCollectorIpcService,
-  type CollectorIpcClient,
+  createCollectorIpcServiceClient,
+  type CollectorIpcServiceClient,
 } from "./ipc-collector-client.js";
-import { connectCollectorIpcClient } from "./ipc-collector-client-node.js";
+import { connectCollectorIpcService } from "./ipc-collector-client-node.js";
 
 /** Legacy incomplete schema — migrate leaves it unhealthy until rebuild. */
 async function writeLegacyBrokenIndexDb(dbPath: string): Promise<void> {
@@ -73,22 +73,22 @@ async function writeLegacyBrokenIndexDb(dbPath: string): Promise<void> {
 }
 
 async function waitForVaultIndexSyncDone(
-  client: CollectorIpcClient,
+  client: CollectorIpcServiceClient,
   timeoutMs = 5_000,
 ): Promise<VaultIndexSyncStatus> {
-  if (client.getVaultIndexSyncStatus().status === "done") {
-    return client.getVaultIndexSyncStatus();
+  if (client.index.getVaultIndexSyncStatus().status === "done") {
+    return client.index.getVaultIndexSyncStatus();
   }
   return new Promise<VaultIndexSyncStatus>((resolve, reject) => {
     const timer = setTimeout(() => {
       sub.unsubscribe();
       reject(
         new Error(
-          `vault index sync did not reach done within ${timeoutMs}ms (status=${client.getVaultIndexSyncStatus().status})`,
+          `vault index sync did not reach done within ${timeoutMs}ms (status=${client.index.getVaultIndexSyncStatus().status})`,
         ),
       );
     }, timeoutMs);
-    const sub = client.subscribeVaultIndexSyncStatus((status) => {
+    const sub = client.index.subscribeVaultIndexSyncStatus((status) => {
       if (status.status === "done") {
         clearTimeout(timer);
         sub.unsubscribe();
@@ -98,7 +98,7 @@ async function waitForVaultIndexSyncDone(
   });
 }
 
-describe("CollectorIpcClient", () => {
+describe("CollectorIpcServiceClient", () => {
   const dirs: string[] = [];
 
   afterEach(async () => {
@@ -113,7 +113,7 @@ describe("CollectorIpcClient", () => {
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
       expect(host.ipcPath).toBeTruthy();
-      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
+      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
       try {
         expect(await client.ping()).toEqual({ ok: true, pong: true });
         expect(await client.health()).toMatchObject({
@@ -134,31 +134,31 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
+      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
       try {
-        const page = await client.fetchDashboardIndexPage("all", "", {
+        const page = await client.items.fetchDashboardIndexPage("all", "", {
           limit: 60,
           offset: 0,
         });
         expect(page.totalCount).toBeGreaterThan(0);
         expect(page.itemIds.length).toBeGreaterThan(0);
 
-        const ids = await client.listDashboardItemIds("all", "");
+        const ids = await client.items.listDashboardItemIds("all", "");
         expect(ids.totalCount).toBe(page.totalCount);
         expect(ids.itemIds.length).toBeGreaterThan(0);
 
-        const loaded = await client.loadDashboardItems(ids.itemIds, 0, 10);
+        const loaded = await client.items.loadDashboardItems(ids.itemIds, 0, 10);
         expect(loaded.length).toBeGreaterThan(0);
 
         const firstId = ids.itemIds[0]!;
-        const byId = await client.getItemById(firstId);
+        const byId = await client.items.getItemById(firstId);
         expect(byId.item.id).toBe(firstId);
 
-        const source = await client.getItemSource(firstId);
+        const source = await client.items.getItemSource(firstId);
         expect(typeof source).toBe("string");
         expect(source.length).toBeGreaterThan(0);
 
-        const tags = await client.listTags();
+        const tags = await client.tags.listTags();
         expect(Array.isArray(tags)).toBe(true);
       } finally {
         await client.close();
@@ -173,28 +173,28 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
+      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
       try {
-        const created = await client.createItem({
+        const created = await client.items.createItem({
           title: "IPC Note",
           content_type: "note",
           content: "# hello",
         });
         expect(created.title).toBe("IPC Note");
 
-        const updated = await client.updateItem(created.id, {
+        const updated = await client.items.updateItem(created.id, {
           title: "IPC Note 2",
         });
         expect(updated.title).toBe("IPC Note 2");
 
-        const source = await client.updateItemSource(
+        const source = await client.items.updateItemSource(
           created.id,
           "---\ntitle: IPC Note 2\n---\n\n# body\n",
         );
         expect(source.id).toBe(created.id);
 
-        await client.deleteItem(created.id);
-        await expect(client.getItemById(created.id)).rejects.toBeTruthy();
+        await client.items.deleteItem(created.id);
+        await expect(client.items.getItemById(created.id)).rejects.toBeTruthy();
       } finally {
         await client.close();
       }
@@ -208,21 +208,21 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
+      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
       try {
-        const created = await client.createTag({ name: "ipc-tag" });
+        const created = await client.tags.createTag({ name: "ipc-tag" });
         expect(created.name).toBe("ipc-tag");
 
-        const listed = await client.listTags();
+        const listed = await client.tags.listTags();
         expect(listed.some((t) => t.id === created.id)).toBe(true);
 
-        const updated = await client.updateTagRecord(created.id, {
+        const updated = await client.tags.updateTagRecord(created.id, {
           name: "ipc-tag-2",
         });
         expect(updated.name).toBe("ipc-tag-2");
 
-        await client.deleteTag(created.id);
-        const after = await client.listTags();
+        await client.tags.deleteTag(created.id);
+        const after = await client.tags.listTags();
         expect(after.some((t) => t.id === created.id)).toBe(false);
       } finally {
         await client.close();
@@ -237,27 +237,27 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
+      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
       try {
-        const createdPath = await client.createFolder("ipc-folder");
+        const createdPath = await client.folders.createFolder("ipc-folder");
         expect(createdPath).toBe("ipc-folder");
 
         // Index tree may lag FS until sync; still exercise list RPC.
-        expect(Array.isArray(await client.listFolderTree())).toBe(true);
+        expect(Array.isArray(await client.folders.listFolderTree())).toBe(true);
 
-        const renamed = await client.renameFolder(createdPath, "ipc-folder-renamed");
+        const renamed = await client.folders.renameFolder(createdPath, "ipc-folder-renamed");
         expect(renamed).toBe("ipc-folder-renamed");
 
-        const item = await client.createItem({
+        const item = await client.items.createItem({
           title: "Folder move note",
           content_type: "note",
           content: "x",
         });
-        const moved = await client.moveItemToFolderPath(item.id, renamed);
+        const moved = await client.folders.moveItemToFolderPath(item.id, renamed);
         expect(moved.folder_path).toBe(renamed);
 
-        await client.deleteItem(moved.id);
-        await client.deleteFolder(renamed);
+        await client.items.deleteItem(moved.id);
+        await client.folders.deleteFolder(renamed);
       } finally {
         await client.close();
       }
@@ -271,9 +271,9 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
+      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
       try {
-        const item = await client.createItem({
+        const item = await client.items.createItem({
           title: "Media note",
           content_type: "note",
           content: "m",
@@ -286,24 +286,24 @@ describe("CollectorIpcClient", () => {
             "base64",
           ),
         );
-        const attached = await client.attachMediaFiles(item.id, [
+        const attached = await client.media.attachMediaFiles(item.id, [
           { name: "dot.png", bytes: png },
         ]);
         expect(attached.length).toBe(1);
         expect(attached[0]!.filename).toBe("dot.png");
 
-        const listed = await client.listItemMedia(item.id);
+        const listed = await client.media.listItemMedia(item.id);
         expect(listed.some((m) => m.id === attached[0]!.id)).toBe(true);
 
-        const thumb = await client.resolveItemThumbnailPath(item);
+        const thumb = await client.media.resolveItemThumbnailPath(item);
         expect(thumb === null || typeof thumb === "string").toBe(true);
 
-        const thumbs = await client.resolveItemThumbnailPaths([item]);
+        const thumbs = await client.media.resolveItemThumbnailPaths([item]);
         expect(thumbs instanceof Map).toBe(true);
         expect(thumbs.has(item.id)).toBe(true);
 
-        await client.deleteItemMedia(item.id, attached[0]!.id);
-        const after = await client.listItemMedia(item.id);
+        await client.media.deleteItemMedia(item.id, attached[0]!.id);
+        const after = await client.media.listItemMedia(item.id);
         expect(after.some((m) => m.id === attached[0]!.id)).toBe(false);
       } finally {
         await client.close();
@@ -318,9 +318,9 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
+      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
       try {
-        const item = await client.createItem({
+        const item = await client.items.createItem({
           title: "Replace media note",
           content_type: "note",
           content: "m",
@@ -332,25 +332,25 @@ describe("CollectorIpcClient", () => {
             "base64",
           ),
         );
-        const attached = await client.attachMediaFiles(item.id, [
+        const attached = await client.media.attachMediaFiles(item.id, [
           { name: "dot.png", bytes: png },
         ]);
         expect(attached.length).toBe(1);
         const mediaId = attached[0]!.id;
 
-        const replaced = await client.replaceItemMedia(item.id, mediaId, {
+        const replaced = await client.media.replaceItemMedia(item.id, mediaId, {
           name: "dot2.png",
           bytes: png,
         });
         expect(replaced.id).toBe(mediaId);
         expect(replaced.filename).toBe("dot2.png");
 
-        const listed = await client.listItemMedia(item.id);
+        const listed = await client.media.listItemMedia(item.id);
         expect(listed).toHaveLength(1);
         expect(listed[0]!.id).toBe(mediaId);
         expect(listed[0]!.filename).toBe("dot2.png");
 
-        const covered = await client.setItemCoverFromMedia(item.id, mediaId);
+        const covered = await client.media.setItemCoverFromMedia(item.id, mediaId);
         expect(covered.id).toBe(item.id);
         expect(covered.thumbnail).toBeTruthy();
       } finally {
@@ -366,22 +366,22 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
+      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
       try {
-        expect(await client.getDataDirectory()).toBe(dataDir);
+        expect(await client.boot.getDataDirectory()).toBe(dataDir);
 
-        const active = await client.ensureActiveVault();
+        const active = await client.boot.ensureActiveVault();
         expect(active.vault.id).toBeTruthy();
         expect(typeof active.path).toBe("string");
 
-        const listed = await client.listVaults();
+        const listed = await client.vaults.listVaults();
         expect(listed.some((v) => v.id === active.vault.id)).toBe(true);
 
-        const meta = await client.getActiveVaultMeta();
+        const meta = await client.vaults.getActiveVaultMeta();
         expect(meta.id).toBe(active.vault.id);
 
-        await client.setDefaultVault(active.vault.id);
-        const switched = await client.switchVault(active.vault.id);
+        await client.vaults.setDefaultVault(active.vault.id);
+        const switched = await client.vaults.switchVault(active.vault.id);
         expect(switched.id).toBe(active.vault.id);
       } finally {
         await client.close();
@@ -396,17 +396,17 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
+      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
       try {
         // Host already opened + healed on start; methods are idempotent.
-        await client.openCollectorDatabase();
-        await client.ensureCollectorDatabaseHealthy();
+        await client.boot.openCollectorDatabase();
+        await client.boot.ensureCollectorDatabaseHealthy();
         expect(await client.health()).toMatchObject({
           ok: true,
           healthy: true,
           status: "healthy",
         });
-        const active = await client.ensureActiveVault();
+        const active = await client.boot.ensureActiveVault();
         expect(active.vault.id).toBeTruthy();
       } finally {
         await client.close();
@@ -447,29 +447,29 @@ describe("CollectorIpcClient", () => {
     );
 
     try {
-      const client = await connectCollectorIpcClient(ipc.path, {
+      const client = await connectCollectorIpcService(ipc.path, {
         token: "rebuild-test-ipc-token",
       });
       try {
-        await client.openCollectorDatabase();
+        await client.boot.openCollectorDatabase();
         expect(await client.health()).toMatchObject({
           healthy: false,
           status: "unhealthy",
         });
 
-        await client.ensureCollectorDatabaseHealthy();
+        await client.boot.ensureCollectorDatabaseHealthy();
         expect(await client.health()).toMatchObject({
           ok: true,
           healthy: true,
           status: "healthy",
         });
 
-        const active = await client.ensureActiveVault();
+        const active = await client.boot.ensureActiveVault();
         expect(active.vault.id).toBeTruthy();
         // Kick off filesystem sync; wait via status channel (#163), not stub indexSync (#327).
-        await client.listDashboardItemIds("all");
+        await client.items.listDashboardItemIds("all");
         expect((await waitForVaultIndexSyncDone(client)).status).toBe("done");
-        const page = await client.queryIndex("all", undefined, {
+        const page = await client.items.queryIndex("all", undefined, {
           limit: 10,
           offset: 0,
         });
@@ -489,23 +489,24 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
+      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
       try {
-        const settings = await client.ensureAppSettings();
+        const snapshotPort = createCollectorIpcDashboardSnapshotPort();
+        const settings = await client.settings.ensureAppSettings();
         expect(settings).toBeTruthy();
 
-        const updated = await client.updateAppSettings({
+        const updated = await client.settings.updateAppSettings({
           theme: settings.theme === "dark" ? "light" : "dark",
         });
         expect(updated.theme).not.toBe(settings.theme);
 
-        const configDir = await client.getAppConfigDirectory();
+        const configDir = await client.settings.getAppConfigDirectory();
         expect(configDir).toContain(dataDir);
 
-        await client.clearDashboardSnapshot();
-        expect(await client.ensureDashboardSnapshot()).toBeNull();
+        await snapshotPort.clearDashboardSnapshot();
+        expect(await snapshotPort.ensureDashboardSnapshot()).toBeNull();
 
-        const active = await client.ensureActiveVault();
+        const active = await client.boot.ensureActiveVault();
         const snapshot = {
           schema_version: 1 as const,
           vault_id: active.vault.id,
@@ -517,8 +518,8 @@ describe("CollectorIpcClient", () => {
           stream_end_offset: 0,
           saved_at: new Date().toISOString(),
         };
-        await client.persistDashboardSnapshot(snapshot);
-        const loaded = await client.ensureDashboardSnapshot();
+        await snapshotPort.persistDashboardSnapshot(snapshot);
+        const loaded = await snapshotPort.ensureDashboardSnapshot();
         expect(loaded?.vault_id).toBe(active.vault.id);
       } finally {
         await client.close();
@@ -533,15 +534,15 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
+      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
       try {
         const seen: VaultIndexSyncStatus[] = [];
-        const unsub = client.subscribeVaultIndexSyncStatus((status) => {
+        const unsub = client.index.subscribeVaultIndexSyncStatus((status) => {
           seen.push(status);
         });
 
         // Kick off filesystem sync; status should move through running/done.
-        await client.listDashboardItemIds("all");
+        await client.items.listDashboardItemIds("all");
 
         const latest = await waitForVaultIndexSyncDone(client);
         expect(latest.status).toBe("done");
@@ -563,10 +564,10 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
+      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
       try {
-        const active = await client.ensureActiveVault();
-        await client.listDashboardItemIds("all");
+        const active = await client.boot.ensureActiveVault();
+        await client.items.listDashboardItemIds("all");
 
         await client.startVaultFilesystemWatcher(active.vault.id, active.path);
         expect(await client.isVaultFilesystemWatcherActive()).toBe(true);
@@ -575,12 +576,12 @@ describe("CollectorIpcClient", () => {
         await client.startVaultFilesystemWatcher(active.vault.id, active.path);
         expect(await client.isVaultFilesystemWatcherActive()).toBe(true);
 
-        const ids = await client.listDashboardItemIds("all");
+        const ids = await client.items.listDashboardItemIds("all");
         expect(ids.itemIds.length).toBeGreaterThan(0);
         const targetId = ids.itemIds[0]!;
-        const target = (await client.getItemById(targetId)).item;
+        const target = (await client.items.getItemById(targetId)).item;
         const docPath = join(active.path, target.id);
-        const before = await client.getItemById(target.id);
+        const before = await client.items.getItemById(target.id);
         const marker = `watch-${Date.now()}`;
         const raw = readFileSync(docPath, "utf8");
         const next = raw.includes("title:")
@@ -591,7 +592,7 @@ describe("CollectorIpcClient", () => {
         const deadline = Date.now() + 8_000;
         let updated = before;
         while (Date.now() < deadline) {
-          updated = await client.getItemById(target.id);
+          updated = await client.items.getItemById(target.id);
           if (updated.item.title === marker) {
             break;
           }
@@ -611,13 +612,13 @@ describe("CollectorIpcClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
+      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
       try {
-        const settings = await client.ensureAppSettings();
-        expect(client.getAppSettingsSync()).toEqual(settings);
+        const settings = await client.settings.ensureAppSettings();
+        expect(client.settings.getAppSettingsSync()).toEqual(settings);
 
         let subscribed: AppSettings | null = null;
-        const unsub = client.subscribeAppSettings((next) => {
+        const unsub = client.settings.subscribeAppSettings((next) => {
           subscribed = next;
         });
         const deadline = Date.now() + 5_000;
@@ -626,9 +627,9 @@ describe("CollectorIpcClient", () => {
         }
         expect(subscribed).toEqual(settings);
 
-        const peer = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
+        const peer = await connectCollectorIpcService(host.ipcPath!, { dataDir });
         try {
-          const patched = await peer.updateAppSettings({
+          const patched = await peer.settings.updateAppSettings({
             ...settings,
             theme: settings.theme === "dark" ? "light" : "dark",
           });
@@ -645,10 +646,10 @@ describe("CollectorIpcClient", () => {
         }
         unsub.unsubscribe();
 
-        const active = await client.ensureActiveVault();
+        const active = await client.boot.ensureActiveVault();
         let page: DashboardIndexPage | null = null;
         let complete = false;
-        client.subscribeDashboardLoad("all", "", {
+        client.items.subscribeDashboardLoad("all", "", {
           onIndexPage: (next) => {
             page = next;
           },
@@ -664,7 +665,8 @@ describe("CollectorIpcClient", () => {
         expect(page).toBeTruthy();
         expect(page!.totalCount).toBeGreaterThanOrEqual(0);
 
-        const snap = client.buildDashboardSnapshot({
+        const snapshotPort = createCollectorIpcDashboardSnapshotPort();
+        const snap = snapshotPort.buildDashboardSnapshot({
           vaultId: active.vault.id,
           filter: "all",
           search: "",
@@ -676,22 +678,22 @@ describe("CollectorIpcClient", () => {
         expect(snap.vault_id).toBe(active.vault.id);
         expect(snap.nav_filter).toBe("all");
         expect(
-          client.peekMatchingDashboardSnapshot({
+          snapshotPort.peekMatchingDashboardSnapshot({
             vaultId: active.vault.id,
             filter: "all",
             search: "",
           }),
         ).toBeNull();
-        await client.persistDashboardSnapshot(snap);
+        await snapshotPort.persistDashboardSnapshot(snap);
         expect(
-          client.peekMatchingDashboardSnapshot({
+          snapshotPort.peekMatchingDashboardSnapshot({
             vaultId: active.vault.id,
             filter: "all",
             search: "",
           }),
         ).toEqual(snap);
         expect(
-          client.peekMatchingDashboardSnapshot({
+          snapshotPort.peekMatchingDashboardSnapshot({
             vaultId: active.vault.id,
             filter: "all",
             search: "other",
@@ -785,12 +787,12 @@ describe("CollectorIpcService ports (#366)", () => {
     }
   });
 
-  it("flat createCollectorIpcClient shim exposes domain methods", () => {
-    const flat = createCollectorIpcClient(mockTransport());
-    expect(typeof flat.searchItems).toBe("function");
-    expect(typeof flat.getDataDirectory).toBe("function");
-    expect(typeof flat.ping).toBe("function");
-    expect(typeof flat.startVaultFilesystemWatcher).toBe("function");
+  it("createCollectorIpcServiceClient exposes ports + transport extras", () => {
+    const client = createCollectorIpcServiceClient(mockTransport());
+    expect(typeof client.items.searchItems).toBe("function");
+    expect(typeof client.boot.getDataDirectory).toBe("function");
+    expect(typeof client.ping).toBe("function");
+    expect(typeof client.startVaultFilesystemWatcher).toBe("function");
   });
 
   it("one RPC method per domain port over createCollectorIpcService", async () => {

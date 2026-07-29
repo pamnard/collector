@@ -1,5 +1,5 @@
 /**
- * IPC Collector client (#154 / #366): domain ports primary; flat API transitional.
+ * IPC Collector client (#154 / #366 / #370): domain ports primary.
  *
  * Browser-safe with injectable transport (#240/#241). Node dialer: `./node`.
  * UI subscribe/stream/settings helpers orchestrate host RPCs.
@@ -10,7 +10,6 @@ import type {
   ActiveVaultResult,
   AttachMediaFileInput,
   CollectorService,
-  CollectorServiceApi,
   CreateItemInput,
   DashboardIndexPage,
   DashboardItemIdsResult,
@@ -36,7 +35,6 @@ import {
   asCollectorApiError,
   DASHBOARD_PREFETCH_SIZE,
   subscriptionFromTeardown,
-  toCollectorServiceApi,
 } from "@collector/api";
 import type {
   AppSettings,
@@ -78,10 +76,6 @@ export interface CollectorIpcTransportExtras {
   stopVaultFilesystemWatcher(): Promise<void>;
   isVaultFilesystemWatcherActive(): Promise<boolean>;
 }
-
-/** Full flat API surface + transport health helpers. */
-export interface CollectorIpcClient
-  extends CollectorServiceApi, CollectorIpcTransportExtras {}
 
 /** Domain ports + transport health helpers (#369). Primary for CLI/MCP. */
 export type CollectorIpcServiceClient = CollectorService &
@@ -695,7 +689,7 @@ export function createCollectorIpcServiceClient(
 }
 
 /**
- * Dashboard snapshot slice for flat shim / UiSession (#363 / #368).
+ * Dashboard snapshot slice for UiSession (#363 / #368).
  * Default is in-memory; app/Node inject disk-backed ports.
  */
 export function createCollectorIpcDashboardSnapshotPort(
@@ -703,20 +697,4 @@ export function createCollectorIpcDashboardSnapshotPort(
   options: CollectorIpcClientOptions = {},
 ): DashboardSnapshotPort {
   return options.snapshot ?? createMemoryDashboardSnapshotPort();
-}
-
-/**
- * Transitional flat facade (#145 → #360). Prefer
- * {@link createCollectorIpcService} + {@link createCollectorIpcDashboardSnapshotPort}.
- * Pass {@link CollectorIpcClientOptions} for snapshot/thumbnails (#368).
- */
-export function createCollectorIpcClient(
-  transport: ServiceIpcClient,
-  options: CollectorIpcClientOptions = {},
-): CollectorIpcClient {
-  const { service, snapshot, extras } = createIpcBacking(transport, options);
-  return {
-    ...toCollectorServiceApi(service, snapshot),
-    ...extras,
-  };
 }

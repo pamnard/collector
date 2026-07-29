@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ServiceIpcClient } from "@collector/client";
 import {
-  createIpcAdapter,
   createIpcCollectorService,
   createIpcDashboardSnapshotPort,
   createIpcUiSession,
@@ -29,20 +28,7 @@ function mockTransport(
   };
 }
 
-describe("createIpcAdapter (#240)", () => {
-  it("wraps an injected transport as CollectorClient without Node dialer", async () => {
-    const transport = mockTransport(async (method) => {
-      if (method === "getDataDirectory") return "/tmp/data";
-      throw new Error(`unexpected ${method}`);
-    });
-
-    const client = createIpcAdapter(transport);
-    await expect(client.getDataDirectory()).resolves.toBe("/tmp/data");
-    expect(transport.request).toHaveBeenCalledWith("getDataDirectory");
-  });
-});
-
-describe("createIpcCollectorService (#366)", () => {
+describe("createIpcCollectorService (#366 / #370)", () => {
   it("exposes domain ports over the injected transport", async () => {
     const transport = mockTransport(async (method) => {
       if (method === "getDataDirectory") return "/tmp/ports";
@@ -83,12 +69,13 @@ describe("createIpcCollectorService (#366)", () => {
     expect(typeof session.settingsSync.getAppSettingsSync).toBe("function");
   });
 
-  it("createIpcAdapter does not RPC snapshot or thumbnail methods (#368)", async () => {
+  it("UiSession snapshot/thumbnails do not RPC (#368)", async () => {
     const transport = mockTransport(async (method) => {
       throw new Error(`unexpected ${method}`);
     });
-    const client = createIpcAdapter(transport);
-    const snap = client.buildDashboardSnapshot({
+    const service = createIpcCollectorService(transport);
+    const session = createIpcUiSession(transport, service);
+    const snap = session.snapshot.buildDashboardSnapshot({
       vaultId: "00000000-0000-4000-8000-000000000001",
       filter: "all",
       search: "",
@@ -99,7 +86,7 @@ describe("createIpcCollectorService (#366)", () => {
     });
     expect(snap.vault_id).toBe("00000000-0000-4000-8000-000000000001");
     await expect(
-      client.resolveItemThumbnailPaths([]),
+      session.thumbnails.resolveItemThumbnailPaths([]),
     ).resolves.toEqual(new Map());
     expect(transport.request).not.toHaveBeenCalled();
   });

@@ -39,7 +39,6 @@ export {
   type AdjacentItemsResult,
   type BootPort,
   type CollectorService,
-  type CollectorServiceApi,
   type DashboardIndexPage,
   type DashboardItemIdsResult,
   type DashboardItemSort,
@@ -69,13 +68,10 @@ export {
   MEDIA_PORT_KEYS,
   SETTINGS_PORT_KEYS,
   TAGS_PORT_KEYS,
-  toCollectorService,
-  toCollectorServiceApi,
   VAULTS_PORT_KEYS,
 } from "./service-compose.js";
 
 export {
-  toUiSession,
   UI_SESSION_SETTINGS_SYNC_KEYS,
   UI_SESSION_SNAPSHOT_KEYS,
   UI_SESSION_THUMBNAIL_KEYS,

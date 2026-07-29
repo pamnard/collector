@@ -1,21 +1,18 @@
 /**
- * In-process LocalAdapter for web/dev-mock and unit tests (#169 / #171 / #328 / #365).
+ * In-process LocalAdapter for web/dev-mock and unit tests (#169 / #171 / #328 / #365 / #370).
  *
  * Desktop Tauri default path uses IPC (#170). This adapter is a thin mock
  * facade — UI in-process SQLite and vault-index sync were removed (#171 / #328).
  *
- * Ports are primary ({@link createLocalCollectorService}); flat
- * {@link CollectorServiceApi} is a transitional shim via {@link toCollectorServiceApi}.
+ * Ports are primary ({@link createLocalCollectorService}).
  */
 
 import type {
   CollectorService,
-  CollectorServiceApi,
   DashboardSnapshotPort,
   NavFilter as ApiNavFilter,
   UiSession,
 } from "@collector/api";
-import { toCollectorServiceApi } from "@collector/api";
 import type { NavFilter as UiNavFilter } from "../types/ui";
 import type {
   CreateItemInput as UiCreateItemInput,
@@ -162,13 +159,4 @@ export function createLocalUiSession(service: CollectorService): UiSession {
       resolveActiveVault: () => service.boot.ensureActiveVault(),
     }),
   };
-}
-
-/**
- * Transitional flat facade (#145 → #360). Prefer
- * {@link createLocalCollectorService} + {@link createLocalUiSession}.
- */
-export function createLocalAdapter(): CollectorServiceApi {
-  const service = createLocalCollectorService();
-  return toCollectorServiceApi(service, createLocalUiSession(service).snapshot);
 }

@@ -1,82 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
+import type { CollectorService } from "@collector/api";
 import {
-  toCollectorService,
-  toUiSession,
-  type CollectorService,
-  type CollectorServiceApi,
-} from "@collector/api";
-import {
-  createCollectorClient,
-  getCollectorClient,
   getCollectorService,
   getUiSession,
-  setCollectorClient,
   setCollectorService,
 } from "./collector-client";
 import {
-  createLocalAdapter,
   createLocalCollectorService,
   createLocalDashboardSnapshotPort,
   createLocalUiSession,
 } from "./local-adapter";
-
-/** Transitional flat checklist (#145); remove with god-interface (#360/#370). */
-const REQUIRED_METHODS: (keyof CollectorServiceApi)[] = [
-  "openCollectorDatabase",
-  "ensureCollectorDatabaseHealthy",
-  "ensureActiveVault",
-  "getDataDirectory",
-  "searchItems",
-  "queryIndex",
-  "hydrate",
-  "fetchDashboardIndexPage",
-  "listDashboardItemIds",
-  "subscribeDashboardLoad",
-  "streamDashboardItems",
-  "loadDashboardItems",
-  "getItemById",
-  "getAdjacentItems",
-  "getItemSource",
-  "updateItemSource",
-  "createItem",
-  "updateItem",
-  "deleteItem",
-  "importDroppedFiles",
-  "subscribeTags",
-  "listTags",
-  "createTag",
-  "updateTagRecord",
-  "deleteTag",
-  "subscribeFolderTree",
-  "listFolderTree",
-  "createFolder",
-  "renameFolder",
-  "deleteFolder",
-  "moveItemToFolderPath",
-  "listItemMedia",
-  "resolveItemThumbnailPath",
-  "resolveItemThumbnailPaths",
-  "setItemCoverFromMedia",
-  "attachMediaFiles",
-  "replaceItemMedia",
-  "deleteItemMedia",
-  "listVaults",
-  "getActiveVaultMeta",
-  "switchVault",
-  "setDefaultVault",
-  "subscribeVaultIndexSyncStatus",
-  "getVaultIndexSyncStatus",
-  "ensureAppSettings",
-  "getAppSettingsSync",
-  "updateAppSettings",
-  "subscribeAppSettings",
-  "getAppConfigDirectory",
-  "ensureDashboardSnapshot",
-  "peekMatchingDashboardSnapshot",
-  "persistDashboardSnapshot",
-  "clearDashboardSnapshot",
-  "buildDashboardSnapshot",
-];
 
 const PORT_KEYS = [
   "boot",
@@ -89,7 +22,7 @@ const PORT_KEYS = [
   "vaults",
 ] as const;
 
-describe("CollectorService / LocalAdapter (#169 / #365 / #369)", () => {
+describe("CollectorService / LocalAdapter (#169 / #365 / #369 / #370)", () => {
   it("getCollectorService defaults to LocalAdapter ports and setCollectorService swaps", () => {
     const original = getCollectorService();
     const originalSession = getUiSession();
@@ -119,65 +52,6 @@ describe("CollectorService / LocalAdapter (#169 / #365 / #369)", () => {
     expect(service.items).not.toHaveProperty("listItems");
   });
 
-  it("flat shim still composes until #370", () => {
-    const adapter = createLocalAdapter();
-    for (const key of REQUIRED_METHODS) {
-      expect(typeof adapter[key], key).toBe("function");
-    }
-    expect(
-      typeof (adapter as { listItems?: unknown }).listItems,
-    ).not.toBe("function");
-    expect(
-      typeof (adapter as { loadFolderTree?: unknown }).loadFolderTree,
-    ).not.toBe("function");
-  });
-
-  it("getCollectorClient flat shim exposes port methods (#369)", () => {
-    const flat = getCollectorClient();
-    expect(typeof flat.searchItems).toBe("function");
-    expect(typeof flat.listFolderTree).toBe("function");
-    expect(typeof (flat as { listItems?: unknown }).listItems).not.toBe(
-      "function",
-    );
-    expect(
-      typeof (flat as { loadFolderTree?: unknown }).loadFolderTree,
-    ).not.toBe("function");
-  });
-
-  it("createCollectorClient returns the provided adapter", () => {
-    const adapter = createLocalAdapter();
-    expect(createCollectorClient(adapter)).toBe(adapter);
-  });
-
-  it("flat shim delegates to the same port methods (#365)", async () => {
-    const service = createLocalCollectorService();
-    const flat = createLocalAdapter();
-    expect(typeof flat.searchItems).toBe("function");
-    expect(typeof service.items.searchItems).toBe("function");
-    expect(typeof flat.getDataDirectory).toBe("function");
-    expect(typeof service.boot.getDataDirectory).toBe("function");
-
-    const fromPort: unknown[] = [];
-    for await (const item of service.items.hydrate([])) {
-      fromPort.push(item);
-    }
-    const fromFlat: unknown[] = [];
-    for await (const item of flat.hydrate([])) {
-      fromFlat.push(item);
-    }
-    expect(fromPort).toEqual([]);
-    expect(fromFlat).toEqual([]);
-  });
-
-  it("toCollectorService(flat) matches createLocalCollectorService keys (#361/#365)", () => {
-    const native = createLocalCollectorService();
-    const lifted = toCollectorService(createLocalAdapter());
-    expect(Object.keys(lifted).sort()).toEqual(Object.keys(native).sort());
-    expect(typeof lifted.items.searchItems).toBe("function");
-    expect(typeof lifted.boot.getDataDirectory).toBe("function");
-    expect(typeof lifted.settings.getAppSettingsSync).toBe("function");
-  });
-
   it("createLocalDashboardSnapshotPort exposes snapshot methods (#365)", () => {
     const snapshot = createLocalDashboardSnapshotPort();
     expect(typeof snapshot.ensureDashboardSnapshot).toBe("function");
@@ -188,19 +62,19 @@ describe("CollectorService / LocalAdapter (#169 / #365 / #369)", () => {
   });
 
   it("LocalAdapter exposes queryIndex and hydrate (#362)", async () => {
-    const adapter = createLocalAdapter();
-    expect(typeof adapter.queryIndex).toBe("function");
-    expect(typeof adapter.hydrate).toBe("function");
+    const service = createLocalCollectorService();
+    expect(typeof service.items.queryIndex).toBe("function");
+    expect(typeof service.items.hydrate).toBe("function");
     const items: unknown[] = [];
-    for await (const item of adapter.hydrate([])) {
+    for await (const item of service.items.hydrate([])) {
       items.push(item);
     }
     expect(items).toEqual([]);
   });
 
-  it("toUiSession lifts snapshot, sync settings, thumbnails (#363)", () => {
-    const adapter = createLocalAdapter();
-    const session = toUiSession(adapter);
+  it("createLocalUiSession wires snapshot, sync settings, thumbnails (#363)", () => {
+    const service = createLocalCollectorService();
+    const session = createLocalUiSession(service);
     expect(Object.keys(session).sort()).toEqual(
       ["settingsSync", "snapshot", "thumbnails"].sort(),
     );
@@ -226,18 +100,6 @@ describe("CollectorService / LocalAdapter (#169 / #365 / #369)", () => {
       "function",
     );
     expect(typeof getUiSession().settingsSync.getAppSettingsSync).toBe(
-      "function",
-    );
-    setCollectorService(original, originalSession);
-  });
-
-  it("setCollectorClient still lifts flat into ports (#369 transitional)", () => {
-    const original = getCollectorService();
-    const originalSession = getUiSession();
-    const adapter = createLocalAdapter();
-    setCollectorClient(adapter);
-    expect(typeof getCollectorService().items.searchItems).toBe("function");
-    expect(typeof getUiSession().snapshot.ensureDashboardSnapshot).toBe(
       "function",
     );
     setCollectorService(original, originalSession);

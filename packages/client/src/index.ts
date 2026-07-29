@@ -1,14 +1,12 @@
 /**
- * @collector/client — browser-safe IPC CollectorClient factory (#154/#240/#366).
+ * @collector/client — browser-safe IPC CollectorService factory (#154/#240/#366/#370).
  * Injectable transport only — no Node dialer in this entry.
  */
 
 export {
-  createCollectorIpcClient,
   createCollectorIpcDashboardSnapshotPort,
   createCollectorIpcService,
   createCollectorIpcServiceClient,
-  type CollectorIpcClient,
   type CollectorIpcClientOptions,
   type CollectorIpcServiceClient,
   type CollectorIpcTransportExtras,
