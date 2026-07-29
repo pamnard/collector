@@ -589,6 +589,22 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
   }
 
   async upsertTag(tag: Tag, vaultId: string): Promise<void> {
+    // Disk may recreate a tag id for an existing name; prefer the disk id and
+    // drop the stale index row so UNIQUE(vault_id, name) does not fail.
+    const stale = await this.db.select<{ id: string }>(
+      `SELECT id FROM tags WHERE vault_id = ? AND name = ? AND id != ?`,
+      [vaultId, tag.name, tag.id],
+    );
+    for (const row of stale) {
+      await this.db.execute(
+        `INSERT OR IGNORE INTO item_tags (item_id, tag_id)
+         SELECT item_id, ? FROM item_tags WHERE tag_id = ?`,
+        [tag.id, row.id],
+      );
+      await this.db.execute(`DELETE FROM item_tags WHERE tag_id = ?`, [row.id]);
+      await this.db.execute(`DELETE FROM tags WHERE id = ?`, [row.id]);
+    }
+
     await this.db.execute(
       `INSERT INTO tags (id, vault_id, name, color, created_at)
        VALUES (?, ?, ?, ?, ?)

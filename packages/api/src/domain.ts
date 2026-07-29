@@ -71,7 +71,8 @@ export interface UpdateItemInput {
   url?: string | null;
   content_type?: ItemFile["content_type"];
   content?: string | null;
-  tag_ids?: string[];
+  /** Tag names as in the vault .md frontmatter; missing names are created. */
+  tags?: string[];
   folder_path?: string;
 }
 

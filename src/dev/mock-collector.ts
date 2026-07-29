@@ -380,12 +380,17 @@ export async function updateItem(
     throw new Error(`Item not found: ${itemId}`);
   }
 
+  const tag_ids =
+    input.tags !== undefined
+      ? input.tags.map((name) => mockStore.ensureTagByName(name).id)
+      : existing.tag_ids;
+
   return mockStore.updateItem(itemId, {
     title: input.title ?? existing.title,
     description: input.description ?? existing.description,
     url: input.url !== undefined ? input.url : existing.url,
     content_type: input.content_type ?? existing.content_type,
-    tag_ids: input.tag_ids ?? existing.tag_ids,
+    tag_ids,
     folder_path: input.folder_path ?? existing.folder_path,
   });
 }

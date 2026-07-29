@@ -106,12 +106,35 @@ describe("MCP tools over service IPC (#174)", () => {
     expect(search.isError).toBeFalsy();
     const searchBody = JSON.parse(
       (search.content as { text: string }[])[0]!.text,
-    ) as { id: string }[];
-    expect(searchBody.some((row) => row.id === createdBody.id)).toBe(true);
+    ) as { id: string; title: string; content_type: string; tag_ids: string[] }[];
+    const hit = searchBody.find((row) => row.id === createdBody.id);
+    expect(hit).toBeDefined();
+    expect(hit!.title).toBe("MCP note");
+    expect(hit!.content_type).toBe("note");
+    expect(Array.isArray(hit!.tag_ids)).toBe(true);
+
+    const folder = await mcpClient.callTool({
+      name: "collector_create_folder",
+      arguments: { folderPath: "Archive" },
+    });
+    expect(folder.isError).toBeFalsy();
+
+    const moved = await mcpClient.callTool({
+      name: "collector_move_item",
+      arguments: { itemId: createdBody.id, folderPath: "Archive" },
+    });
+    expect(moved.isError).toBeFalsy();
+    const movedBody = JSON.parse(
+      (moved.content as { text: string }[])[0]!.text,
+    ) as { ok: boolean; itemId: string; folder_path: string };
+    expect(movedBody.ok).toBe(true);
+    expect(movedBody.itemId).not.toBe(createdBody.id);
+    expect(movedBody.itemId).toMatch(/^Archive\//);
+    expect(movedBody.folder_path).toBe("Archive");
 
     const deleted = await mcpClient.callTool({
       name: "collector_delete_item",
-      arguments: { itemId: createdBody.id },
+      arguments: { itemId: movedBody.itemId },
     });
     expect(deleted.isError).toBeFalsy();
 
@@ -121,7 +144,7 @@ describe("MCP tools over service IPC (#174)", () => {
     await host.close();
   });
 
-  it("update content_type + tag_ids and source round-trip (#351 / #348)", async () => {
+  it("update content_type + tags by name and source round-trip (#351 / #348 / #354)", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "collector-mcp-351-"));
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
@@ -153,21 +176,12 @@ describe("MCP tools over service IPC (#174)", () => {
     ) as { id: string; content_type: string };
     expect(createdBody.content_type).toBe("image");
 
-    const tag = await mcpClient.callTool({
-      name: "collector_create_tag",
-      arguments: { name: "triage-351" },
-    });
-    expect(tag.isError).toBeFalsy();
-    const tagBody = JSON.parse(
-      (tag.content as { text: string }[])[0]!.text,
-    ) as { id: string };
-
     const updated = await mcpClient.callTool({
       name: "collector_update_item",
       arguments: {
         itemId: createdBody.id,
         content_type: "article",
-        tag_ids: [tagBody.id],
+        tags: ["brand-new-mcp-tag", "triage-351"],
       },
     });
     expect(updated.isError).toBeFalsy();
@@ -175,7 +189,7 @@ describe("MCP tools over service IPC (#174)", () => {
       (updated.content as { text: string }[])[0]!.text,
     ) as { content_type: string; tag_ids: string[] };
     expect(updatedBody.content_type).toBe("article");
-    expect(updatedBody.tag_ids).toEqual([tagBody.id]);
+    expect(updatedBody.tag_ids).toHaveLength(2);
 
     const got = await mcpClient.callTool({
       name: "collector_get_item",
@@ -186,7 +200,7 @@ describe("MCP tools over service IPC (#174)", () => {
       (got.content as { text: string }[])[0]!.text,
     ) as { item: { content_type: string; tag_ids: string[] } };
     expect(gotBody.item.content_type).toBe("article");
-    expect(gotBody.item.tag_ids).toEqual([tagBody.id]);
+    expect(gotBody.item.tag_ids).toHaveLength(2);
 
     const source = await mcpClient.callTool({
       name: "collector_get_item_source",
@@ -196,6 +210,8 @@ describe("MCP tools over service IPC (#174)", () => {
     const sourceText = (source.content as { text: string }[])[0]!.text;
     expect(sourceText).toMatch(/title:/);
     expect(sourceText).toMatch(/article|content_type|type:/);
+    expect(sourceText).toMatch(/brand-new-mcp-tag/);
+    expect(sourceText).toMatch(/triage-351/);
 
     const rewritten = sourceText.replace(/Misclassified/g, "Fixed title");
     const sourceUpdated = await mcpClient.callTool({

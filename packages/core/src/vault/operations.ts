@@ -24,6 +24,7 @@ import {
   type TagMapsHolder,
 } from "./item-io.js";
 import { writeTagsFile } from "./tag-io.js";
+import { syncTagsToIndex } from "./tag-operations.js";
 import {
   DISK_ITEM_READ_CONCURRENCY,
   INDEX_SYNC_CONTENT_YIELD_MS,
@@ -164,6 +165,9 @@ export async function writeItemRawMarkdown(
 
   const sourceRef = await readItemSourceRef(ctx.fs, vaultPath, id);
   const fileStat = await ctx.fs.stat(docPath);
+
+  // ensureTagsByName (via parse) only updates tags.json; index FK needs tags rows.
+  await syncTagsToIndex(ctx, vaultPath, vaultId);
 
   await ctx.index.upsertItem(
     {

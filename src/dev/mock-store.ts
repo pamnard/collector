@@ -122,6 +122,28 @@ export const mockStore = {
     return createMockTags(items);
   },
 
+  ensureTagByName(name: string): TagWithCount {
+    const normalized = name.trim();
+    const current = this.listTags();
+    const existing = current.find(
+      (tag) => tag.name.toLowerCase() === normalized.toLowerCase(),
+    );
+    if (existing) {
+      return existing;
+    }
+    const created: TagWithCount = {
+      id: crypto.randomUUID(),
+      vault_id: vault.id,
+      name: normalized,
+      color: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      item_count: 0,
+    };
+    tags = [...current, created].sort((a, b) => a.name.localeCompare(b.name));
+    return created;
+  },
+
   listFolderTree(): FolderTreeNode[] {
     if (folderTree) {
       return withInboxFolder(folderTree);

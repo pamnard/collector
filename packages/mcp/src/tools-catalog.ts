@@ -53,7 +53,7 @@ export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] = [
     description:
       "Full-text search over item title, description, and content in the active vault. " +
       "Does not look up by item id or path (item_id is unindexed in FTS). " +
-      "Returns [{ id, title, folder_path }]; pass `id` unchanged as itemId to get/update/delete/move.",
+      "Returns full ItemFile[] (same fields as collector_get_item metadata); pass `id` unchanged as itemId to get/update/delete/move.",
     params: [
       {
         name: "query",
@@ -133,7 +133,8 @@ export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] = [
       "itemId is the vault-relative .md path. " +
       "Passing folder_path moves the item (same host path as collector_move_item). " +
       "url: omit to leave unchanged; null clears the URL. " +
-      "content_type and tag_ids are supported (same as the UI form).",
+      "content_type and tags (tag names, same as .md frontmatter) are supported (same as the UI form). " +
+      "Missing tag names are created, same as collector_update_item_source.",
     params: [
       {
         name: "itemId",
@@ -175,12 +176,12 @@ export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] = [
           "New content type. One of: article, video, image, note, bookmark, pdf, audio, other. Omit to leave unchanged.",
       },
       {
-        name: "tag_ids",
+        name: "tags",
         required: false,
         typeLabel: "string[]",
         description:
-          "Replace item tag ids (opaque UUIDs from collector_create_tag / get_item). " +
-          "Omit to leave unchanged; pass [] to clear all tags on the item.",
+          "Replace item tags by name (as in vault .md frontmatter). " +
+          "Missing names are created. Omit to leave unchanged; pass [] to clear all tags on the item.",
       },
       {
         name: "folder_path",
@@ -360,7 +361,8 @@ export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] = [
     description:
       "Move an item into a folder. Convenience alias of collector_update_item with folder_path " +
       "(same host move path / semantics). itemId is the vault-relative .md path; folderPath uses the same folder conventions as create. " +
-      "Empty destination normalizes to Inbox. Item id changes to {folder}/{filename}.md.",
+      "Empty destination normalizes to Inbox. Item id changes to {folder}/{filename}.md. " +
+      "Returns { ok, itemId, folder_path, item } where itemId is the **new** path after the move — use that for later get/update/delete.",
     params: [
       {
         name: "itemId",

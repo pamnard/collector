@@ -85,8 +85,8 @@ export function ItemDetailInlineEditor({
       />
 
       <TagPicker
-        selectedTagIds={values.tag_ids}
-        onChange={(tag_ids) => update("tag_ids", tag_ids)}
+        selectedTagNames={values.tags}
+        onChange={(tags) => update("tags", tags)}
       />
 
       <label className="block">

@@ -76,17 +76,7 @@ export async function runCollectorCli(
     }
     if (cmd.name === "search") {
       const items = await client.searchItems(cmd.query, "all");
-      io.stdout(
-        JSON.stringify(
-          items.map((item) => ({
-            id: item.id,
-            title: item.title,
-            folder_path: item.folder_path,
-          })),
-          null,
-          2,
-        ),
-      );
+      io.stdout(JSON.stringify(items, null, 2));
       return 0;
     }
     if (cmd.name === "get-item") {
@@ -120,7 +110,7 @@ export async function runCollectorCli(
         ...(cmd.content_type === undefined
           ? {}
           : { content_type: cmd.content_type }),
-        ...(cmd.tag_ids === undefined ? {} : { tag_ids: cmd.tag_ids }),
+        ...(cmd.tags === undefined ? {} : { tags: cmd.tags }),
         ...(cmd.folder_path === undefined ? {} : { folder_path: cmd.folder_path }),
       });
       io.stdout(JSON.stringify(item, null, 2));
@@ -170,12 +160,16 @@ export async function runCollectorCli(
       return 0;
     }
     if (cmd.name === "move-item") {
-      await client.moveItemToFolderPath(cmd.itemId, cmd.folderPath);
+      const moved = await client.moveItemToFolderPath(
+        cmd.itemId,
+        cmd.folderPath,
+      );
       io.stdout(
         JSON.stringify({
           ok: true,
-          itemId: cmd.itemId,
-          folder_path: cmd.folderPath,
+          itemId: moved.id,
+          folder_path: moved.folder_path,
+          item: moved,
         }),
       );
       return 0;

@@ -3,7 +3,7 @@ import type { Tag } from "@collector/shared";
 
 const listTagsWithCounts = vi.fn();
 const createTagOnVault = vi.fn();
-const listFolderTreeFromIndex = vi.fn();
+const reconcileFolderTreeFromDisk = vi.fn();
 const moveItemToFolder = vi.fn();
 
 vi.mock("@collector/core", async (importOriginal) => {
@@ -12,8 +12,8 @@ vi.mock("@collector/core", async (importOriginal) => {
     ...actual,
     listTagsWithCounts: (...args: unknown[]) => listTagsWithCounts(...args),
     createTag: (...args: unknown[]) => createTagOnVault(...args),
-    listFolderTreeFromIndex: (...args: unknown[]) =>
-      listFolderTreeFromIndex(...args),
+    reconcileFolderTreeFromDisk: (...args: unknown[]) =>
+      reconcileFolderTreeFromDisk(...args),
     moveItemToFolder: (...args: unknown[]) => moveItemToFolder(...args),
   };
 });
@@ -34,7 +34,7 @@ describe("createTagsFoldersService", () => {
   beforeEach(() => {
     listTagsWithCounts.mockReset();
     createTagOnVault.mockReset();
-    listFolderTreeFromIndex.mockReset();
+    reconcileFolderTreeFromDisk.mockReset();
     moveItemToFolder.mockReset();
     kickoff.mockReset();
   });
@@ -90,7 +90,7 @@ describe("createTagsFoldersService", () => {
   });
 
   it("listFolderTree and moveItemToFolderPath delegate", async () => {
-    listFolderTreeFromIndex.mockResolvedValue([
+    reconcileFolderTreeFromDisk.mockResolvedValue([
       { name: "Inbox", path: "Inbox", item_count: 1, children: [] },
     ]);
     moveItemToFolder.mockResolvedValue({ id: "a.md" });
@@ -99,7 +99,11 @@ describe("createTagsFoldersService", () => {
     const tree = await service.listFolderTree();
     const moved = await service.moveItemToFolderPath("a.md", "Inbox");
 
-    expect(listFolderTreeFromIndex).toHaveBeenCalledWith(ctx, "/vault", "v1");
+    expect(reconcileFolderTreeFromDisk).toHaveBeenCalledWith(
+      ctx,
+      "/vault",
+      "v1",
+    );
     expect(tree[0]?.path).toBe("Inbox");
     expect(moveItemToFolder).toHaveBeenCalledWith(
       ctx,

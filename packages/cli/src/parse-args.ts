@@ -27,7 +27,7 @@ export type CliCommand =
       url?: string | null;
       content?: string | null;
       content_type?: ContentType;
-      tag_ids?: string[];
+      tags?: string[];
       folder_path?: string;
     }
   | {
@@ -90,7 +90,7 @@ const UPDATE_ITEM_FLAGS = new Set([
   "--url",
   "--content",
   "--type",
-  "--tag-ids",
+  "--tags",
   "--folder",
 ]);
 const UPDATE_ITEM_SOURCE_FLAGS = new Set(["--content"]);
@@ -157,8 +157,8 @@ function parseContentType(raw: string | undefined): ContentType {
   return value as ContentType;
 }
 
-/** Comma-separated tag UUIDs; empty string → []. */
-function parseTagIds(raw: string): string[] {
+/** Comma-separated tag names; empty string → []. */
+function parseTagNames(raw: string): string[] {
   if (raw.trim() === "") {
     return [];
   }
@@ -288,7 +288,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     const itemId = rest[0];
     if (!itemId || rest.length !== 1) {
       throw new CliUsageError(
-        "Usage: collector-cli update-item <item-id> [--title …] [--content …] [--url …] [--type …] [--tag-ids id,…] [--folder …] [--description …]",
+        "Usage: collector-cli update-item <item-id> [--title …] [--content …] [--url …] [--type …] [--tags name,…] [--folder …] [--description …]",
       );
     }
     const title = readOpt(argv, "--title");
@@ -298,9 +298,9 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     const typeRaw = readOpt(argv, "--type");
     const content_type =
       typeRaw === undefined ? undefined : parseContentType(typeRaw);
-    const tagIdsRaw = readOpt(argv, "--tag-ids");
-    const tag_ids =
-      tagIdsRaw === undefined ? undefined : parseTagIds(tagIdsRaw);
+    const tagsRaw = readOpt(argv, "--tags");
+    const tags =
+      tagsRaw === undefined ? undefined : parseTagNames(tagsRaw);
     const folder_path = readOpt(argv, "--folder");
     if (
       title === undefined &&
@@ -308,7 +308,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       url === undefined &&
       content === undefined &&
       content_type === undefined &&
-      tag_ids === undefined &&
+      tags === undefined &&
       folder_path === undefined
     ) {
       throw new CliUsageError("update-item requires at least one field flag");
@@ -322,7 +322,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
         ...(url === undefined ? {} : { url }),
         ...(content === undefined ? {} : { content }),
         ...(content_type === undefined ? {} : { content_type }),
-        ...(tag_ids === undefined ? {} : { tag_ids }),
+        ...(tags === undefined ? {} : { tags }),
         ...(folder_path === undefined ? {} : { folder_path }),
       },
       dataDir,
