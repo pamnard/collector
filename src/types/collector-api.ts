@@ -19,5 +19,7 @@ export {
   createLocalCollectorService,
   createLocalDashboardSnapshotPort,
   getCollectorClient,
+  getUiSession,
   setCollectorClient,
+  setUiSession,
 } from "../services/collector-client";

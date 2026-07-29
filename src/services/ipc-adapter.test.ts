@@ -64,9 +64,31 @@ describe("createIpcCollectorService (#366)", () => {
     await expect(service.tags.listTags()).resolves.toEqual([]);
   });
 
-  it("createIpcDashboardSnapshotPort exposes snapshot methods", () => {
+  it("createIpcDashboardSnapshotPort uses local FS port (#368)", () => {
     const snapshot = createIpcDashboardSnapshotPort(mockTransport());
     expect(typeof snapshot.ensureDashboardSnapshot).toBe("function");
     expect(typeof snapshot.buildDashboardSnapshot).toBe("function");
+    expect(typeof snapshot.persistDashboardSnapshot).toBe("function");
+  });
+
+  it("createIpcAdapter does not RPC snapshot or thumbnail methods (#368)", async () => {
+    const transport = mockTransport(async (method) => {
+      throw new Error(`unexpected ${method}`);
+    });
+    const client = createIpcAdapter(transport);
+    const snap = client.buildDashboardSnapshot({
+      vaultId: "00000000-0000-4000-8000-000000000001",
+      filter: "all",
+      search: "",
+      itemIds: [],
+      items: [],
+      totalCount: 0,
+      streamEndOffset: 0,
+    });
+    expect(snap.vault_id).toBe("00000000-0000-4000-8000-000000000001");
+    await expect(
+      client.resolveItemThumbnailPaths([]),
+    ).resolves.toEqual(new Map());
+    expect(transport.request).not.toHaveBeenCalled();
   });
 });

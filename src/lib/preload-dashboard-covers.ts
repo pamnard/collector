@@ -1,5 +1,5 @@
 import type { ItemFile } from "@collector/shared";
-import { getCollectorClient } from "../services/collector-client";
+import { getUiSession } from "../services/collector-client";
 
 /**
  * Resolve on-disk cover paths for dashboard items.
@@ -11,5 +11,5 @@ export async function resolveDashboardCoverPaths(
   if (items.length === 0) {
     return new Map();
   }
-  return getCollectorClient().resolveItemThumbnailPaths(items);
+  return getUiSession().thumbnails.resolveItemThumbnailPaths(items);
 }
