@@ -3,6 +3,8 @@
  * Host injects config-dir / FS / legacy+dev-mock adapters (Tauri/localStorage stay outside).
  */
 
+import type { Subscription } from "@collector/api";
+import { subscriptionFromTeardown } from "@collector/api";
 import type { AppSettings } from "@collector/shared";
 import {
   createDefaultAppSettings,
@@ -25,7 +27,7 @@ export interface AppSettingsService {
   ensureAppSettings(): Promise<AppSettings>;
   getAppSettingsSync(): AppSettings | null;
   updateAppSettings(patch: Partial<AppSettings>): Promise<AppSettings>;
-  subscribeAppSettings(onUpdate: (settings: AppSettings) => void): () => void;
+  subscribeAppSettings(onUpdate: (settings: AppSettings) => void): Subscription;
   getAppConfigDirectory(): Promise<string>;
 }
 
@@ -101,9 +103,9 @@ export function createAppSettingsService(
     },
     subscribeAppSettings(listener) {
       listeners.add(listener);
-      return () => {
+      return subscriptionFromTeardown(() => {
         listeners.delete(listener);
-      };
+      });
     },
     getAppConfigDirectory() {
       return deps.ensureConfigDir();

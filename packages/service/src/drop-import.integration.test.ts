@@ -73,8 +73,8 @@ describe("drop import vault integration (#22)", () => {
         for (const file of files) {
           out.push(
             await attachMediaFile(ctx, path, itemId, {
-              filename: file.filename,
-              data: file.data,
+              filename: file.name,
+              data: file.bytes,
             }),
           );
         }
@@ -91,18 +91,18 @@ describe("drop import vault integration (#22)", () => {
       files: [
         {
           relativePath: "Trip/shot.png",
-          filename: "shot.png",
-          data: png,
+          name: "shot.png",
+          bytes: png,
         },
         {
           relativePath: "Trip/notes/x.md",
-          filename: "x.md",
-          data: md,
+          name: "x.md",
+          bytes: md,
         },
         {
           relativePath: "Trip/bad.exe",
-          filename: "bad.exe",
-          data: new Uint8Array([1]),
+          name: "bad.exe",
+          bytes: new Uint8Array([1]),
         },
       ],
     });

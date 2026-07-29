@@ -44,7 +44,7 @@ async function resolveMediaFileInput(args: {
   filename?: string;
   dataBase64?: string;
   sourcePath?: string;
-}): Promise<{ filename: string; data: Uint8Array }> {
+}): Promise<{ name: string; bytes: Uint8Array }> {
   const hasBase64 = args.dataBase64 !== undefined && args.dataBase64 !== "";
   const hasPath = args.sourcePath !== undefined && args.sourcePath !== "";
   if (hasBase64 === hasPath) {
@@ -52,20 +52,20 @@ async function resolveMediaFileInput(args: {
   }
   if (hasPath) {
     const sourcePath = args.sourcePath!;
-    const data = new Uint8Array(await readFile(sourcePath));
-    const filename = args.filename?.trim() || basename(sourcePath);
-    if (!filename) {
+    const bytes = new Uint8Array(await readFile(sourcePath));
+    const name = args.filename?.trim() || basename(sourcePath);
+    if (!name) {
       throw new Error("filename is required when sourcePath has no basename");
     }
-    return { filename, data };
+    return { name, bytes };
   }
-  const filename = args.filename?.trim();
-  if (!filename) {
+  const name = args.filename?.trim();
+  if (!name) {
     throw new Error("filename is required when dataBase64 is set");
   }
   return {
-    filename,
-    data: Uint8Array.from(Buffer.from(args.dataBase64!, "base64")),
+    name,
+    bytes: Uint8Array.from(Buffer.from(args.dataBase64!, "base64")),
   };
 }
 

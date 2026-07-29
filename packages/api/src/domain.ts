@@ -48,11 +48,9 @@ export interface CreateItemInput {
   source_type?: SourceType;
 }
 
-/** One file from a list/folder drop (relativePath includes filename within the drop tree). */
-export interface ImportDroppedFileInput {
+/** One file from a list/folder drop (relativePath includes name within the drop tree). */
+export interface ImportDroppedFileInput extends BinaryPayload {
   relativePath: string;
-  filename: string;
-  data: Uint8Array;
 }
 
 export interface ImportDroppedFilesInput {
@@ -76,7 +74,10 @@ export interface UpdateItemInput {
   folder_path?: string;
 }
 
-export interface AttachMediaFileInput {
-  filename: string;
-  data: Uint8Array;
+/** Transport-honest binary file payload (#364). */
+export interface BinaryPayload {
+  name: string;
+  bytes: Uint8Array;
 }
+
+export type AttachMediaFileInput = BinaryPayload;

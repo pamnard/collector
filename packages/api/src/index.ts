@@ -1,6 +1,6 @@
 /**
- * @collector/api — transport-agnostic Collector service API (#145 / #361).
- * Types, constants, and thin port-compose helpers. No host, IPC, or UI wiring.
+ * @collector/api — transport-agnostic Collector service API (#145 / #361 / #364).
+ * Types, constants, and thin compose / transport helpers. No host, IPC, or UI wiring.
  */
 
 export type {
@@ -15,6 +15,7 @@ export type {
 
 export type {
   AttachMediaFileInput,
+  BinaryPayload,
   CreateItemInput,
   FolderTreeNode,
   ImportDroppedFileInput,
@@ -49,6 +50,7 @@ export {
   type MediaPort,
   type ServiceSubscribeHandlers,
   type SettingsPort,
+  type Subscription,
   type TagsPort,
   type VaultIndexSyncStatus,
   type VaultsPort,
@@ -67,3 +69,8 @@ export {
   toCollectorServiceApi,
   VAULTS_PORT_KEYS,
 } from "./service-compose.js";
+
+export {
+  asCollectorApiError,
+  subscriptionFromTeardown,
+} from "./transport.js";

@@ -183,7 +183,7 @@ export async function runCollectorCli(
       const data = new Uint8Array(await readFile(cmd.filePath));
       const filename = cmd.filename ?? basename(cmd.filePath);
       const attached = await client.attachMediaFiles(cmd.itemId, [
-        { filename, data },
+        { name: filename, bytes: data },
       ]);
       io.stdout(JSON.stringify(attached[0] ?? attached, null, 2));
       return 0;
@@ -192,8 +192,8 @@ export async function runCollectorCli(
       const data = new Uint8Array(await readFile(cmd.filePath));
       const filename = cmd.filename ?? basename(cmd.filePath);
       const replaced = await client.replaceItemMedia(cmd.itemId, cmd.mediaId, {
-        filename,
-        data,
+        name: filename,
+        bytes: data,
       });
       io.stdout(JSON.stringify(replaced, null, 2));
       return 0;

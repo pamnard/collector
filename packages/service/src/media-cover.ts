@@ -202,8 +202,8 @@ export function createMediaCoverService(
     for (const file of files) {
       attached.push(
         await attachMediaFile(ctx, path, itemId, {
-          filename: file.filename,
-          data: file.data,
+          filename: file.name,
+          data: file.bytes,
         }),
       );
     }
@@ -218,8 +218,8 @@ export function createMediaCoverService(
   ): Promise<MediaFileMeta> => {
     const { path } = await deps.resolveActiveVault();
     const replaced = await replaceMediaFile(deps.getContext(), path, itemId, mediaId, {
-      filename: file.filename,
-      data: file.data,
+      filename: file.name,
+      data: file.bytes,
     });
     await syncItemCover(itemId);
     return replaced;

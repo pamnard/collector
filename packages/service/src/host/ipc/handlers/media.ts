@@ -2,6 +2,7 @@
  * IPC handlers: media / cover / thumbnails (#159).
  */
 
+import type { AttachMediaFileInput } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
 import {
   asObject,
@@ -12,10 +13,24 @@ import { DOMAIN_IPC_METHODS } from "../domain-methods.js";
 import type { DomainIpcHandlerMap } from "../domain-methods.js";
 import type { ServiceDomainRuntime } from "../../domain-runtime.js";
 
+function requireFileName(
+  row: Record<string, unknown>,
+  label: string,
+  method: string,
+): string {
+  if (typeof row.name === "string" && row.name.length > 0) {
+    return row.name;
+  }
+  if (typeof row.filename === "string" && row.filename.length > 0) {
+    return row.filename;
+  }
+  badRequest(`${method}: ${label} name or filename required`);
+}
+
 function decodeMediaFiles(
   value: unknown,
   method: string,
-): { filename: string; data: Uint8Array }[] {
+): AttachMediaFileInput[] {
   if (!Array.isArray(value)) {
     badRequest(`${method}: files must be an array`);
   }
@@ -24,13 +39,13 @@ function decodeMediaFiles(
       badRequest(`${method}: files[${index}] must be an object`);
     }
     const row = entry as Record<string, unknown>;
-    const filename = requireString(row.filename, `files[${index}].filename`, method);
+    const name = requireFileName(row, `files[${index}]`, method);
     if (typeof row.dataBase64 !== "string") {
       badRequest(`${method}: files[${index}].dataBase64 must be a string`);
     }
     return {
-      filename,
-      data: Uint8Array.from(Buffer.from(row.dataBase64, "base64")),
+      name,
+      bytes: Uint8Array.from(Buffer.from(row.dataBase64, "base64")),
     };
   });
 }

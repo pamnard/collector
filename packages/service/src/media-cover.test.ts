@@ -96,7 +96,7 @@ describe("createMediaCoverService", () => {
     applyItemCover.mockResolvedValue({ id: "note.md" });
 
     const result = await createService().attachMediaFiles("note.md", [
-      { filename: "a.png", data: new Uint8Array([1]) },
+      { name: "a.png", bytes: new Uint8Array([1]) },
     ]);
 
     expect(attachMediaFile).toHaveBeenCalled();
@@ -125,8 +125,8 @@ describe("createMediaCoverService", () => {
     applyItemCover.mockResolvedValue({ id: "note.md" });
 
     const result = await createService().replaceItemMedia("note.md", "m1", {
-      filename: "b.png",
-      data: new Uint8Array([2]),
+      name: "b.png",
+      bytes: new Uint8Array([2]),
     });
 
     expect(replaceMediaFile).toHaveBeenCalledWith(

@@ -23,7 +23,7 @@ describe("createVaultIndexSyncStatusStore", () => {
     expect(store.get().status).toBe("running");
     expect(seen).toEqual(["idle", "running"]);
 
-    unsub();
+    unsub.unsubscribe();
     store.set({
       vaultId: "v1",
       status: "done",

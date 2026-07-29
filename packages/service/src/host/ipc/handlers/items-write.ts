@@ -16,6 +16,20 @@ import { DOMAIN_IPC_METHODS } from "../domain-methods.js";
 import type { DomainIpcHandlerMap } from "../domain-methods.js";
 import type { ServiceDomainRuntime } from "../../domain-runtime.js";
 
+function requireFileName(
+  row: Record<string, unknown>,
+  label: string,
+  method: string,
+): string {
+  if (typeof row.name === "string" && row.name.length > 0) {
+    return row.name;
+  }
+  if (typeof row.filename === "string" && row.filename.length > 0) {
+    return row.filename;
+  }
+  badRequest(`${method}: ${label} name or filename required`);
+}
+
 function decodeDroppedFiles(
   files: unknown,
   method: string,
@@ -31,16 +45,14 @@ function decodeDroppedFiles(
     if (typeof r.relativePath !== "string" || !r.relativePath) {
       badRequest(`${method}: files[${index}].relativePath required`);
     }
-    if (typeof r.filename !== "string" || !r.filename) {
-      badRequest(`${method}: files[${index}].filename required`);
-    }
+    const name = requireFileName(r, `files[${index}]`, method);
     if (typeof r.dataBase64 !== "string") {
       badRequest(`${method}: files[${index}].dataBase64 required`);
     }
     return {
       relativePath: r.relativePath,
-      filename: r.filename,
-      data: Uint8Array.from(Buffer.from(r.dataBase64, "base64")),
+      name,
+      bytes: Uint8Array.from(Buffer.from(r.dataBase64, "base64")),
     };
   });
 }

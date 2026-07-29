@@ -8,9 +8,17 @@
 
 import type { ItemFile, VaultMeta } from "@collector/shared";
 import type { MediaFileMeta, Tag } from "@collector/shared";
-import type { ImportDroppedFilesInput, ImportDroppedFilesResult } from "@collector/api";
+import type {
+  AttachMediaFileInput,
+  CollectorApiError,
+  ImportDroppedFilesInput,
+  ImportDroppedFilesResult,
+  Subscription,
+} from "@collector/api";
 import {
+  asCollectorApiError,
   DASHBOARD_PREFETCH_SIZE,
+  subscriptionFromTeardown,
   type DashboardIndexPage,
   type DashboardItemIdsResult,
   type DashboardItemSort,
@@ -48,7 +56,7 @@ function refuseUnlessDevMock(): void {
 /** Idle stub — real progress comes from the host over IPC (#163 / #329). */
 export function subscribeVaultIndexSyncStatus(
   onUpdate: (status: VaultIndexSyncStatus) => void,
-): () => void {
+): Subscription {
   return vaultIndexSyncStatusStore.subscribe(onUpdate);
 }
 
@@ -133,17 +141,26 @@ export function subscribeDashboardLoad(
     onIndexPage: (page: DashboardIndexPage) => void;
     getLoadedIdCount?: () => number;
     onLoadComplete?: () => void;
-    onError?: (scope: string, error: unknown) => void;
+    onError?: (scope: string, error: CollectorApiError) => void;
   },
   signal?: AbortSignal,
   sort?: DashboardItemSort,
-): void {
+): Subscription {
   if (!isDevMock()) {
     refuseInProcess();
   }
+  const controller = new AbortController();
+  if (signal) {
+    if (signal.aborted) {
+      controller.abort();
+    } else {
+      signal.addEventListener("abort", () => controller.abort(), { once: true });
+    }
+  }
+  const active = controller.signal;
   void (async () => {
     try {
-      if (signal?.aborted) {
+      if (active.aborted) {
         return;
       }
       const page = await devMockCollector.fetchDashboardIndexPage(
@@ -155,17 +172,18 @@ export function subscribeDashboardLoad(
         },
         sort,
       );
-      if (signal?.aborted) {
+      if (active.aborted) {
         return;
       }
       handlers.onIndexPage(page);
       handlers.onLoadComplete?.();
     } catch (error: unknown) {
-      if (!signal?.aborted) {
-        handlers.onError?.("dashboard load", error);
+      if (!active.aborted) {
+        handlers.onError?.("dashboard load", asCollectorApiError(error));
       }
     }
   })();
+  return subscriptionFromTeardown(() => controller.abort());
 }
 
 export async function streamDashboardItems(
@@ -264,20 +282,35 @@ export async function setDefaultVault(_vaultId: string): Promise<void> {
 export function subscribeTags(
   onUpdate: (tags: TagWithCount[]) => void,
   handlers?: {
-    onError?: (scope: string, error: unknown) => void;
+    onError?: (scope: string, error: CollectorApiError) => void;
   },
-  _signal?: AbortSignal,
-): void {
+  signal?: AbortSignal,
+): Subscription {
   if (!isDevMock()) {
     refuseInProcess();
   }
+  const controller = new AbortController();
+  if (signal) {
+    if (signal.aborted) {
+      controller.abort();
+    } else {
+      signal.addEventListener("abort", () => controller.abort(), { once: true });
+    }
+  }
   void devMockCollector
     .listTags()
-    .then(onUpdate)
+    .then((tags) => {
+      if (!controller.signal.aborted) {
+        onUpdate(tags);
+      }
+    })
     .catch((error: unknown) => {
-      handlers?.onError?.("tags", error);
-      onUpdate([]);
+      if (!controller.signal.aborted) {
+        handlers?.onError?.("tags", asCollectorApiError(error));
+        onUpdate([]);
+      }
     });
+  return subscriptionFromTeardown(() => controller.abort());
 }
 
 export async function listTags(): Promise<TagWithCount[]> {
@@ -306,20 +339,35 @@ export async function deleteTag(_tagId: string): Promise<void> {
 export function subscribeFolderTree(
   onUpdate: (tree: FolderTreeNode[]) => void,
   handlers?: {
-    onError?: (scope: string, error: unknown) => void;
+    onError?: (scope: string, error: CollectorApiError) => void;
   },
-  _signal?: AbortSignal,
-): void {
+  signal?: AbortSignal,
+): Subscription {
   if (!isDevMock()) {
     refuseInProcess();
   }
+  const controller = new AbortController();
+  if (signal) {
+    if (signal.aborted) {
+      controller.abort();
+    } else {
+      signal.addEventListener("abort", () => controller.abort(), { once: true });
+    }
+  }
   void devMockCollector
     .listFolderTree()
-    .then(onUpdate)
+    .then((tree) => {
+      if (!controller.signal.aborted) {
+        onUpdate(tree);
+      }
+    })
     .catch((error: unknown) => {
-      handlers?.onError?.("folder tree", error);
-      onUpdate([]);
+      if (!controller.signal.aborted) {
+        handlers?.onError?.("folder tree", asCollectorApiError(error));
+        onUpdate([]);
+      }
     });
+  return subscriptionFromTeardown(() => controller.abort());
 }
 
 export async function loadFolderTree(): Promise<FolderTreeNode[]> {
@@ -386,7 +434,7 @@ export async function setItemCoverFromMedia(
 
 export async function attachMediaFiles(
   _itemId: string,
-  _files: Array<{ filename: string; data: Uint8Array }>,
+  _files: AttachMediaFileInput[],
 ): Promise<MediaFileMeta[]> {
   refuseInProcess();
 }
@@ -394,7 +442,7 @@ export async function attachMediaFiles(
 export async function replaceItemMedia(
   _itemId: string,
   _mediaId: string,
-  _file: { filename: string; data: Uint8Array },
+  _file: AttachMediaFileInput,
 ): Promise<MediaFileMeta> {
   refuseInProcess();
 }

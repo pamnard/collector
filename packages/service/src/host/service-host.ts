@@ -9,6 +9,7 @@
  */
 
 import { createServer, type Server } from "node:http";
+import type { Subscription } from "@collector/api";
 import type { CollectorProfileLayout } from "@collector/shared";
 import {
   resolveCollectorProfileLayout,
@@ -145,8 +146,8 @@ export async function startServiceHost(
 
   let ipc: ServiceIpcServer | null = null;
   let ipcTokenPath: string | null = null;
-  let stopSyncStatusBroadcast: (() => void) | null = null;
-  let stopAppSettingsBroadcast: (() => void) | null = null;
+  let stopSyncStatusBroadcast: Subscription | null = null;
+  let stopAppSettingsBroadcast: Subscription | null = null;
   if (options.ipcPath !== false) {
     const token = generateServiceIpcToken();
     ipcTokenPath = defaultServiceIpcTokenPath(layout.dataDir);
@@ -179,9 +180,9 @@ export async function startServiceHost(
       return;
     }
     closed = true;
-    stopSyncStatusBroadcast?.();
+    stopSyncStatusBroadcast?.unsubscribe();
     stopSyncStatusBroadcast = null;
-    stopAppSettingsBroadcast?.();
+    stopAppSettingsBroadcast?.unsubscribe();
     stopAppSettingsBroadcast = null;
     if (ipc) {
       await ipc.close();

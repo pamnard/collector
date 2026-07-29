@@ -3,12 +3,13 @@
  * Full sync engine stays in the host app (later S tickets).
  */
 
-import type { VaultIndexSyncStatus } from "@collector/api";
+import type { Subscription, VaultIndexSyncStatus } from "@collector/api";
+import { subscriptionFromTeardown } from "@collector/api";
 
 export type { VaultIndexSyncStatus } from "@collector/api";
 
 export interface VaultIndexSyncStatusStore {
-  subscribe(onUpdate: (status: VaultIndexSyncStatus) => void): () => void;
+  subscribe(onUpdate: (status: VaultIndexSyncStatus) => void): Subscription;
   get(): VaultIndexSyncStatus;
   set(next: VaultIndexSyncStatus): void;
 }
@@ -31,9 +32,9 @@ export function createVaultIndexSyncStatusStore(
     subscribe(onUpdate) {
       onUpdate(status);
       listeners.add(onUpdate);
-      return () => {
+      return subscriptionFromTeardown(() => {
         listeners.delete(onUpdate);
-      };
+      });
     },
     get() {
       return status;

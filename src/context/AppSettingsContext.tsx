@@ -79,11 +79,12 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         }
       });
 
-    return client.subscribeAppSettings((next) => {
+    const sub = client.subscribeAppSettings((next) => {
       if (!cancelled) {
         setSettings(next);
       }
     });
+    return () => sub.unsubscribe();
   }, []);
 
   const patch = useCallback(async (partial: Partial<AppSettings>) => {
