@@ -257,8 +257,7 @@ export interface SettingsPort {
 
 /**
  * Dashboard snapshot cache — primary home is {@link UiSession.snapshot} (#363).
- * Still on the transitional flat {@link CollectorServiceApi}; not a
- * {@link CollectorService} key.
+ * Not a {@link CollectorService} key.
  */
 export interface DashboardSnapshotPort {
   ensureDashboardSnapshot(): Promise<DashboardSnapshot | null>;
@@ -297,21 +296,3 @@ export interface CollectorService {
   index: IndexPort;
   settings: SettingsPort;
 }
-
-/**
- * Full service API surface matching today's UI facade (`collector-service` +
- * settings/snapshot entrypoints the UI already uses).
- *
- * @deprecated Use {@link CollectorService} ports + {@link UiSession} for UI-only
- * slices (snapshot, sync settings getter, abs thumbnail paths). Transitional flat
- * facade (#145 → #360 / #363).
- */
-export type CollectorServiceApi = BootPort &
-  ItemsPort &
-  TagsPort &
-  FoldersPort &
-  MediaPort &
-  VaultsPort &
-  IndexPort &
-  SettingsPort &
-  DashboardSnapshotPort;

@@ -32,22 +32,18 @@ import {
 } from "@collector/service/host";
 import type { ServiceIpcClient } from "@collector/service/ipc";
 import {
-  createCollectorIpcClient,
   createCollectorIpcDashboardSnapshotPort,
   createCollectorIpcService,
   createCollectorIpcServiceClient,
-  type CollectorIpcClient,
   type CollectorIpcClientOptions,
   type CollectorIpcServiceClient,
   type ServiceIpcHealthResult,
 } from "./ipc-collector-client.js";
 
 export {
-  createCollectorIpcClient,
   createCollectorIpcDashboardSnapshotPort,
   createCollectorIpcService,
   createCollectorIpcServiceClient,
-  type CollectorIpcClient,
   type CollectorIpcClientOptions,
   type CollectorIpcServiceClient,
   type ServiceIpcHealthResult,
@@ -239,21 +235,6 @@ function createNodeUiSessionOptions(
     snapshot: createNodeSnapshotPort(transport),
     thumbnails: createNodeThumbnailPaths(transport),
   };
-}
-
-/**
- * Dial the out-of-band service host and return the flat IPC client.
- * @deprecated Prefer {@link connectCollectorIpcService} (#369).
- */
-export async function connectCollectorIpcClient(
-  path: string,
-  options?: ServiceIpcClientOptions,
-): Promise<CollectorIpcClient> {
-  const transport = await connectServiceIpc(path, options);
-  return createCollectorIpcClient(
-    transport,
-    createNodeUiSessionOptions(transport),
-  );
 }
 
 /** Dial the service host and return domain ports + transport extras (#369). */

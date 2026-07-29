@@ -5,8 +5,7 @@
  * Initialized from {@link setCollectorService} / module bootstrap in collector-client.
  */
 
-import type { CollectorServiceApi, UiSession } from "@collector/api";
-import { toUiSession } from "@collector/api";
+import type { UiSession } from "@collector/api";
 
 let activeSession: UiSession | null = null;
 
@@ -20,8 +19,4 @@ export function getUiSession(): UiSession {
 /** Replace the active session (tests / #170 IPC cutover). */
 export function setUiSession(session: UiSession): void {
   activeSession = session;
-}
-
-export function createUiSessionFromFlat(flat: CollectorServiceApi): UiSession {
-  return toUiSession(flat);
 }
