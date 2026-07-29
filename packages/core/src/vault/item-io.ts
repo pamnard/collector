@@ -75,6 +75,9 @@ export async function loadTagMaps(
 /**
  * Ensure tag names exist in tags.json; returns refreshed maps.
  * Creates new Tag records for missing names (portable import).
+ * When `current` already has every name, avoids a disk read (index sync).
+ * When creating, re-reads disk first so a stale map cannot clobber tags
+ * added concurrently (e.g. createTag).
  */
 export async function ensureTagsByName(
   fs: FileSystemAdapter,
@@ -86,17 +89,26 @@ export async function ensureTagsByName(
     return current ?? (await loadTagMaps(fs, vaultPath));
   }
 
-  const file = current
-    ? { tags: [...current.byId.values()] }
-    : await readTagsFile(fs, vaultPath);
-  let maps = current ?? buildTagMaps(file.tags);
-  let mutated = false;
-
+  let maps = current ?? (await loadTagMaps(fs, vaultPath));
+  const missing: string[] = [];
   for (const rawName of names) {
     const normalized = rawName.trim();
     if (!normalized) {
       throw new Error("Tag name must be non-empty");
     }
+    if (!maps.byName.has(normalized.toLowerCase())) {
+      missing.push(normalized);
+    }
+  }
+  if (missing.length === 0) {
+    return maps;
+  }
+
+  const file = await readTagsFile(fs, vaultPath);
+  maps = buildTagMaps(file.tags);
+  let mutated = false;
+
+  for (const normalized of missing) {
     const key = normalized.toLowerCase();
     if (maps.byName.has(key)) {
       continue;
@@ -114,7 +126,6 @@ export async function ensureTagsByName(
 
   if (mutated) {
     await writeTagsFile(fs, vaultPath, file);
-    maps = buildTagMaps(file.tags);
   }
   return maps;
 }

@@ -19,16 +19,19 @@ import type { ItemFile, VaultMeta } from "@collector/shared";
 import {
   createFolder as createFolderOnVault,
   deleteItem as deleteItemOnDisk,
+  ensureTagsByName,
   isItemIdSortDir,
   isItemIdSortKey,
   itemMarkdownPath,
   listItemsByIds,
   listItemsOnDisk,
+  loadTagMaps,
   moveItemToFolder,
   readItemContent,
   readItemFile,
   readItemRawMarkdown,
   resolveOrCreateInboxFolder,
+  serializeItemDocument,
   upsertItem,
   writeItemRawMarkdown,
   type AdjacentItemAnchor,
@@ -546,17 +549,33 @@ export function createItemsSearchService(
       currentContent = await readItemContent(ctx.fs, path, current.id);
     }
 
-    return upsertItem(ctx, path, vault.id, {
-      item: {
-        ...current,
-        title: input.title ?? current.title,
-        description: input.description ?? current.description,
-        url: input.url !== undefined ? input.url : current.url,
-        content_type: input.content_type ?? current.content_type,
-        tag_ids: input.tag_ids ?? current.tag_ids,
-      },
-      content: input.content !== undefined ? input.content : currentContent,
-    });
+    let maps = await loadTagMaps(ctx.fs, path);
+    let tagIds = current.tag_ids;
+    if (input.tags !== undefined) {
+      maps = await ensureTagsByName(ctx.fs, path, input.tags, maps);
+      tagIds = input.tags.map((rawName) => {
+        const name = rawName.trim();
+        const tag = maps.byName.get(name.toLowerCase());
+        if (!tag) {
+          throw new Error(`Tag not resolved after ensure: ${name}`);
+        }
+        return tag.id;
+      });
+    }
+
+    const nextItem: ItemFile = {
+      ...current,
+      title: input.title ?? current.title,
+      description: input.description ?? current.description,
+      url: input.url !== undefined ? input.url : current.url,
+      content_type: input.content_type ?? current.content_type,
+      tag_ids: tagIds,
+    };
+    const body =
+      input.content !== undefined ? (input.content ?? "") : (currentContent ?? "");
+    const markdown = serializeItemDocument(nextItem, body, maps.byId);
+    // Same on-disk write + parse/ensure path as updateItemSource.
+    return writeItemRawMarkdown(ctx, path, vault.id, nextItem.id, markdown);
   };
 
   const deleteItem = async (itemId: string): Promise<void> => {

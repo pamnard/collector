@@ -59,13 +59,14 @@ describe("COLLECTOR_MCP_TOOLS catalog (#273 / #265)", () => {
     expect(getItem!.description).toMatch(/not a bare UUID/i);
   });
 
-  it("documents search as FTS, not id/path lookup (#265)", () => {
+  it("documents search as FTS returning full ItemFile (#265 / #354)", () => {
     const search = COLLECTOR_MCP_TOOLS.find(
       (tool) => tool.name === "collector_search",
     );
     expect(search).toBeDefined();
     expect(search!.description).toMatch(/full-text|FTS/i);
     expect(search!.description).toMatch(/does not look up by item id/i);
+    expect(search!.description).toMatch(/ItemFile/i);
     const query = search!.params.find((param) => param.name === "query");
     expect(query?.description).toMatch(/not an id or path lookup/i);
   });
@@ -94,18 +95,19 @@ describe("COLLECTOR_MCP_TOOLS catalog (#273 / #265)", () => {
         "url",
         "content",
         "content_type",
-        "tag_ids",
+        "tags",
         "folder_path",
       ]),
     );
   });
 
-  it("documents move as alias of update folder_path (#351)", () => {
+  it("documents move as alias of update folder_path and returns new id (#351 / #354)", () => {
     const move = COLLECTOR_MCP_TOOLS.find(
       (tool) => tool.name === "collector_move_item",
     );
     expect(move).toBeDefined();
     expect(move!.description).toMatch(/alias of collector_update_item/i);
+    expect(move!.description).toMatch(/new.*path|itemId is the \*\*new\*\*/i);
   });
 
   it("exposes folder list/rename/move/delete (#352)", () => {

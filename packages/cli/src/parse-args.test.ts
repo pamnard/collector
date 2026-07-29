@@ -60,7 +60,7 @@ describe("parseCliArgs (#172/#173)", () => {
         "Next",
         "--type",
         "article",
-        "--tag-ids",
+        "--tags",
         "tag-a,tag-b",
       ]),
     ).toEqual({
@@ -69,7 +69,7 @@ describe("parseCliArgs (#172/#173)", () => {
         itemId: "id1",
         title: "Next",
         content_type: "article",
-        tag_ids: ["tag-a", "tag-b"],
+        tags: ["tag-a", "tag-b"],
       },
       dataDir: "/data",
     });

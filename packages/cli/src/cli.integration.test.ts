@@ -146,7 +146,6 @@ describe("collector CLI IPC (#172)", () => {
       },
     );
     expect(tagCode).toBe(0);
-    const tag = JSON.parse(tagOut.join("\n")) as { id: string };
 
     const taggedOut: string[] = [];
     const taggedCode = await runCollectorCli(
@@ -155,8 +154,8 @@ describe("collector CLI IPC (#172)", () => {
         dataDir,
         "update-item",
         created.id,
-        "--tag-ids",
-        tag.id,
+        "--tags",
+        "cli-351,brand-new-cli-tag",
       ],
       {
         stdout: (line) => taggedOut.push(line),
@@ -164,7 +163,19 @@ describe("collector CLI IPC (#172)", () => {
       },
     );
     expect(taggedCode).toBe(0);
-    expect(JSON.parse(taggedOut.join("\n")).tag_ids).toEqual([tag.id]);
+    expect(JSON.parse(taggedOut.join("\n")).tag_ids).toHaveLength(2);
+
+    const sourcePeek: string[] = [];
+    const sourcePeekCode = await runCollectorCli(
+      ["--data-dir", dataDir, "get-item-source", created.id],
+      {
+        stdout: (line) => sourcePeek.push(line),
+        stderr: (line) => sourcePeek.push(`ERR:${line}`),
+      },
+    );
+    expect(sourcePeekCode).toBe(0);
+    expect(sourcePeek.join("\n")).toMatch(/brand-new-cli-tag/);
+    expect(sourcePeek.join("\n")).toMatch(/cli-351/);
 
     const sourceOut: string[] = [];
     const sourceCode = await runCollectorCli(
@@ -198,7 +209,7 @@ describe("collector CLI IPC (#172)", () => {
 
     const folderOut: string[] = [];
     const folderCode = await runCollectorCli(
-      ["--data-dir", dataDir, "create-folder", "Inbox"],
+      ["--data-dir", dataDir, "create-folder", "Shelf"],
       {
         stdout: (line) => folderOut.push(line),
         stderr: (line) => folderOut.push(`ERR:${line}`),
@@ -206,16 +217,26 @@ describe("collector CLI IPC (#172)", () => {
     );
     expect(folderCode).toBe(0);
 
+    const moveOut: string[] = [];
     const moveCode = await runCollectorCli(
-      ["--data-dir", dataDir, "move-item", created.id, "--folder", "Inbox"],
+      ["--data-dir", dataDir, "move-item", created.id, "--folder", "Shelf"],
       {
-        stdout: () => {},
+        stdout: (line) => moveOut.push(line),
         stderr: (line) => {
           throw new Error(line);
         },
       },
     );
     expect(moveCode).toBe(0);
+    const moved = JSON.parse(moveOut.join("\n")) as {
+      ok: boolean;
+      itemId: string;
+      folder_path: string;
+    };
+    expect(moved.ok).toBe(true);
+    expect(moved.itemId).not.toBe(created.id);
+    expect(moved.itemId).toMatch(/^Shelf\//);
+    expect(moved.folder_path).toBe("Shelf");
 
     const folderCrudOut: string[] = [];
     const createNested = await runCollectorCli(

@@ -11,9 +11,9 @@ import {
   createTag as createTagOnVault,
   deleteFolder as deleteFolderOnVault,
   deleteTag as deleteTagOnVault,
-  listFolderTreeFromIndex,
   listTagsWithCounts,
   moveItemToFolder,
+  reconcileFolderTreeFromDisk,
   renameFolder as renameFolderOnVault,
   updateTag as updateTagOnVault,
   type IndexSyncProgress,
@@ -200,7 +200,7 @@ export function createTagsFoldersService(
   const listFolderTree = async (): Promise<FolderTreeNode[]> => {
     const { vault, path } = await deps.resolveActiveVault();
     deps.kickoffVaultIndexSync(vault.id, path);
-    return listFolderTreeFromIndex(deps.getContext(), path, vault.id);
+    return reconcileFolderTreeFromDisk(deps.getContext(), path, vault.id);
   };
 
   const loadFolderTree = async (): Promise<FolderTreeNode[]> => listFolderTree();
@@ -223,9 +223,9 @@ export function createTagsFoldersService(
           return;
         }
         try {
-          onUpdate(await listFolderTreeFromIndex(ctx, path, vault.id));
+          onUpdate(await reconcileFolderTreeFromDisk(ctx, path, vault.id));
         } catch (error: unknown) {
-          handlers?.onError?.("folder tree index", error);
+          handlers?.onError?.("folder tree", error);
           if (!signal?.aborted) {
             onUpdate([]);
           }

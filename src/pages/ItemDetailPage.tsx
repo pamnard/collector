@@ -23,6 +23,7 @@ type ItemDetailMode = "view" | "form" | "source";
 function toFormValues(
   item: ItemFile,
   content: string | null,
+  tagNames: string[],
 ): ItemFormValues {
   return {
     title: item.title,
@@ -30,24 +31,25 @@ function toFormValues(
     url: item.url ?? "",
     content_type: item.content_type,
     content: content ?? "",
-    tag_ids: item.tag_ids,
+    tags: tagNames,
     folder_path: item.folder_path,
   };
 }
 
-function sameTagIds(a: string[], b: string[]): boolean {
+function sameTagNames(a: string[], b: string[]): boolean {
   if (a.length !== b.length) {
     return false;
   }
-  const sortedA = [...a].sort();
-  const sortedB = [...b].sort();
-  return sortedA.every((id, index) => id === sortedB[index]);
+  const sortedA = [...a].map((name) => name.trim().toLowerCase()).sort();
+  const sortedB = [...b].map((name) => name.trim().toLowerCase()).sort();
+  return sortedA.every((name, index) => name === sortedB[index]);
 }
 
 function isFormDirty(
   form: ItemFormValues,
   item: ItemFile,
   content: string | null,
+  itemTagNames: string[],
 ): boolean {
   return (
     form.title.trim() !== item.title ||
@@ -56,7 +58,7 @@ function isFormDirty(
     form.content_type !== item.content_type ||
     form.content.trim() !== (content ?? "").trim() ||
     form.folder_path !== item.folder_path ||
-    !sameTagIds(form.tag_ids, item.tag_ids)
+    !sameTagNames(form.tags, itemTagNames)
   );
 }
 
@@ -69,6 +71,7 @@ export function ItemDetailPage() {
   const [item, setItem] = useState<ItemFile | null>(null);
   const [content, setContent] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<ItemFormValues | null>(null);
+  const [itemTagNames, setItemTagNames] = useState<string[]>([]);
   const [sourceText, setSourceText] = useState<string | null>(null);
   const [sourceBaseline, setSourceBaseline] = useState<string | null>(null);
   const [mode, setMode] = useState<ItemDetailMode>("view");
@@ -125,11 +128,25 @@ export function ItemDetailPage() {
     [openMediaRef],
   );
 
+  const resolveTagNames = async (loaded: ItemFile): Promise<string[]> => {
+    if (loaded.tag_ids.length === 0) {
+      return [];
+    }
+    const allTags = await getCollectorClient().listTags();
+    const byId = new Map(allTags.map((tag) => [tag.id, tag.name]));
+    return loaded.tag_ids
+      .map((tagId) => byId.get(tagId))
+      .filter((name): name is string => typeof name === "string");
+  };
+
   const reloadItem = async (itemId: string) => {
-    const { item: loadedItem, content: loadedContent } = await getCollectorClient().getItemById(itemId);
+    const { item: loadedItem, content: loadedContent } =
+      await getCollectorClient().getItemById(itemId);
+    const tagNames = await resolveTagNames(loadedItem);
     setItem(loadedItem);
     setContent(loadedContent);
-    setFormValues(toFormValues(loadedItem, loadedContent));
+    setItemTagNames(tagNames);
+    setFormValues(toFormValues(loadedItem, loadedContent, tagNames));
     return { item: loadedItem, content: loadedContent };
   };
 
@@ -219,13 +236,15 @@ export function ItemDetailPage() {
         url: formValues.url.trim() || null,
         content_type: formValues.content_type,
         content: formValues.content.trim() || null,
-        tag_ids: formValues.tag_ids,
+        tags: formValues.tags,
         folder_path: formValues.folder_path,
       });
       const updatedContent = formValues.content.trim() || null;
+      const tagNames = await resolveTagNames(updated);
       setItem(updated);
       setContent(updatedContent);
-      setFormValues(toFormValues(updated, updatedContent));
+      setItemTagNames(tagNames);
+      setFormValues(toFormValues(updated, updatedContent, tagNames));
       setMode("view");
       refreshVault();
       if (updated.id !== id) {
@@ -309,7 +328,7 @@ export function ItemDetailPage() {
       setMode("view");
       return;
     }
-    if (!isFormDirty(formValues, item, content)) {
+    if (!isFormDirty(formValues, item, content, itemTagNames)) {
       setMode("view");
       setError(null);
       return;
@@ -348,7 +367,7 @@ export function ItemDetailPage() {
         mode === "form" &&
         formValues &&
         item &&
-        isFormDirty(formValues, item, content)
+        isFormDirty(formValues, item, content, itemTagNames)
       ) {
         const saved = await handleSave();
         if (!saved) {

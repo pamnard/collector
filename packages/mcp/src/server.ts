@@ -111,13 +111,7 @@ export function createCollectorMcpServer(
     async ({ query }) => {
       try {
         const items = await client.searchItems(query, "all");
-        return textResult(
-          items.map((item) => ({
-            id: item.id,
-            title: item.title,
-            folder_path: item.folder_path,
-          })),
-        );
+        return textResult(items);
       } catch (error) {
         return errorResult(error);
       }
@@ -231,10 +225,10 @@ export function createCollectorMcpServer(
         content_type: contentTypeSchema
           .optional()
           .describe(paramDescribe(updateItem.name, "content_type")),
-        tag_ids: z
+        tags: z
           .array(z.string().min(1))
           .optional()
-          .describe(paramDescribe(updateItem.name, "tag_ids")),
+          .describe(paramDescribe(updateItem.name, "tags")),
         folder_path: z
           .string()
           .optional()
@@ -254,7 +248,7 @@ export function createCollectorMcpServer(
             ...(input.content_type === undefined
               ? {}
               : { content_type: input.content_type }),
-            ...(input.tag_ids === undefined ? {} : { tag_ids: input.tag_ids }),
+            ...(input.tags === undefined ? {} : { tags: input.tags }),
             ...(input.folder_path === undefined
               ? {}
               : { folder_path: input.folder_path }),
@@ -521,8 +515,13 @@ export function createCollectorMcpServer(
     },
     async ({ itemId, folderPath }) => {
       try {
-        await client.moveItemToFolderPath(itemId, folderPath);
-        return textResult({ ok: true, itemId, folder_path: folderPath });
+        const moved = await client.moveItemToFolderPath(itemId, folderPath);
+        return textResult({
+          ok: true,
+          itemId: moved.id,
+          folder_path: moved.folder_path,
+          item: moved,
+        });
       } catch (error) {
         return errorResult(error);
       }

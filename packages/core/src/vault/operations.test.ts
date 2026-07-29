@@ -1041,7 +1041,7 @@ describe("vault operations", () => {
     const report = await syncIndexFromFilesystem(emptyCtx, path, meta.id);
     expect(report.indexed).toBe(itemCount);
     expect(report.errors).toHaveLength(0);
-    expect(countingFs.tagsJsonReadCount).toBe(1);
+    expect(countingFs.tagsJsonReadCount).toBe(2);
     expect(countingFs.tagsJsonWriteCount).toBe(1);
 
     const tags = await listTagsOnDisk(countingFs, path);

@@ -1,65 +1,71 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { TagWithCount } from "@collector/core";
-import type { Tag } from "@collector/shared";
 import { getCollectorClient } from "../../services/collector-client";
 
 interface TagPickerProps {
-  selectedTagIds: string[];
-  onChange: (tagIds: string[]) => void;
+  selectedTagNames: string[];
+  onChange: (tagNames: string[]) => void;
 }
 
-export function TagPicker({ selectedTagIds, onChange }: TagPickerProps) {
+function sameName(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
   const [tags, setTags] = useState<TagWithCount[]>([]);
   const [newTagName, setNewTagName] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getCollectorClient().listTags()
+    getCollectorClient()
+      .listTags()
       .then(setTags)
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : String(err));
       });
   }, []);
 
-  const toggleTag = (tagId: string) => {
-    if (selectedTagIds.includes(tagId)) {
-      onChange(selectedTagIds.filter((id) => id !== tagId));
+  const displayNames = useMemo(() => {
+    const known = tags.map((tag) => tag.name);
+    const pending = selectedTagNames.filter(
+      (name) => !known.some((knownName) => sameName(knownName, name)),
+    );
+    return [...known, ...pending];
+  }, [tags, selectedTagNames]);
+
+  const toggleTag = (name: string) => {
+    if (selectedTagNames.some((selected) => sameName(selected, name))) {
+      onChange(
+        selectedTagNames.filter((selected) => !sameName(selected, name)),
+      );
       return;
     }
-    onChange([...selectedTagIds, tagId]);
+    onChange([...selectedTagNames, name.trim()]);
   };
 
-  const handleCreateTag = async () => {
+  const handleAddTagName = () => {
     const name = newTagName.trim();
     if (!name) {
       return;
     }
-
-    setError(null);
-    try {
-      const tag: Tag = await getCollectorClient().createTag({ name });
-      setTags((current) =>
-        [...current, { ...tag, item_count: 0 }].sort((a, b) =>
-          a.name.localeCompare(b.name),
-        ),
-      );
-      onChange([...selectedTagIds, tag.id]);
-      setNewTagName("");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+    if (!selectedTagNames.some((selected) => sameName(selected, name))) {
+      onChange([...selectedTagNames, name]);
     }
+    setNewTagName("");
   };
 
-  const handleDeleteTag = async (tagId: string) => {
+  const handleDeleteTag = async (tag: TagWithCount) => {
     if (!window.confirm("Удалить тег? Он будет снят со всех элементов.")) {
       return;
     }
 
     setError(null);
     try {
-      await getCollectorClient().deleteTag(tagId);
-      setTags((current) => current.filter((tag) => tag.id !== tagId));
-      onChange(selectedTagIds.filter((id) => id !== tagId));
+      await getCollectorClient().deleteTag(tag.id);
+      setTags((current) => current.filter((entry) => entry.id !== tag.id));
+      onChange(
+        selectedTagNames.filter((selected) => !sameName(selected, tag.name)),
+      );
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -73,7 +79,9 @@ export function TagPicker({ selectedTagIds, onChange }: TagPickerProps) {
 
     setError(null);
     try {
-      const updated = await getCollectorClient().updateTagRecord(tag.id, { name: nextName });
+      const updated = await getCollectorClient().updateTagRecord(tag.id, {
+        name: nextName,
+      });
       setTags((current) =>
         current
           .map((entry) =>
@@ -82,6 +90,11 @@ export function TagPicker({ selectedTagIds, onChange }: TagPickerProps) {
               : entry,
           )
           .sort((a, b) => a.name.localeCompare(b.name)),
+      );
+      onChange(
+        selectedTagNames.map((selected) =>
+          sameName(selected, tag.name) ? nextName : selected,
+        ),
       );
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
@@ -92,47 +105,52 @@ export function TagPicker({ selectedTagIds, onChange }: TagPickerProps) {
     <div className="space-y-3">
       <p className="text-sm font-medium">Теги</p>
 
-      {error && (
-        <p className="text-red-400 text-sm">{error}</p>
-      )}
+      {error && <p className="text-red-400 text-sm">{error}</p>}
 
       <div className="flex flex-wrap gap-2">
-        {tags.map((tag) => {
-          const selected = selectedTagIds.includes(tag.id);
+        {displayNames.map((name) => {
+          const known = tags.find((tag) => sameName(tag.name, name));
+          const selected = selectedTagNames.some((selected) =>
+            sameName(selected, name),
+          );
           return (
-            <div key={tag.id} className="inline-flex items-center gap-1">
+            <div key={name.toLowerCase()} className="inline-flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => toggleTag(tag.id)}
+                onClick={() => toggleTag(name)}
                 className={`rounded-full px-3 py-1 text-sm border transition-colors ${
                   selected
                     ? "border-indigo-500/50 bg-indigo-500/15 text-indigo-300"
                     : "border-black/10 dark:border-white/10 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100/65 dark:hover:bg-neutral-700/65"
                 }`}
                 style={
-                  tag.color
-                    ? { borderColor: tag.color, color: tag.color }
+                  known?.color
+                    ? { borderColor: known.color, color: known.color }
                     : undefined
                 }
               >
-                {tag.name}
+                {name}
               </button>
-              <button
-                type="button"
-                onClick={() => handleRenameTag(tag)}
-                className="text-neutral-500 hover:text-neutral-500 dark:hover:text-neutral-400 text-sm px-1"
-                aria-label={`Переименовать ${tag.name}`}
-              >
-                ✎
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDeleteTag(tag.id)}
-                className="text-neutral-500 hover:text-red-400 text-sm px-1"
-                aria-label={`Удалить ${tag.name}`}
-              >
-                ×
-              </button>
+              {known ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleRenameTag(known)}
+                    className="text-neutral-500 hover:text-neutral-500 dark:hover:text-neutral-400 text-sm px-1"
+                    aria-label={`Переименовать ${known.name}`}
+                  >
+                    ✎
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteTag(known)}
+                    className="text-neutral-500 hover:text-red-400 text-sm px-1"
+                    aria-label={`Удалить ${known.name}`}
+                  >
+                    ×
+                  </button>
+                </>
+              ) : null}
             </div>
           );
         })}
@@ -145,10 +163,16 @@ export function TagPicker({ selectedTagIds, onChange }: TagPickerProps) {
           onChange={(event) => setNewTagName(event.target.value)}
           placeholder="Новый тег"
           className="flex-1 rounded-lg border border-black/10 dark:border-white/10 bg-neutral-100/20 dark:bg-neutral-700/20 px-3 py-2 text-sm"
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              handleAddTagName();
+            }
+          }}
         />
         <button
           type="button"
-          onClick={handleCreateTag}
+          onClick={handleAddTagName}
           disabled={!newTagName.trim()}
           className="px-3 py-2 rounded-lg border border-black/10 dark:border-white/10 hover:bg-neutral-100/65 dark:hover:bg-neutral-700/65 text-sm disabled:opacity-50"
         >

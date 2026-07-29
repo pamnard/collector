@@ -7,7 +7,8 @@ export interface ItemFormValues {
   url: string;
   content_type: ContentType;
   content: string;
-  tag_ids: string[];
+  /** Tag names (same as document frontmatter). */
+  tags: string[];
   folder_path: string;
 }
 
@@ -27,7 +28,7 @@ export interface UpdateItemInput {
   url?: string | null;
   content_type?: ContentType;
   content?: string | null;
-  tag_ids?: string[];
+  tags?: string[];
   folder_path?: string;
 }
 
@@ -37,6 +38,6 @@ export const EMPTY_ITEM_FORM: ItemFormValues = {
   url: "",
   content_type: "note",
   content: "",
-  tag_ids: [],
+  tags: [],
   folder_path: INBOX_FOLDER_NAME,
 };
