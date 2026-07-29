@@ -54,6 +54,29 @@ export function buildItemsReadHandlers(
         sort,
       );
     },
+    [M.queryIndex]: async (params) => {
+      const p = asObject(params, M.queryIndex);
+      const filter = parseNavFilter(p.filter, M.queryIndex);
+      const query = typeof p.query === "string" ? p.query : undefined;
+      if (!p.page || typeof p.page !== "object" || Array.isArray(p.page)) {
+        badRequest(`${M.queryIndex}: page required`);
+      }
+      const page = p.page as Record<string, unknown>;
+      if (typeof page.limit !== "number" || typeof page.offset !== "number") {
+        badRequest(`${M.queryIndex}: page.limit/offset required`);
+      }
+      const sort = parseDashboardItemSort(p.sort, M.queryIndex);
+      await runtime.ensureInitialized();
+      return itemsSearch.queryIndex(
+        filter,
+        query,
+        {
+          limit: page.limit,
+          offset: page.offset,
+        },
+        sort,
+      );
+    },
     [M.listDashboardItemIds]: async (params) => {
       const p = asObject(params, M.listDashboardItemIds);
       const filter = parseNavFilter(p.filter, M.listDashboardItemIds);

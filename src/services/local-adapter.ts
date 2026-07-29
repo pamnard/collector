@@ -41,6 +41,9 @@ export function createLocalAdapter(): CollectorServiceApi {
     listItems: collector.listItems,
     searchItems: (query, filter) =>
       collector.searchItems(query, asUiNavFilter(filter)),
+    queryIndex: (filter, query, page, sort) =>
+      collector.queryIndex(asUiNavFilter(filter), query, page, sort),
+    hydrate: collector.hydrate,
     fetchDashboardIndexPage: (filter, query, page, sort) =>
       collector.fetchDashboardIndexPage(asUiNavFilter(filter), query, page, sort),
     listDashboardItemIds: (filter, query, sort) =>

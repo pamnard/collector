@@ -62,7 +62,7 @@ type FlatKeys =
 
 type _KeyofMatchesPortKeys = Expect<Equal<keyof CollectorServiceApi, FlatKeys>>;
 
-/** Same 54 method names as app `REQUIRED_METHODS` (transitional #360/#370). */
+/** Same method names as app `REQUIRED_METHODS` (transitional #360/#370; +queryIndex/hydrate #362). */
 type _KeyCount = Expect<
   Equal<
     FlatKeys,
@@ -72,6 +72,8 @@ type _KeyCount = Expect<
     | "getDataDirectory"
     | "listItems"
     | "searchItems"
+    | "queryIndex"
+    | "hydrate"
     | "fetchDashboardIndexPage"
     | "listDashboardItemIds"
     | "subscribeDashboardLoad"
@@ -123,6 +125,10 @@ type _KeyCount = Expect<
   >
 >;
 
+type _IndexQueryHasNoIndexSync = Expect<
+  Equal<keyof import("./service-api.js").IndexQueryResult, "ids" | "total" | "offset">
+>;
+
 type _ToServiceOk = Expect<
   Equal<
     ReturnType<typeof toCollectorService>,
@@ -152,6 +158,7 @@ type _Asserts = [
   _ApiIsPortsIntersection,
   _KeyofMatchesPortKeys,
   _KeyCount,
+  _IndexQueryHasNoIndexSync,
   _ToServiceOk,
   _ToFlatOk,
   _CollectorServiceKeys,

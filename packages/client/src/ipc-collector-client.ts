@@ -20,6 +20,7 @@ import type {
   AdjacentItemsResult,
   ImportDroppedFilesInput,
   ImportDroppedFilesResult,
+  IndexQueryResult,
   MediaWithPath,
   NavFilter,
   ServiceSubscribeHandlers,
@@ -132,6 +133,37 @@ export function createCollectorIpcClient(
       filter: NavFilter,
     ): Promise<ItemFile[]> =>
       transport.request("searchItems", { query, filter }) as Promise<ItemFile[]>,
+    queryIndex: async (
+      filter: NavFilter,
+      query: string | undefined,
+      page: { limit: number; offset: number },
+      sort?: DashboardItemSort,
+    ): Promise<IndexQueryResult> =>
+      transport.request("queryIndex", {
+        filter,
+        query,
+        page,
+        sort,
+      }) as Promise<IndexQueryResult>,
+    async *hydrate(
+      ids: string[],
+      options?: { signal?: AbortSignal },
+    ): AsyncIterable<ItemFile> {
+      if (!ids.length || options?.signal?.aborted) {
+        return;
+      }
+      const items = (await transport.request("loadDashboardItems", {
+        itemIds: ids,
+        offset: 0,
+        limit: ids.length,
+      })) as ItemFile[];
+      for (const item of items) {
+        if (options?.signal?.aborted) {
+          return;
+        }
+        yield item;
+      }
+    },
     fetchDashboardIndexPage: async (
       filter: NavFilter,
       query: string | undefined,

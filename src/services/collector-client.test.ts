@@ -18,6 +18,8 @@ const REQUIRED_METHODS: (keyof CollectorServiceApi)[] = [
   "getDataDirectory",
   "listItems",
   "searchItems",
+  "queryIndex",
+  "hydrate",
   "fetchDashboardIndexPage",
   "listDashboardItemIds",
   "subscribeDashboardLoad",
@@ -112,5 +114,16 @@ describe("CollectorClient / LocalAdapter (#169)", () => {
     expect(typeof service.items.listItems).toBe("function");
     expect(typeof service.boot.getDataDirectory).toBe("function");
     expect(typeof service.settings.getAppSettingsSync).toBe("function");
+  });
+
+  it("LocalAdapter exposes queryIndex and hydrate (#362)", async () => {
+    const adapter = createLocalAdapter();
+    expect(typeof adapter.queryIndex).toBe("function");
+    expect(typeof adapter.hydrate).toBe("function");
+    const items: unknown[] = [];
+    for await (const item of adapter.hydrate([])) {
+      items.push(item);
+    }
+    expect(items).toEqual([]);
   });
 });

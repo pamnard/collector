@@ -10,6 +10,7 @@ export const DOMAIN_IPC_METHODS = {
   listItems: "listItems",
   searchItems: "searchItems",
   fetchDashboardIndexPage: "fetchDashboardIndexPage",
+  queryIndex: "queryIndex",
   listDashboardItemIds: "listDashboardItemIds",
   loadDashboardItems: "loadDashboardItems",
   getItemById: "getItemById",

@@ -45,6 +45,7 @@ export {
   type FoldersPort,
   type GetItemResult,
   type IndexPort,
+  type IndexQueryResult,
   type ItemsPort,
   type MediaPort,
   type ServiceSubscribeHandlers,

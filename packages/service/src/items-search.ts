@@ -12,6 +12,7 @@ import {
   type DashboardItemSort,
   type DashboardLoadHandlers,
   type GetItemResult,
+  type IndexQueryResult,
   type NavFilter,
   type UpdateItemInput,
 } from "@collector/api";
@@ -176,6 +177,16 @@ export async function queryDashboardIndexPage(
 export interface ItemsSearchService {
   listItems(): Promise<ItemFile[]>;
   searchItems(query: string, filter: NavFilter): Promise<ItemFile[]>;
+  queryIndex(
+    filter: NavFilter,
+    query: string | undefined,
+    page: { limit: number; offset: number },
+    sort?: DashboardItemSort,
+  ): Promise<IndexQueryResult>;
+  hydrate(
+    ids: string[],
+    options?: { signal?: AbortSignal },
+  ): AsyncIterable<ItemFile>;
   fetchDashboardIndexPage(
     filter: NavFilter,
     query: string | undefined,
@@ -279,6 +290,20 @@ export function createItemsSearchService(
       page,
       assertDashboardItemSort(sort),
     );
+  };
+
+  const queryIndex = async (
+    filter: NavFilter,
+    query: string | undefined,
+    page: { limit: number; offset: number },
+    sort?: DashboardItemSort,
+  ): Promise<IndexQueryResult> => {
+    const result = await fetchDashboardIndexPage(filter, query, page, sort);
+    return {
+      ids: result.itemIds,
+      total: result.totalCount,
+      offset: result.offset,
+    };
   };
 
   const listDashboardItemIds = async (
@@ -422,6 +447,26 @@ export function createItemsSearchService(
     });
     return items;
   };
+
+  async function* hydrate(
+    ids: string[],
+    options?: { signal?: AbortSignal },
+  ): AsyncIterable<ItemFile> {
+    if (!ids.length || options?.signal?.aborted) {
+      return;
+    }
+    const { vault } = await deps.resolveActiveVault();
+    if (options?.signal?.aborted) {
+      return;
+    }
+    const items = await deps.getIndex().listItemFilesByIds(vault.id, ids);
+    for (const item of items) {
+      if (options?.signal?.aborted) {
+        return;
+      }
+      yield item;
+    }
+  }
 
   const getItemById = async (itemId: string): Promise<GetItemResult> => {
     const { path, vault } = await deps.resolveActiveVault();
@@ -587,6 +632,8 @@ export function createItemsSearchService(
   return {
     listItems,
     searchItems,
+    queryIndex,
+    hydrate,
     fetchDashboardIndexPage,
     listDashboardItemIds,
     subscribeDashboardLoad,

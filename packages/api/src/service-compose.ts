@@ -22,6 +22,8 @@ export const BOOT_PORT_KEYS = [
 export const ITEMS_PORT_KEYS = [
   "listItems",
   "searchItems",
+  "queryIndex",
+  "hydrate",
   "fetchDashboardIndexPage",
   "listDashboardItemIds",
   "subscribeDashboardLoad",

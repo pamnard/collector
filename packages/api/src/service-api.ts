@@ -41,12 +41,23 @@ export interface DashboardIndexPage {
 }
 
 /**
- * Note: `indexSync` is a Promise in the in-process facade today.
- * Over IPC this will likely become a separate subscribe/status channel (#163).
+ * Canonical dashboard index page (#362). No Promise-in-DTO —
+ * sync status lives on {@link IndexPort}.
+ */
+export interface IndexQueryResult {
+  ids: string[];
+  total: number;
+  offset: number;
+}
+
+/**
+ * @deprecated Prefer {@link IndexQueryResult} via {@link ItemsPort.queryIndex}.
+ * `indexSync` is a Promise-in-DTO; use {@link IndexPort} subscribe/status instead (#163 / #362).
  */
 export interface DashboardItemIdsResult {
   itemIds: string[];
   totalCount: number;
+  /** @deprecated Promise-in-DTO — use IndexPort sync status. */
   indexSync: Promise<void>;
 }
 
@@ -89,21 +100,36 @@ export interface BootPort {
   getDataDirectory(): Promise<string>;
 }
 
-/** Items / search / dashboard loaders (#361). */
+/** Items / search / dashboard loaders (#361 / #362). */
 export interface ItemsPort {
   listItems(): Promise<ItemFile[]>;
   searchItems(query: string, filter: NavFilter): Promise<ItemFile[]>;
+  /** Canonical index query: ids + total for a page (#362). */
+  queryIndex(
+    filter: NavFilter,
+    query: string | undefined,
+    page: { limit: number; offset: number },
+    sort?: DashboardItemSort,
+  ): Promise<IndexQueryResult>;
+  /** Yield item bodies for known ids; honor AbortSignal (#362). */
+  hydrate(
+    ids: string[],
+    options?: { signal?: AbortSignal },
+  ): AsyncIterable<ItemFile>;
+  /** @deprecated Use {@link ItemsPort.queryIndex}. */
   fetchDashboardIndexPage(
     filter: NavFilter,
     query: string | undefined,
     page: { limit: number; offset: number },
     sort?: DashboardItemSort,
   ): Promise<DashboardIndexPage>;
+  /** @deprecated Use {@link ItemsPort.queryIndex}; do not rely on `indexSync`. */
   listDashboardItemIds(
     filter: NavFilter,
     query?: string,
     sort?: DashboardItemSort,
   ): Promise<DashboardItemIdsResult>;
+  /** @deprecated Compose {@link ItemsPort.queryIndex} + IndexPort subscribe in UI (#367). */
   subscribeDashboardLoad(
     filter: NavFilter,
     query: string,
@@ -111,6 +137,7 @@ export interface ItemsPort {
     signal?: AbortSignal,
     sort?: DashboardItemSort,
   ): void;
+  /** @deprecated Use {@link ItemsPort.hydrate}. */
   streamDashboardItems(
     itemIds: string[],
     offset: number,
@@ -118,6 +145,7 @@ export interface ItemsPort {
     onItem: (item: ItemFile) => void,
     signal?: AbortSignal,
   ): Promise<void>;
+  /** @deprecated Use {@link ItemsPort.hydrate} (collect into an array at the call site). */
   loadDashboardItems(
     itemIds: string[],
     offset: number,

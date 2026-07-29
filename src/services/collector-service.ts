@@ -14,6 +14,7 @@ import {
   type DashboardIndexPage,
   type DashboardItemIdsResult,
   type DashboardItemSort,
+  type IndexQueryResult,
   type VaultIndexSyncStatus,
 } from "@collector/api";
 import { createVaultIndexSyncStatusStore } from "@collector/service";
@@ -102,6 +103,37 @@ export async function fetchDashboardIndexPage(
 ): Promise<DashboardIndexPage> {
   refuseUnlessDevMock();
   return devMockCollector.fetchDashboardIndexPage(filter, query, page, sort);
+}
+
+export async function queryIndex(
+  filter: NavFilter,
+  query: string | undefined,
+  page: { limit: number; offset: number },
+  sort?: DashboardItemSort,
+): Promise<IndexQueryResult> {
+  const result = await fetchDashboardIndexPage(filter, query ?? "", page, sort);
+  return {
+    ids: result.itemIds,
+    total: result.totalCount,
+    offset: result.offset,
+  };
+}
+
+export async function* hydrate(
+  ids: string[],
+  options?: { signal?: AbortSignal },
+): AsyncIterable<ItemFile> {
+  if (!ids.length || options?.signal?.aborted) {
+    return;
+  }
+  refuseUnlessDevMock();
+  const items = await loadDashboardItems(ids, 0, ids.length);
+  for (const item of items) {
+    if (options?.signal?.aborted) {
+      return;
+    }
+    yield item;
+  }
 }
 
 export async function listDashboardItemIds(
