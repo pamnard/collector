@@ -3,8 +3,13 @@
  * Host injects vault/index accessors; no Tauri / IPC here.
  */
 
-import type { FolderTreeNode, TagWithCount } from "@collector/api";
-import type { ServiceSubscribeHandlers } from "@collector/api";
+import type {
+  FolderTreeNode,
+  ServiceSubscribeHandlers,
+  Subscription,
+  TagWithCount,
+} from "@collector/api";
+import { asCollectorApiError, subscriptionFromTeardown } from "@collector/api";
 import type { ItemFile, Tag, VaultMeta } from "@collector/shared";
 import {
   createFolder as createFolderOnVault,
@@ -85,12 +90,30 @@ function createThrottledPublisher(
   };
 }
 
+function linkAbortSignal(signal: AbortSignal | undefined): {
+  signal: AbortSignal;
+  unsubscribe: () => void;
+} {
+  const controller = new AbortController();
+  if (signal) {
+    if (signal.aborted) {
+      controller.abort();
+    } else {
+      signal.addEventListener("abort", () => controller.abort(), { once: true });
+    }
+  }
+  return {
+    signal: controller.signal,
+    unsubscribe: () => controller.abort(),
+  };
+}
+
 export interface TagsFoldersService {
   subscribeTags(
     onUpdate: (tags: TagWithCount[]) => void,
     handlers?: ServiceSubscribeHandlers,
     signal?: AbortSignal,
-  ): void;
+  ): Subscription;
   listTags(): Promise<TagWithCount[]>;
   createTag(input: { name: string; color?: string | null }): Promise<Tag>;
   updateTagRecord(
@@ -102,7 +125,7 @@ export interface TagsFoldersService {
     onUpdate: (tree: FolderTreeNode[]) => void,
     handlers?: ServiceSubscribeHandlers,
     signal?: AbortSignal,
-  ): void;
+  ): Subscription;
   listFolderTree(): Promise<FolderTreeNode[]>;
   loadFolderTree(): Promise<FolderTreeNode[]>;
   createFolder(folderPath: string): Promise<string>;
@@ -126,21 +149,25 @@ export function createTagsFoldersService(
     onUpdate: (tags: TagWithCount[]) => void,
     handlers?: ServiceSubscribeHandlers,
     signal?: AbortSignal,
-  ): void => {
+  ): Subscription => {
+    const linked = linkAbortSignal(signal);
     void (async () => {
       const { vault, path } = await deps.resolveActiveVault();
-      if (signal?.aborted) {
+      if (linked.signal.aborted) {
         return;
       }
 
       const publish = async () => {
         try {
           const tags = await listTagsWithCounts(deps.getContext(), vault.id);
-          if (!signal?.aborted) {
+          if (!linked.signal.aborted) {
             onUpdate(tags);
           }
         } catch (error) {
-          handlers?.onError?.("tags publish", error);
+          handlers?.onError?.(
+            "tags publish",
+            asCollectorApiError(error),
+          );
         }
       };
 
@@ -161,16 +188,20 @@ export function createTagsFoldersService(
         republish.cancel();
         unsub();
       };
-      signal?.addEventListener("abort", onAbort, { once: true });
+      linked.signal.addEventListener("abort", onAbort, { once: true });
 
       await publish();
       deps.kickoffVaultIndexSync(vault.id, path);
     })().catch((error: unknown) => {
-      handlers?.onError?.("tags subscribe", error);
-      if (!signal?.aborted) {
+      handlers?.onError?.(
+        "tags subscribe",
+        asCollectorApiError(error),
+      );
+      if (!linked.signal.aborted) {
         onUpdate([]);
       }
     });
+    return subscriptionFromTeardown(linked.unsubscribe);
   };
 
   const createTag = async (input: {
@@ -209,24 +240,28 @@ export function createTagsFoldersService(
     onUpdate: (tree: FolderTreeNode[]) => void,
     handlers?: ServiceSubscribeHandlers,
     signal?: AbortSignal,
-  ): void => {
+  ): Subscription => {
+    const linked = linkAbortSignal(signal);
     void (async () => {
       const { vault, path } = await deps.resolveActiveVault();
-      if (signal?.aborted) {
+      if (linked.signal.aborted) {
         return;
       }
 
       const ctx = deps.getContext();
 
       const publish = async () => {
-        if (signal?.aborted) {
+        if (linked.signal.aborted) {
           return;
         }
         try {
           onUpdate(await reconcileFolderTreeFromDisk(ctx, path, vault.id));
         } catch (error: unknown) {
-          handlers?.onError?.("folder tree", error);
-          if (!signal?.aborted) {
+          handlers?.onError?.(
+            "folder tree",
+            asCollectorApiError(error),
+          );
+          if (!linked.signal.aborted) {
             onUpdate([]);
           }
         }
@@ -249,16 +284,20 @@ export function createTagsFoldersService(
         republish.cancel();
         unsub();
       };
-      signal?.addEventListener("abort", onAbort, { once: true });
+      linked.signal.addEventListener("abort", onAbort, { once: true });
 
       await publish();
       deps.kickoffVaultIndexSync(vault.id, path);
     })().catch((error: unknown) => {
-      handlers?.onError?.("folder tree", error);
-      if (!signal?.aborted) {
+      handlers?.onError?.(
+        "folder tree",
+        asCollectorApiError(error),
+      );
+      if (!linked.signal.aborted) {
         onUpdate([]);
       }
     });
+    return subscriptionFromTeardown(linked.unsubscribe);
   };
 
   const createFolder = async (folderPath: string): Promise<string> => {

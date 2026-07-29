@@ -89,7 +89,7 @@ export function createDropImportService(
     const target = input.folder_path?.trim() || undefined;
 
     for (const file of input.files) {
-      const classified = classifyDropFilename(file.filename);
+      const classified = classifyDropFilename(file.name);
       if (classified.kind === "skip") {
         continue;
       }
@@ -98,20 +98,20 @@ export function createDropImportService(
 
       if (classified.kind === "media") {
         const item = await deps.createItem({
-          title: titleStemFromFilename(file.filename),
+          title: titleStemFromFilename(file.name),
           content_type: classified.contentType,
           folder_path,
           source_type: "import",
         });
         await deps.attachMediaFiles(item.id, [
-          { filename: file.filename, data: file.data },
+          { name: file.name, bytes: file.bytes },
         ]);
         createdIds.push(item.id);
         continue;
       }
 
-      const raw = decodeUtf8(file.data);
-      const title = resolveDropTitle(file.filename, raw);
+      const raw = decodeUtf8(file.bytes);
+      const title = resolveDropTitle(file.name, raw);
       const item = await deps.createItem({
         title,
         content_type: "note",

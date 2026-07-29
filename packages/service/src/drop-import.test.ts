@@ -46,8 +46,8 @@ describe("createDropImportService", () => {
       files: [
         {
           relativePath: "shot.png",
-          filename: "shot.png",
-          data: new Uint8Array([1, 2, 3]),
+          name: "shot.png",
+          bytes: new Uint8Array([1, 2, 3]),
         },
       ],
     });
@@ -60,21 +60,21 @@ describe("createDropImportService", () => {
       }),
     );
     expect(attachMediaFiles).toHaveBeenCalledWith("Inbox/shot.md", [
-      { filename: "shot.png", data: expect.any(Uint8Array) },
+      { name: "shot.png", bytes: expect.any(Uint8Array) },
     ]);
     expect(result.createdIds).toEqual(["Inbox/shot.md"]);
   });
 
   it("imports markdown with frontmatter title then updateItemSource", async () => {
     const raw = "---\ntitle: From FM\n---\n\nHi\n";
-    const data = new TextEncoder().encode(raw);
+    const bytes = new TextEncoder().encode(raw);
 
     const result = await service().importDroppedFiles({
       files: [
         {
           relativePath: "x.md",
-          filename: "x.md",
-          data,
+          name: "x.md",
+          bytes,
         },
       ],
     });
@@ -98,13 +98,13 @@ describe("createDropImportService", () => {
       files: [
         {
           relativePath: "a.png",
-          filename: "a.png",
-          data: new Uint8Array([1]),
+          name: "a.png",
+          bytes: new Uint8Array([1]),
         },
         {
           relativePath: "bad.exe",
-          filename: "bad.exe",
-          data: new Uint8Array([2]),
+          name: "bad.exe",
+          bytes: new Uint8Array([2]),
         },
       ],
     });
@@ -124,8 +124,8 @@ describe("createDropImportService", () => {
       files: [
         {
           relativePath: "Trip/a.png",
-          filename: "a.png",
-          data: new Uint8Array([1]),
+          name: "a.png",
+          bytes: new Uint8Array([1]),
         },
       ],
     });

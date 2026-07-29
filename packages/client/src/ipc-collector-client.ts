@@ -24,11 +24,16 @@ import type {
   MediaWithPath,
   NavFilter,
   ServiceSubscribeHandlers,
+  Subscription,
   TagWithCount,
   UpdateItemInput,
   VaultIndexSyncStatus,
 } from "@collector/api";
-import { DASHBOARD_PREFETCH_SIZE } from "@collector/api";
+import {
+  asCollectorApiError,
+  DASHBOARD_PREFETCH_SIZE,
+  subscriptionFromTeardown,
+} from "@collector/api";
 import type { AppSettings, DashboardSnapshot, ItemFile, MediaFileMeta, Tag, VaultMeta } from "@collector/shared";
 import { dashboardSnapshotMatchesQuery } from "@collector/shared";
 import {
@@ -199,10 +204,21 @@ export function createCollectorIpcClient(
       handlers: DashboardLoadHandlers,
       signal?: AbortSignal,
       sort?: DashboardItemSort,
-    ): void {
+    ): Subscription {
+      const controller = new AbortController();
+      if (signal) {
+        if (signal.aborted) {
+          controller.abort();
+        } else {
+          signal.addEventListener("abort", () => controller.abort(), {
+            once: true,
+          });
+        }
+      }
+      const active = controller.signal;
       void (async () => {
         try {
-          if (signal?.aborted) {
+          if (active.aborted) {
             return;
           }
           const page = (await transport.request("fetchDashboardIndexPage", {
@@ -211,17 +227,18 @@ export function createCollectorIpcClient(
             page: { limit: DASHBOARD_PREFETCH_SIZE, offset: 0 },
             sort,
           })) as DashboardIndexPage;
-          if (signal?.aborted) {
+          if (active.aborted) {
             return;
           }
           handlers.onIndexPage(page);
           handlers.onLoadComplete?.();
         } catch (error: unknown) {
-          if (!signal?.aborted) {
-            handlers.onError?.("dashboard load", error);
+          if (!active.aborted) {
+            handlers.onError?.("dashboard load", asCollectorApiError(error));
           }
         }
       })();
+      return subscriptionFromTeardown(() => controller.abort());
     },
     streamDashboardItems: async (
       itemIds: string[],
@@ -285,8 +302,8 @@ export function createCollectorIpcClient(
         folder_path: input.folder_path,
         files: input.files.map((file) => ({
           relativePath: file.relativePath,
-          filename: file.filename,
-          dataBase64: Buffer.from(file.data).toString("base64"),
+          filename: file.name,
+          dataBase64: Buffer.from(file.bytes).toString("base64"),
         })),
       }) as Promise<ImportDroppedFilesResult>,
 
@@ -295,19 +312,31 @@ export function createCollectorIpcClient(
       onUpdate: (tags: TagWithCount[]) => void,
       handlers?: ServiceSubscribeHandlers,
       signal?: AbortSignal,
-    ): void {
+    ): Subscription {
+      const controller = new AbortController();
+      if (signal) {
+        if (signal.aborted) {
+          controller.abort();
+        } else {
+          signal.addEventListener("abort", () => controller.abort(), {
+            once: true,
+          });
+        }
+      }
+      const active = controller.signal;
       void (async () => {
         try {
-          if (signal?.aborted) {
+          if (active.aborted) {
             return;
           }
           onUpdate((await transport.request("listTags")) as TagWithCount[]);
         } catch (error: unknown) {
-          if (!signal?.aborted) {
-            handlers?.onError?.("tags", error);
+          if (!active.aborted) {
+            handlers?.onError?.("tags", asCollectorApiError(error));
           }
         }
       })();
+      return subscriptionFromTeardown(() => controller.abort());
     },
     listTags: async (): Promise<TagWithCount[]> =>
       transport.request("listTags") as Promise<TagWithCount[]>,
@@ -330,19 +359,31 @@ export function createCollectorIpcClient(
       onUpdate: (tree: FolderTreeNode[]) => void,
       handlers?: ServiceSubscribeHandlers,
       signal?: AbortSignal,
-    ): void {
+    ): Subscription {
+      const controller = new AbortController();
+      if (signal) {
+        if (signal.aborted) {
+          controller.abort();
+        } else {
+          signal.addEventListener("abort", () => controller.abort(), {
+            once: true,
+          });
+        }
+      }
+      const active = controller.signal;
       void (async () => {
         try {
-          if (signal?.aborted) {
+          if (active.aborted) {
             return;
           }
           onUpdate((await transport.request("listFolderTree")) as FolderTreeNode[]);
         } catch (error: unknown) {
-          if (!signal?.aborted) {
-            handlers?.onError?.("folder tree", error);
+          if (!active.aborted) {
+            handlers?.onError?.("folder tree", asCollectorApiError(error));
           }
         }
       })();
+      return subscriptionFromTeardown(() => controller.abort());
     },
     listFolderTree: async (): Promise<FolderTreeNode[]> =>
       transport.request("listFolderTree") as Promise<FolderTreeNode[]>,
@@ -396,8 +437,8 @@ export function createCollectorIpcClient(
       transport.request("attachMediaFiles", {
         itemId,
         files: files.map((file) => ({
-          filename: file.filename,
-          dataBase64: Buffer.from(file.data).toString("base64"),
+          filename: file.name,
+          dataBase64: Buffer.from(file.bytes).toString("base64"),
         })),
       }) as Promise<MediaFileMeta[]>,
     replaceItemMedia: async (
@@ -409,8 +450,8 @@ export function createCollectorIpcClient(
         itemId,
         mediaId,
         file: {
-          filename: file.filename,
-          dataBase64: Buffer.from(file.data).toString("base64"),
+          filename: file.name,
+          dataBase64: Buffer.from(file.bytes).toString("base64"),
         },
       }) as Promise<MediaFileMeta>,
     deleteItemMedia: async (itemId: string, mediaId: string): Promise<void> => {
@@ -431,7 +472,7 @@ export function createCollectorIpcClient(
     // Sync / status (#163)
     subscribeVaultIndexSyncStatus(
       onUpdate: (status: VaultIndexSyncStatus) => void,
-    ): () => void {
+    ): Subscription {
       onUpdate(cachedSyncStatus);
       const unsubEvent = transport.onEvent(
         SERVICE_IPC_EVENTS.vaultIndexSyncStatus,
@@ -449,7 +490,7 @@ export function createCollectorIpcClient(
         .catch(() => {
           // Subscribe still receives push events; seed fetch is best-effort.
         });
-      return unsubEvent;
+      return subscriptionFromTeardown(unsubEvent);
     },
     getVaultIndexSyncStatus(): VaultIndexSyncStatus {
       return cachedSyncStatus;
@@ -475,7 +516,7 @@ export function createCollectorIpcClient(
     },
     subscribeAppSettings(
       onUpdate: (settings: AppSettings) => void,
-    ): () => void {
+    ): Subscription {
       if (settingsCache) {
         onUpdate(settingsCache);
       }
@@ -501,7 +542,7 @@ export function createCollectorIpcClient(
         .catch(() => {
           // Subscribe still receives push events; seed fetch is best-effort.
         });
-      return unsubEvent;
+      return subscriptionFromTeardown(unsubEvent);
     },
     getAppConfigDirectory: async (): Promise<string> =>
       transport.request("getAppConfigDirectory") as Promise<string>,

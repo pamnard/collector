@@ -5,6 +5,8 @@
 
 import {
   DASHBOARD_PREFETCH_SIZE,
+  asCollectorApiError,
+  subscriptionFromTeardown,
   type AdjacentItemsResult,
   type CreateItemInput,
   type DashboardIndexPage,
@@ -14,6 +16,7 @@ import {
   type GetItemResult,
   type IndexQueryResult,
   type NavFilter,
+  type Subscription,
   type UpdateItemInput,
 } from "@collector/api";
 import type { ItemFile, VaultMeta } from "@collector/shared";
@@ -204,7 +207,7 @@ export interface ItemsSearchService {
     handlers: DashboardLoadHandlers,
     signal?: AbortSignal,
     sort?: DashboardItemSort,
-  ): void;
+  ): Subscription;
   streamDashboardItems(
     itemIds: string[],
     offset: number,
@@ -335,11 +338,22 @@ export function createItemsSearchService(
     handlers: DashboardLoadHandlers,
     signal?: AbortSignal,
     sort?: DashboardItemSort,
-  ): void => {
+  ): Subscription => {
     const resolvedSort = assertDashboardItemSort(sort);
+    const controller = new AbortController();
+    if (signal) {
+      if (signal.aborted) {
+        controller.abort();
+      } else {
+        signal.addEventListener("abort", () => controller.abort(), {
+          once: true,
+        });
+      }
+    }
+    const activeSignal = controller.signal;
     void (async () => {
       const { vault, path } = await deps.resolveActiveVault();
-      if (signal?.aborted) {
+      if (activeSignal.aborted) {
         return;
       }
 
@@ -357,12 +371,15 @@ export function createItemsSearchService(
             pageRequest,
             resolvedSort,
           );
-          if (!signal?.aborted) {
+          if (!activeSignal.aborted) {
             handlers.onIndexPage(page);
           }
         } catch (error: unknown) {
-          handlers.onError?.("dashboard index page", error);
-          if (!signal?.aborted) {
+          handlers.onError?.(
+            "dashboard index page",
+            asCollectorApiError(error),
+          );
+          if (!activeSignal.aborted) {
             handlers.onIndexPage({ itemIds: [], totalCount: 0, offset: 0 });
           }
         }
@@ -389,17 +406,18 @@ export function createItemsSearchService(
         republish.cancel();
         unsub();
       };
-      signal?.addEventListener("abort", onAbort, { once: true });
+      activeSignal.addEventListener("abort", onAbort, { once: true });
 
       deps.kickoffVaultIndexSync(vault.id, path);
 
       await publishPage({ offset: 0, limit: DASHBOARD_PREFETCH_SIZE });
-      if (!signal?.aborted) {
+      if (!activeSignal.aborted) {
         handlers.onLoadComplete?.();
       }
     })().catch((error: unknown) => {
-      handlers.onError?.("dashboard load", error);
+      handlers.onError?.("dashboard load", asCollectorApiError(error));
     });
+    return subscriptionFromTeardown(() => controller.abort());
   };
 
   const streamDashboardItems = async (

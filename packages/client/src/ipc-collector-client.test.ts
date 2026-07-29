@@ -67,17 +67,17 @@ async function waitForVaultIndexSyncDone(
   }
   return new Promise<VaultIndexSyncStatus>((resolve, reject) => {
     const timer = setTimeout(() => {
-      unsub();
+      sub.unsubscribe();
       reject(
         new Error(
           `vault index sync did not reach done within ${timeoutMs}ms (status=${client.getVaultIndexSyncStatus().status})`,
         ),
       );
     }, timeoutMs);
-    const unsub = client.subscribeVaultIndexSyncStatus((status) => {
+    const sub = client.subscribeVaultIndexSyncStatus((status) => {
       if (status.status === "done") {
         clearTimeout(timer);
-        unsub();
+        sub.unsubscribe();
         resolve(status);
       }
     });
@@ -276,7 +276,7 @@ describe("CollectorIpcClient", () => {
           ),
         );
         const attached = await client.attachMediaFiles(item.id, [
-          { filename: "dot.png", data: png },
+          { name: "dot.png", bytes: png },
         ]);
         expect(attached.length).toBe(1);
         expect(attached[0]!.filename).toBe("dot.png");
@@ -322,14 +322,14 @@ describe("CollectorIpcClient", () => {
           ),
         );
         const attached = await client.attachMediaFiles(item.id, [
-          { filename: "dot.png", data: png },
+          { name: "dot.png", bytes: png },
         ]);
         expect(attached.length).toBe(1);
         const mediaId = attached[0]!.id;
 
         const replaced = await client.replaceItemMedia(item.id, mediaId, {
-          filename: "dot2.png",
-          data: png,
+          name: "dot2.png",
+          bytes: png,
         });
         expect(replaced.id).toBe(mediaId);
         expect(replaced.filename).toBe("dot2.png");
@@ -535,7 +535,7 @@ describe("CollectorIpcClient", () => {
         expect(seen.some((s) => s.status === "done" || s.status === "running")).toBe(
           true,
         );
-        unsub();
+        unsub.unsubscribe();
       } finally {
         await client.close();
       }
@@ -628,7 +628,7 @@ describe("CollectorIpcClient", () => {
         } finally {
           await peer.close();
         }
-        unsub();
+        unsub.unsubscribe();
 
         const active = await client.ensureActiveVault();
         let page: DashboardIndexPage | null = null;

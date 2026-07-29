@@ -11,6 +11,7 @@ import type {
   TagWithCount,
   UpdateItemInput,
 } from "./domain.js";
+import type { CollectorApiError } from "./errors.js";
 import type { Tag } from "@collector/shared";
 import type { AppSettings, DashboardSnapshot } from "@collector/shared";
 import type { MediaFileMeta } from "@collector/shared";
@@ -52,7 +53,7 @@ export interface IndexQueryResult {
 
 /**
  * @deprecated Prefer {@link IndexQueryResult} via {@link ItemsPort.queryIndex}.
- * `indexSync` is a Promise-in-DTO; use {@link IndexPort} subscribe/status instead (#163 / #362).
+ * `indexSync` is a Promise-in-DTO; use {@link IndexPort} subscribe/status instead (#163 / #362 / #364).
  */
 export interface DashboardItemIdsResult {
   itemIds: string[];
@@ -81,15 +82,19 @@ export interface AdjacentItemsResult {
   next: AdjacentItemRef | null;
 }
 
+/** Explicit unsubscribe handle for port subscriptions (#364). */
+/** Tear-down handle. Prefer `.unsubscribe()`; also callable for React effect cleanup. */
+export type Subscription = (() => void) & { unsubscribe(): void };
+
 export interface DashboardLoadHandlers {
   onIndexPage: (page: DashboardIndexPage) => void;
   getLoadedIdCount?: () => number;
   onLoadComplete?: () => void;
-  onError?: (scope: string, error: unknown) => void;
+  onError?: (scope: string, error: CollectorApiError) => void;
 }
 
 export interface ServiceSubscribeHandlers {
-  onError?: (scope: string, error: unknown) => void;
+  onError?: (scope: string, error: CollectorApiError) => void;
 }
 
 /** Boot / DB port (#361). */
@@ -136,7 +141,7 @@ export interface ItemsPort {
     handlers: DashboardLoadHandlers,
     signal?: AbortSignal,
     sort?: DashboardItemSort,
-  ): void;
+  ): Subscription;
   /** @deprecated Use {@link ItemsPort.hydrate}. */
   streamDashboardItems(
     itemIds: string[],
@@ -170,7 +175,7 @@ export interface TagsPort {
     onUpdate: (tags: TagWithCount[]) => void,
     handlers?: ServiceSubscribeHandlers,
     signal?: AbortSignal,
-  ): void;
+  ): Subscription;
   listTags(): Promise<TagWithCount[]>;
   createTag(input: { name: string; color?: string | null }): Promise<Tag>;
   updateTagRecord(
@@ -186,7 +191,7 @@ export interface FoldersPort {
     onUpdate: (tree: FolderTreeNode[]) => void,
     handlers?: ServiceSubscribeHandlers,
     signal?: AbortSignal,
-  ): void;
+  ): Subscription;
   listFolderTree(): Promise<FolderTreeNode[]>;
   loadFolderTree(): Promise<FolderTreeNode[]>;
   createFolder(folderPath: string): Promise<string>;
@@ -235,7 +240,7 @@ export interface VaultsPort {
 export interface IndexPort {
   subscribeVaultIndexSyncStatus(
     onUpdate: (status: VaultIndexSyncStatus) => void,
-  ): () => void;
+  ): Subscription;
   getVaultIndexSyncStatus(): VaultIndexSyncStatus;
 }
 
@@ -248,7 +253,7 @@ export interface SettingsPort {
    */
   getAppSettingsSync(): AppSettings | null;
   updateAppSettings(patch: Partial<AppSettings>): Promise<AppSettings>;
-  subscribeAppSettings(onUpdate: (settings: AppSettings) => void): () => void;
+  subscribeAppSettings(onUpdate: (settings: AppSettings) => void): Subscription;
   getAppConfigDirectory(): Promise<string>;
 }
 

@@ -5,8 +5,8 @@
 export interface DroppedFileBytes {
   /** Path within the drop tree, including filename (e.g. `Trip/a.png`). */
   relativePath: string;
-  filename: string;
-  data: Uint8Array;
+  name: string;
+  bytes: Uint8Array;
 }
 
 function readAllDirectoryEntries(
@@ -47,8 +47,8 @@ async function walkEntry(
     const relativePath = prefix ? `${prefix}/${file.name}` : file.name;
     out.push({
       relativePath,
-      filename: file.name,
-      data: new Uint8Array(await file.arrayBuffer()),
+      name: file.name,
+      bytes: new Uint8Array(await file.arrayBuffer()),
     });
     return;
   }
@@ -88,8 +88,8 @@ export async function collectDroppedFiles(
   for (const file of files) {
     out.push({
       relativePath: file.name,
-      filename: file.name,
-      data: new Uint8Array(await file.arrayBuffer()),
+      name: file.name,
+      bytes: new Uint8Array(await file.arrayBuffer()),
     });
   }
   return out;

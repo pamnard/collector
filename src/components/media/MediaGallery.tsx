@@ -124,8 +124,8 @@ export function MediaGallery({
     try {
       const payload = await Promise.all(
         [...selected].map(async (file) => ({
-          filename: file.name,
-          data: new Uint8Array(await file.arrayBuffer()),
+          name: file.name,
+          bytes: new Uint8Array(await file.arrayBuffer()),
         })),
       );
       await getCollectorClient().attachMediaFiles(itemId, payload);
