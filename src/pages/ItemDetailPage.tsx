@@ -13,6 +13,7 @@ import { MediaGallery } from "../components/media/MediaGallery";
 import { MediaPlayerOverlay } from "../components/media/MediaPlayerOverlay";
 import { useShell } from "../components/layout/AppLayout";
 import { usePanelHeader } from "../components/layout/panel-header-context";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { useMediaPlayerOverlay } from "../hooks/useMediaPlayerOverlay";
 import type { ItemFormValues } from "../types/item";
 import { getCollectorService } from "../services/collector-client";
@@ -77,6 +78,7 @@ export function ItemDetailPage() {
   const [mode, setMode] = useState<ItemDetailMode>("view");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [idCopyFeedback, setIdCopyFeedback] = useState<
     "copied" | "failed" | null
@@ -286,8 +288,8 @@ export function ItemDetailPage() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!id || !window.confirm("Удалить элемент без возможности восстановления?")) {
+  const handleConfirmDelete = async () => {
+    if (!id) {
       return;
     }
 
@@ -300,6 +302,7 @@ export function ItemDetailPage() {
       navigate("/");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
+      throw err;
     } finally {
       setIsDeleting(false);
     }
@@ -447,7 +450,7 @@ export function ItemDetailPage() {
       onForm: switchToForm,
       onSource: switchToSource,
       onDelete: () => {
-        void handleDelete();
+        setDeleteConfirmOpen(true);
       },
     });
   }, [
@@ -461,6 +464,15 @@ export function ItemDetailPage() {
 
   return (
     <div className="@container w-full pb-4 md:pb-8">
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title={item?.title.trim() || "Элемент"}
+        description="Удалить элемент без возможности восстановления?"
+        busy={isDeleting}
+        onConfirm={handleConfirmDelete}
+      />
+
       {idCopyFeedback !== null && (
         <AlertStack>
           <Alert
