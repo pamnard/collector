@@ -1,4 +1,77 @@
+import type { DashboardIndexPage, IndexQueryResult } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
+
+/** Map ItemsPort.queryIndex result to the dashboard page shape used by the hook. */
+export function mapIndexQueryResult(
+  result: IndexQueryResult,
+): DashboardIndexPage {
+  return {
+    itemIds: result.ids,
+    totalCount: result.total,
+    offset: result.offset,
+  };
+}
+
+/**
+ * Drain a hydrate/async body stream into `onItem`.
+ * Callers abort via the signal passed into `hydrate`.
+ */
+export async function collectHydratedItems(
+  items: AsyncIterable<ItemFile>,
+  onItem: (item: ItemFile) => void,
+): Promise<void> {
+  for await (const item of items) {
+    onItem(item);
+  }
+}
+
+/** Leading-edge throttle used for IndexPort-driven dashboard republish (#367). */
+export function createThrottledPublisher(
+  fn: () => void,
+  intervalMs: number,
+): { schedule: () => void; flush: () => void; cancel: () => void } {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let lastRun = 0;
+
+  const run = () => {
+    lastRun = Date.now();
+    fn();
+  };
+
+  return {
+    schedule() {
+      const elapsed = Date.now() - lastRun;
+      if (elapsed >= intervalMs) {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        run();
+        return;
+      }
+      if (timer) {
+        return;
+      }
+      timer = setTimeout(() => {
+        timer = null;
+        run();
+      }, intervalMs - elapsed);
+    },
+    flush() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      run();
+    },
+    cancel() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    },
+  };
+}
 
 /** Ordered dashboard cards for the current stream window. */
 export function orderDashboardItems(

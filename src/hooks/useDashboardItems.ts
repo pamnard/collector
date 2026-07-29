@@ -10,8 +10,11 @@ import type { DashboardSnapshot, ItemFile } from "@collector/shared";
 import type { DashboardItemSort } from "@collector/api";
 import { useAppSettings } from "../context/AppSettingsContext";
 import {
+  collectHydratedItems,
+  createThrottledPublisher,
   isDashboardPrefetchWindowReady,
   itemIdsEqual,
+  mapIndexQueryResult,
   mergeStreamedItemsById,
   orderDashboardItems,
   shouldApplyDashboardStreamBatch,
@@ -37,6 +40,9 @@ export const DEFAULT_DASHBOARD_SORT: DashboardItemSort = {
   key: "created_at",
   dir: "desc",
 };
+
+/** Matches service `syncRepublishThrottleMs` for IndexPort-driven re-query (#367). */
+const DASHBOARD_SYNC_REPUBLISH_MS = 500;
 
 interface UseDashboardItemsResult {
   items: ItemFile[];
@@ -199,6 +205,18 @@ export function useDashboardItems(
   const streamAbortRef = useRef<AbortController | null>(null);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryBusyRef = useRef(false);
+  const filterRef = useRef(filter);
+  const searchQueryRef = useRef(searchQuery);
+  const sortRef = useRef(sort);
+  filterRef.current = filter;
+  searchQueryRef.current = searchQuery;
+  sortRef.current = sort;
+  const prevIndexSyncStatusRef = useRef(indexSync.status);
+  const syncRepublishRef = useRef<{
+    schedule: () => void;
+    flush: () => void;
+    cancel: () => void;
+  } | null>(null);
 
   const isIndexingEmptyGrid =
     (indexSync.status === "running" || indexSync.status === "rebuilding") &&
@@ -350,17 +368,15 @@ export function useDashboardItems(
       streamAbortRef.current = controller;
 
       const pending = new Map<string, ItemFile>();
-      await getCollectorClient().streamDashboardItems(
-        ids,
-        offset,
-        limit,
+      const slice = ids.slice(offset, offset + limit);
+      await collectHydratedItems(
+        getCollectorClient().hydrate(slice, { signal: controller.signal }),
         (item) => {
           if (requestVersionRef.current !== requestVersion) {
             return;
           }
           pending.set(item.id, item);
         },
-        controller.signal,
       );
 
       if (
@@ -580,47 +596,44 @@ export function useDashboardItems(
       }
     };
 
-    getCollectorClient().subscribeDashboardLoad(
-      filter,
-      searchQuery,
-      {
-        onIndexPage: (page) => {
-          if (requestVersionRef.current !== requestVersion) {
-            return;
-          }
-          void applyIndexPage(page, requestVersion)
-            .then(async () => {
-              if (requestVersionRef.current !== requestVersion) {
-                return;
-              }
-              if (page.offset === 0) {
-                await tryCommitAfterIndexPage();
-              }
-            })
-            .catch((err: unknown) => {
-              if (requestVersionRef.current !== requestVersion) {
-                return;
-              }
-              reportServiceError("dashboard index apply", err);
-              setError(err instanceof Error ? err.message : String(err));
-              setIsLoading(false);
-              queryBusyRef.current = false;
-            });
-        },
-        getLoadedIdCount: () => itemIdsRef.current.length,
-        onError: (scope, err) => {
-          if (requestVersionRef.current !== requestVersion) {
-            return;
-          }
-          reportServiceError(scope, err);
-          setError(err instanceof Error ? err.message : String(err));
-          setIsLoading(false);
-          queryBusyRef.current = false;
-        },
-      },
-      controller.signal,
-      sort,
-    );
+    void (async () => {
+      try {
+        if (controller.signal.aborted) {
+          return;
+        }
+        const result = await getCollectorClient().queryIndex(
+          filter,
+          searchQuery,
+          { offset: 0, limit: DASHBOARD_PREFETCH_SIZE },
+          sort,
+        );
+        if (
+          controller.signal.aborted ||
+          requestVersionRef.current !== requestVersion
+        ) {
+          return;
+        }
+        const page = mapIndexQueryResult(result);
+        await applyIndexPage(page, requestVersion);
+        if (requestVersionRef.current !== requestVersion) {
+          return;
+        }
+        if (page.offset === 0) {
+          await tryCommitAfterIndexPage();
+        }
+      } catch (err: unknown) {
+        if (
+          controller.signal.aborted ||
+          requestVersionRef.current !== requestVersion
+        ) {
+          return;
+        }
+        reportServiceError("dashboard index page", err);
+        setError(err instanceof Error ? err.message : String(err));
+        setIsLoading(false);
+        queryBusyRef.current = false;
+      }
+    })();
 
     return () => {
       controller.abort();
@@ -640,6 +653,69 @@ export function useDashboardItems(
     sort,
     vaultId,
     vaultRevision,
+  ]);
+
+  // IndexPort-driven live refresh: replaces subscribeDashboardLoad vault sync listener.
+  useEffect(() => {
+    const publisher = createThrottledPublisher(() => {
+      const requestVersion = requestVersionRef.current;
+      const limit = Math.max(
+        itemIdsRef.current.length,
+        DASHBOARD_PREFETCH_SIZE,
+      );
+      void (async () => {
+        try {
+          const result = await getCollectorClient().queryIndex(
+            filterRef.current,
+            searchQueryRef.current,
+            { offset: 0, limit },
+            sortRef.current,
+          );
+          if (requestVersionRef.current !== requestVersion) {
+            return;
+          }
+          await applyIndexPage(mapIndexQueryResult(result), requestVersion);
+          if (requestVersionRef.current !== requestVersion) {
+            return;
+          }
+          await commitWorkingToDisplay(requestVersion);
+        } catch (err: unknown) {
+          if (requestVersionRef.current !== requestVersion) {
+            return;
+          }
+          reportServiceError("dashboard sync republish", err);
+        }
+      })();
+    }, DASHBOARD_SYNC_REPUBLISH_MS);
+    syncRepublishRef.current = publisher;
+    return () => {
+      publisher.cancel();
+      if (syncRepublishRef.current === publisher) {
+        syncRepublishRef.current = null;
+      }
+    };
+  }, [applyIndexPage, commitWorkingToDisplay]);
+
+  useEffect(() => {
+    const prev = prevIndexSyncStatusRef.current;
+    prevIndexSyncStatusRef.current = indexSync.status;
+    const active =
+      indexSync.status === "running" || indexSync.status === "rebuilding";
+    if (active) {
+      syncRepublishRef.current?.schedule();
+    }
+    if (
+      (prev === "running" || prev === "rebuilding") &&
+      indexSync.status === "done"
+    ) {
+      syncRepublishRef.current?.flush();
+    }
+  }, [
+    indexSync.status,
+    indexSync.progress?.processed,
+    indexSync.progress?.total,
+    indexSync.metadataReady,
+    indexSync.ftsReady,
   ]);
 
   useEffect(() => {
@@ -748,7 +824,7 @@ export function useDashboardItems(
 
     if (needsMoreIds && hasUnloadedIds) {
       void getCollectorClient()
-        .fetchDashboardIndexPage(
+        .queryIndex(
           filter,
           searchQuery,
           {
@@ -757,10 +833,11 @@ export function useDashboardItems(
           },
           sort,
         )
-        .then((page) => {
+        .then((result) => {
           if (requestVersionRef.current !== requestVersion) {
             return;
           }
+          const page = mapIndexQueryResult(result);
           totalCountRef.current = page.totalCount;
           setTotalCount(page.totalCount);
           const mergedIds = [...itemIdsRef.current, ...page.itemIds];
