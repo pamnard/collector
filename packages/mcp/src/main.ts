@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 /**
- * `collector-mcp` — stdio MCP server over local Collector service IPC (#174).
+ * `collector-mcp` — stdio MCP server over local Collector service IPC (#174/#336).
  *
  * Usage:
  *   collector-mcp --data-dir <dir>
  *   collector-mcp --ipc-path <path>
  *   COLLECTOR_DATA_DIR=… collector-mcp
+ *
+ * Auth token is read from dataDir's collector-service.ipc-token (or
+ * --token / COLLECTOR_IPC_TOKEN). Settings MCP JSON stays `--data-dir` only.
  */
 
 import { connectCollectorIpcClient } from "@collector/client/node";
@@ -19,9 +22,11 @@ import {
 import { createCollectorMcpServer } from "./server.js";
 
 async function main(): Promise<void> {
+  let endpoint: ReturnType<typeof parseMcpEndpointArgs>;
   let ipcPath: string;
   try {
-    ipcPath = resolveMcpIpcPath(parseMcpEndpointArgs(process.argv.slice(2)));
+    endpoint = parseMcpEndpointArgs(process.argv.slice(2));
+    ipcPath = resolveMcpIpcPath(endpoint);
   } catch (error) {
     const message =
       error instanceof McpEndpointError ? error.message : String(error);
@@ -33,6 +38,8 @@ async function main(): Promise<void> {
   try {
     client = await connectCollectorIpcClient(ipcPath, {
       connectTimeoutMs: 2_000,
+      ...(endpoint.dataDir === undefined ? {} : { dataDir: endpoint.dataDir }),
+      ...(endpoint.token === undefined ? {} : { token: endpoint.token }),
     });
   } catch (error) {
     if (isServiceIpcError(error) && error.code === "not_connected") {

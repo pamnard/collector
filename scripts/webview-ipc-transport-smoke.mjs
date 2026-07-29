@@ -8,7 +8,7 @@
  * 3. In Tauri WebView console (after app load): 
  *    const { tauriServiceIpcConnect, tauriServiceIpcPing, tauriServiceIpcRequest, tauriServiceIpcDisconnect } =
  *      await import('/src/services/tauri-service-ipc-transport.ts')
- *    await tauriServiceIpcConnect('<ipcPath>')
+ *    await tauriServiceIpcConnect('<ipcPath>', '<dataDir>')
  *    await tauriServiceIpcPing()
  *    await tauriServiceIpcRequest('getDataDirectory')
  *    await tauriServiceIpcDisconnect()

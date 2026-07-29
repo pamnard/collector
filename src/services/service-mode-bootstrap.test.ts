@@ -60,7 +60,10 @@ describe("bootstrapServiceModeCutover (#170)", () => {
       dataDir: "/data",
       configDir: "/config",
     });
-    expect(createTauriServiceIpcTransport).toHaveBeenCalledWith("/tmp/sock");
+    expect(createTauriServiceIpcTransport).toHaveBeenCalledWith(
+      "/tmp/sock",
+      "/data",
+    );
     expect(setCollectorClient).toHaveBeenCalled();
   });
 

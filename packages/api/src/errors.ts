@@ -3,7 +3,11 @@
  * No throw helpers here — types only.
  */
 
-export type CollectorApiErrorLayer = "transport" | "validation" | "domain";
+export type CollectorApiErrorLayer =
+  | "transport"
+  | "validation"
+  | "domain"
+  | "auth";
 
 export interface CollectorApiErrorBase {
   layer: CollectorApiErrorLayer;
@@ -39,7 +43,14 @@ export interface CollectorApiDomainError extends CollectorApiErrorBase {
     | "failed";
 }
 
+/** Service IPC handshake failures (#336). */
+export interface CollectorApiAuthError extends CollectorApiErrorBase {
+  layer: "auth";
+  code?: "auth_required" | "auth_failed" | "token_missing";
+}
+
 export type CollectorApiError =
   | CollectorApiTransportError
   | CollectorApiValidationError
-  | CollectorApiDomainError;
+  | CollectorApiDomainError
+  | CollectorApiAuthError;

@@ -7,6 +7,7 @@ export type {
   CollectorApiError,
   CollectorApiErrorBase,
   CollectorApiErrorLayer,
+  CollectorApiAuthError,
   CollectorApiDomainError,
   CollectorApiTransportError,
   CollectorApiValidationError,

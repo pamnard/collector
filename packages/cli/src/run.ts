@@ -23,7 +23,10 @@ function resolveIpcPath(args: ParsedCliArgs): string {
 }
 
 function formatConnectFailure(error: unknown, ipcPath: string): string {
-  if (isServiceIpcError(error) && error.code === "not_connected") {
+  if (
+    isServiceIpcError(error) &&
+    (error.code === "not_connected" || error.code === "token_missing")
+  ) {
     return `Collector service is not running (IPC ${ipcPath}): ${error.message}`;
   }
   if (error instanceof Error) {
@@ -54,6 +57,8 @@ export async function runCollectorCli(
   try {
     client = await connectCollectorIpcClient(ipcPath, {
       connectTimeoutMs: 2_000,
+      ...(args.dataDir === undefined ? {} : { dataDir: args.dataDir }),
+      ...(args.token === undefined ? {} : { token: args.token }),
     });
   } catch (error) {
     io.stderr(formatConnectFailure(error, ipcPath));

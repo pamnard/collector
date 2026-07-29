@@ -21,6 +21,12 @@ import {
 import { startServiceIpcServer, type ServiceIpcServer } from "./ipc/server.js";
 import { createServiceDomainRuntime } from "./domain-runtime.js";
 import { SERVICE_IPC_EVENTS } from "./ipc/framing.js";
+import {
+  defaultServiceIpcTokenPath,
+  generateServiceIpcToken,
+  removeServiceIpcTokenFile,
+  writeServiceIpcTokenFile,
+} from "./ipc/auth.js";
 
 export const SERVICE_HOST_READY_PREFIX = "COLLECTOR_SERVICE_READY ";
 
@@ -138,12 +144,17 @@ export async function startServiceHost(
   }
 
   let ipc: ServiceIpcServer | null = null;
+  let ipcTokenPath: string | null = null;
   let stopSyncStatusBroadcast: (() => void) | null = null;
   let stopAppSettingsBroadcast: (() => void) | null = null;
   if (options.ipcPath !== false) {
+    const token = generateServiceIpcToken();
+    ipcTokenPath = defaultServiceIpcTokenPath(layout.dataDir);
+    await writeServiceIpcTokenFile(ipcTokenPath, token);
     ipc = await startServiceIpcServer({
       dataDir: layout.dataDir,
       path: typeof options.ipcPath === "string" ? options.ipcPath : undefined,
+      token,
       handler: {
         ping: () => ({ ok: true, pong: true }),
         health: healthPayload,
@@ -175,6 +186,10 @@ export async function startServiceHost(
     if (ipc) {
       await ipc.close();
       ipc = null;
+    }
+    if (ipcTokenPath) {
+      await removeServiceIpcTokenFile(ipcTokenPath);
+      ipcTokenPath = null;
     }
     await new Promise<void>((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));

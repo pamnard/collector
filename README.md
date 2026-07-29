@@ -111,6 +111,8 @@ Settings file: `…/collector/settings.json`. Index DB: `…/collector.db` (same
 
 Release installers ship **`collector-cli`** and **`collector-mcp`** inside the same host tree as the internal domain host (bundled Node + JS entrypoints). They are thin IPC clients: the desktop app must be **running** so the local service is up. They never open SQLite themselves.
 
+The service IPC socket is a **private bus** for first-party clients (UI, CLI, MCP, tests). Peers must authenticate with a per-start token the host writes as `collector-service.ipc-token` under the data directory. Anonymous dials are rejected. External programs should use published surfaces only — today that is **MCP** (tool catalog), not raw IPC.
+
 **Install location** (wrappers + `*.js` + bundled `node`):
 
 | Platform | Path |
@@ -121,7 +123,7 @@ Release installers ship **`collector-cli`** and **`collector-mcp`** inside the s
 
 Point MCP clients and shells at the **wrapper** in that folder (`collector-mcp` / `collector-cli` on Unix; `collector-mcp.cmd` / `collector-cli.cmd` on Windows). Use an absolute path — the installer does not put them on the system `PATH`.
 
-`--data-dir` is the **vault data** directory from the table above (release column), e.g. Linux `~/.local/share/com.collector.app/collector/`. Settings → «Каталог данных» shows the active path. Or pass `--ipc-path` / `COLLECTOR_IPC_PATH` if you already know the socket.
+`--data-dir` is the **vault data** directory from the table above (release column), e.g. Linux `~/.local/share/com.collector.app/collector/`. Settings → «Каталог данных» shows the active path. With `--data-dir`, CLI/MCP read the token file automatically. Or pass `--ipc-path` / `COLLECTOR_IPC_PATH` (Unix sock still finds the sibling token file) / optional `--token` / `COLLECTOR_IPC_TOKEN`.
 
 ```bash
 # CLI health check (app must be running)

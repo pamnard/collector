@@ -108,8 +108,9 @@ mod tests {
         let mut holder = None;
         let ipc = bootstrap_service_mode(&sidecar, &data_dir, &config_dir, &mut holder, None)
             .expect("bootstrap");
-        let client =
-            ServiceIpcClient::connect(&ipc, Duration::from_secs(5), None).expect("connect");
+        let token = crate::service_ipc::read_ipc_token(&data_dir).expect("ipc token");
+        let client = ServiceIpcClient::connect(&ipc, Duration::from_secs(5), None, &token)
+            .expect("connect");
         let ping = client.request("ping", None).expect("ping");
         assert_eq!(ping.get("ok"), Some(&serde_json::json!(true)));
         let data = client.request("getDataDirectory", None).expect("dataDir");

@@ -37,6 +37,7 @@ export interface ParsedCliArgs {
   command: CliCommand;
   dataDir?: string;
   ipcPath?: string;
+  token?: string;
 }
 
 export class CliUsageError extends Error {
@@ -46,7 +47,7 @@ export class CliUsageError extends Error {
   }
 }
 
-const ENDPOINT_FLAGS = new Set(["--data-dir", "--ipc-path"]);
+const ENDPOINT_FLAGS = new Set(["--data-dir", "--ipc-path", "--token"]);
 const CREATE_ITEM_FLAGS = new Set([
   "--title",
   "--type",
@@ -108,17 +109,24 @@ function withEndpoint(
   command: CliCommand,
   dataDir: string | undefined,
   ipcPath: string | undefined,
+  token: string | undefined,
 ): ParsedCliArgs {
   return {
     command,
     ...(dataDir === undefined ? {} : { dataDir }),
     ...(ipcPath === undefined ? {} : { ipcPath }),
+    ...(token === undefined ? {} : { token }),
   };
 }
 
 export function parseCliArgs(argv: string[]): ParsedCliArgs {
   const dataDir = readOpt(argv, "--data-dir");
   const ipcPath = readOpt(argv, "--ipc-path");
+  const tokenFlag = readOpt(argv, "--token");
+  const tokenEnv = process.env.COLLECTOR_IPC_TOKEN?.trim();
+  const resolvedToken =
+    tokenFlag ??
+    (tokenEnv !== undefined && tokenEnv.length > 0 ? tokenEnv : undefined);
   if (dataDir !== undefined && ipcPath !== undefined) {
     throw new CliUsageError("Pass only one of --data-dir or --ipc-path");
   }
@@ -140,7 +148,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   const [command, ...rest] = positional;
   if (command === undefined) {
     throw new CliUsageError(
-      "Usage: collector-cli [--data-dir <dir>|--ipc-path <path>] <command> …",
+      "Usage: collector-cli [--data-dir <dir>|--ipc-path <path>] [--token <secret>] <command> …",
     );
   }
 
@@ -148,7 +156,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     if (rest.length > 0) {
       throw new CliUsageError("health takes no positional arguments");
     }
-    return withEndpoint({ name: "health" }, dataDir, ipcPath);
+    return withEndpoint({ name: "health" }, dataDir, ipcPath, resolvedToken);
   }
 
   if (command === "search") {
@@ -156,7 +164,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     if (!query) {
       throw new CliUsageError("Usage: collector-cli search <query>");
     }
-    return withEndpoint({ name: "search", query }, dataDir, ipcPath);
+    return withEndpoint({ name: "search", query }, dataDir, ipcPath, resolvedToken);
   }
 
   if (command === "get-item") {
@@ -164,7 +172,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     if (!itemId || rest.length !== 1) {
       throw new CliUsageError("Usage: collector-cli get-item <item-id>");
     }
-    return withEndpoint({ name: "get-item", itemId }, dataDir, ipcPath);
+    return withEndpoint({ name: "get-item", itemId }, dataDir, ipcPath, resolvedToken);
   }
 
   if (command === "create-item") {
@@ -193,6 +201,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       },
       dataDir,
       ipcPath,
+      resolvedToken,
     );
   }
 
@@ -229,6 +238,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       },
       dataDir,
       ipcPath,
+      resolvedToken,
     );
   }
 
@@ -237,7 +247,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     if (!itemId || rest.length !== 1) {
       throw new CliUsageError("Usage: collector-cli delete-item <item-id>");
     }
-    return withEndpoint({ name: "delete-item", itemId }, dataDir, ipcPath);
+    return withEndpoint({ name: "delete-item", itemId }, dataDir, ipcPath, resolvedToken);
   }
 
   if (command === "create-tag") {
@@ -259,6 +269,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       },
       dataDir,
       ipcPath,
+      resolvedToken,
     );
   }
 
@@ -267,7 +278,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     if (!tagId || rest.length !== 1) {
       throw new CliUsageError("Usage: collector-cli delete-tag <tag-id>");
     }
-    return withEndpoint({ name: "delete-tag", tagId }, dataDir, ipcPath);
+    return withEndpoint({ name: "delete-tag", tagId }, dataDir, ipcPath, resolvedToken);
   }
 
   if (command === "create-folder") {
@@ -275,7 +286,12 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     if (!folderPath) {
       throw new CliUsageError("Usage: collector-cli create-folder <path>");
     }
-    return withEndpoint({ name: "create-folder", folderPath }, dataDir, ipcPath);
+    return withEndpoint(
+      { name: "create-folder", folderPath },
+      dataDir,
+      ipcPath,
+      resolvedToken,
+    );
   }
 
   if (command === "move-item") {
@@ -290,6 +306,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       { name: "move-item", itemId, folderPath },
       dataDir,
       ipcPath,
+      resolvedToken,
     );
   }
 

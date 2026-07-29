@@ -37,6 +37,7 @@ function envPath(name: string): string | undefined {
 export function parseMcpEndpointArgs(argv: string[]): {
   dataDir?: string;
   ipcPath?: string;
+  token?: string;
 } {
   const read = (name: string): string | undefined => {
     const idx = argv.indexOf(name);
@@ -51,8 +52,10 @@ export function parseMcpEndpointArgs(argv: string[]): {
   };
   const dataDir = read("--data-dir") ?? envPath("COLLECTOR_DATA_DIR");
   const ipcPath = read("--ipc-path") ?? envPath("COLLECTOR_IPC_PATH");
+  const token = read("--token") ?? envPath("COLLECTOR_IPC_TOKEN");
   return {
     ...(dataDir === undefined ? {} : { dataDir }),
     ...(ipcPath === undefined ? {} : { ipcPath }),
+    ...(token === undefined ? {} : { token }),
   };
 }
