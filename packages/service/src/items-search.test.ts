@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { NavFilter } from "@collector/api";
 import {
+  createItemsSearchService,
   queryDashboardIndexPage,
   type ItemsIndexPort,
 } from "./items-search.js";
@@ -133,5 +134,41 @@ describe("queryDashboardIndexPage", () => {
       page,
     );
     expect(index.listItemIdsByNavFilter).not.toHaveBeenCalled();
+  });
+});
+
+describe("createItemsSearchService.queryIndex", () => {
+  it("kickoffs vault index sync before returning the page (#367)", async () => {
+    const index = createIndexMock();
+    const kickoff = vi.fn();
+    const vault = {
+      id: "vault-1",
+      name: "Vault",
+      is_default: true,
+      created_at: "a",
+      updated_at: "a",
+    };
+
+    const service = createItemsSearchService({
+      resolveActiveVault: async () => ({ vault: vault as never, path: "/vault" }),
+      getContext: () => ({}) as never,
+      getIndex: () => index,
+      kickoffVaultIndexSync: kickoff,
+      startVaultIndexSync: async () => {},
+      buildSearchFtsQuery: () => null,
+      addVaultSyncListener: () => () => {},
+    });
+
+    const result = await service.queryIndex("all", undefined, {
+      limit: 60,
+      offset: 0,
+    });
+
+    expect(kickoff).toHaveBeenCalledWith("vault-1", "/vault");
+    expect(result).toEqual({
+      ids: ["a.md", "b.md"],
+      total: 2,
+      offset: 0,
+    });
   });
 });

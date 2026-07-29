@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { ItemFile } from "@collector/shared";
 import {
+  collectHydratedItems,
+  createThrottledPublisher,
   isDashboardPrefetchWindowReady,
   itemIdsEqual,
+  mapIndexQueryResult,
   mergeStreamedItemsById,
   orderDashboardItems,
   shouldApplyDashboardStreamBatch,
@@ -12,6 +15,57 @@ import {
 function stubItem(id: string, title = id): ItemFile {
   return { id, title } as ItemFile;
 }
+
+describe("mapIndexQueryResult", () => {
+  it("maps IndexQueryResult fields to DashboardIndexPage", () => {
+    assert.deepEqual(
+      mapIndexQueryResult({ ids: ["a", "b"], total: 10, offset: 0 }),
+      { itemIds: ["a", "b"], totalCount: 10, offset: 0 },
+    );
+  });
+});
+
+describe("collectHydratedItems", () => {
+  it("forwards each yielded item", async () => {
+    async function* gen() {
+      yield stubItem("a");
+      yield stubItem("b");
+    }
+    const seen: string[] = [];
+    await collectHydratedItems(gen(), (item) => {
+      seen.push(item.id);
+    });
+    assert.deepEqual(seen, ["a", "b"]);
+  });
+});
+
+describe("createThrottledPublisher", () => {
+  it("runs immediately on first schedule then coalesces", async () => {
+    let n = 0;
+    const pub = createThrottledPublisher(() => {
+      n += 1;
+    }, 50);
+    pub.schedule();
+    pub.schedule();
+    assert.equal(n, 1);
+    await new Promise((r) => setTimeout(r, 80));
+    assert.equal(n, 2);
+    pub.cancel();
+  });
+
+  it("flush runs pending work immediately", () => {
+    let n = 0;
+    const pub = createThrottledPublisher(() => {
+      n += 1;
+    }, 10_000);
+    pub.schedule();
+    assert.equal(n, 1);
+    pub.schedule();
+    pub.flush();
+    assert.equal(n, 2);
+    pub.cancel();
+  });
+});
 
 describe("orderDashboardItems", () => {
   it("keeps stream order and skips missing bodies", () => {

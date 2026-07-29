@@ -301,6 +301,9 @@ export function createItemsSearchService(
     page: { limit: number; offset: number },
     sort?: DashboardItemSort,
   ): Promise<IndexQueryResult> => {
+    // Dashboard protocol sole entry (#367): start sync without subscribeDashboardLoad.
+    const { vault, path } = await deps.resolveActiveVault();
+    deps.kickoffVaultIndexSync(vault.id, path);
     const result = await fetchDashboardIndexPage(filter, query, page, sort);
     return {
       ids: result.itemIds,
