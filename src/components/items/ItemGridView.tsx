@@ -9,7 +9,10 @@ import { MASONRY_BREAKPOINTS } from "./masonry-breakpoints";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
 import { useShell } from "../layout/AppLayout";
 import type { useDashboardItems } from "../../hooks/useDashboardItems";
-import { getCollectorClient } from "../../services/collector-client";
+import {
+  getCollectorClient,
+  getUiSession,
+} from "../../services/collector-client";
 
 interface ItemGridViewProps {
   dashboard: ReturnType<typeof useDashboardItems>;
@@ -62,7 +65,7 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
       };
     }
 
-    void getCollectorClient().resolveItemThumbnailPaths(missing).then((paths) => {
+    void getUiSession().thumbnails.resolveItemThumbnailPaths(missing).then((paths) => {
       if (cancelled) {
         return;
       }

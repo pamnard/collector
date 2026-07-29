@@ -24,6 +24,7 @@ import { navFilterKey, type NavFilter } from "../types/ui";
 import {
   DASHBOARD_PREFETCH_SIZE,
   getCollectorClient,
+  getUiSession,
 } from "../services/collector-client";
 import {
   dashboardQueryCacheKey,
@@ -73,6 +74,7 @@ function readInitialCacheEntry(
   filter: NavFilter,
   searchQuery: string,
   sort: DashboardItemSort,
+  vaultId: string | null | undefined,
 ): DashboardQueryCacheEntry | null {
   const key = dashboardQueryCacheKey(
     navFilterKey(filter),
@@ -85,11 +87,10 @@ function readInitialCacheEntry(
     return cached;
   }
 
-  const vaultId = getCollectorClient().getAppSettingsSync()?.active_vault_id;
   if (!vaultId) {
     return null;
   }
-  const warm = getCollectorClient().peekMatchingDashboardSnapshot({
+  const warm = getUiSession().snapshot.peekMatchingDashboardSnapshot({
     vaultId,
     filter,
     search: searchQuery,
@@ -148,7 +149,12 @@ export function useDashboardItems(
   const { settings } = useAppSettings();
 
   const [initial] = useState(() =>
-    readInitialCacheEntry(filter, searchQuery, sort),
+    readInitialCacheEntry(
+      filter,
+      searchQuery,
+      sort,
+      settings.active_vault_id,
+    ),
   );
   const [itemIds, setItemIds] = useState(() => initial?.itemIds ?? []);
   const [itemsById, setItemsById] = useState(
@@ -507,7 +513,7 @@ export function useDashboardItems(
     }
 
     if (vaultId) {
-      const warm = getCollectorClient().peekMatchingDashboardSnapshot({
+      const warm = getUiSession().snapshot.peekMatchingDashboardSnapshot({
         vaultId,
         filter,
         search: searchQuery,
@@ -744,8 +750,9 @@ export function useDashboardItems(
     }
 
     persistTimerRef.current = setTimeout(() => {
-      void getCollectorClient().persistDashboardSnapshot(
-        getCollectorClient().buildDashboardSnapshot({
+      const session = getUiSession();
+      void session.snapshot.persistDashboardSnapshot(
+        session.snapshot.buildDashboardSnapshot({
           vaultId,
           filter,
           search: searchQuery,

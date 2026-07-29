@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { ItemFile } from "@collector/shared";
 import { toDisplayAssetSrc } from "../../utils/asset-src";
 import { isLocalVideoItem } from "../../utils/local-media-playback";
-import { getCollectorClient } from "../../services/collector-client";
+import { getUiSession } from "../../services/collector-client";
 
 interface ItemDetailHeroProps {
   item: ItemFile;
@@ -24,7 +24,8 @@ export function ItemDetailHero({
     let cancelled = false;
     setSrc(null);
 
-    void getCollectorClient().resolveItemThumbnailPath(item)
+    void getUiSession()
+      .thumbnails.resolveItemThumbnailPath(item)
       .catch(() => null)
       .then((path) => {
         if (cancelled || !path) {

@@ -22,6 +22,7 @@ import { DOMAIN_IPC_METHODS, type DomainIpcHandlerMap } from "./domain-methods.j
 /**
  * Port methods implemented only on the IPC client (orchestration / sync cache).
  * They must not be required as host handlers.
+ * Snapshot + abs thumbnail paths are UiSession / client FS (#368).
  */
 export const CLIENT_ORCHESTRATED_PORT_METHODS = [
   "hydrate",
@@ -32,6 +33,9 @@ export const CLIENT_ORCHESTRATED_PORT_METHODS = [
   "subscribeAppSettings",
   "subscribeVaultIndexSyncStatus",
   "getAppSettingsSync",
+  ...DASHBOARD_SNAPSHOT_PORT_KEYS,
+  "resolveItemThumbnailPath",
+  "resolveItemThumbnailPaths",
 ] as const;
 
 export type ClientOrchestratedPortMethod =

@@ -59,4 +59,19 @@ describe("domain port→wire map (#366)", () => {
       expect(catalog.has(method), method).toBe(false);
     }
   });
+
+  it("snapshot and thumbnail abs paths are client-orchestrated (#368)", () => {
+    for (const method of DASHBOARD_SNAPSHOT_PORT_KEYS) {
+      expect(CLIENT_ORCHESTRATED_PORT_METHODS).toContain(method);
+      expect(HOST_WIRE_PORT_METHODS).not.toContain(method);
+    }
+    expect(CLIENT_ORCHESTRATED_PORT_METHODS).toContain(
+      "resolveItemThumbnailPath",
+    );
+    expect(CLIENT_ORCHESTRATED_PORT_METHODS).toContain(
+      "resolveItemThumbnailPaths",
+    );
+    expect(HOST_WIRE_PORT_METHODS).not.toContain("resolveItemThumbnailPath");
+    expect(HOST_WIRE_PORT_METHODS).not.toContain("resolveItemThumbnailPaths");
+  });
 });

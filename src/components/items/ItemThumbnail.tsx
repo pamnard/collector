@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { ItemFile } from "@collector/shared";
 import { toDisplayAssetSrc } from "../../utils/asset-src";
 import { getYouTubeThumbnail } from "../../utils/youtube-thumbnail";
-import { getCollectorClient } from "../../services/collector-client";
+import { getUiSession } from "../../services/collector-client";
 
 interface ItemThumbnailProps {
   item: ItemFile;
@@ -28,7 +28,9 @@ export function ItemThumbnail({
     setSrc(null);
 
     void (async () => {
-      const path = await getCollectorClient().resolveItemThumbnailPath(item).catch(() => null);
+      const path = await getUiSession()
+        .thumbnails.resolveItemThumbnailPath(item)
+        .catch(() => null);
       if (cancelled) {
         return;
       }

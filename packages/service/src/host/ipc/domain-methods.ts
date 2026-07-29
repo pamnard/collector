@@ -34,14 +34,12 @@ export const DOMAIN_IPC_METHODS = {
   renameFolder: "renameFolder",
   deleteFolder: "deleteFolder",
   moveItemToFolderPath: "moveItemToFolderPath",
-  // #159 media
+  // #159 media (thumbnail abs paths are UiSession / client-orchestrated — #368)
   listItemMedia: "listItemMedia",
   setItemCoverFromMedia: "setItemCoverFromMedia",
   attachMediaFiles: "attachMediaFiles",
   replaceItemMedia: "replaceItemMedia",
   deleteItemMedia: "deleteItemMedia",
-  resolveItemThumbnailPath: "resolveItemThumbnailPath",
-  resolveItemThumbnailPaths: "resolveItemThumbnailPaths",
   // #160 vaults
   listVaults: "listVaults",
   getActiveVaultMeta: "getActiveVaultMeta",
@@ -49,15 +47,10 @@ export const DOMAIN_IPC_METHODS = {
   setDefaultVault: "setDefaultVault",
   ensureActiveVault: "ensureActiveVault",
   getDataDirectory: "getDataDirectory",
-  // #161 settings + snapshot
+  // #161 settings (dashboard snapshot is UiSession / client-orchestrated — #368)
   ensureAppSettings: "ensureAppSettings",
   updateAppSettings: "updateAppSettings",
   getAppConfigDirectory: "getAppConfigDirectory",
-  ensureDashboardSnapshot: "ensureDashboardSnapshot",
-  persistDashboardSnapshot: "persistDashboardSnapshot",
-  clearDashboardSnapshot: "clearDashboardSnapshot",
-  peekMatchingDashboardSnapshot: "peekMatchingDashboardSnapshot",
-  buildDashboardSnapshot: "buildDashboardSnapshot",
   // #163 sync status
   getVaultIndexSyncStatus: "getVaultIndexSyncStatus",
   // #164 watcher

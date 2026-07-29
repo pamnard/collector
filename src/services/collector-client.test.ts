@@ -7,6 +7,7 @@ import {
 import {
   createCollectorClient,
   getCollectorClient,
+  getUiSession,
   setCollectorClient,
 } from "./collector-client";
 import {
@@ -182,5 +183,19 @@ describe("CollectorClient / LocalAdapter (#169 / #365)", () => {
     expect(typeof session.thumbnails.resolveItemThumbnailPaths).toBe(
       "function",
     );
+  });
+
+  it("getUiSession tracks setCollectorClient (#368)", () => {
+    const original = getCollectorClient();
+    const adapter = createLocalAdapter();
+    setCollectorClient(adapter);
+    const session = getUiSession();
+    expect(session.snapshot).toBeTruthy();
+    expect(typeof session.snapshot.ensureDashboardSnapshot).toBe("function");
+    expect(typeof session.thumbnails.resolveItemThumbnailPaths).toBe(
+      "function",
+    );
+    expect(typeof session.settingsSync.getAppSettingsSync).toBe("function");
+    setCollectorClient(original);
   });
 });

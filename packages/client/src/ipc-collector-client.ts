@@ -28,6 +28,7 @@ import type {
   ServiceSubscribeHandlers,
   Subscription,
   TagWithCount,
+  UiSessionThumbnailPaths,
   UpdateItemInput,
   VaultIndexSyncStatus,
 } from "@collector/api";
@@ -54,6 +55,15 @@ import {
 } from "@collector/service/ipc";
 
 export type { ServiceIpcHealthResult };
+
+/**
+ * UI-only slices injected by the app / Node dialer (#368).
+ * Not host IPC — snapshot I/O and abs thumbnail paths stay client-side.
+ */
+export interface CollectorIpcClientOptions {
+  snapshot?: DashboardSnapshotPort;
+  thumbnails?: UiSessionThumbnailPaths;
+}
 
 /** Transport extras used by smokes/harnesses — not part of CollectorService. */
 export interface CollectorIpcTransportExtras {
@@ -96,10 +106,91 @@ type IpcBacking = {
   extras: CollectorIpcTransportExtras;
 };
 
+function createMemoryDashboardSnapshotPort(): DashboardSnapshotPort {
+  let snapshotCache: DashboardSnapshot | null = null;
+  let snapshotCacheLoaded = false;
+
+  return {
+    ensureDashboardSnapshot: async (): Promise<DashboardSnapshot | null> => {
+      snapshotCacheLoaded = true;
+      return snapshotCache;
+    },
+    peekMatchingDashboardSnapshot(input: {
+      vaultId: string;
+      filter: NavFilter;
+      search: string;
+      sort?: DashboardItemSort;
+    }): DashboardSnapshot | null {
+      if (!snapshotCacheLoaded || !snapshotCache) {
+        return null;
+      }
+      if (
+        !dashboardSnapshotMatchesQuery(snapshotCache, {
+          vaultId: input.vaultId,
+          navFilter: navFilterToSetting(input.filter),
+          search: input.search,
+          sortKey: input.sort?.key,
+          sortDir: input.sort?.dir,
+        })
+      ) {
+        return null;
+      }
+      return snapshotCache;
+    },
+    persistDashboardSnapshot: async (
+      next: DashboardSnapshot,
+    ): Promise<void> => {
+      snapshotCache = next;
+      snapshotCacheLoaded = true;
+    },
+    clearDashboardSnapshot: async (): Promise<void> => {
+      snapshotCache = null;
+      snapshotCacheLoaded = true;
+    },
+    buildDashboardSnapshot(input: {
+      vaultId: string;
+      filter: NavFilter;
+      search: string;
+      sort?: DashboardItemSort;
+      itemIds: string[];
+      items: DashboardSnapshot["items"];
+      totalCount: number;
+      streamEndOffset: number;
+    }): DashboardSnapshot {
+      return {
+        schema_version: 1,
+        vault_id: input.vaultId,
+        nav_filter: navFilterToSetting(input.filter),
+        search: input.search,
+        sort_key: input.sort?.key ?? "created_at",
+        sort_dir: input.sort?.dir ?? "desc",
+        item_ids: input.itemIds,
+        items: input.items,
+        total_count: input.totalCount,
+        stream_end_offset: input.streamEndOffset,
+        saved_at: new Date().toISOString(),
+      };
+    },
+  };
+}
+
+function createNullThumbnailPaths(): UiSessionThumbnailPaths {
+  return {
+    resolveItemThumbnailPath: async (): Promise<string | null> => null,
+    resolveItemThumbnailPaths: async (
+      items: ItemFile[],
+    ): Promise<Map<string, string | null>> =>
+      new Map(items.map((item) => [item.id, null])),
+  };
+}
+
 /**
- * Shared transport session: one cache set for ports + snapshot + extras (#366).
+ * Shared transport session: one cache set for ports + snapshot + extras (#366 / #368).
  */
-function createIpcBacking(transport: ServiceIpcClient): IpcBacking {
+function createIpcBacking(
+  transport: ServiceIpcClient,
+  options: CollectorIpcClientOptions = {},
+): IpcBacking {
   let cachedSyncStatus: VaultIndexSyncStatus = {
     vaultId: null,
     status: "idle",
@@ -108,8 +199,7 @@ function createIpcBacking(transport: ServiceIpcClient): IpcBacking {
     ftsReady: true,
   };
   let settingsCache: AppSettings | null = null;
-  let snapshotCache: DashboardSnapshot | null = null;
-  let snapshotCacheLoaded = false;
+  const thumbnails = options.thumbnails ?? createNullThumbnailPaths();
 
   const extras: CollectorIpcTransportExtras = {
     ping: (options) => transport.ping(options),
@@ -445,20 +535,12 @@ function createIpcBacking(transport: ServiceIpcClient): IpcBacking {
         transport.request("listItemMedia", {
           itemId,
         }) as Promise<MediaWithPath[]>,
-      resolveItemThumbnailPath: async (
-        item: ItemFile,
-      ): Promise<string | null> =>
-        transport.request("resolveItemThumbnailPath", {
-          item,
-        }) as Promise<string | null>,
-      resolveItemThumbnailPaths: async (
+      resolveItemThumbnailPath: (item: ItemFile): Promise<string | null> =>
+        thumbnails.resolveItemThumbnailPath(item),
+      resolveItemThumbnailPaths: (
         items: ItemFile[],
-      ): Promise<Map<string, string | null>> => {
-        const record = (await transport.request("resolveItemThumbnailPaths", {
-          items,
-        })) as Record<string, string | null>;
-        return new Map(Object.entries(record));
-      },
+      ): Promise<Map<string, string | null>> =>
+        thumbnails.resolveItemThumbnailPaths(items),
       setItemCoverFromMedia: async (
         itemId: string,
         mediaId: string,
@@ -589,100 +671,41 @@ function createIpcBacking(transport: ServiceIpcClient): IpcBacking {
     },
   };
 
-  const snapshot: DashboardSnapshotPort = {
-    ensureDashboardSnapshot: async (): Promise<DashboardSnapshot | null> => {
-      const next = (await transport.request(
-        "ensureDashboardSnapshot",
-      )) as DashboardSnapshot | null;
-      snapshotCache = next;
-      snapshotCacheLoaded = true;
-      return next;
-    },
-    peekMatchingDashboardSnapshot(input: {
-      vaultId: string;
-      filter: NavFilter;
-      search: string;
-      sort?: DashboardItemSort;
-    }): DashboardSnapshot | null {
-      if (!snapshotCacheLoaded || !snapshotCache) {
-        return null;
-      }
-      if (
-        !dashboardSnapshotMatchesQuery(snapshotCache, {
-          vaultId: input.vaultId,
-          navFilter: navFilterToSetting(input.filter),
-          search: input.search,
-          sortKey: input.sort?.key,
-          sortDir: input.sort?.dir,
-        })
-      ) {
-        return null;
-      }
-      return snapshotCache;
-    },
-    persistDashboardSnapshot: async (
-      next: DashboardSnapshot,
-    ): Promise<void> => {
-      await transport.request("persistDashboardSnapshot", { snapshot: next });
-      snapshotCache = next;
-      snapshotCacheLoaded = true;
-    },
-    clearDashboardSnapshot: async (): Promise<void> => {
-      await transport.request("clearDashboardSnapshot");
-      snapshotCache = null;
-      snapshotCacheLoaded = true;
-    },
-    buildDashboardSnapshot(input: {
-      vaultId: string;
-      filter: NavFilter;
-      search: string;
-      sort?: DashboardItemSort;
-      itemIds: string[];
-      items: DashboardSnapshot["items"];
-      totalCount: number;
-      streamEndOffset: number;
-    }): DashboardSnapshot {
-      return {
-        schema_version: 1,
-        vault_id: input.vaultId,
-        nav_filter: navFilterToSetting(input.filter),
-        search: input.search,
-        sort_key: input.sort?.key ?? "created_at",
-        sort_dir: input.sort?.dir ?? "desc",
-        item_ids: input.itemIds,
-        items: input.items,
-        total_count: input.totalCount,
-        stream_end_offset: input.streamEndOffset,
-        saved_at: new Date().toISOString(),
-      };
-    },
-  };
+  const snapshot =
+    options.snapshot ?? createMemoryDashboardSnapshotPort();
 
   return { service, snapshot, extras };
 }
 
-/** Domain ports over IPC transport (#366). */
+/** Domain ports over IPC transport (#366 / #368). */
 export function createCollectorIpcService(
   transport: ServiceIpcClient,
+  options: CollectorIpcClientOptions = {},
 ): CollectorService {
-  return createIpcBacking(transport).service;
+  return createIpcBacking(transport, options).service;
 }
 
-/** Dashboard snapshot slice for flat shim / UiSession (#363 / #366). */
+/**
+ * Dashboard snapshot slice for flat shim / UiSession (#363 / #368).
+ * Default is in-memory; app/Node inject disk-backed ports.
+ */
 export function createCollectorIpcDashboardSnapshotPort(
-  transport: ServiceIpcClient,
+  _transport?: ServiceIpcClient,
+  options: CollectorIpcClientOptions = {},
 ): DashboardSnapshotPort {
-  return createIpcBacking(transport).snapshot;
+  return options.snapshot ?? createMemoryDashboardSnapshotPort();
 }
 
 /**
  * Transitional flat facade (#145 → #360). Prefer
  * {@link createCollectorIpcService} + {@link createCollectorIpcDashboardSnapshotPort}.
+ * Pass {@link CollectorIpcClientOptions} for snapshot/thumbnails (#368).
  */
 export function createCollectorIpcClient(
   transport: ServiceIpcClient,
+  options: CollectorIpcClientOptions = {},
 ): CollectorIpcClient {
-  const { service, snapshot, extras } = createIpcBacking(transport);
+  const { service, snapshot, extras } = createIpcBacking(transport, options);
   return {
     ...toCollectorServiceApi(service, snapshot),
     ...extras,

@@ -21,7 +21,10 @@ import {
 } from "@/components/ui/attachment";
 import { toDisplayAssetSrc } from "../../utils/asset-src";
 import type { PlayableMediaKind } from "../../utils/local-media-playback";
-import { getCollectorClient } from "../../services/collector-client";
+import {
+  getCollectorClient,
+  getUiSession,
+} from "../../services/collector-client";
 
 interface MediaGalleryProps {
   itemId: string;
@@ -85,8 +88,8 @@ export function MediaGallery({
 
     let cancelled = false;
     setCoverSrc(null);
-    void getCollectorClient()
-      .resolveItemThumbnailPath(item)
+    void getUiSession()
+      .thumbnails.resolveItemThumbnailPath(item)
       .catch(() => null)
       .then((path) => {
         if (cancelled || !path) {

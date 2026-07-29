@@ -9,7 +9,10 @@ import {
 } from "react";
 import type { AppSettings } from "@collector/shared";
 import { DEFAULT_APP_SETTINGS } from "@collector/shared";
-import { getCollectorClient } from "../services/collector-client";
+import {
+  getCollectorClient,
+  getUiSession,
+} from "../services/collector-client";
 import { StartupErrorScreen } from "../components/startup/StartupErrorScreen";
 import { StartupLoadingScreen } from "../components/startup/StartupLoadingScreen";
 import type { NavFilter, ViewMode } from "../types/ui";
@@ -50,7 +53,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     Promise.all([
       client.ensureAppSettings(),
       client.openCollectorDatabase(),
-      client.ensureDashboardSnapshot(),
+      getUiSession().snapshot.ensureDashboardSnapshot(),
     ])
       .then(([loaded]) => {
         if (cancelled) {

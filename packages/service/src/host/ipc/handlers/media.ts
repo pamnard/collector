@@ -1,9 +1,8 @@
 /**
- * IPC handlers: media / cover / thumbnails (#159).
+ * IPC handlers: media / cover (#159). Thumbnail abs paths are UiSession (#368).
  */
 
 import type { AttachMediaFileInput } from "@collector/api";
-import type { ItemFile } from "@collector/shared";
 import {
   asObject,
   badRequest,
@@ -62,25 +61,6 @@ export function buildMediaHandlers(
       const itemId = requireString(p.itemId, "itemId", M.listItemMedia);
       await runtime.ensureInitialized();
       return mediaCover.listItemMedia(itemId);
-    },
-    [M.resolveItemThumbnailPath]: async (params) => {
-      const p = asObject(params, M.resolveItemThumbnailPath);
-      if (!p.item || typeof p.item !== "object" || Array.isArray(p.item)) {
-        badRequest(`${M.resolveItemThumbnailPath}: item object required`);
-      }
-      await runtime.ensureInitialized();
-      return mediaCover.resolveItemThumbnailPath(p.item as ItemFile);
-    },
-    [M.resolveItemThumbnailPaths]: async (params) => {
-      const p = asObject(params, M.resolveItemThumbnailPaths);
-      if (!Array.isArray(p.items)) {
-        badRequest(`${M.resolveItemThumbnailPaths}: items must be an array`);
-      }
-      await runtime.ensureInitialized();
-      const map = await mediaCover.resolveItemThumbnailPaths(
-        p.items as ItemFile[],
-      );
-      return Object.fromEntries(map);
     },
     [M.setItemCoverFromMedia]: async (params) => {
       const p = asObject(params, M.setItemCoverFromMedia);
