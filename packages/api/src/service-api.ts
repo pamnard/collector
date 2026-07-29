@@ -53,13 +53,11 @@ export interface IndexQueryResult {
 
 /**
  * @deprecated Prefer {@link IndexQueryResult} via {@link ItemsPort.queryIndex}.
- * `indexSync` is a Promise-in-DTO; use {@link IndexPort} subscribe/status instead (#163 / #362 / #364).
+ * Index sync status lives on {@link IndexPort} (#163 / #362 / #364).
  */
 export interface DashboardItemIdsResult {
   itemIds: string[];
   totalCount: number;
-  /** @deprecated Promise-in-DTO — use IndexPort sync status. */
-  indexSync: Promise<void>;
 }
 
 export interface ActiveVaultResult {
@@ -127,7 +125,7 @@ export interface ItemsPort {
     page: { limit: number; offset: number },
     sort?: DashboardItemSort,
   ): Promise<DashboardIndexPage>;
-  /** @deprecated Use {@link ItemsPort.queryIndex}; do not rely on `indexSync`. */
+  /** @deprecated Use {@link ItemsPort.queryIndex}. */
   listDashboardItemIds(
     filter: NavFilter,
     query?: string,

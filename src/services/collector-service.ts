@@ -158,7 +158,6 @@ export async function listDashboardItemIds(
   return {
     itemIds: page.itemIds,
     totalCount: page.totalCount,
-    indexSync: Promise.resolve(),
   };
 }
 

@@ -289,19 +289,12 @@ function createIpcBacking(
         filter: NavFilter,
         query?: string,
         sort?: DashboardItemSort,
-      ): Promise<DashboardItemIdsResult> => {
-        const result = (await transport.request("listDashboardItemIds", {
+      ): Promise<DashboardItemIdsResult> =>
+        transport.request("listDashboardItemIds", {
           filter,
           query,
           sort,
-        })) as { itemIds: string[]; totalCount: number };
-        // Over IPC `indexSync` is not a real wait — use vault index sync status (#163).
-        return {
-          itemIds: result.itemIds,
-          totalCount: result.totalCount,
-          indexSync: Promise.resolve(),
-        };
-      },
+        }) as Promise<DashboardItemIdsResult>,
       subscribeDashboardLoad(
         filter: NavFilter,
         query: string,

@@ -64,8 +64,8 @@ type _DashboardOnErrorIsApiError = Expect<
   Equal<DashboardOnErrorParam, CollectorApiError>
 >;
 
-type _IndexSyncOnlyOnDeprecated = Expect<
-  "indexSync" extends keyof DashboardItemIdsResult ? true : false
+type _NoIndexSyncOnDashboardIds = Expect<
+  "indexSync" extends keyof DashboardItemIdsResult ? false : true
 >;
 
 type _Helpers = Expect<
@@ -83,7 +83,7 @@ type _Asserts = [
   _SubscribeDashboard,
   _OnErrorIsApiError,
   _DashboardOnErrorIsApiError,
-  _IndexSyncOnlyOnDeprecated,
+  _NoIndexSyncOnDashboardIds,
   _Helpers,
 ];
 
