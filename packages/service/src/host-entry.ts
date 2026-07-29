@@ -81,6 +81,15 @@ export {
 } from "./host/ipc/domain-methods.js";
 
 export {
+  ALL_PORT_METHOD_KEYS,
+  assertHostPortWireCoverage,
+  CLIENT_ORCHESTRATED_PORT_METHODS,
+  HOST_WIRE_PORT_METHODS,
+  type ClientOrchestratedPortMethod,
+  type HostWirePortMethod,
+} from "./host/ipc/domain-port-wire.js";
+
+export {
   buildDomainIpcHandlers,
   createDomainIpcDispatcher,
 } from "./host/ipc/domain-handlers.js";

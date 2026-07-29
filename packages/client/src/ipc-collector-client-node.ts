@@ -1,5 +1,5 @@
 /**
- * Node dialer for Collector IPC client (#154/#240).
+ * Node dialer for Collector IPC client (#154/#240/#366).
  */
 
 import {
@@ -8,12 +8,16 @@ import {
 } from "@collector/service/host";
 import {
   createCollectorIpcClient,
+  createCollectorIpcDashboardSnapshotPort,
+  createCollectorIpcService,
   type CollectorIpcClient,
   type ServiceIpcHealthResult,
 } from "./ipc-collector-client.js";
 
 export {
   createCollectorIpcClient,
+  createCollectorIpcDashboardSnapshotPort,
+  createCollectorIpcService,
   type CollectorIpcClient,
   type ServiceIpcHealthResult,
 };

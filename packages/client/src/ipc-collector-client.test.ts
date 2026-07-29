@@ -7,6 +7,7 @@ import {
   NodeSqliteExecutor,
   SERVICE_IPC_EVENTS,
   buildDomainIpcHandlers,
+  connectServiceIpc,
   createDomainIpcDispatcher,
   createServiceDomainRuntime,
   startServiceHost,
@@ -14,9 +15,22 @@ import {
   type ServiceIpcClient,
 } from "@collector/service/host";
 import type { DashboardIndexPage, VaultIndexSyncStatus } from "@collector/api";
+import {
+  BOOT_PORT_KEYS,
+  DASHBOARD_SNAPSHOT_PORT_KEYS,
+  FOLDERS_PORT_KEYS,
+  INDEX_PORT_KEYS,
+  ITEMS_PORT_KEYS,
+  MEDIA_PORT_KEYS,
+  SETTINGS_PORT_KEYS,
+  TAGS_PORT_KEYS,
+  VAULTS_PORT_KEYS,
+} from "@collector/api";
 import type { AppSettings } from "@collector/shared";
 import {
   createCollectorIpcClient,
+  createCollectorIpcDashboardSnapshotPort,
+  createCollectorIpcService,
   type CollectorIpcClient,
 } from "./ipc-collector-client.js";
 import { connectCollectorIpcClient } from "./ipc-collector-client-node.js";
@@ -684,6 +698,152 @@ describe("CollectorIpcClient", () => {
         ).toBeNull();
       } finally {
         await client.close();
+      }
+    } finally {
+      await host.close();
+    }
+  });
+});
+
+const PORT_KEYS = [
+  "boot",
+  "folders",
+  "index",
+  "items",
+  "media",
+  "settings",
+  "tags",
+  "vaults",
+] as const;
+
+function mockTransport(
+  requestImpl?: (method: string, params?: unknown) => Promise<unknown>,
+): ServiceIpcClient {
+  return {
+    request: async (method, params) => {
+      if (requestImpl) {
+        return requestImpl(method, params);
+      }
+      throw new Error(`unexpected ${method}`);
+    },
+    ping: async () => ({ ok: true as const, pong: true as const }),
+    health: async () => ({
+      ok: true,
+      status: "healthy" as const,
+      open: true,
+      healthy: true,
+    }),
+    onEvent: () => () => {},
+    close: async () => {},
+  };
+}
+
+describe("CollectorIpcService ports (#366)", () => {
+  const dirs: string[] = [];
+
+  afterEach(async () => {
+    for (const dir of dirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("createCollectorIpcService exposes eight domain ports with PORT_KEYS methods", () => {
+    const service = createCollectorIpcService(mockTransport());
+    expect(Object.keys(service).sort()).toEqual([...PORT_KEYS].sort());
+
+    for (const key of BOOT_PORT_KEYS) {
+      expect(typeof service.boot[key], `boot.${key}`).toBe("function");
+    }
+    for (const key of ITEMS_PORT_KEYS) {
+      expect(typeof service.items[key], `items.${key}`).toBe("function");
+    }
+    for (const key of TAGS_PORT_KEYS) {
+      expect(typeof service.tags[key], `tags.${key}`).toBe("function");
+    }
+    for (const key of FOLDERS_PORT_KEYS) {
+      expect(typeof service.folders[key], `folders.${key}`).toBe("function");
+    }
+    for (const key of MEDIA_PORT_KEYS) {
+      expect(typeof service.media[key], `media.${key}`).toBe("function");
+    }
+    for (const key of VAULTS_PORT_KEYS) {
+      expect(typeof service.vaults[key], `vaults.${key}`).toBe("function");
+    }
+    for (const key of INDEX_PORT_KEYS) {
+      expect(typeof service.index[key], `index.${key}`).toBe("function");
+    }
+    for (const key of SETTINGS_PORT_KEYS) {
+      expect(typeof service.settings[key], `settings.${key}`).toBe("function");
+    }
+  });
+
+  it("createCollectorIpcDashboardSnapshotPort exposes snapshot methods", () => {
+    const snapshot = createCollectorIpcDashboardSnapshotPort(mockTransport());
+    for (const key of DASHBOARD_SNAPSHOT_PORT_KEYS) {
+      expect(typeof snapshot[key], key).toBe("function");
+    }
+  });
+
+  it("flat createCollectorIpcClient shim exposes domain methods", () => {
+    const flat = createCollectorIpcClient(mockTransport());
+    expect(typeof flat.listItems).toBe("function");
+    expect(typeof flat.getDataDirectory).toBe("function");
+    expect(typeof flat.ping).toBe("function");
+    expect(typeof flat.startVaultFilesystemWatcher).toBe("function");
+  });
+
+  it("one RPC method per domain port over createCollectorIpcService", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-ipc-ports-"));
+    dirs.push(dataDir);
+    const host = await startServiceHost({ dataDir, port: 0 });
+    try {
+      const transport = await connectServiceIpc(host.ipcPath!, { dataDir });
+      try {
+        const service = createCollectorIpcService(transport);
+        expect(Object.keys(service).sort()).toEqual([...PORT_KEYS].sort());
+
+        const dataDirectory = await service.boot.getDataDirectory();
+        expect(dataDirectory.length).toBeGreaterThan(0);
+
+        const page = await service.items.queryIndex("all", undefined, {
+          limit: 1,
+          offset: 0,
+        });
+        expect(page).toMatchObject({
+          ids: expect.any(Array),
+          total: expect.any(Number),
+          offset: 0,
+        });
+
+        await expect(service.tags.listTags()).resolves.toEqual(
+          expect.any(Array),
+        );
+        await expect(service.folders.listFolderTree()).resolves.toEqual(
+          expect.any(Array),
+        );
+
+        const item = await service.items.createItem({
+          title: "port-smoke",
+          content_type: "note",
+          content: "# port smoke",
+        });
+        await expect(service.media.listItemMedia(item.id)).resolves.toEqual(
+          expect.any(Array),
+        );
+
+        await expect(service.vaults.listVaults()).resolves.toEqual(
+          expect.any(Array),
+        );
+        expect(service.index.getVaultIndexSyncStatus()).toMatchObject({
+          status: expect.any(String),
+        });
+        await expect(
+          service.settings.ensureAppSettings(),
+        ).resolves.toMatchObject({
+          theme: expect.any(String),
+        });
+      } finally {
+        await transport.close();
       }
     } finally {
       await host.close();
