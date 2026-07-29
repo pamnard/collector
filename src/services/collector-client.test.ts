@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   toCollectorService,
+  toUiSession,
   type CollectorServiceApi,
 } from "@collector/api";
 import {
@@ -112,5 +113,19 @@ describe("CollectorClient / LocalAdapter (#169)", () => {
     expect(typeof service.items.listItems).toBe("function");
     expect(typeof service.boot.getDataDirectory).toBe("function");
     expect(typeof service.settings.getAppSettingsSync).toBe("function");
+  });
+
+  it("toUiSession lifts snapshot, sync settings, thumbnails (#363)", () => {
+    const adapter = createLocalAdapter();
+    const session = toUiSession(adapter);
+    expect(Object.keys(session).sort()).toEqual(
+      ["settingsSync", "snapshot", "thumbnails"].sort(),
+    );
+    expect(typeof session.snapshot.ensureDashboardSnapshot).toBe("function");
+    expect(typeof session.settingsSync.getAppSettingsSync).toBe("function");
+    expect(typeof session.thumbnails.resolveItemThumbnailPath).toBe("function");
+    expect(typeof session.thumbnails.resolveItemThumbnailPaths).toBe(
+      "function",
+    );
   });
 });

@@ -1,6 +1,9 @@
 /**
- * @collector/api — transport-agnostic Collector service API (#145 / #361).
- * Types, constants, and thin port-compose helpers. No host, IPC, or UI wiring.
+ * @collector/api — transport-agnostic Collector service API (#145 / #361 / #363).
+ * Types, constants, and thin compose helpers. No host, IPC, or UI wiring.
+ *
+ * Gate for new methods: a {@link CollectorService} domain port **or**
+ * {@link UiSession} — nowhere else.
  */
 
 export type {
@@ -67,3 +70,13 @@ export {
   toCollectorServiceApi,
   VAULTS_PORT_KEYS,
 } from "./service-compose.js";
+
+export {
+  toUiSession,
+  UI_SESSION_SETTINGS_SYNC_KEYS,
+  UI_SESSION_SNAPSHOT_KEYS,
+  UI_SESSION_THUMBNAIL_KEYS,
+  type UiSession,
+  type UiSessionSettingsSync,
+  type UiSessionThumbnailPaths,
+} from "./ui-session.js";
