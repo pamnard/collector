@@ -319,12 +319,11 @@ export function createItemsSearchService(
       sort,
     );
     const { vault, path } = await deps.resolveActiveVault();
-    const indexSync = deps.startVaultIndexSync(vault.id, path);
-    // Prevent unhandled rejection when callers (incl. IPC) drop the promise (#327).
-    void indexSync.catch((error: unknown) => {
+    // Kick sync as side effect; status via IndexPort subscribe (#163 / #364).
+    void deps.startVaultIndexSync(vault.id, path).catch((error: unknown) => {
       console.error("[collector] index sync failed:", error);
     });
-    return { itemIds: page.itemIds, totalCount: page.totalCount, indexSync };
+    return { itemIds: page.itemIds, totalCount: page.totalCount };
   };
 
   const subscribeDashboardLoad = (
