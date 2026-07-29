@@ -198,7 +198,15 @@ export interface FoldersPort {
 /** Media / cover port (#361). */
 export interface MediaPort {
   listItemMedia(itemId: string): Promise<MediaWithPath[]>;
+  /**
+   * @deprecated Absolute path resolution belongs on {@link UiSession.thumbnails} (#363).
+   * Not part of the long-lived host transport contract (`Map` / abs paths).
+   */
   resolveItemThumbnailPath(item: ItemFile): Promise<string | null>;
+  /**
+   * @deprecated Absolute path batch belongs on {@link UiSession.thumbnails} (#363).
+   * Not part of the long-lived host transport contract (`Map` / abs paths).
+   */
   resolveItemThumbnailPaths(
     items: ItemFile[],
   ): Promise<Map<string, string | null>>;
@@ -234,6 +242,10 @@ export interface IndexPort {
 /** App settings persistence port (#361). */
 export interface SettingsPort {
   ensureAppSettings(): Promise<AppSettings>;
+  /**
+   * @deprecated In-process sync read — use {@link UiSession.settingsSync} (#363).
+   * External clients: async {@link SettingsPort.ensureAppSettings} + subscribe.
+   */
   getAppSettingsSync(): AppSettings | null;
   updateAppSettings(patch: Partial<AppSettings>): Promise<AppSettings>;
   subscribeAppSettings(onUpdate: (settings: AppSettings) => void): () => void;
@@ -241,8 +253,9 @@ export interface SettingsPort {
 }
 
 /**
- * Dashboard snapshot cache — transitional flat-only surface (#361).
- * Leaves the host for UiSession in #363; not a `CollectorService` key.
+ * Dashboard snapshot cache — primary home is {@link UiSession.snapshot} (#363).
+ * Still on the transitional flat {@link CollectorServiceApi}; not a
+ * {@link CollectorService} key.
  */
 export interface DashboardSnapshotPort {
   ensureDashboardSnapshot(): Promise<DashboardSnapshot | null>;
@@ -268,7 +281,8 @@ export interface DashboardSnapshotPort {
 
 /**
  * Port-segmented sole-writer service contract (#361 / #360).
- * UI takes the composite; CLI/MCP take only the ports they need.
+ * UI takes the composite (+ {@link UiSession} for UI-only slices); CLI/MCP take
+ * only the ports they need.
  */
 export interface CollectorService {
   boot: BootPort;
@@ -285,8 +299,9 @@ export interface CollectorService {
  * Full service API surface matching today's UI facade (`collector-service` +
  * settings/snapshot entrypoints the UI already uses).
  *
- * @deprecated Use {@link CollectorService} ports. Transitional flat facade (#145 → #360).
- * `DashboardSnapshotPort` is flat-only until UiSession (#363).
+ * @deprecated Use {@link CollectorService} ports + {@link UiSession} for UI-only
+ * slices (snapshot, sync settings getter, abs thumbnail paths). Transitional flat
+ * facade (#145 → #360 / #363).
  */
 export type CollectorServiceApi = BootPort &
   ItemsPort &
