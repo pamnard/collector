@@ -129,6 +129,40 @@ describe("parseCliArgs (#172/#173)", () => {
       command: { name: "create-folder", folderPath: "Inbox/A" },
       dataDir: "/data",
     });
+    expect(parseCliArgs(["--data-dir", "/data", "list-folders"])).toEqual({
+      command: { name: "list-folders" },
+      dataDir: "/data",
+    });
+    expect(
+      parseCliArgs([
+        "--data-dir",
+        "/data",
+        "rename-folder",
+        "Work/A",
+        "Work/B",
+      ]),
+    ).toEqual({
+      command: { name: "rename-folder", oldPath: "Work/A", newPath: "Work/B" },
+      dataDir: "/data",
+    });
+    expect(
+      parseCliArgs([
+        "--data-dir",
+        "/data",
+        "move-folder",
+        "Work/B",
+        "Archive/B",
+      ]),
+    ).toEqual({
+      command: { name: "move-folder", oldPath: "Work/B", newPath: "Archive/B" },
+      dataDir: "/data",
+    });
+    expect(
+      parseCliArgs(["--data-dir", "/data", "delete-folder", "Archive/B"]),
+    ).toEqual({
+      command: { name: "delete-folder", folderPath: "Archive/B" },
+      dataDir: "/data",
+    });
     expect(
       parseCliArgs([
         "--data-dir",

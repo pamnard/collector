@@ -217,6 +217,84 @@ describe("collector CLI IPC (#172)", () => {
     );
     expect(moveCode).toBe(0);
 
+    const folderCrudOut: string[] = [];
+    const createNested = await runCollectorCli(
+      ["--data-dir", dataDir, "create-folder", "Work/Drafts"],
+      {
+        stdout: (line) => folderCrudOut.push(line),
+        stderr: (line) => {
+          throw new Error(line);
+        },
+      },
+    );
+    expect(createNested).toBe(0);
+
+    const listOut: string[] = [];
+    const listCode = await runCollectorCli(
+      ["--data-dir", dataDir, "list-folders"],
+      {
+        stdout: (line) => listOut.push(line),
+        stderr: (line) => {
+          throw new Error(line);
+        },
+      },
+    );
+    expect(listCode).toBe(0);
+    expect(Array.isArray(JSON.parse(listOut.join("\n")))).toBe(true);
+
+    const renameOut: string[] = [];
+    const renameCode = await runCollectorCli(
+      ["--data-dir", dataDir, "rename-folder", "Work/Drafts", "Work/Ready"],
+      {
+        stdout: (line) => renameOut.push(line),
+        stderr: (line) => {
+          throw new Error(line);
+        },
+      },
+    );
+    expect(renameCode).toBe(0);
+    expect(JSON.parse(renameOut.join("\n")).path).toBe("Work/Ready");
+
+    const archiveCode = await runCollectorCli(
+      ["--data-dir", dataDir, "create-folder", "Archive"],
+      {
+        stdout: () => {},
+        stderr: (line) => {
+          throw new Error(line);
+        },
+      },
+    );
+    expect(archiveCode).toBe(0);
+
+    const moveFolderOut: string[] = [];
+    const moveFolderCode = await runCollectorCli(
+      ["--data-dir", dataDir, "move-folder", "Work/Ready", "Archive/Ready"],
+      {
+        stdout: (line) => moveFolderOut.push(line),
+        stderr: (line) => {
+          throw new Error(line);
+        },
+      },
+    );
+    expect(moveFolderCode).toBe(0);
+    expect(JSON.parse(moveFolderOut.join("\n")).path).toBe("Archive/Ready");
+
+    const deleteFolderOut: string[] = [];
+    const deleteFolderCode = await runCollectorCli(
+      ["--data-dir", dataDir, "delete-folder", "Archive/Ready"],
+      {
+        stdout: (line) => deleteFolderOut.push(line),
+        stderr: (line) => {
+          throw new Error(line);
+        },
+      },
+    );
+    expect(deleteFolderCode).toBe(0);
+    expect(JSON.parse(deleteFolderOut.join("\n"))).toEqual({
+      ok: true,
+      deleted: "Archive/Ready",
+    });
+
     const deleteCode = await runCollectorCli(
       ["--data-dir", dataDir, "delete-item", created.id],
       {

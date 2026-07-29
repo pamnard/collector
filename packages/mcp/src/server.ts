@@ -381,6 +381,97 @@ export function createCollectorMcpServer(
     },
   );
 
+  const listFolders = requireMcpToolCatalogEntry("collector_list_folders");
+  server.registerTool(
+    listFolders.name,
+    {
+      description: listFolders.description,
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        const tree = await client.listFolderTree();
+        return textResult(tree);
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  const renameFolder = requireMcpToolCatalogEntry("collector_rename_folder");
+  server.registerTool(
+    renameFolder.name,
+    {
+      description: renameFolder.description,
+      inputSchema: {
+        oldPath: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(renameFolder.name, "oldPath")),
+        newPath: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(renameFolder.name, "newPath")),
+      },
+    },
+    async ({ oldPath, newPath }) => {
+      try {
+        const path = await client.renameFolder(oldPath, newPath);
+        return textResult({ ok: true, path });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  const moveFolder = requireMcpToolCatalogEntry("collector_move_folder");
+  server.registerTool(
+    moveFolder.name,
+    {
+      description: moveFolder.description,
+      inputSchema: {
+        oldPath: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(moveFolder.name, "oldPath")),
+        newPath: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(moveFolder.name, "newPath")),
+      },
+    },
+    async ({ oldPath, newPath }) => {
+      try {
+        const path = await client.renameFolder(oldPath, newPath);
+        return textResult({ ok: true, path });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  const deleteFolder = requireMcpToolCatalogEntry("collector_delete_folder");
+  server.registerTool(
+    deleteFolder.name,
+    {
+      description: deleteFolder.description,
+      inputSchema: {
+        folderPath: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(deleteFolder.name, "folderPath")),
+      },
+    },
+    async ({ folderPath }) => {
+      try {
+        await client.deleteFolder(folderPath);
+        return textResult({ ok: true, deleted: folderPath });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
   const moveItem = requireMcpToolCatalogEntry("collector_move_item");
   server.registerTool(
     moveItem.name,

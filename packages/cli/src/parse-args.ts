@@ -39,6 +39,10 @@ export type CliCommand =
   | { name: "create-tag"; tagName: string; color?: string | null }
   | { name: "delete-tag"; tagId: string }
   | { name: "create-folder"; folderPath: string }
+  | { name: "list-folders" }
+  | { name: "rename-folder"; oldPath: string; newPath: string }
+  | { name: "move-folder"; oldPath: string; newPath: string }
+  | { name: "delete-folder"; folderPath: string }
   | { name: "move-item"; itemId: string; folderPath: string };
 
 export interface ParsedCliArgs {
@@ -372,6 +376,59 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     }
     return withEndpoint(
       { name: "create-folder", folderPath },
+      dataDir,
+      ipcPath,
+      resolvedToken,
+    );
+  }
+
+  if (command === "list-folders") {
+    if (rest.length !== 0) {
+      throw new CliUsageError("Usage: collector-cli list-folders");
+    }
+    return withEndpoint({ name: "list-folders" }, dataDir, ipcPath, resolvedToken);
+  }
+
+  if (command === "rename-folder") {
+    const oldPath = rest[0];
+    const newPath = rest[1];
+    if (!oldPath || !newPath || rest.length !== 2) {
+      throw new CliUsageError(
+        "Usage: collector-cli rename-folder <old-path> <new-path>",
+      );
+    }
+    return withEndpoint(
+      { name: "rename-folder", oldPath, newPath },
+      dataDir,
+      ipcPath,
+      resolvedToken,
+    );
+  }
+
+  if (command === "move-folder") {
+    const oldPath = rest[0];
+    const newPath = rest[1];
+    if (!oldPath || !newPath || rest.length !== 2) {
+      throw new CliUsageError(
+        "Usage: collector-cli move-folder <old-path> <new-path> " +
+          "(alias of rename-folder; same host rename path)",
+      );
+    }
+    return withEndpoint(
+      { name: "move-folder", oldPath, newPath },
+      dataDir,
+      ipcPath,
+      resolvedToken,
+    );
+  }
+
+  if (command === "delete-folder") {
+    const folderPath = rest.join(" ").trim();
+    if (!folderPath) {
+      throw new CliUsageError("Usage: collector-cli delete-folder <path>");
+    }
+    return withEndpoint(
+      { name: "delete-folder", folderPath },
       dataDir,
       ipcPath,
       resolvedToken,

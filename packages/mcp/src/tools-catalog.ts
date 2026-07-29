@@ -292,6 +292,70 @@ export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] = [
     ],
   },
   {
+    name: "collector_list_folders",
+    description:
+      "List the folder tree for the active vault (FolderTreeNode[]: path, name, item_count, children). " +
+      "Same listFolderTree service surface as the UI client. " +
+      "Use paths from this tree for rename/move/delete folder tools.",
+    params: [],
+  },
+  {
+    name: "collector_rename_folder",
+    description:
+      "Rename or relocate a vault folder by changing its path (FS rename + index id rewrite for items under the old prefix). " +
+      "Returns { ok, path } with the normalized new path. " +
+      "Same host path as collector_move_folder.",
+    params: [
+      {
+        name: "oldPath",
+        required: true,
+        typeLabel: "string",
+        description: FOLDER_PATH_CREATE_DESCRIPTION,
+      },
+      {
+        name: "newPath",
+        required: true,
+        typeLabel: "string",
+        description: FOLDER_PATH_CREATE_DESCRIPTION,
+      },
+    ],
+  },
+  {
+    name: "collector_move_folder",
+    description:
+      "Move a vault folder to a new path. Convenience alias of collector_rename_folder " +
+      "(same renameFolder host path / semantics). " +
+      "Returns { ok, path } with the normalized new path.",
+    params: [
+      {
+        name: "oldPath",
+        required: true,
+        typeLabel: "string",
+        description: FOLDER_PATH_CREATE_DESCRIPTION,
+      },
+      {
+        name: "newPath",
+        required: true,
+        typeLabel: "string",
+        description: FOLDER_PATH_CREATE_DESCRIPTION,
+      },
+    ],
+  },
+  {
+    name: "collector_delete_folder",
+    description:
+      "Delete an empty vault folder. Fails if the folder is missing or still has entries. " +
+      "Returns { ok, deleted } with the requested path.",
+    params: [
+      {
+        name: "folderPath",
+        required: true,
+        typeLabel: "string",
+        description: FOLDER_PATH_CREATE_DESCRIPTION,
+      },
+    ],
+  },
+  {
     name: "collector_move_item",
     description:
       "Move an item into a folder. Convenience alias of collector_update_item with folder_path " +
