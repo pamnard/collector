@@ -2,7 +2,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { EMPTY_ITEM_FORM, type ItemFormValues } from "../../types/item";
 import { ItemForm } from "./ItemForm";
-import { getCollectorClient } from "../../services/collector-client";
+import { getCollectorService } from "../../services/collector-client";
 
 interface CreateItemDialogProps {
   onClose: () => void;
@@ -24,7 +24,7 @@ export function CreateItemDialog({ onClose, onCreated }: CreateItemDialogProps) 
     setError(null);
 
     try {
-      const item = await getCollectorClient().createItem({
+      const item = await getCollectorService().items.createItem({
         title: values.title.trim(),
         description: values.description.trim(),
         url: values.url.trim() || null,

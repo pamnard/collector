@@ -5,7 +5,7 @@ import { ItemTableView } from "../components/items/ItemTableView";
 import { Alert } from "../components/alerts/Alert";
 import { AlertStack } from "../components/alerts/AlertStack";
 import { collectDroppedFiles } from "../lib/drop-entries";
-import { getCollectorClient } from "../services/collector-client";
+import { getCollectorService } from "../services/collector-client";
 import { isFolderFilter } from "../types/ui";
 
 export function DashboardPage() {
@@ -68,7 +68,7 @@ export function DashboardPage() {
         if (files.length === 0) {
           return;
         }
-        await getCollectorClient().importDroppedFiles({
+        await getCollectorService().items.importDroppedFiles({
           folder_path: targetFolderPath,
           files,
         });

@@ -127,7 +127,6 @@ export interface TagsFoldersService {
     signal?: AbortSignal,
   ): Subscription;
   listFolderTree(): Promise<FolderTreeNode[]>;
-  loadFolderTree(): Promise<FolderTreeNode[]>;
   createFolder(folderPath: string): Promise<string>;
   renameFolder(oldPath: string, newPath: string): Promise<string>;
   deleteFolder(folderPath: string): Promise<void>;
@@ -233,8 +232,6 @@ export function createTagsFoldersService(
     deps.kickoffVaultIndexSync(vault.id, path);
     return reconcileFolderTreeFromDisk(deps.getContext(), path, vault.id);
   };
-
-  const loadFolderTree = async (): Promise<FolderTreeNode[]> => listFolderTree();
 
   const subscribeFolderTree = (
     onUpdate: (tree: FolderTreeNode[]) => void,
@@ -350,7 +347,6 @@ export function createTagsFoldersService(
     deleteTag,
     subscribeFolderTree,
     listFolderTree,
-    loadFolderTree,
     createFolder,
     renameFolder,
     deleteFolder,

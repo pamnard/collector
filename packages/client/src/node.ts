@@ -5,10 +5,13 @@
 
 export {
   connectCollectorIpcClient,
+  connectCollectorIpcService,
   createCollectorIpcClient,
   createCollectorIpcDashboardSnapshotPort,
   createCollectorIpcService,
+  createCollectorIpcServiceClient,
   type CollectorIpcClient,
   type CollectorIpcClientOptions,
+  type CollectorIpcServiceClient,
   type ServiceIpcHealthResult,
 } from "./ipc-collector-client-node.js";

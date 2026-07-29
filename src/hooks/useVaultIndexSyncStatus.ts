@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import type { VaultIndexSyncStatus } from "@collector/api";
-import { getCollectorClient } from "../services/collector-client";
+import { getCollectorService } from "../services/collector-client";
 
 export function useVaultIndexSyncStatus(): VaultIndexSyncStatus {
-  const client = getCollectorClient();
+  const service = getCollectorService();
   const [status, setStatus] = useState<VaultIndexSyncStatus>(() =>
-    client.getVaultIndexSyncStatus(),
+    service.index.getVaultIndexSyncStatus(),
   );
 
-  useEffect(() => client.subscribeVaultIndexSyncStatus(setStatus), [client]);
+  useEffect(() => service.index.subscribeVaultIndexSyncStatus(setStatus), [service]);
 
   return status;
 }

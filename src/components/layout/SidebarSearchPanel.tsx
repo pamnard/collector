@@ -3,7 +3,7 @@ import { Search, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { ItemFile } from "@collector/shared";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import { getCollectorClient } from "../../services/collector-client";
+import { getCollectorService } from "../../services/collector-client";
 import { Input } from "../ui/input";
 
 interface SidebarSearchPanelProps {
@@ -36,7 +36,7 @@ export function SidebarSearchPanel({
     setIsLoading(true);
     setError(null);
 
-    void getCollectorClient()
+    void getCollectorService().items
       .searchItems(query, "all")
       .then((items) => {
         if (controller.signal.aborted) {

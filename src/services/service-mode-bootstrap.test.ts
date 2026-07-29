@@ -5,9 +5,9 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => invoke(...args),
 }));
 
-const setCollectorClient = vi.fn();
+const setCollectorService = vi.fn();
 vi.mock("./collector-client", () => ({
-  setCollectorClient: (...args: unknown[]) => setCollectorClient(...args),
+  setCollectorService: (...args: unknown[]) => setCollectorService(...args),
 }));
 
 const getCollectorProfileLayout = vi.fn(async () => ({
@@ -31,25 +31,35 @@ vi.mock("./tauri-service-ipc-transport", () => ({
     createTauriServiceIpcTransport(...args),
 }));
 
-const createIpcAdapter = vi.fn((transport) => ({ transport, kind: "ipc" }));
+const createIpcCollectorService = vi.fn((transport) => ({
+  transport,
+  kind: "ipc-service",
+}));
+const createIpcUiSession = vi.fn((_transport, service) => ({
+  service,
+  kind: "ipc-session",
+}));
 vi.mock("./ipc-adapter", () => ({
-  createIpcAdapter: (...args: unknown[]) => createIpcAdapter(...args),
+  createIpcCollectorService: (...args: unknown[]) =>
+    createIpcCollectorService(...args),
+  createIpcUiSession: (...args: unknown[]) => createIpcUiSession(...args),
 }));
 
 import { bootstrapServiceModeCutover } from "./service-mode-bootstrap";
 
-describe("bootstrapServiceModeCutover (#170)", () => {
+describe("bootstrapServiceModeCutover (#170 / #369)", () => {
   beforeEach(() => {
     invoke.mockReset();
-    setCollectorClient.mockReset();
-    createIpcAdapter.mockClear();
+    setCollectorService.mockReset();
+    createIpcCollectorService.mockClear();
+    createIpcUiSession.mockClear();
     createTauriServiceIpcTransport.mockClear();
     (globalThis as { window?: { __TAURI_INTERNALS__?: object } }).window = {
       __TAURI_INTERNALS__: {},
     };
   });
 
-  it("swaps CollectorClient when service mode is enabled", async () => {
+  it("swaps CollectorService when service mode is enabled", async () => {
     invoke.mockImplementation(async (cmd: string) => {
       if (cmd === "service_mode_is_enabled") return true;
       if (cmd === "service_mode_bootstrap") return "/tmp/sock";
@@ -64,12 +74,14 @@ describe("bootstrapServiceModeCutover (#170)", () => {
       "/tmp/sock",
       "/data",
     );
-    expect(setCollectorClient).toHaveBeenCalled();
+    expect(createIpcCollectorService).toHaveBeenCalled();
+    expect(createIpcUiSession).toHaveBeenCalled();
+    expect(setCollectorService).toHaveBeenCalled();
   });
 
   it("keeps LocalAdapter when service mode is disabled", async () => {
     invoke.mockResolvedValueOnce(false);
     await expect(bootstrapServiceModeCutover()).resolves.toBe(false);
-    expect(setCollectorClient).not.toHaveBeenCalled();
+    expect(setCollectorService).not.toHaveBeenCalled();
   });
 });

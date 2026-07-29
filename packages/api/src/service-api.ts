@@ -107,7 +107,6 @@ export interface BootPort {
 
 /** Items / search / dashboard loaders (#361 / #362). */
 export interface ItemsPort {
-  listItems(): Promise<ItemFile[]>;
   searchItems(query: string, filter: NavFilter): Promise<ItemFile[]>;
   /** Canonical index query: ids + total for a page (#362). */
   queryIndex(
@@ -193,7 +192,6 @@ export interface FoldersPort {
     signal?: AbortSignal,
   ): Subscription;
   listFolderTree(): Promise<FolderTreeNode[]>;
-  loadFolderTree(): Promise<FolderTreeNode[]>;
   createFolder(folderPath: string): Promise<string>;
   renameFolder(oldPath: string, newPath: string): Promise<string>;
   deleteFolder(folderPath: string): Promise<void>;

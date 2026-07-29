@@ -5,7 +5,7 @@ import type { Theme } from "../../hooks/useTheme";
 import type { NavFilter } from "../../types/ui";
 import type { SidebarMode } from "../../types/sidebar-mode";
 import { parseSettingsSection } from "../../types/sidebar-mode";
-import { getCollectorClient } from "../../services/collector-client";
+import { getCollectorService } from "../../services/collector-client";
 import {
   Sidebar as ShadcnSidebar,
   SidebarContent,
@@ -74,7 +74,7 @@ export function Sidebar({
 
   useEffect(() => {
     const controller = new AbortController();
-    getCollectorClient().subscribeTags(setTags, undefined, controller.signal);
+    getCollectorService().tags.subscribeTags(setTags, undefined, controller.signal);
     return () => {
       controller.abort();
     };

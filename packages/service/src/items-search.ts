@@ -28,7 +28,6 @@ import {
   isItemIdSortKey,
   itemMarkdownPath,
   listItemsByIds,
-  listItemsOnDisk,
   loadTagMaps,
   moveItemToFolder,
   readItemContent,
@@ -178,7 +177,6 @@ export async function queryDashboardIndexPage(
 }
 
 export interface ItemsSearchService {
-  listItems(): Promise<ItemFile[]>;
   searchItems(query: string, filter: NavFilter): Promise<ItemFile[]>;
   queryIndex(
     filter: NavFilter,
@@ -249,12 +247,6 @@ export function createItemsSearchService(
 ): ItemsSearchService {
   const republishMs = deps.syncRepublishThrottleMs ?? 500;
   const newItemId = deps.createItemId ?? (() => crypto.randomUUID());
-
-  const listItems = async (): Promise<ItemFile[]> => {
-    const { vault, path } = await deps.resolveActiveVault();
-    deps.kickoffVaultIndexSync(vault.id, path);
-    return listItemsOnDisk(deps.getContext(), path);
-  };
 
   const searchItems = async (
     query: string,
@@ -651,7 +643,6 @@ export function createItemsSearchService(
   };
 
   return {
-    listItems,
     searchItems,
     queryIndex,
     hydrate,

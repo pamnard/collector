@@ -23,7 +23,7 @@ import { resolveDashboardCoverPaths } from "../lib/preload-dashboard-covers";
 import { navFilterKey, type NavFilter } from "../types/ui";
 import {
   DASHBOARD_PREFETCH_SIZE,
-  getCollectorClient,
+  getCollectorService,
   getUiSession,
 } from "../services/collector-client";
 import {
@@ -376,7 +376,7 @@ export function useDashboardItems(
       const pending = new Map<string, ItemFile>();
       const slice = ids.slice(offset, offset + limit);
       await collectHydratedItems(
-        getCollectorClient().hydrate(slice, { signal: controller.signal }),
+        getCollectorService().items.hydrate(slice, { signal: controller.signal }),
         (item) => {
           if (requestVersionRef.current !== requestVersion) {
             return;
@@ -607,7 +607,7 @@ export function useDashboardItems(
         if (controller.signal.aborted) {
           return;
         }
-        const result = await getCollectorClient().queryIndex(
+        const result = await getCollectorService().items.queryIndex(
           filter,
           searchQuery,
           { offset: 0, limit: DASHBOARD_PREFETCH_SIZE },
@@ -671,7 +671,7 @@ export function useDashboardItems(
       );
       void (async () => {
         try {
-          const result = await getCollectorClient().queryIndex(
+          const result = await getCollectorService().items.queryIndex(
             filterRef.current,
             searchQueryRef.current,
             { offset: 0, limit },
@@ -830,7 +830,7 @@ export function useDashboardItems(
     };
 
     if (needsMoreIds && hasUnloadedIds) {
-      void getCollectorClient()
+      void getCollectorService().items
         .queryIndex(
           filter,
           searchQuery,

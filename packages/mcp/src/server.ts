@@ -3,7 +3,7 @@
  * Thin adapter only — never opens SQLite.
  */
 
-import type { CollectorIpcClient } from "@collector/client/node";
+import type { CollectorIpcServiceClient } from "@collector/client/node";
 import { CONTENT_TYPES } from "@collector/shared";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { readFile } from "node:fs/promises";
@@ -73,7 +73,7 @@ async function resolveMediaFileInput(args: {
  * Build an MCP server whose tools dial the Collector service API via IPC.
  */
 export function createCollectorMcpServer(
-  client: CollectorIpcClient,
+  client: CollectorIpcServiceClient,
 ): McpServer {
   const server = new McpServer({
     name: "collector",
@@ -110,7 +110,7 @@ export function createCollectorMcpServer(
     },
     async ({ query }) => {
       try {
-        const items = await client.searchItems(query, "all");
+        const items = await client.items.searchItems(query, "all");
         return textResult(items);
       } catch (error) {
         return errorResult(error);
@@ -132,7 +132,7 @@ export function createCollectorMcpServer(
     },
     async ({ itemId }) => {
       try {
-        return textResult(await client.getItemById(itemId));
+        return textResult(await client.items.getItemById(itemId));
       } catch (error) {
         return errorResult(error);
       }
@@ -175,7 +175,7 @@ export function createCollectorMcpServer(
     async (input) => {
       try {
         return textResult(
-          await client.createItem({
+          await client.items.createItem({
             title: input.title,
             content_type: input.content_type,
             ...(input.description === undefined
@@ -238,7 +238,7 @@ export function createCollectorMcpServer(
     async (input) => {
       try {
         return textResult(
-          await client.updateItem(input.itemId, {
+          await client.items.updateItem(input.itemId, {
             ...(input.title === undefined ? {} : { title: input.title }),
             ...(input.description === undefined
               ? {}
@@ -274,7 +274,7 @@ export function createCollectorMcpServer(
     },
     async ({ itemId }) => {
       try {
-        return textResult(await client.getItemSource(itemId));
+        return textResult(await client.items.getItemSource(itemId));
       } catch (error) {
         return errorResult(error);
       }
@@ -301,7 +301,7 @@ export function createCollectorMcpServer(
     async (input) => {
       try {
         return textResult(
-          await client.updateItemSource(input.itemId, input.rawMarkdown),
+          await client.items.updateItemSource(input.itemId, input.rawMarkdown),
         );
       } catch (error) {
         return errorResult(error);
@@ -323,7 +323,7 @@ export function createCollectorMcpServer(
     },
     async ({ itemId }) => {
       try {
-        await client.deleteItem(itemId);
+        await client.items.deleteItem(itemId);
         return textResult({ ok: true, deleted: itemId });
       } catch (error) {
         return errorResult(error);
@@ -351,7 +351,7 @@ export function createCollectorMcpServer(
     async (input) => {
       try {
         return textResult(
-          await client.createTag({
+          await client.tags.createTag({
             name: input.name,
             ...(input.color === undefined ? {} : { color: input.color }),
           }),
@@ -376,7 +376,7 @@ export function createCollectorMcpServer(
     },
     async ({ tagId }) => {
       try {
-        await client.deleteTag(tagId);
+        await client.tags.deleteTag(tagId);
         return textResult({ ok: true, deleted: tagId });
       } catch (error) {
         return errorResult(error);
@@ -398,7 +398,7 @@ export function createCollectorMcpServer(
     },
     async ({ folderPath }) => {
       try {
-        const path = await client.createFolder(folderPath);
+        const path = await client.folders.createFolder(folderPath);
         return textResult({ ok: true, path });
       } catch (error) {
         return errorResult(error);
@@ -415,7 +415,7 @@ export function createCollectorMcpServer(
     },
     async () => {
       try {
-        const tree = await client.listFolderTree();
+        const tree = await client.folders.listFolderTree();
         return textResult(tree);
       } catch (error) {
         return errorResult(error);
@@ -441,7 +441,7 @@ export function createCollectorMcpServer(
     },
     async ({ oldPath, newPath }) => {
       try {
-        const path = await client.renameFolder(oldPath, newPath);
+        const path = await client.folders.renameFolder(oldPath, newPath);
         return textResult({ ok: true, path });
       } catch (error) {
         return errorResult(error);
@@ -467,7 +467,7 @@ export function createCollectorMcpServer(
     },
     async ({ oldPath, newPath }) => {
       try {
-        const path = await client.renameFolder(oldPath, newPath);
+        const path = await client.folders.renameFolder(oldPath, newPath);
         return textResult({ ok: true, path });
       } catch (error) {
         return errorResult(error);
@@ -489,7 +489,7 @@ export function createCollectorMcpServer(
     },
     async ({ folderPath }) => {
       try {
-        await client.deleteFolder(folderPath);
+        await client.folders.deleteFolder(folderPath);
         return textResult({ ok: true, deleted: folderPath });
       } catch (error) {
         return errorResult(error);
@@ -515,7 +515,7 @@ export function createCollectorMcpServer(
     },
     async ({ itemId, folderPath }) => {
       try {
-        const moved = await client.moveItemToFolderPath(itemId, folderPath);
+        const moved = await client.folders.moveItemToFolderPath(itemId, folderPath);
         return textResult({
           ok: true,
           itemId: moved.id,
@@ -542,7 +542,7 @@ export function createCollectorMcpServer(
     },
     async ({ itemId }) => {
       try {
-        return textResult(await client.listItemMedia(itemId));
+        return textResult(await client.media.listItemMedia(itemId));
       } catch (error) {
         return errorResult(error);
       }
@@ -580,7 +580,7 @@ export function createCollectorMcpServer(
           dataBase64,
           sourcePath,
         });
-        const attached = await client.attachMediaFiles(itemId, [file]);
+        const attached = await client.media.attachMediaFiles(itemId, [file]);
         return textResult(attached[0] ?? attached);
       } catch (error) {
         return errorResult(error);
@@ -623,7 +623,7 @@ export function createCollectorMcpServer(
           dataBase64,
           sourcePath,
         });
-        return textResult(await client.replaceItemMedia(itemId, mediaId, file));
+        return textResult(await client.media.replaceItemMedia(itemId, mediaId, file));
       } catch (error) {
         return errorResult(error);
       }
@@ -648,7 +648,7 @@ export function createCollectorMcpServer(
     },
     async ({ itemId, mediaId }) => {
       try {
-        await client.deleteItemMedia(itemId, mediaId);
+        await client.media.deleteItemMedia(itemId, mediaId);
         return textResult({ ok: true, deleted: mediaId });
       } catch (error) {
         return errorResult(error);
@@ -674,7 +674,7 @@ export function createCollectorMcpServer(
     },
     async ({ itemId, mediaId }) => {
       try {
-        return textResult(await client.setItemCoverFromMedia(itemId, mediaId));
+        return textResult(await client.media.setItemCoverFromMedia(itemId, mediaId));
       } catch (error) {
         return errorResult(error);
       }

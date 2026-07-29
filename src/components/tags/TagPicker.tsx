@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { TagWithCount } from "@collector/core";
-import { getCollectorClient } from "../../services/collector-client";
+import { getCollectorService } from "../../services/collector-client";
 
 interface TagPickerProps {
   selectedTagNames: string[];
@@ -17,7 +17,7 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getCollectorClient()
+    getCollectorService().tags
       .listTags()
       .then(setTags)
       .catch((err: unknown) => {
@@ -61,7 +61,7 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
 
     setError(null);
     try {
-      await getCollectorClient().deleteTag(tag.id);
+      await getCollectorService().tags.deleteTag(tag.id);
       setTags((current) => current.filter((entry) => entry.id !== tag.id));
       onChange(
         selectedTagNames.filter((selected) => !sameName(selected, tag.name)),
@@ -79,7 +79,7 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
 
     setError(null);
     try {
-      const updated = await getCollectorClient().updateTagRecord(tag.id, {
+      const updated = await getCollectorService().tags.updateTagRecord(tag.id, {
         name: nextName,
       });
       setTags((current) =>

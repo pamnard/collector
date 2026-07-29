@@ -1,9 +1,9 @@
 /**
- * Collector CLI over service IPC (#172/#173).
+ * Collector CLI over service IPC (#172/#173 / #369).
  * Never opens SQLite — dials the running local service only.
  */
 
-import { connectCollectorIpcClient } from "@collector/client/node";
+import { connectCollectorIpcService } from "@collector/client/node";
 import {
   defaultServiceIpcPath,
   isServiceIpcError,
@@ -57,7 +57,7 @@ export async function runCollectorCli(
   const ipcPath = resolveIpcPath(args);
   let client;
   try {
-    client = await connectCollectorIpcClient(ipcPath, {
+    client = await connectCollectorIpcService(ipcPath, {
       connectTimeoutMs: 2_000,
       ...(args.dataDir === undefined ? {} : { dataDir: args.dataDir }),
       ...(args.token === undefined ? {} : { token: args.token }),
@@ -75,22 +75,22 @@ export async function runCollectorCli(
       return 0;
     }
     if (cmd.name === "search") {
-      const items = await client.searchItems(cmd.query, "all");
+      const items = await client.items.searchItems(cmd.query, "all");
       io.stdout(JSON.stringify(items, null, 2));
       return 0;
     }
     if (cmd.name === "get-item") {
-      const result = await client.getItemById(cmd.itemId);
+      const result = await client.items.getItemById(cmd.itemId);
       io.stdout(JSON.stringify(result, null, 2));
       return 0;
     }
     if (cmd.name === "get-item-source") {
-      const raw = await client.getItemSource(cmd.itemId);
+      const raw = await client.items.getItemSource(cmd.itemId);
       io.stdout(raw);
       return 0;
     }
     if (cmd.name === "create-item") {
-      const item = await client.createItem({
+      const item = await client.items.createItem({
         title: cmd.title,
         content_type: cmd.content_type,
         ...(cmd.description === undefined ? {} : { description: cmd.description }),
@@ -102,7 +102,7 @@ export async function runCollectorCli(
       return 0;
     }
     if (cmd.name === "update-item") {
-      const item = await client.updateItem(cmd.itemId, {
+      const item = await client.items.updateItem(cmd.itemId, {
         ...(cmd.title === undefined ? {} : { title: cmd.title }),
         ...(cmd.description === undefined ? {} : { description: cmd.description }),
         ...(cmd.url === undefined ? {} : { url: cmd.url }),
@@ -117,17 +117,20 @@ export async function runCollectorCli(
       return 0;
     }
     if (cmd.name === "update-item-source") {
-      const item = await client.updateItemSource(cmd.itemId, cmd.rawMarkdown);
+      const item = await client.items.updateItemSource(
+        cmd.itemId,
+        cmd.rawMarkdown,
+      );
       io.stdout(JSON.stringify(item, null, 2));
       return 0;
     }
     if (cmd.name === "delete-item") {
-      await client.deleteItem(cmd.itemId);
+      await client.items.deleteItem(cmd.itemId);
       io.stdout(JSON.stringify({ ok: true, deleted: cmd.itemId }));
       return 0;
     }
     if (cmd.name === "create-tag") {
-      const tag = await client.createTag({
+      const tag = await client.tags.createTag({
         name: cmd.tagName,
         ...(cmd.color === undefined ? {} : { color: cmd.color }),
       });
@@ -135,32 +138,32 @@ export async function runCollectorCli(
       return 0;
     }
     if (cmd.name === "delete-tag") {
-      await client.deleteTag(cmd.tagId);
+      await client.tags.deleteTag(cmd.tagId);
       io.stdout(JSON.stringify({ ok: true, deleted: cmd.tagId }));
       return 0;
     }
     if (cmd.name === "create-folder") {
-      const path = await client.createFolder(cmd.folderPath);
+      const path = await client.folders.createFolder(cmd.folderPath);
       io.stdout(JSON.stringify({ ok: true, path }, null, 2));
       return 0;
     }
     if (cmd.name === "list-folders") {
-      const tree = await client.listFolderTree();
+      const tree = await client.folders.listFolderTree();
       io.stdout(JSON.stringify(tree, null, 2));
       return 0;
     }
     if (cmd.name === "rename-folder" || cmd.name === "move-folder") {
-      const path = await client.renameFolder(cmd.oldPath, cmd.newPath);
+      const path = await client.folders.renameFolder(cmd.oldPath, cmd.newPath);
       io.stdout(JSON.stringify({ ok: true, path }, null, 2));
       return 0;
     }
     if (cmd.name === "delete-folder") {
-      await client.deleteFolder(cmd.folderPath);
+      await client.folders.deleteFolder(cmd.folderPath);
       io.stdout(JSON.stringify({ ok: true, deleted: cmd.folderPath }));
       return 0;
     }
     if (cmd.name === "move-item") {
-      const moved = await client.moveItemToFolderPath(
+      const moved = await client.folders.moveItemToFolderPath(
         cmd.itemId,
         cmd.folderPath,
       );
@@ -175,14 +178,14 @@ export async function runCollectorCli(
       return 0;
     }
     if (cmd.name === "list-item-media") {
-      const media = await client.listItemMedia(cmd.itemId);
+      const media = await client.media.listItemMedia(cmd.itemId);
       io.stdout(JSON.stringify(media, null, 2));
       return 0;
     }
     if (cmd.name === "attach-media") {
       const data = new Uint8Array(await readFile(cmd.filePath));
       const filename = cmd.filename ?? basename(cmd.filePath);
-      const attached = await client.attachMediaFiles(cmd.itemId, [
+      const attached = await client.media.attachMediaFiles(cmd.itemId, [
         { name: filename, bytes: data },
       ]);
       io.stdout(JSON.stringify(attached[0] ?? attached, null, 2));
@@ -191,20 +194,27 @@ export async function runCollectorCli(
     if (cmd.name === "replace-media") {
       const data = new Uint8Array(await readFile(cmd.filePath));
       const filename = cmd.filename ?? basename(cmd.filePath);
-      const replaced = await client.replaceItemMedia(cmd.itemId, cmd.mediaId, {
-        name: filename,
-        bytes: data,
-      });
+      const replaced = await client.media.replaceItemMedia(
+        cmd.itemId,
+        cmd.mediaId,
+        {
+          name: filename,
+          bytes: data,
+        },
+      );
       io.stdout(JSON.stringify(replaced, null, 2));
       return 0;
     }
     if (cmd.name === "delete-media") {
-      await client.deleteItemMedia(cmd.itemId, cmd.mediaId);
+      await client.media.deleteItemMedia(cmd.itemId, cmd.mediaId);
       io.stdout(JSON.stringify({ ok: true, deleted: cmd.mediaId }));
       return 0;
     }
     if (cmd.name === "set-item-cover") {
-      const item = await client.setItemCoverFromMedia(cmd.itemId, cmd.mediaId);
+      const item = await client.media.setItemCoverFromMedia(
+        cmd.itemId,
+        cmd.mediaId,
+      );
       io.stdout(JSON.stringify(item, null, 2));
       return 0;
     }

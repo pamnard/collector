@@ -92,10 +92,6 @@ export async function getDataDirectory(): Promise<string> {
   return "/dev-mock/data";
 }
 
-export async function listItems(): Promise<ItemFile[]> {
-  refuseInProcess();
-}
-
 export async function searchItems(
   _query: string,
   _filter: NavFilter,
@@ -400,11 +396,6 @@ export function subscribeFolderTree(
       }
     });
   return subscriptionFromTeardown(() => controller.abort());
-}
-
-export async function loadFolderTree(): Promise<FolderTreeNode[]> {
-  refuseUnlessDevMock();
-  return devMockCollector.listFolderTree();
 }
 
 export async function listFolderTree(): Promise<FolderTreeNode[]> {

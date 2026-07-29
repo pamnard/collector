@@ -136,9 +136,6 @@ describe("CollectorIpcClient", () => {
     try {
       const client = await connectCollectorIpcClient(host.ipcPath!, { dataDir });
       try {
-        const items = await client.listItems();
-        expect(items.length).toBeGreaterThan(0);
-
         const page = await client.fetchDashboardIndexPage("all", "", {
           limit: 60,
           offset: 0,
@@ -153,10 +150,11 @@ describe("CollectorIpcClient", () => {
         const loaded = await client.loadDashboardItems(ids.itemIds, 0, 10);
         expect(loaded.length).toBeGreaterThan(0);
 
-        const byId = await client.getItemById(items[0]!.id);
-        expect(byId.item.id).toBe(items[0]!.id);
+        const firstId = ids.itemIds[0]!;
+        const byId = await client.getItemById(firstId);
+        expect(byId.item.id).toBe(firstId);
 
-        const source = await client.getItemSource(items[0]!.id);
+        const source = await client.getItemSource(firstId);
         expect(typeof source).toBe("string");
         expect(source.length).toBeGreaterThan(0);
 
@@ -244,9 +242,8 @@ describe("CollectorIpcClient", () => {
         const createdPath = await client.createFolder("ipc-folder");
         expect(createdPath).toBe("ipc-folder");
 
-        // Index tree may lag FS until sync; still exercise list/load RPC.
+        // Index tree may lag FS until sync; still exercise list RPC.
         expect(Array.isArray(await client.listFolderTree())).toBe(true);
-        expect(Array.isArray(await client.loadFolderTree())).toBe(true);
 
         const renamed = await client.renameFolder(createdPath, "ipc-folder-renamed");
         expect(renamed).toBe("ipc-folder-renamed");
@@ -472,8 +469,11 @@ describe("CollectorIpcClient", () => {
         // Kick off filesystem sync; wait via status channel (#163), not stub indexSync (#327).
         await client.listDashboardItemIds("all");
         expect((await waitForVaultIndexSyncDone(client)).status).toBe("done");
-        const items = await client.listItems();
-        expect(Array.isArray(items)).toBe(true);
+        const page = await client.queryIndex("all", undefined, {
+          limit: 10,
+          offset: 0,
+        });
+        expect(Array.isArray(page.ids)).toBe(true);
       } finally {
         await client.close();
       }
@@ -575,9 +575,10 @@ describe("CollectorIpcClient", () => {
         await client.startVaultFilesystemWatcher(active.vault.id, active.path);
         expect(await client.isVaultFilesystemWatcherActive()).toBe(true);
 
-        const items = await client.listItems();
-        expect(items.length).toBeGreaterThan(0);
-        const target = items[0]!;
+        const ids = await client.listDashboardItemIds("all");
+        expect(ids.itemIds.length).toBeGreaterThan(0);
+        const targetId = ids.itemIds[0]!;
+        const target = (await client.getItemById(targetId)).item;
         const docPath = join(active.path, target.id);
         const before = await client.getItemById(target.id);
         const marker = `watch-${Date.now()}`;
@@ -786,7 +787,7 @@ describe("CollectorIpcService ports (#366)", () => {
 
   it("flat createCollectorIpcClient shim exposes domain methods", () => {
     const flat = createCollectorIpcClient(mockTransport());
-    expect(typeof flat.listItems).toBe("function");
+    expect(typeof flat.searchItems).toBe("function");
     expect(typeof flat.getDataDirectory).toBe("function");
     expect(typeof flat.ping).toBe("function");
     expect(typeof flat.startVaultFilesystemWatcher).toBe("function");

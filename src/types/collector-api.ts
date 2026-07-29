@@ -1,9 +1,10 @@
 /**
  * App-side import surface for frozen `@collector/api` types (#145).
- * Runtime wiring: {@link getCollectorClient} / LocalAdapter (#169).
+ * Runtime wiring: {@link getCollectorService} / LocalAdapter (#169 / #369).
  */
 export type {
   CollectorApiError,
+  CollectorService,
   CollectorServiceApi,
   CreateItemInput,
   DashboardIndexPage,
@@ -18,8 +19,11 @@ export {
   createLocalAdapter,
   createLocalCollectorService,
   createLocalDashboardSnapshotPort,
+  createLocalUiSession,
   getCollectorClient,
+  getCollectorService,
   getUiSession,
   setCollectorClient,
+  setCollectorService,
   setUiSession,
 } from "../services/collector-client";

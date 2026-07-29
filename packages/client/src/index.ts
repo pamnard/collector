@@ -7,8 +7,10 @@ export {
   createCollectorIpcClient,
   createCollectorIpcDashboardSnapshotPort,
   createCollectorIpcService,
+  createCollectorIpcServiceClient,
   type CollectorIpcClient,
   type CollectorIpcClientOptions,
+  type CollectorIpcServiceClient,
   type CollectorIpcTransportExtras,
   type ServiceIpcHealthResult,
 } from "./ipc-collector-client.js";
