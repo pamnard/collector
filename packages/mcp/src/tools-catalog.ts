@@ -129,10 +129,11 @@ export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] = [
   {
     name: "collector_update_item",
     description:
-      "Partial update of an existing item. Only provided fields change. " +
+      "Partial update of an existing item (full UpdateItemInput surface). Only provided fields change. " +
       "itemId is the vault-relative .md path. " +
-      "Passing folder_path moves the item (same path rules as create/move). " +
-      "url: omit to leave unchanged; null clears the URL.",
+      "Passing folder_path moves the item (same host path as collector_move_item). " +
+      "url: omit to leave unchanged; null clears the URL. " +
+      "content_type and tag_ids are supported (same as the UI form).",
     params: [
       {
         name: "itemId",
@@ -167,11 +168,63 @@ export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] = [
           "New markdown body. Omit to leave unchanged; null clears content.",
       },
       {
+        name: "content_type",
+        required: false,
+        typeLabel: "enum",
+        description:
+          "New content type. One of: article, video, image, note, bookmark, pdf, audio, other. Omit to leave unchanged.",
+      },
+      {
+        name: "tag_ids",
+        required: false,
+        typeLabel: "string[]",
+        description:
+          "Replace item tag ids (opaque UUIDs from collector_create_tag / get_item). " +
+          "Omit to leave unchanged; pass [] to clear all tags on the item.",
+      },
+      {
         name: "folder_path",
         required: false,
         typeLabel: "string",
         description:
-          "Move to this folder if different from current. " + FOLDER_PATH_DESCRIPTION,
+          "Move to this folder if different from current (alias of collector_move_item). " +
+          FOLDER_PATH_DESCRIPTION,
+      },
+    ],
+  },
+  {
+    name: "collector_get_item_source",
+    description:
+      "Read the raw vault .md document for an item (frontmatter + body), same as the UI source editor. " +
+      "itemId must be the full vault-relative path. Prefer structured get/update for field edits; use source for full-document round-trips.",
+    params: [
+      {
+        name: "itemId",
+        required: true,
+        typeLabel: "string",
+        description: ITEM_ID_DESCRIPTION,
+      },
+    ],
+  },
+  {
+    name: "collector_update_item_source",
+    description:
+      "Replace the raw vault .md document for an item (frontmatter + body), same as the UI source save. " +
+      "Re-parses into the item model; tag names in frontmatter are resolved (missing tags may be created). " +
+      "itemId must be the full vault-relative path.",
+    params: [
+      {
+        name: "itemId",
+        required: true,
+        typeLabel: "string",
+        description: ITEM_ID_DESCRIPTION,
+      },
+      {
+        name: "rawMarkdown",
+        required: true,
+        typeLabel: "string",
+        description:
+          "Full markdown file contents including YAML frontmatter. Replaces the on-disk document.",
       },
     ],
   },
@@ -241,7 +294,8 @@ export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] = [
   {
     name: "collector_move_item",
     description:
-      "Move an item into a folder. itemId is the vault-relative .md path; folderPath uses the same folder conventions as create. " +
+      "Move an item into a folder. Convenience alias of collector_update_item with folder_path " +
+      "(same host move path / semantics). itemId is the vault-relative .md path; folderPath uses the same folder conventions as create. " +
       "Empty destination normalizes to Inbox. Item id changes to {folder}/{filename}.md.",
     params: [
       {

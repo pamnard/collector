@@ -9,6 +9,7 @@ export type CliCommand =
   | { name: "health" }
   | { name: "search"; query: string }
   | { name: "get-item"; itemId: string }
+  | { name: "get-item-source"; itemId: string }
   | {
       name: "create-item";
       title: string;
@@ -25,7 +26,14 @@ export type CliCommand =
       description?: string;
       url?: string | null;
       content?: string | null;
+      content_type?: ContentType;
+      tag_ids?: string[];
       folder_path?: string;
+    }
+  | {
+      name: "update-item-source";
+      itemId: string;
+      rawMarkdown: string;
     }
   | { name: "delete-item"; itemId: string }
   | { name: "create-tag"; tagName: string; color?: string | null }
@@ -61,8 +69,11 @@ const UPDATE_ITEM_FLAGS = new Set([
   "--description",
   "--url",
   "--content",
+  "--type",
+  "--tag-ids",
   "--folder",
 ]);
+const UPDATE_ITEM_SOURCE_FLAGS = new Set(["--content"]);
 const CREATE_TAG_FLAGS = new Set(["--name", "--color"]);
 const MOVE_ITEM_FLAGS = new Set(["--folder"]);
 
@@ -73,6 +84,25 @@ function readOpt(argv: string[], name: string): string | undefined {
   }
   const value = argv[idx + 1];
   if (value === undefined || value.startsWith("-")) {
+    throw new CliUsageError(`Missing value for ${name}`);
+  }
+  return value;
+}
+
+/**
+ * Like readOpt, but allows values that start with `-` (YAML frontmatter `---`).
+ * Only rejects when the next argv slot is missing.
+ */
+function readOptAllowLeadingDash(
+  argv: string[],
+  name: string,
+): string | undefined {
+  const idx = argv.indexOf(name);
+  if (idx < 0) {
+    return undefined;
+  }
+  const value = argv[idx + 1];
+  if (value === undefined) {
     throw new CliUsageError(`Missing value for ${name}`);
   }
   return value;
@@ -103,6 +133,17 @@ function parseContentType(raw: string | undefined): ContentType {
     );
   }
   return value as ContentType;
+}
+
+/** Comma-separated tag UUIDs; empty string → []. */
+function parseTagIds(raw: string): string[] {
+  if (raw.trim() === "") {
+    return [];
+  }
+  return raw
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
 }
 
 function withEndpoint(
@@ -141,6 +182,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     new Set([
       ...CREATE_ITEM_FLAGS,
       ...UPDATE_ITEM_FLAGS,
+      ...UPDATE_ITEM_SOURCE_FLAGS,
       ...CREATE_TAG_FLAGS,
       ...MOVE_ITEM_FLAGS,
     ]),
@@ -175,6 +217,19 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     return withEndpoint({ name: "get-item", itemId }, dataDir, ipcPath, resolvedToken);
   }
 
+  if (command === "get-item-source") {
+    const itemId = rest[0];
+    if (!itemId || rest.length !== 1) {
+      throw new CliUsageError("Usage: collector-cli get-item-source <item-id>");
+    }
+    return withEndpoint(
+      { name: "get-item-source", itemId },
+      dataDir,
+      ipcPath,
+      resolvedToken,
+    );
+  }
+
   if (command === "create-item") {
     if (rest.length > 0) {
       throw new CliUsageError(
@@ -187,7 +242,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     }
     const description = readOpt(argv, "--description");
     const url = hasFlag(argv, "--url") ? (readOpt(argv, "--url") ?? null) : undefined;
-    const content = readOpt(argv, "--content");
+    const content = readOptAllowLeadingDash(argv, "--content");
     const folder_path = readOpt(argv, "--folder");
     return withEndpoint(
       {
@@ -209,19 +264,27 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     const itemId = rest[0];
     if (!itemId || rest.length !== 1) {
       throw new CliUsageError(
-        "Usage: collector-cli update-item <item-id> [--title …] [--content …] [--url …] [--folder …] [--description …]",
+        "Usage: collector-cli update-item <item-id> [--title …] [--content …] [--url …] [--type …] [--tag-ids id,…] [--folder …] [--description …]",
       );
     }
     const title = readOpt(argv, "--title");
     const description = readOpt(argv, "--description");
     const url = hasFlag(argv, "--url") ? (readOpt(argv, "--url") ?? null) : undefined;
-    const content = readOpt(argv, "--content");
+    const content = readOptAllowLeadingDash(argv, "--content");
+    const typeRaw = readOpt(argv, "--type");
+    const content_type =
+      typeRaw === undefined ? undefined : parseContentType(typeRaw);
+    const tagIdsRaw = readOpt(argv, "--tag-ids");
+    const tag_ids =
+      tagIdsRaw === undefined ? undefined : parseTagIds(tagIdsRaw);
     const folder_path = readOpt(argv, "--folder");
     if (
       title === undefined &&
       description === undefined &&
       url === undefined &&
       content === undefined &&
+      content_type === undefined &&
+      tag_ids === undefined &&
       folder_path === undefined
     ) {
       throw new CliUsageError("update-item requires at least one field flag");
@@ -234,8 +297,29 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
         ...(description === undefined ? {} : { description }),
         ...(url === undefined ? {} : { url }),
         ...(content === undefined ? {} : { content }),
+        ...(content_type === undefined ? {} : { content_type }),
+        ...(tag_ids === undefined ? {} : { tag_ids }),
         ...(folder_path === undefined ? {} : { folder_path }),
       },
+      dataDir,
+      ipcPath,
+      resolvedToken,
+    );
+  }
+
+  if (command === "update-item-source") {
+    const itemId = rest[0];
+    if (!itemId || rest.length !== 1) {
+      throw new CliUsageError(
+        "Usage: collector-cli update-item-source <item-id> --content <raw-markdown>",
+      );
+    }
+    const rawMarkdown = readOptAllowLeadingDash(argv, "--content");
+    if (rawMarkdown === undefined) {
+      throw new CliUsageError("update-item-source requires --content");
+    }
+    return withEndpoint(
+      { name: "update-item-source", itemId, rawMarkdown },
       dataDir,
       ipcPath,
       resolvedToken,
@@ -299,7 +383,8 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     const folderPath = readOpt(argv, "--folder");
     if (!itemId || rest.length !== 1 || folderPath === undefined) {
       throw new CliUsageError(
-        "Usage: collector-cli move-item <item-id> --folder <path>",
+        "Usage: collector-cli move-item <item-id> --folder <path> " +
+          "(alias of update-item --folder; same host move path)",
       );
     }
     return withEndpoint(

@@ -58,9 +58,19 @@ describe("parseCliArgs (#172/#173)", () => {
         "id1",
         "--title",
         "Next",
+        "--type",
+        "article",
+        "--tag-ids",
+        "tag-a,tag-b",
       ]),
     ).toEqual({
-      command: { name: "update-item", itemId: "id1", title: "Next" },
+      command: {
+        name: "update-item",
+        itemId: "id1",
+        title: "Next",
+        content_type: "article",
+        tag_ids: ["tag-a", "tag-b"],
+      },
       dataDir: "/data",
     });
 
@@ -68,6 +78,32 @@ describe("parseCliArgs (#172/#173)", () => {
       parseCliArgs(["--data-dir", "/data", "delete-item", "id1"]),
     ).toEqual({
       command: { name: "delete-item", itemId: "id1" },
+      dataDir: "/data",
+    });
+  });
+
+  it("parses get/update item source (#351)", () => {
+    expect(
+      parseCliArgs(["--data-dir", "/data", "get-item-source", "id1"]),
+    ).toEqual({
+      command: { name: "get-item-source", itemId: "id1" },
+      dataDir: "/data",
+    });
+    expect(
+      parseCliArgs([
+        "--data-dir",
+        "/data",
+        "update-item-source",
+        "id1",
+        "--content",
+        "---\ntitle: X\n---\n\nbody\n",
+      ]),
+    ).toEqual({
+      command: {
+        name: "update-item-source",
+        itemId: "id1",
+        rawMarkdown: "---\ntitle: X\n---\n\nbody\n",
+      },
       dataDir: "/data",
     });
   });

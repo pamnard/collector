@@ -197,6 +197,13 @@ export function createCollectorMcpServer(
           .nullable()
           .optional()
           .describe(paramDescribe(updateItem.name, "content")),
+        content_type: contentTypeSchema
+          .optional()
+          .describe(paramDescribe(updateItem.name, "content_type")),
+        tag_ids: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(paramDescribe(updateItem.name, "tag_ids")),
         folder_path: z
           .string()
           .optional()
@@ -213,10 +220,63 @@ export function createCollectorMcpServer(
               : { description: input.description }),
             ...(input.url === undefined ? {} : { url: input.url }),
             ...(input.content === undefined ? {} : { content: input.content }),
+            ...(input.content_type === undefined
+              ? {}
+              : { content_type: input.content_type }),
+            ...(input.tag_ids === undefined ? {} : { tag_ids: input.tag_ids }),
             ...(input.folder_path === undefined
               ? {}
               : { folder_path: input.folder_path }),
           }),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  const getItemSource = requireMcpToolCatalogEntry("collector_get_item_source");
+  server.registerTool(
+    getItemSource.name,
+    {
+      description: getItemSource.description,
+      inputSchema: {
+        itemId: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(getItemSource.name, "itemId")),
+      },
+    },
+    async ({ itemId }) => {
+      try {
+        return textResult(await client.getItemSource(itemId));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  const updateItemSource = requireMcpToolCatalogEntry(
+    "collector_update_item_source",
+  );
+  server.registerTool(
+    updateItemSource.name,
+    {
+      description: updateItemSource.description,
+      inputSchema: {
+        itemId: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(updateItemSource.name, "itemId")),
+        rawMarkdown: z
+          .string()
+          .describe(paramDescribe(updateItemSource.name, "rawMarkdown")),
+      },
+    },
+    async (input) => {
+      try {
+        return textResult(
+          await client.updateItemSource(input.itemId, input.rawMarkdown),
         );
       } catch (error) {
         return errorResult(error);

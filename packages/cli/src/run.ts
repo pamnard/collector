@@ -92,6 +92,11 @@ export async function runCollectorCli(
       io.stdout(JSON.stringify(result, null, 2));
       return 0;
     }
+    if (cmd.name === "get-item-source") {
+      const raw = await client.getItemSource(cmd.itemId);
+      io.stdout(raw);
+      return 0;
+    }
     if (cmd.name === "create-item") {
       const item = await client.createItem({
         title: cmd.title,
@@ -110,8 +115,17 @@ export async function runCollectorCli(
         ...(cmd.description === undefined ? {} : { description: cmd.description }),
         ...(cmd.url === undefined ? {} : { url: cmd.url }),
         ...(cmd.content === undefined ? {} : { content: cmd.content }),
+        ...(cmd.content_type === undefined
+          ? {}
+          : { content_type: cmd.content_type }),
+        ...(cmd.tag_ids === undefined ? {} : { tag_ids: cmd.tag_ids }),
         ...(cmd.folder_path === undefined ? {} : { folder_path: cmd.folder_path }),
       });
+      io.stdout(JSON.stringify(item, null, 2));
+      return 0;
+    }
+    if (cmd.name === "update-item-source") {
+      const item = await client.updateItemSource(cmd.itemId, cmd.rawMarkdown);
       io.stdout(JSON.stringify(item, null, 2));
       return 0;
     }
