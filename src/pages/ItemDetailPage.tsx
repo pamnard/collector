@@ -15,7 +15,7 @@ import { useShell } from "../components/layout/AppLayout";
 import { usePanelHeader } from "../components/layout/panel-header-context";
 import { useMediaPlayerOverlay } from "../hooks/useMediaPlayerOverlay";
 import type { ItemFormValues } from "../types/item";
-import { getCollectorClient } from "../services/collector-client";
+import { getCollectorService } from "../services/collector-client";
 import type { PlayableMediaKind } from "../utils/local-media-playback";
 
 type ItemDetailMode = "view" | "form" | "source";
@@ -132,7 +132,7 @@ export function ItemDetailPage() {
     if (loaded.tag_ids.length === 0) {
       return [];
     }
-    const allTags = await getCollectorClient().listTags();
+    const allTags = await getCollectorService().tags.listTags();
     const byId = new Map(allTags.map((tag) => [tag.id, tag.name]));
     return loaded.tag_ids
       .map((tagId) => byId.get(tagId))
@@ -141,7 +141,7 @@ export function ItemDetailPage() {
 
   const reloadItem = async (itemId: string) => {
     const { item: loadedItem, content: loadedContent } =
-      await getCollectorClient().getItemById(itemId);
+      await getCollectorService().items.getItemById(itemId);
     const tagNames = await resolveTagNames(loadedItem);
     setItem(loadedItem);
     setContent(loadedContent);
@@ -200,7 +200,7 @@ export function ItemDetailPage() {
     }
     let cancelled = false;
     setItemAdjacent(null);
-    void getCollectorClient()
+    void getCollectorService().items
       .getAdjacentItems(id)
       .then((result) => {
         if (!cancelled) {
@@ -230,7 +230,7 @@ export function ItemDetailPage() {
     setError(null);
 
     try {
-      const updated = await getCollectorClient().updateItem(id, {
+      const updated = await getCollectorService().items.updateItem(id, {
         title: formValues.title.trim(),
         description: formValues.description.trim(),
         url: formValues.url.trim() || null,
@@ -268,7 +268,7 @@ export function ItemDetailPage() {
     setError(null);
 
     try {
-      const updated = await getCollectorClient().updateItemSource(id, sourceText);
+      const updated = await getCollectorService().items.updateItemSource(id, sourceText);
       await reloadItem(updated.id);
       setSourceText(null);
       setSourceBaseline(null);
@@ -295,7 +295,7 @@ export function ItemDetailPage() {
     setError(null);
 
     try {
-      await getCollectorClient().deleteItem(id);
+      await getCollectorService().items.deleteItem(id);
       refreshVault();
       navigate("/");
     } catch (err: unknown) {
@@ -378,7 +378,7 @@ export function ItemDetailPage() {
       setIsSaving(true);
       setError(null);
       try {
-        const raw = await getCollectorClient().getItemSource(id);
+        const raw = await getCollectorService().items.getItemSource(id);
         setSourceText(raw);
         setSourceBaseline(raw);
         setMode("source");

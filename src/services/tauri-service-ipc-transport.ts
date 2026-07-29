@@ -2,7 +2,7 @@
  * WebView-safe Collector service IPC transport (#239/#240/#329).
  *
  * Uses Tauri `invoke` → Rust Unix-socket proxy → local host framing.
- * Implements {@link ServiceIpcClient} for {@link createIpcAdapter}.
+ * Implements {@link ServiceIpcClient} for {@link createIpcCollectorService}.
  * Host→client push: Rust demux emits `service-ipc-event`; this transport
  * listens and fans out via {@link ServiceIpcClient.onEvent}.
  * Does **not** import Node `net`.

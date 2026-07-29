@@ -1,6 +1,6 @@
 import { MoreHorizontal } from "lucide-react";
 import { useState } from "react";
-import { getCollectorClient } from "../../services/collector-client";
+import { getCollectorService } from "../../services/collector-client";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,
@@ -27,7 +27,7 @@ export function ItemRowActions({
 
     setIsDeleting(true);
     try {
-      await getCollectorClient().deleteItem(itemId);
+      await getCollectorService().items.deleteItem(itemId);
       onUpdated?.();
     } finally {
       setIsDeleting(false);

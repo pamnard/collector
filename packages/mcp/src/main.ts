@@ -11,7 +11,7 @@
  * --token / COLLECTOR_IPC_TOKEN). Settings MCP JSON stays `--data-dir` only.
  */
 
-import { connectCollectorIpcClient } from "@collector/client/node";
+import { connectCollectorIpcService } from "@collector/client/node";
 import { isServiceIpcError } from "@collector/service/host";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
 
   let client;
   try {
-    client = await connectCollectorIpcClient(ipcPath, {
+    client = await connectCollectorIpcService(ipcPath, {
       connectTimeoutMs: 2_000,
       ...(endpoint.dataDir === undefined ? {} : { dataDir: endpoint.dataDir }),
       ...(endpoint.token === undefined ? {} : { token: endpoint.token }),

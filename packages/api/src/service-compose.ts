@@ -20,7 +20,6 @@ export const BOOT_PORT_KEYS = [
 ] as const satisfies readonly (keyof BootPort)[];
 
 export const ITEMS_PORT_KEYS = [
-  "listItems",
   "searchItems",
   "queryIndex",
   "hydrate",
@@ -50,7 +49,6 @@ export const TAGS_PORT_KEYS = [
 export const FOLDERS_PORT_KEYS = [
   "subscribeFolderTree",
   "listFolderTree",
-  "loadFolderTree",
   "createFolder",
   "renameFolder",
   "deleteFolder",

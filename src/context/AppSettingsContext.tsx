@@ -10,7 +10,7 @@ import {
 import type { AppSettings } from "@collector/shared";
 import { DEFAULT_APP_SETTINGS } from "@collector/shared";
 import {
-  getCollectorClient,
+  getCollectorService,
   getUiSession,
 } from "../services/collector-client";
 import { StartupErrorScreen } from "../components/startup/StartupErrorScreen";
@@ -48,11 +48,11 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    const client = getCollectorClient();
+    const service = getCollectorService();
 
     Promise.all([
-      client.ensureAppSettings(),
-      client.openCollectorDatabase(),
+      service.settings.ensureAppSettings(),
+      service.boot.openCollectorDatabase(),
       getUiSession().snapshot.ensureDashboardSnapshot(),
     ])
       .then(([loaded]) => {
@@ -62,7 +62,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         setSettings(loaded);
         setStartupState({ status: "ready", settings: loaded });
 
-        void client.ensureCollectorDatabaseHealthy().catch((err) => {
+        void service.boot.ensureCollectorDatabaseHealthy().catch((err) => {
           console.error("[collector] index health check failed:", err);
           if (!cancelled) {
             setStartupState({
@@ -82,7 +82,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         }
       });
 
-    const sub = client.subscribeAppSettings((next) => {
+    const sub = service.settings.subscribeAppSettings((next) => {
       if (!cancelled) {
         setSettings(next);
       }
@@ -91,7 +91,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const patch = useCallback(async (partial: Partial<AppSettings>) => {
-    const next = await getCollectorClient().updateAppSettings(partial);
+    const next = await getCollectorService().settings.updateAppSettings(partial);
     setSettings(next);
   }, []);
 

@@ -1,9 +1,9 @@
 /**
- * IPC-backed CollectorClient factory for the UI (#240 / #366 / #368).
+ * IPC-backed CollectorService factory for the UI (#240 / #366 / #368 / #369).
  * Transport is injected (Tauri proxy, mock, etc.) — no Node dialer.
  *
  * Ports are primary ({@link createIpcCollectorService}); flat
- * {@link createIpcAdapter} is a transitional shim.
+ * {@link createIpcAdapter} is a transitional shim until #370.
  * Snapshot + thumbnail abs paths are wired from the app UiSession layer
  * (local FS), not host IPC.
  */
@@ -13,6 +13,7 @@ import type {
   CollectorService,
   CollectorServiceApi,
   DashboardSnapshotPort,
+  UiSession,
 } from "@collector/api";
 import {
   createCollectorIpcClient,
@@ -52,10 +53,26 @@ export function createIpcDashboardSnapshotPort(
   return createLocalDashboardSnapshotPort();
 }
 
+/** UiSession for IPC cutover (#368 / #369) — local FS snapshot/thumbnails. */
+export function createIpcUiSession(
+  transport: ServiceIpcClient,
+  service: CollectorService,
+): UiSession {
+  return {
+    snapshot: createLocalDashboardSnapshotPort(),
+    settingsSync: {
+      getAppSettingsSync: () => service.settings.getAppSettingsSync(),
+    },
+    thumbnails: createThumbnailResolveSession({
+      resolveActiveVault: () =>
+        transport.request("ensureActiveVault") as Promise<ActiveVaultResult>,
+    }),
+  };
+}
+
 /**
- * Transitional flat facade. Prefer {@link createIpcCollectorService}.
- * Bootstrap (#170) still sets this until call sites migrate (#369).
- * Snapshot / thumbnails use local FS (not host wire) (#368).
+ * Transitional flat facade. Prefer {@link createIpcCollectorService} +
+ * {@link createIpcUiSession} (#369). Snapshot / thumbnails use local FS (#368).
  */
 export function createIpcAdapter(transport: ServiceIpcClient): CollectorClient {
   return createCollectorIpcClient(transport, ipcUiSessionOptions(transport));

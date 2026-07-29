@@ -5,7 +5,7 @@ import {
   type PlayableMediaKind,
   type PlayableMediaRef,
 } from "../utils/local-media-playback";
-import { getCollectorClient } from "../services/collector-client";
+import { getCollectorService } from "../services/collector-client";
 
 export interface MediaPlayerSession {
   src: string;
@@ -44,7 +44,7 @@ export function useMediaPlayerOverlay() {
 
   const openItemMedia = useCallback(
     async (itemId: string, prefer?: PlayableMediaKind) => {
-      const files = await getCollectorClient().listItemMedia(itemId);
+      const files = await getCollectorService().media.listItemMedia(itemId);
       const picked = pickPlayableMedia(files, prefer);
       if (!picked) {
         throw new Error(

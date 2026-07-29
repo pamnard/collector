@@ -8,7 +8,7 @@ import { useAppUpdater } from "../hooks/useAppUpdater";
 import { useTheme } from "../hooks/useTheme";
 import { useCheckUpdatesOnStart } from "../hooks/useUpdaterSettings";
 import { useViewMode } from "../hooks/useViewMode";
-import { getCollectorClient } from "../services/collector-client";
+import { getCollectorService } from "../services/collector-client";
 import { parseSettingsSection } from "../types/sidebar-mode";
 import { McpSettingsSection } from "./McpSettingsSection";
 
@@ -32,11 +32,11 @@ export function SettingsPage() {
   const loadSettings = useCallback(async () => {
     const [directory, loadedVaults, activeVault, name, preferencesDir] =
       await Promise.all([
-      getCollectorClient().getDataDirectory(),
-      getCollectorClient().listVaults(),
-      getCollectorClient().getActiveVaultMeta(),
+      getCollectorService().boot.getDataDirectory(),
+      getCollectorService().vaults.listVaults(),
+      getCollectorService().vaults.getActiveVaultMeta(),
       getName().catch(() => "Collector"),
-      getCollectorClient().getAppConfigDirectory(),
+      getCollectorService().settings.getAppConfigDirectory(),
     ]);
     setDataDir(directory);
     setConfigDir(preferencesDir);
@@ -56,8 +56,8 @@ export function SettingsPage() {
     setError(null);
 
     try {
-      await getCollectorClient().switchVault(vaultId);
-      await getCollectorClient().setDefaultVault(vaultId);
+      await getCollectorService().vaults.switchVault(vaultId);
+      await getCollectorService().vaults.setDefaultVault(vaultId);
       await loadSettings();
       refreshVault();
       setActiveVaultId(vaultId);

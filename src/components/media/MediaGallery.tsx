@@ -22,7 +22,7 @@ import {
 import { toDisplayAssetSrc } from "../../utils/asset-src";
 import type { PlayableMediaKind } from "../../utils/local-media-playback";
 import {
-  getCollectorClient,
+  getCollectorService,
   getUiSession,
 } from "../../services/collector-client";
 
@@ -70,7 +70,7 @@ export function MediaGallery({
   const loadMedia = useCallback(async () => {
     setError(null);
     try {
-      setFiles(await getCollectorClient().listItemMedia(itemId));
+      setFiles(await getCollectorService().media.listItemMedia(itemId));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -131,7 +131,7 @@ export function MediaGallery({
           bytes: new Uint8Array(await file.arrayBuffer()),
         })),
       );
-      await getCollectorClient().attachMediaFiles(itemId, payload);
+      await getCollectorService().media.attachMediaFiles(itemId, payload);
       await loadMedia();
       onUpdated?.();
     } catch (err: unknown) {
@@ -149,7 +149,7 @@ export function MediaGallery({
 
     setError(null);
     try {
-      await getCollectorClient().deleteItemMedia(itemId, mediaId);
+      await getCollectorService().media.deleteItemMedia(itemId, mediaId);
       await loadMedia();
       onUpdated?.();
     } catch (err: unknown) {
@@ -161,7 +161,7 @@ export function MediaGallery({
     setCoverMediaId(mediaId);
     setError(null);
     try {
-      await getCollectorClient().setItemCoverFromMedia(itemId, mediaId);
+      await getCollectorService().media.setItemCoverFromMedia(itemId, mediaId);
       onUpdated?.();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));

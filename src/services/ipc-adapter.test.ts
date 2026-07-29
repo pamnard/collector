@@ -4,6 +4,7 @@ import {
   createIpcAdapter,
   createIpcCollectorService,
   createIpcDashboardSnapshotPort,
+  createIpcUiSession,
 } from "./ipc-adapter";
 
 function mockTransport(
@@ -69,6 +70,17 @@ describe("createIpcCollectorService (#366)", () => {
     expect(typeof snapshot.ensureDashboardSnapshot).toBe("function");
     expect(typeof snapshot.buildDashboardSnapshot).toBe("function");
     expect(typeof snapshot.persistDashboardSnapshot).toBe("function");
+  });
+
+  it("createIpcUiSession wires local snapshot/thumbnails (#369)", () => {
+    const transport = mockTransport();
+    const service = createIpcCollectorService(transport);
+    const session = createIpcUiSession(transport, service);
+    expect(typeof session.snapshot.ensureDashboardSnapshot).toBe("function");
+    expect(typeof session.thumbnails.resolveItemThumbnailPaths).toBe(
+      "function",
+    );
+    expect(typeof session.settingsSync.getAppSettingsSync).toBe("function");
   });
 
   it("createIpcAdapter does not RPC snapshot or thumbnail methods (#368)", async () => {

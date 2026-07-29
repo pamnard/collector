@@ -21,10 +21,6 @@ export function buildFoldersHandlers(
       await runtime.ensureInitialized();
       return tagsFolders.listFolderTree();
     },
-    [M.loadFolderTree]: async () => {
-      await runtime.ensureInitialized();
-      return tagsFolders.loadFolderTree();
-    },
     [M.createFolder]: async (params) => {
       const p = asObject(params, M.createFolder);
       const folderPath = requireString(p.folderPath, "folderPath", M.createFolder);

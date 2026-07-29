@@ -10,7 +10,7 @@ import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
 import { useShell } from "../layout/AppLayout";
 import type { useDashboardItems } from "../../hooks/useDashboardItems";
 import {
-  getCollectorClient,
+  getCollectorService,
   getUiSession,
 } from "../../services/collector-client";
 
@@ -43,7 +43,7 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
   });
 
   useEffect(() => {
-    void getCollectorClient().listTags().then(setTags);
+    void getCollectorService().tags.listTags().then(setTags);
   }, [vaultRevision]);
 
   useEffect(() => {

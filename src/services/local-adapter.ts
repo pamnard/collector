@@ -13,6 +13,7 @@ import type {
   CollectorServiceApi,
   DashboardSnapshotPort,
   NavFilter as ApiNavFilter,
+  UiSession,
 } from "@collector/api";
 import { toCollectorServiceApi } from "@collector/api";
 import type { NavFilter as UiNavFilter } from "../types/ui";
@@ -35,6 +36,7 @@ import {
   peekMatchingDashboardSnapshot as peekMatchingDashboardSnapshotLocal,
   persistDashboardSnapshot,
 } from "./dashboard-snapshot-service";
+import { createThumbnailResolveSession } from "./thumbnail-resolve-session";
 
 function asUiNavFilter(filter: ApiNavFilter): UiNavFilter {
   return filter as UiNavFilter;
@@ -50,7 +52,6 @@ export function createLocalCollectorService(): CollectorService {
       getDataDirectory: collector.getDataDirectory,
     },
     items: {
-      listItems: collector.listItems,
       searchItems: (query, filter) =>
         collector.searchItems(query, asUiNavFilter(filter)),
       queryIndex: (filter, query, page, sort) =>
@@ -95,7 +96,6 @@ export function createLocalCollectorService(): CollectorService {
     folders: {
       subscribeFolderTree: collector.subscribeFolderTree,
       listFolderTree: collector.listFolderTree,
-      loadFolderTree: collector.loadFolderTree,
       createFolder: collector.createFolder,
       renameFolder: collector.renameFolder,
       deleteFolder: collector.deleteFolder,
@@ -151,13 +151,24 @@ export function createLocalDashboardSnapshotPort(): DashboardSnapshotPort {
   };
 }
 
+/** UiSession for in-process LocalAdapter (#368 / #369). */
+export function createLocalUiSession(service: CollectorService): UiSession {
+  return {
+    snapshot: createLocalDashboardSnapshotPort(),
+    settingsSync: {
+      getAppSettingsSync: () => service.settings.getAppSettingsSync(),
+    },
+    thumbnails: createThumbnailResolveSession({
+      resolveActiveVault: () => service.boot.ensureActiveVault(),
+    }),
+  };
+}
+
 /**
  * Transitional flat facade (#145 → #360). Prefer
- * {@link createLocalCollectorService} + {@link createLocalDashboardSnapshotPort}.
+ * {@link createLocalCollectorService} + {@link createLocalUiSession}.
  */
 export function createLocalAdapter(): CollectorServiceApi {
-  return toCollectorServiceApi(
-    createLocalCollectorService(),
-    createLocalDashboardSnapshotPort(),
-  );
+  const service = createLocalCollectorService();
+  return toCollectorServiceApi(service, createLocalUiSession(service).snapshot);
 }

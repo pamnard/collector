@@ -4,7 +4,7 @@ import type { FolderTreeNode } from "@collector/core";
 import { useFolderTree } from "../../hooks/useFolderTree";
 import type { NavFilter } from "../../types/ui";
 import { navFilterKey } from "../../types/ui";
-import { getCollectorClient } from "../../services/collector-client";
+import { getCollectorService } from "../../services/collector-client";
 
 interface FolderTreeProps {
   activeFilter: NavFilter;
@@ -110,9 +110,9 @@ export function FolderTree({
 
     setError(null);
     try {
-      await getCollectorClient().createFolder(path);
+      await getCollectorService().folders.createFolder(path);
       setNewFolder("");
-      setTree(await getCollectorClient().listFolderTree());
+      setTree(await getCollectorService().folders.listFolderTree());
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     }

@@ -7,7 +7,6 @@ export const DOMAIN_IPC_METHODS = {
   openCollectorDatabase: "openCollectorDatabase",
   ensureCollectorDatabaseHealthy: "ensureCollectorDatabaseHealthy",
   // #155 reads
-  listItems: "listItems",
   searchItems: "searchItems",
   fetchDashboardIndexPage: "fetchDashboardIndexPage",
   queryIndex: "queryIndex",
@@ -29,7 +28,6 @@ export const DOMAIN_IPC_METHODS = {
   deleteTag: "deleteTag",
   // #158 folders
   listFolderTree: "listFolderTree",
-  loadFolderTree: "loadFolderTree",
   createFolder: "createFolder",
   renameFolder: "renameFolder",
   deleteFolder: "deleteFolder",

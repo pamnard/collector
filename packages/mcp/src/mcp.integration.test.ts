@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { connectCollectorIpcClient } from "@collector/client/node";
+import { connectCollectorIpcService } from "@collector/client/node";
 import { startServiceHost } from "@collector/service/host";
 import {
   McpEndpointError,
@@ -53,7 +53,7 @@ describe("MCP tools over service IPC (#174)", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "collector-mcp-"));
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
-    const ipc = connectCollectorIpcClient(resolveMcpIpcPath({ dataDir }), {
+    const ipc = connectCollectorIpcService(resolveMcpIpcPath({ dataDir }), {
       connectTimeoutMs: 2_000,
       dataDir,
     });
@@ -148,7 +148,7 @@ describe("MCP tools over service IPC (#174)", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "collector-mcp-351-"));
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
-    const client = await connectCollectorIpcClient(
+    const client = await connectCollectorIpcService(
       resolveMcpIpcPath({ dataDir }),
       { connectTimeoutMs: 2_000, dataDir },
     );
@@ -234,7 +234,7 @@ describe("MCP tools over service IPC (#174)", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "collector-mcp-352-"));
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
-    const client = await connectCollectorIpcClient(
+    const client = await connectCollectorIpcService(
       resolveMcpIpcPath({ dataDir }),
       { connectTimeoutMs: 2_000, dataDir },
     );
@@ -312,7 +312,7 @@ describe("MCP tools over service IPC (#174)", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "collector-mcp-353-"));
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
-    const client = await connectCollectorIpcClient(
+    const client = await connectCollectorIpcService(
       resolveMcpIpcPath({ dataDir }),
       { connectTimeoutMs: 2_000, dataDir },
     );

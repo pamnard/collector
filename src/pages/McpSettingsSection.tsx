@@ -5,7 +5,7 @@ import {
   buildMcpClientConfigJson,
   getMcpStdioCommand,
 } from "../services/mcp-setup";
-import { getCollectorClient } from "../services/collector-client";
+import { getCollectorService } from "../services/collector-client";
 
 export function McpSettingsSection() {
   const [dataDir, setDataDir] = useState<string | null>(null);
@@ -14,7 +14,7 @@ export function McpSettingsSection() {
 
   useEffect(() => {
     let cancelled = false;
-    getCollectorClient()
+    getCollectorService().boot
       .getDataDirectory()
       .then((directory) => {
         if (!cancelled) {

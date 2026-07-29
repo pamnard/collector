@@ -20,10 +20,6 @@ export function buildItemsReadHandlers(
   const M = DOMAIN_IPC_METHODS;
 
   return {
-    [M.listItems]: async () => {
-      await runtime.ensureInitialized();
-      return itemsSearch.listItems();
-    },
     [M.searchItems]: async (params) => {
       const p = asObject(params, M.searchItems);
       const query = requireString(p.query, "query", M.searchItems);

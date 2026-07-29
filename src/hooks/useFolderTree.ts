@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FolderTreeNode } from "@collector/core";
-import { getCollectorClient } from "../services/collector-client";
+import { getCollectorService } from "../services/collector-client";
 
 export function useFolderTree(vaultRevision: number): FolderTreeNode[] {
   const [tree, setTree] = useState<FolderTreeNode[]>([]);
@@ -8,7 +8,7 @@ export function useFolderTree(vaultRevision: number): FolderTreeNode[] {
   useEffect(() => {
     const controller = new AbortController();
 
-    getCollectorClient().subscribeFolderTree(
+    getCollectorService().folders.subscribeFolderTree(
       setTree,
       undefined,
       controller.signal,

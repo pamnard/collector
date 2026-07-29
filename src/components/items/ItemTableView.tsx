@@ -22,7 +22,7 @@ import { useMainScrollElement } from "../../hooks/useMainScrollElement";
 import { useAppSettings } from "../../context/AppSettingsContext";
 import { useShell } from "../layout/AppLayout";
 import type { useDashboardItems } from "../../hooks/useDashboardItems";
-import { getCollectorClient } from "../../services/collector-client";
+import { getCollectorService } from "../../services/collector-client";
 import { navFilterKey } from "../../types/ui";
 import { Button } from "../ui/button";
 import {
@@ -105,7 +105,7 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
   });
 
   useEffect(() => {
-    void getCollectorClient().listTags().then(setTags);
+    void getCollectorService().tags.listTags().then(setTags);
   }, [vaultRevision]);
 
   useLayoutEffect(() => {

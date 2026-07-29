@@ -83,6 +83,10 @@ export interface CollectorIpcTransportExtras {
 export interface CollectorIpcClient
   extends CollectorServiceApi, CollectorIpcTransportExtras {}
 
+/** Domain ports + transport health helpers (#369). Primary for CLI/MCP. */
+export type CollectorIpcServiceClient = CollectorService &
+  CollectorIpcTransportExtras;
+
 function navFilterToSetting(
   filter: NavFilter,
 ):
@@ -236,8 +240,6 @@ function createIpcBacking(
         transport.request("getDataDirectory") as Promise<string>,
     },
     items: {
-      listItems: async (): Promise<ItemFile[]> =>
-        transport.request("listItems") as Promise<ItemFile[]>,
       searchItems: async (
         query: string,
         filter: NavFilter,
@@ -509,8 +511,6 @@ function createIpcBacking(
       },
       listFolderTree: async (): Promise<FolderTreeNode[]> =>
         transport.request("listFolderTree") as Promise<FolderTreeNode[]>,
-      loadFolderTree: async (): Promise<FolderTreeNode[]> =>
-        transport.request("loadFolderTree") as Promise<FolderTreeNode[]>,
       createFolder: async (folderPath: string): Promise<string> =>
         transport.request("createFolder", { folderPath }) as Promise<string>,
       renameFolder: async (oldPath: string, newPath: string): Promise<string> =>
@@ -683,6 +683,15 @@ export function createCollectorIpcService(
   options: CollectorIpcClientOptions = {},
 ): CollectorService {
   return createIpcBacking(transport, options).service;
+}
+
+/** Domain ports + transport extras for CLI/MCP (#369). */
+export function createCollectorIpcServiceClient(
+  transport: ServiceIpcClient,
+  options: CollectorIpcClientOptions = {},
+): CollectorIpcServiceClient {
+  const { service, extras } = createIpcBacking(transport, options);
+  return { ...service, ...extras };
 }
 
 /**
