@@ -18,8 +18,8 @@ import {
   type CollectorIpcClientOptions,
   type ServiceIpcClient,
 } from "@collector/client";
-import { createLocalDashboardSnapshotPort } from "./local-adapter";
 import { createThumbnailResolveSession } from "./thumbnail-resolve-session";
+import { createUiDashboardSnapshotPort } from "./ui-dashboard-snapshot-port";
 
 function ipcUiSessionOptions(
   transport: ServiceIpcClient,
@@ -29,7 +29,7 @@ function ipcUiSessionOptions(
       transport.request("ensureActiveVault") as Promise<ActiveVaultResult>,
   });
   return {
-    snapshot: createLocalDashboardSnapshotPort(),
+    snapshot: createUiDashboardSnapshotPort(),
     thumbnails,
   };
 }
@@ -45,7 +45,7 @@ export function createIpcCollectorService(
 export function createIpcDashboardSnapshotPort(
   _transport?: ServiceIpcClient,
 ): DashboardSnapshotPort {
-  return createLocalDashboardSnapshotPort();
+  return createUiDashboardSnapshotPort();
 }
 
 /** UiSession for IPC cutover (#368 / #369) — local FS snapshot/thumbnails. */
@@ -54,7 +54,7 @@ export function createIpcUiSession(
   service: CollectorService,
 ): UiSession {
   return {
-    snapshot: createLocalDashboardSnapshotPort(),
+    snapshot: createUiDashboardSnapshotPort(),
     settingsSync: {
       getAppSettingsSync: () => service.settings.getAppSettingsSync(),
     },

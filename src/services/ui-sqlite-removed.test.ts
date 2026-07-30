@@ -1,26 +1,27 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { accessSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-vi.mock("../dev/is-dev-mock", () => ({
-  isDevMock: () => false,
-}));
+const here = dirname(fileURLToPath(import.meta.url));
 
-describe("UI in-process SQLite removed (#171 / #328)", () => {
-  it("openCollectorDatabase refuses without composing index sync", async () => {
-    const { openCollectorDatabase } = await import("./collector-service");
-    await expect(openCollectorDatabase()).rejects.toThrow(/#171/);
+describe("LocalAdapter retired (#332)", () => {
+  it("does not export createLocalCollectorService from collector-client", async () => {
+    const client = await import("./collector-client");
+    expect(client).not.toHaveProperty("createLocalCollectorService");
+    expect(client).toHaveProperty("createDevMockCollectorService");
+    expect(client).toHaveProperty("installDevMockCollectorService");
   });
 
-  it("non-mock searchItems refuses early (#328 — no dual DomainRuntime)", async () => {
-    const { searchItems } = await import("./collector-service");
-    await expect(searchItems("x", "all")).rejects.toThrow(/#171/);
-  });
-
-  it("sync status stays idle without vault sync orchestration", async () => {
-    const { getVaultIndexSyncStatus } = await import("./collector-service");
-    expect(getVaultIndexSyncStatus()).toMatchObject({
-      vaultId: null,
-      status: "idle",
-      progress: null,
-    });
+  it("collector-service.ts and local-adapter.ts are gone from the tree", () => {
+    for (const name of ["collector-service.ts", "local-adapter.ts"]) {
+      let exists = true;
+      try {
+        accessSync(join(here, name));
+      } catch {
+        exists = false;
+      }
+      expect(exists).toBe(false);
+    }
   });
 });
