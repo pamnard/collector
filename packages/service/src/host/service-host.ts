@@ -15,10 +15,7 @@ import {
   resolveCollectorProfileLayout,
   selfContainedCollectorProfileLayout,
 } from "@collector/shared";
-import {
-  createDomainIpcDispatcher,
-  buildDomainIpcHandlers,
-} from "./ipc/domain-handlers.js";
+import { createDomainIpcRequestHandler } from "./ipc/domain-dispatch.js";
 import { startServiceIpcServer, type ServiceIpcServer } from "./ipc/server.js";
 import { createServiceDomainRuntime } from "./domain-runtime.js";
 import { SERVICE_IPC_EVENTS } from "./ipc/framing.js";
@@ -115,9 +112,7 @@ export async function startServiceHost(
     };
   };
 
-  const domainDispatch = createDomainIpcDispatcher(
-    buildDomainIpcHandlers(runtime),
-  );
+  const domainDispatch = createDomainIpcRequestHandler(runtime);
 
   const server: Server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", `http://${listenHost}`);

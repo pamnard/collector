@@ -75,9 +75,11 @@ export {
 
 export {
   DOMAIN_IPC_METHODS,
+  WATCHER_IPC_METHODS,
   type DomainIpcHandler,
   type DomainIpcHandlerMap,
   type DomainIpcMethod,
+  type WatcherIpcMethod,
 } from "./host/ipc/domain-methods.js";
 
 export {
@@ -90,9 +92,10 @@ export {
 } from "./host/ipc/domain-port-wire.js";
 
 export {
-  buildDomainIpcHandlers,
   createDomainIpcDispatcher,
-} from "./host/ipc/domain-handlers.js";
+  createDomainIpcRequestHandler,
+  DOMAIN_DISPATCH_REGISTRY,
+} from "./host/ipc/domain-dispatch.js";
 
 export {
   createServiceDomainRuntime,

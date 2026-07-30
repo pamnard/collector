@@ -6,9 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   NodeSqliteExecutor,
   SERVICE_IPC_EVENTS,
-  buildDomainIpcHandlers,
   connectServiceIpc,
-  createDomainIpcDispatcher,
+  createDomainIpcRequestHandler,
   createServiceDomainRuntime,
   startServiceHost,
   startServiceIpcServer,
@@ -437,7 +436,7 @@ describe("CollectorIpcServiceClient", () => {
             healthy,
           };
         },
-        request: createDomainIpcDispatcher(buildDomainIpcHandlers(runtime)),
+        request: createDomainIpcRequestHandler(runtime),
       },
     });
     const stopSyncStatusBroadcast = runtime.vaultIndexSyncStatus.subscribe(
