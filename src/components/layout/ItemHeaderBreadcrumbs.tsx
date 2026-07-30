@@ -1,13 +1,13 @@
 import { Folder } from "lucide-react";
 import { cn } from "../../lib/utils";
-import type { PanelItemHeaderState } from "./panel-header-context";
+import type { ItemChromeBreadcrumbState } from "./item-chrome/types";
 import { folderPathSegments } from "./folder-path-segments";
 import { headerPathChrome } from "./header-chrome";
 
 const UNTITLED_FALLBACK = "Без названия";
 
 interface ItemHeaderBreadcrumbsProps {
-  state: PanelItemHeaderState | null;
+  state: ItemChromeBreadcrumbState | null;
   onFolderSelect: (folderPath: string) => void;
 }
 
