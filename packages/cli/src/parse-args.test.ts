@@ -271,4 +271,16 @@ describe("parseCliArgs (#172/#173)", () => {
       parseCliArgs(["--data-dir", "/d", "--ipc-path", "/s", "health"]),
     ).toThrow(/only one/);
   });
+
+  it("rejects unknown command", () => {
+    expect(() =>
+      parseCliArgs(["--data-dir", "/data", "no-such-command"]),
+    ).toThrow(/Unknown command: no-such-command/);
+  });
+
+  it("rejects update-item without field flags", () => {
+    expect(() =>
+      parseCliArgs(["--data-dir", "/data", "update-item", "id1"]),
+    ).toThrow(/at least one field flag/);
+  });
 });
