@@ -13,6 +13,7 @@ import {
 import { join } from "node:path";
 import type {
   FileSystemAdapter,
+  VaultDirEntry,
   VaultItemMetaRead,
   VaultItemSourceRefRead,
   VaultItemStatMeta,
@@ -61,6 +62,14 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
 
   async readDir(path: string): Promise<string[]> {
     return readdir(path);
+  }
+
+  async readDirEntries(path: string): Promise<VaultDirEntry[]> {
+    const entries = await readdir(path, { withFileTypes: true });
+    return entries.map((entry) => ({
+      name: entry.name,
+      isDirectory: entry.isDirectory(),
+    }));
   }
 
   async stat(path: string): Promise<{ mtimeMs: number | null }> {

@@ -17,6 +17,7 @@ const RESERVED_VAULT_ENTRIES: &[&str] = &[
     "tags.json",
     "folders.json",
     "items",
+    "media",
     ".collector-touch",
 ];
 
@@ -441,10 +442,13 @@ mod tests {
         let dir = tempfile_dir("walk");
         fs::write(dir.join("vault.meta.json"), "{}").unwrap();
         fs::write(dir.join("root.md"), "# root").unwrap();
+        fs::write(dir.join("loose.png"), "png").unwrap();
         fs::create_dir_all(dir.join("Inbox")).unwrap();
         fs::write(dir.join("Inbox/note.md"), "# note").unwrap();
         fs::create_dir_all(dir.join("Inbox/note.media")).unwrap();
         fs::write(dir.join("Inbox/note.media/manifest.json"), "{}").unwrap();
+        fs::create_dir_all(dir.join("media")).unwrap();
+        fs::write(dir.join("media/hidden.md"), "# no").unwrap();
 
         let mut items = Vec::new();
         walk_items(Path::new(&dir), "", &mut items).unwrap();

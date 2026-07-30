@@ -14,6 +14,7 @@ export type {
   SyncReport,
   UpsertItemInput,
   VaultContext,
+  VaultDirEntry,
   VaultIndexAdapter,
   VaultItemMetaRead,
   VaultItemSourceRefRead,

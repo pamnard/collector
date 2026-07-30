@@ -21,6 +21,12 @@ export interface VaultItemSourceRefRead {
   sourceJson: string | null;
 }
 
+/** Directory listing entry with file-vs-directory bit (#278). */
+export interface VaultDirEntry {
+  name: string;
+  isDirectory: boolean;
+}
+
 export interface FileSystemAdapter {
   exists(path: string): Promise<boolean>;
   readText(path: string): Promise<string>;
@@ -34,6 +40,8 @@ export interface FileSystemAdapter {
   writeBinary(path: string, content: Uint8Array): Promise<void>;
   mkdir(path: string): Promise<void>;
   readDir(path: string): Promise<string[]>;
+  /** Like `readDir`, but includes whether each entry is a directory. */
+  readDirEntries(path: string): Promise<VaultDirEntry[]>;
   stat(path: string): Promise<{ mtimeMs: number | null }>;
   touch(path: string): Promise<void>;
   remove(path: string, options?: { recursive?: boolean }): Promise<void>;
