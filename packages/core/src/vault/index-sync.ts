@@ -6,7 +6,7 @@ import type {
 import { assertVaultTreeLayout } from "./assert-vault-layout.js";
 import { ensureInboxLayout } from "./inbox-layout.js";
 import { readVaultMeta } from "./item-io.js";
-import { syncIndexFromFilesystem } from "./operations.js";
+import { syncIndexFromFilesystem } from "./sync-operations.js";
 import { syncTagsToIndex } from "./tag-operations.js";
 
 export interface VaultIndexSyncReport extends SyncReport {

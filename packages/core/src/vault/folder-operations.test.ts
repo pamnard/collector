@@ -7,7 +7,8 @@ import { BetterSqliteMigrator } from "../../../db/src/testing/better-sqlite.js";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { createId } from "../util/ids.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
-import { createVault, upsertItem } from "../vault/operations.js";
+import { createVault } from "../vault/vault-operations.js";
+import { upsertItem } from "../vault/item-operations.js";
 import {
   createFolder,
   listFolderTreeFromIndex,

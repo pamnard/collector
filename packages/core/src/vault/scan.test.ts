@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
-import { createVault } from "./operations.js";
+import { createVault } from "./vault-operations.js";
 import { resolveOrCreateInboxFolder } from "./inbox-layout.js";
 import { listFolderRelativePaths, listItemRelativePaths } from "./scan.js";
 import { joinSegments } from "./paths.js";

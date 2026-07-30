@@ -15,11 +15,9 @@ import { runMigrations } from "../packages/db/dist/migrate.js";
 import { BetterSqliteMigrator } from "../packages/db/dist/testing/better-sqlite.js";
 import { NodeFileSystemAdapter } from "../packages/core/dist/adapters/node-fs.js";
 import { SqlVaultIndexStore } from "../packages/core/dist/index/sql-index.js";
-import {
-  createVault,
-  upsertItem,
-  syncIndexFromFilesystem,
-} from "../packages/core/dist/vault/operations.js";
+import { createVault } from "../packages/core/dist/vault/vault-operations.js";
+import { upsertItem } from "../packages/core/dist/vault/item-operations.js";
+import { syncIndexFromFilesystem } from "../packages/core/dist/vault/sync-operations.js";
 import { createId } from "../packages/core/dist/util/ids.js";
 
 const ITEM_COUNT = 320;

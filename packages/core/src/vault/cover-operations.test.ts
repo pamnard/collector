@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
-import { createVault, upsertItem } from "../vault/operations.js";
+import { createVault } from "../vault/vault-operations.js";
+import { upsertItem } from "../vault/item-operations.js";
 import {
   applyItemCover,
   clearItemCover,
