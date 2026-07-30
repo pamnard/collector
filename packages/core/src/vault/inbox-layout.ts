@@ -16,13 +16,14 @@ async function listTopLevelFolderNames(
   ctx: VaultContext,
   vaultPath: string,
 ): Promise<string[]> {
-  const entries = await ctx.fs.readDir(vaultPath);
+  const entries = await ctx.fs.readDirEntries(vaultPath);
   const folders: string[] = [];
-  for (const name of entries) {
+  for (const entry of entries) {
+    const { name } = entry;
     if (name.startsWith(".") || isReservedVaultEntry(name)) {
       continue;
     }
-    if (isMarkdownItemFile(name)) {
+    if (!entry.isDirectory) {
       continue;
     }
     folders.push(name);

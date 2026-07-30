@@ -223,6 +223,10 @@ class CountingBatchAdapter implements FileSystemAdapter {
     return this.inner.readDir(path);
   }
 
+  readDirEntries(path: string) {
+    return this.inner.readDirEntries(path);
+  }
+
   stat(path: string): Promise<{ mtimeMs: number | null }> {
     return this.inner.stat(path);
   }

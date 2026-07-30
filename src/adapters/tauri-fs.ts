@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   joinSegments,
   type FileSystemAdapter,
+  type VaultDirEntry,
   type VaultItemMetaRead,
   type VaultItemSourceRefRead,
   type VaultItemStatMeta,
@@ -55,6 +56,14 @@ export class TauriFileSystemAdapter implements FileSystemAdapter {
   async readDir(path: string): Promise<string[]> {
     const entries = await readDir(path);
     return entries.map((entry) => entry.name);
+  }
+
+  async readDirEntries(path: string): Promise<VaultDirEntry[]> {
+    const entries = await readDir(path);
+    return entries.map((entry) => ({
+      name: entry.name,
+      isDirectory: entry.isDirectory,
+    }));
   }
 
   async stat(path: string): Promise<{ mtimeMs: number | null }> {

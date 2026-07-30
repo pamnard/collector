@@ -2,9 +2,9 @@ import type { FileSystemAdapter } from "../adapters/types.js";
 import { isMarkdownItemFile, isReservedVaultEntry, joinSegments } from "./paths.js";
 
 /**
- * Walk the vault tree using only `readDir`. Markdown files are items; any
- * non-reserved, non-dotfile, non-`*.media` entry is treated as a folder and
- * recursed into.
+ * Walk the vault tree. Recurse only into directories. Markdown files are items;
+ * non-reserved loose files are skipped. Reserved entries (incl. `*.media`) are
+ * never folders or items.
  */
 async function walkVault(
   fs: FileSystemAdapter,
@@ -14,18 +14,21 @@ async function walkVault(
   onFolder: (relPath: string) => void,
 ): Promise<void> {
   const absDir = relDir ? joinSegments(vaultRootPath, relDir) : vaultRootPath;
-  const entries = await fs.readDir(absDir);
-  for (const name of entries) {
+  const entries = await fs.readDirEntries(absDir);
+  for (const entry of entries) {
+    const { name } = entry;
     if (name.startsWith(".") || isReservedVaultEntry(name)) {
       continue;
     }
     const rel = relDir ? `${relDir}/${name}` : name;
-    if (isMarkdownItemFile(name)) {
-      onItem(rel);
+    if (entry.isDirectory) {
+      onFolder(rel);
+      await walkVault(fs, vaultRootPath, rel, onItem, onFolder);
       continue;
     }
-    onFolder(rel);
-    await walkVault(fs, vaultRootPath, rel, onItem, onFolder);
+    if (isMarkdownItemFile(name)) {
+      onItem(rel);
+    }
   }
 }
 

@@ -66,11 +66,12 @@ export const VAULT_FILES = {
   legacyFolders: "folders.json",
 } as const;
 
-/** Filenames / top-level names that are never markdown items. */
+/** Filenames / top-level names that are never markdown items or collections. */
 export const RESERVED_VAULT_ENTRIES = new Set<string>([
   VAULT_FILES.meta,
   VAULT_FILES.tags,
   VAULT_FILES.legacyFolders,
   LEGACY_VAULT_DIRS.items,
+  VAULT_DIRS.media,
   ".collector-touch",
 ]);

@@ -99,6 +99,15 @@ function createNodeFileSystemAdapter() {
     async readDir(path: string): Promise<string[]> {
       return readdir(path);
     },
+    async readDirEntries(
+      path: string,
+    ): Promise<Array<{ name: string; isDirectory: boolean }>> {
+      const entries = await readdir(path, { withFileTypes: true });
+      return entries.map((entry) => ({
+        name: entry.name,
+        isDirectory: entry.isDirectory(),
+      }));
+    },
     async stat(path: string): Promise<{ mtimeMs: number | null }> {
       try {
         const stats = await stat(path);
