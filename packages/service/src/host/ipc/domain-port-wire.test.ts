@@ -43,14 +43,16 @@ describe("domain port→wire map (#366)", () => {
     }
   });
 
-  it("every host-wire port method is in DOMAIN_IPC_METHODS", () => {
-    expect(() => assertHostPortWireCoverage()).not.toThrow();
+  it("DOMAIN_IPC_METHODS is derived from HOST_WIRE + watcher extras (#330)", () => {
+    const catalog = new Set(Object.values(DOMAIN_IPC_METHODS));
     for (const method of HOST_WIRE_PORT_METHODS) {
-      expect(
-        Object.values(DOMAIN_IPC_METHODS),
-        method,
-      ).toContain(method);
+      expect(catalog.has(method), method).toBe(true);
     }
+    expect(catalog.has("startVaultFilesystemWatcher")).toBe(true);
+    expect(catalog.has("stopVaultFilesystemWatcher")).toBe(true);
+    expect(catalog.has("isVaultFilesystemWatcherActive")).toBe(true);
+    // No handlers → coverage assert is a no-op (catalog is derived).
+    expect(() => assertHostPortWireCoverage()).not.toThrow();
   });
 
   it("client-orchestrated methods are absent from DOMAIN_IPC_METHODS", () => {

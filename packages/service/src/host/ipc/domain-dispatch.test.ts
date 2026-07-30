@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { isServiceIpcError } from "../errors.js";
-import { DOMAIN_IPC_METHODS as M } from "../domain-methods.js";
-import type { ServiceDomainRuntime } from "../../domain-runtime.js";
-import { buildItemsReadHandlers } from "./items-read.js";
-import { buildItemsWriteHandlers } from "./items-write.js";
+import { isServiceIpcError } from "./errors.js";
+import { DOMAIN_IPC_METHODS as M } from "./domain-methods.js";
+import type { ServiceDomainRuntime } from "../domain-runtime.js";
+import {
+  createDomainIpcDispatcher,
+  createDomainIpcRequestHandler,
+} from "./domain-dispatch.js";
 
 function stubRuntime(overrides: {
   itemsSearch?: Partial<ServiceDomainRuntime["itemsSearch"]>;
@@ -15,17 +17,61 @@ function stubRuntime(overrides: {
   const ensureInitialized = vi.fn(async () => undefined);
   const runtime = {
     ensureInitialized,
+    dataDir: "/tmp/stub",
+    open: vi.fn(async () => undefined),
     itemsSearch: {
       searchItems: vi.fn(async () => []),
       getItemById: vi.fn(async () => null),
       createItem: vi.fn(async (input: unknown) => input),
       updateItem: vi.fn(async (_id: string, input: unknown) => input),
+      fetchDashboardIndexPage: vi.fn(),
+      queryIndex: vi.fn(),
+      listDashboardItemIds: vi.fn(),
+      loadDashboardItems: vi.fn(),
+      getAdjacentItems: vi.fn(),
+      getItemSource: vi.fn(),
+      deleteItem: vi.fn(),
+      updateItemSource: vi.fn(),
       ...overrides.itemsSearch,
     },
     dropImport: {
       importDroppedFiles: vi.fn(async (input: unknown) => input),
       ...overrides.dropImport,
     },
+    tagsFolders: {
+      listTags: vi.fn(async () => []),
+      createTag: vi.fn(),
+      updateTagRecord: vi.fn(),
+      deleteTag: vi.fn(),
+      listFolderTree: vi.fn(async () => []),
+      createFolder: vi.fn(),
+      renameFolder: vi.fn(),
+      deleteFolder: vi.fn(),
+      moveItemToFolderPath: vi.fn(),
+    },
+    mediaCover: {
+      listItemMedia: vi.fn(async () => []),
+      setItemCoverFromMedia: vi.fn(),
+      attachMediaFiles: vi.fn(),
+      replaceItemMedia: vi.fn(),
+      deleteItemMedia: vi.fn(),
+    },
+    vaults: {
+      listVaults: vi.fn(async () => []),
+      getActiveVaultMeta: vi.fn(),
+      switchVault: vi.fn(),
+      setDefaultVault: vi.fn(),
+      ensureActiveVault: vi.fn(),
+    },
+    appSettings: {
+      ensureAppSettings: vi.fn(),
+      updateAppSettings: vi.fn(),
+      getAppConfigDirectory: vi.fn(async () => "/tmp"),
+    },
+    vaultIndexSyncStatus: { get: vi.fn(async () => ({})) },
+    startVaultFilesystemWatcher: vi.fn(),
+    stopVaultFilesystemWatcher: vi.fn(),
+    isVaultFilesystemWatcherActive: vi.fn(() => false),
   } as unknown as ServiceDomainRuntime;
   return { runtime, ensureInitialized };
 }
@@ -42,11 +88,36 @@ async function expectBadRequest(run: () => Promise<unknown>): Promise<void> {
   }
 }
 
-describe("items IPC handlers validation + forward", () => {
+describe("createDomainIpcDispatcher", () => {
+  it("returns undefined for unknown methods", async () => {
+    const dispatch = createDomainIpcDispatcher({});
+    expect(await dispatch("noSuchMethod", { a: 1 })).toBeUndefined();
+  });
+
+  it("forwards params to the registered handler", async () => {
+    const handler = vi.fn(async (params?: unknown) => ({ ok: true, params }));
+    const dispatch = createDomainIpcDispatcher({
+      ping: handler,
+    });
+    await expect(dispatch("ping", { n: 2 })).resolves.toEqual({
+      ok: true,
+      params: { n: 2 },
+    });
+    expect(handler).toHaveBeenCalledWith({ n: 2 });
+  });
+});
+
+describe("createDomainIpcRequestHandler (#330)", () => {
+  it("returns undefined for unknown methods", async () => {
+    const { runtime } = stubRuntime({});
+    const dispatch = createDomainIpcRequestHandler(runtime);
+    expect(await dispatch("noSuchMethod", { a: 1 })).toBeUndefined();
+  });
+
   it("rejects bad searchItems params before ensureInitialized", async () => {
     const { runtime, ensureInitialized } = stubRuntime({});
-    const handlers = buildItemsReadHandlers(runtime);
-    await expectBadRequest(() => handlers[M.searchItems]!({}));
+    const dispatch = createDomainIpcRequestHandler(runtime);
+    await expectBadRequest(() => dispatch(M.searchItems, {}));
     expect(ensureInitialized).not.toHaveBeenCalled();
   });
 
@@ -56,26 +127,26 @@ describe("items IPC handlers validation + forward", () => {
     const { runtime, ensureInitialized } = stubRuntime({
       itemsSearch: { searchItems, getItemById },
     });
-    const handlers = buildItemsReadHandlers(runtime);
+    const dispatch = createDomainIpcRequestHandler(runtime);
 
     await expect(
-      handlers[M.searchItems]!({ query: "hello", filter: "all" }),
+      dispatch(M.searchItems, { query: "hello", filter: "all" }),
     ).resolves.toEqual([{ id: "a.md" }]);
     expect(searchItems).toHaveBeenCalledWith("hello", "all");
 
-    await expect(
-      handlers[M.getItemById]!({ itemId: "a.md" }),
-    ).resolves.toEqual({ id: "a.md" });
+    await expect(dispatch(M.getItemById, { itemId: "a.md" })).resolves.toEqual({
+      id: "a.md",
+    });
     expect(getItemById).toHaveBeenCalledWith("a.md");
     expect(ensureInitialized).toHaveBeenCalledTimes(2);
   });
 
   it("rejects bad createItem / updateItem before ensureInitialized", async () => {
     const { runtime, ensureInitialized } = stubRuntime({});
-    const handlers = buildItemsWriteHandlers(runtime);
+    const dispatch = createDomainIpcRequestHandler(runtime);
 
-    await expectBadRequest(() => handlers[M.createItem]!({ title: "x" }));
-    await expectBadRequest(() => handlers[M.updateItem]!({ itemId: "a.md" }));
+    await expectBadRequest(() => dispatch(M.createItem, { title: "x" }));
+    await expectBadRequest(() => dispatch(M.updateItem, { itemId: "a.md" }));
     expect(ensureInitialized).not.toHaveBeenCalled();
   });
 
@@ -88,10 +159,10 @@ describe("items IPC handlers validation + forward", () => {
     const { runtime, ensureInitialized } = stubRuntime({
       itemsSearch: { createItem, updateItem },
     });
-    const handlers = buildItemsWriteHandlers(runtime);
+    const dispatch = createDomainIpcRequestHandler(runtime);
 
     await expect(
-      handlers[M.createItem]!({
+      dispatch(M.createItem, {
         title: "Note",
         content_type: "note",
         content: "hi",
@@ -106,7 +177,7 @@ describe("items IPC handlers validation + forward", () => {
     );
 
     await expect(
-      handlers[M.updateItem]!({
+      dispatch(M.updateItem, {
         itemId: "n.md",
         input: { title: "Renamed" },
       }),
@@ -120,11 +191,11 @@ describe("items IPC handlers validation + forward", () => {
     const { runtime, ensureInitialized } = stubRuntime({
       dropImport: { importDroppedFiles },
     });
-    const handlers = buildItemsWriteHandlers(runtime);
+    const dispatch = createDomainIpcRequestHandler(runtime);
     const dataBase64 = Buffer.from("hello").toString("base64");
 
     await expect(
-      handlers[M.importDroppedFiles]!({
+      dispatch(M.importDroppedFiles, {
         folder_path: "Inbox",
         files: [
           {

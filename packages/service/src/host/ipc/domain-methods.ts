@@ -1,64 +1,35 @@
 /**
- * Domain IPC method names (#155+). Transport ping/health stay separate.
+ * Domain IPC method names (#155+ / #330). Transport ping/health stay separate.
+ *
+ * Catalog is derived from host-wire port keys + watcher extras — not a hand
+ * list. Handlers live in {@link createDomainIpcRequestHandler}.
  */
 
-export const DOMAIN_IPC_METHODS = {
-  // #162 index boot
-  openCollectorDatabase: "openCollectorDatabase",
-  ensureCollectorDatabaseHealthy: "ensureCollectorDatabaseHealthy",
-  // #155 reads
-  searchItems: "searchItems",
-  fetchDashboardIndexPage: "fetchDashboardIndexPage",
-  queryIndex: "queryIndex",
-  listDashboardItemIds: "listDashboardItemIds",
-  loadDashboardItems: "loadDashboardItems",
-  getItemById: "getItemById",
-  getAdjacentItems: "getAdjacentItems",
-  getItemSource: "getItemSource",
-  // #156 writes
-  createItem: "createItem",
-  updateItem: "updateItem",
-  deleteItem: "deleteItem",
-  updateItemSource: "updateItemSource",
-  importDroppedFiles: "importDroppedFiles",
-  // #157 tags
-  listTags: "listTags",
-  createTag: "createTag",
-  updateTagRecord: "updateTagRecord",
-  deleteTag: "deleteTag",
-  // #158 folders
-  listFolderTree: "listFolderTree",
-  createFolder: "createFolder",
-  renameFolder: "renameFolder",
-  deleteFolder: "deleteFolder",
-  moveItemToFolderPath: "moveItemToFolderPath",
-  // #159 media (thumbnail abs paths are UiSession / client-orchestrated — #368)
-  listItemMedia: "listItemMedia",
-  setItemCoverFromMedia: "setItemCoverFromMedia",
-  attachMediaFiles: "attachMediaFiles",
-  replaceItemMedia: "replaceItemMedia",
-  deleteItemMedia: "deleteItemMedia",
-  // #160 vaults
-  listVaults: "listVaults",
-  getActiveVaultMeta: "getActiveVaultMeta",
-  switchVault: "switchVault",
-  setDefaultVault: "setDefaultVault",
-  ensureActiveVault: "ensureActiveVault",
-  getDataDirectory: "getDataDirectory",
-  // #161 settings (dashboard snapshot is UiSession / client-orchestrated — #368)
-  ensureAppSettings: "ensureAppSettings",
-  updateAppSettings: "updateAppSettings",
-  getAppConfigDirectory: "getAppConfigDirectory",
-  // #163 sync status
-  getVaultIndexSyncStatus: "getVaultIndexSyncStatus",
-  // #164 watcher
-  startVaultFilesystemWatcher: "startVaultFilesystemWatcher",
-  stopVaultFilesystemWatcher: "stopVaultFilesystemWatcher",
-  isVaultFilesystemWatcherActive: "isVaultFilesystemWatcherActive",
-} as const;
+import {
+  HOST_WIRE_PORT_METHODS,
+  type HostWirePortMethod,
+} from "./domain-port-wire.js";
 
-export type DomainIpcMethod =
-  (typeof DOMAIN_IPC_METHODS)[keyof typeof DOMAIN_IPC_METHODS];
+/** Watcher RPC is host IPC but not part of `@collector/api` port keys (#164). */
+export const WATCHER_IPC_METHODS = [
+  "startVaultFilesystemWatcher",
+  "stopVaultFilesystemWatcher",
+  "isVaultFilesystemWatcherActive",
+] as const;
+
+export type WatcherIpcMethod = (typeof WATCHER_IPC_METHODS)[number];
+
+export type DomainIpcMethod = HostWirePortMethod | WatcherIpcMethod;
+
+const DOMAIN_IPC_METHOD_LIST: readonly DomainIpcMethod[] = [
+  ...HOST_WIRE_PORT_METHODS,
+  ...WATCHER_IPC_METHODS,
+];
+
+/** Identity map for wire method string literals (stable keys for call sites). */
+export const DOMAIN_IPC_METHODS = Object.fromEntries(
+  DOMAIN_IPC_METHOD_LIST.map((method) => [method, method]),
+) as { [K in DomainIpcMethod]: K };
 
 export type ServiceIpcCoreMethod = "ping" | "health";
 export type ServiceIpcMethod = ServiceIpcCoreMethod | DomainIpcMethod | string;
