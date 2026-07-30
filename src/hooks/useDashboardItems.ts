@@ -6,9 +6,17 @@ import {
   useRef,
   useState,
 } from "react";
-import type { DashboardSnapshot, ItemFile } from "@collector/shared";
+import type { ItemFile } from "@collector/shared";
 import type { DashboardItemSort } from "@collector/api";
 import { useAppSettings } from "../context/AppSettingsContext";
+import {
+  itemsBodiesEqual,
+  mergeCommittedThumbnailPaths,
+  orderedIds,
+  shouldSkipEmptyCommit,
+  snapshotToCacheEntry,
+  thumbnailPathsEqual,
+} from "../lib/dashboard-commit";
 import {
   collectHydratedItems,
   createThrottledPublisher,
@@ -19,6 +27,11 @@ import {
   orderDashboardItems,
   shouldApplyDashboardStreamBatch,
 } from "../lib/dashboard-display";
+import {
+  nextStreamWindow,
+  planApplyOffsetZeroPage,
+  planLoadMore,
+} from "../lib/dashboard-query-window";
 import { resolveDashboardCoverPaths } from "../lib/preload-dashboard-covers";
 import { navFilterKey, type NavFilter } from "../types/ui";
 import {
@@ -57,19 +70,6 @@ interface UseDashboardItemsResult {
   loadMore: () => void;
 }
 
-function snapshotToCacheEntry(
-  snap: DashboardSnapshot,
-): DashboardQueryCacheEntry {
-  return {
-    itemIds: [...snap.item_ids],
-    itemsById: new Map(snap.items.map((item) => [item.id, item])),
-    streamEndOffset: snap.stream_end_offset,
-    totalCount: snap.total_count,
-    thumbnailPaths: new Map(),
-    updatedAt: Date.now(),
-  };
-}
-
 function readInitialCacheEntry(
   filter: NavFilter,
   searchQuery: string,
@@ -102,42 +102,6 @@ function readInitialCacheEntry(
   const entry = snapshotToCacheEntry(warm);
   setDashboardQueryCache(key, entry);
   return getDashboardQueryCache(key);
-}
-
-function orderedIds(items: ItemFile[]): string[] {
-  return items.map((item) => item.id);
-}
-
-function thumbnailPathsEqual(
-  left: Map<string, string | null>,
-  right: Map<string, string | null>,
-  ids: string[],
-): boolean {
-  for (const id of ids) {
-    if ((left.get(id) ?? null) !== (right.get(id) ?? null)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function itemsBodiesEqual(left: ItemFile[], right: ItemFile[]): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-  for (let i = 0; i < left.length; i++) {
-    const a = left[i]!;
-    const b = right[i]!;
-    if (
-      a.id !== b.id ||
-      a.updated_at !== b.updated_at ||
-      a.title !== b.title ||
-      a.thumbnail !== b.thumbnail
-    ) {
-      return false;
-    }
-  }
-  return true;
 }
 
 export function useDashboardItems(
@@ -301,8 +265,9 @@ export function useDashboardItems(
       const ordered = orderDashboardItems(ids, byId, end);
       const prevItems = committedItemsRef.current;
       const nextTotal = totalCountRef.current;
-      // Aborted/incomplete stream must not blank a held previous paint.
-      if (ordered.length === 0 && prevItems.length > 0 && nextTotal > 0) {
+      if (
+        shouldSkipEmptyCommit(ordered.length, prevItems.length, nextTotal)
+      ) {
         return;
       }
 
@@ -313,25 +278,20 @@ export function useDashboardItems(
 
       const prevPaths = committedThumbnailPathsRef.current;
       const prevTotal = committedTotalCountRef.current;
-      const idsMatch = itemIdsEqual(orderedIds(prevItems), orderedIds(ordered));
+      const nextOrderedIds = orderedIds(ordered);
+      const idsMatch = itemIdsEqual(orderedIds(prevItems), nextOrderedIds);
       const unchanged =
         idsMatch &&
         prevTotal === nextTotal &&
         itemsBodiesEqual(prevItems, ordered) &&
-        thumbnailPathsEqual(prevPaths, paths, orderedIds(ordered));
+        thumbnailPathsEqual(prevPaths, paths, nextOrderedIds);
 
       if (!unchanged) {
-        const mergedPaths = new Map(prevPaths);
-        for (const id of orderedIds(ordered)) {
-          if (paths.has(id)) {
-            mergedPaths.set(id, paths.get(id) ?? null);
-          }
-        }
-        for (const id of [...mergedPaths.keys()]) {
-          if (!ordered.some((item) => item.id === id)) {
-            mergedPaths.delete(id);
-          }
-        }
+        const mergedPaths = mergeCommittedThumbnailPaths(
+          prevPaths,
+          paths,
+          nextOrderedIds,
+        );
         setCommittedThumbnailPaths(mergedPaths);
         setCommittedItems(ordered);
         setCommittedTotalCount(nextTotal);
@@ -426,33 +386,27 @@ export function useDashboardItems(
         return;
       }
 
-      if (!page.itemIds.length) {
+      const plan = planApplyOffsetZeroPage({
+        pageItemIds: page.itemIds,
+        previousIds: itemIdsRef.current,
+        previousStreamEnd: streamEndOffsetRef.current,
+        prefetchSize: DASHBOARD_PREFETCH_SIZE,
+        itemsByIdHas: (id) => itemsByIdRef.current.has(id),
+      });
+
+      if (plan.kind === "empty") {
         setLoadedItemIds([]);
         setStreamWindowEnd(0);
         return;
       }
 
-      const preservedEnd =
-        streamEndOffsetRef.current > 0
-          ? Math.min(streamEndOffsetRef.current, page.itemIds.length)
-          : Math.min(DASHBOARD_PREFETCH_SIZE, page.itemIds.length);
-
-      const previousIds = itemIdsRef.current;
-      const sameIds = itemIdsEqual(previousIds, page.itemIds);
-
-      if (!sameIds) {
-        setLoadedItemIds(page.itemIds);
-        const kept = new Map<string, ItemFile>();
-        for (const id of page.itemIds) {
-          const existing = itemsByIdRef.current.get(id);
-          if (existing) {
-            kept.set(id, existing);
-          }
-        }
-        itemsByIdRef.current = kept;
-        setItemsById(kept);
-        setStreamWindowEnd(preservedEnd);
-        await streamSlice(page.itemIds, 0, preservedEnd, requestVersion);
+      const streamWindow = async () => {
+        await streamSlice(
+          page.itemIds,
+          0,
+          plan.preservedEnd,
+          requestVersion,
+        );
         if (
           !isDashboardPrefetchWindowReady(
             itemIdsRef.current,
@@ -461,26 +415,34 @@ export function useDashboardItems(
           )
         ) {
           // First stream often races with effect abort on query switch — retry once.
-          await streamSlice(page.itemIds, 0, preservedEnd, requestVersion);
+          await streamSlice(
+            page.itemIds,
+            0,
+            plan.preservedEnd,
+            requestVersion,
+          );
         }
+      };
+
+      if (plan.kind === "ids-changed") {
+        setLoadedItemIds(page.itemIds);
+        const kept = new Map<string, ItemFile>();
+        for (const id of plan.idsToKeepBodies) {
+          const existing = itemsByIdRef.current.get(id);
+          if (existing) {
+            kept.set(id, existing);
+          }
+        }
+        itemsByIdRef.current = kept;
+        setItemsById(kept);
+        setStreamWindowEnd(plan.preservedEnd);
+        await streamWindow();
         return;
       }
 
-      setStreamWindowEnd(preservedEnd);
-      const needsStream = page.itemIds
-        .slice(0, preservedEnd)
-        .some((id) => !itemsByIdRef.current.has(id));
-      if (needsStream) {
-        await streamSlice(page.itemIds, 0, preservedEnd, requestVersion);
-        if (
-          !isDashboardPrefetchWindowReady(
-            itemIdsRef.current,
-            itemsByIdRef.current,
-            streamEndOffsetRef.current,
-          )
-        ) {
-          await streamSlice(page.itemIds, 0, preservedEnd, requestVersion);
-        }
+      setStreamWindowEnd(plan.preservedEnd);
+      if (plan.needsStream) {
+        await streamWindow();
       }
     },
     [setLoadedItemIds, setStreamWindowEnd, streamSlice],
@@ -793,25 +755,28 @@ export function useDashboardItems(
   ]);
 
   const loadMore = useCallback(() => {
-    if (isLoading || isLoadingMore) {
+    const plan = planLoadMore({
+      isLoading,
+      isLoadingMore,
+      streamEndOffset,
+      loadedCount: itemIds.length,
+      totalCount,
+      prefetchSize: DASHBOARD_PREFETCH_SIZE,
+    });
+    if (plan.kind === "noop") {
       return;
     }
 
     const requestVersion = requestVersionRef.current;
     const loadedCount = itemIds.length;
-    const needsMoreIds = streamEndOffset + DASHBOARD_PREFETCH_SIZE > loadedCount;
-    const hasUnloadedIds = loadedCount < totalCount;
-
-    if (streamEndOffset >= loadedCount && !hasUnloadedIds) {
-      return;
-    }
-
     setIsLoadingMore(true);
 
     const streamNextWindow = (ids: string[]) => {
-      const offset = streamEndOffsetRef.current;
-      const limit = Math.min(DASHBOARD_PREFETCH_SIZE, ids.length - offset);
-      const nextEnd = offset + limit;
+      const { offset, limit, nextEnd } = nextStreamWindow(
+        streamEndOffsetRef.current,
+        ids.length,
+        DASHBOARD_PREFETCH_SIZE,
+      );
       setStreamWindowEnd(nextEnd);
 
       void streamSlice(ids, offset, limit, requestVersion)
@@ -829,7 +794,7 @@ export function useDashboardItems(
         });
     };
 
-    if (needsMoreIds && hasUnloadedIds) {
+    if (plan.kind === "fetch-ids-then-stream") {
       void getCollectorService().items
         .queryIndex(
           filter,
