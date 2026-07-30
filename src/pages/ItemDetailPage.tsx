@@ -12,14 +12,13 @@ import { ItemDetailSourceEditor } from "../components/items/ItemDetailSourceEdit
 import { MediaGallery } from "../components/media/MediaGallery";
 import { MediaPlayerOverlay } from "../components/media/MediaPlayerOverlay";
 import { useShell } from "../components/layout/AppLayout";
-import { usePanelHeader } from "../components/layout/panel-header-context";
+import { useItemChrome } from "../components/layout/item-chrome";
+import type { ItemDetailMode } from "../components/layout/item-chrome";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { useMediaPlayerOverlay } from "../hooks/useMediaPlayerOverlay";
 import type { ItemFormValues } from "../types/item";
 import { getCollectorService } from "../services/collector-client";
 import type { PlayableMediaKind } from "../utils/local-media-playback";
-
-type ItemDetailMode = "view" | "form" | "source";
 
 function toFormValues(
   item: ItemFile,
@@ -68,7 +67,7 @@ export function ItemDetailPage() {
   const id = params["*"];
   const navigate = useNavigate();
   const { refreshVault } = useShell();
-  const { setItemHeader, setItemActions, setItemAdjacent } = usePanelHeader();
+  const { publish, clear } = useItemChrome();
   const [item, setItem] = useState<ItemFile | null>(null);
   const [content, setContent] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<ItemFormValues | null>(null);
@@ -153,31 +152,10 @@ export function ItemDetailPage() {
   };
 
   useEffect(() => {
-    setItemHeader({ status: "loading" });
     return () => {
-      setItemHeader(null);
-      setItemActions(null);
-      setItemAdjacent(null);
+      clear();
     };
-  }, [setItemHeader, setItemActions, setItemAdjacent]);
-
-  useEffect(() => {
-    if (item) {
-      setItemHeader({
-        status: "ready",
-        folderPath: item.folder_path,
-        title: item.title,
-      });
-      return;
-    }
-    if (error) {
-      setItemHeader({
-        status: "ready",
-        folderPath: "",
-        title: "",
-      });
-    }
-  }, [item, error, setItemHeader]);
+  }, [clear]);
 
   useEffect(() => {
     if (!id) {
@@ -186,38 +164,12 @@ export function ItemDetailPage() {
     }
 
     setItem(null);
-    setItemAdjacent(null);
     setError(null);
-    setItemHeader({ status: "loading" });
 
     reloadItem(id).catch((err: unknown) => {
       setError(err instanceof Error ? err.message : String(err));
     });
-  }, [id, setItemHeader, setItemAdjacent]);
-
-  useEffect(() => {
-    if (!id || mode !== "view") {
-      setItemAdjacent(null);
-      return;
-    }
-    let cancelled = false;
-    setItemAdjacent(null);
-    void getCollectorService().items
-      .getAdjacentItems(id)
-      .then((result) => {
-        if (!cancelled) {
-          setItemAdjacent(result);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setItemAdjacent(null);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [id, mode, setItemAdjacent]);
+  }, [id]);
 
   const handleSave = async (): Promise<boolean> => {
     if (!id || !formValues) {
@@ -437,12 +389,20 @@ export function ItemDetailPage() {
   };
 
   useEffect(() => {
-    setItemActions({
+    const status = item ? "ready" : error ? "error" : "loading";
+    publish({
+      status,
+      item: item
+        ? {
+            id: item.id,
+            title: item.title,
+            folder_path: item.folder_path,
+          }
+        : null,
       mode,
       idCopyFeedback,
       isSaving,
       isDeleting,
-      ready: item !== null,
       onCopyId: () => {
         void handleCopyItemId();
       },
@@ -454,12 +414,13 @@ export function ItemDetailPage() {
       },
     });
   }, [
+    item,
+    error,
     mode,
     idCopyFeedback,
     isSaving,
     isDeleting,
-    item,
-    setItemActions,
+    publish,
   ]);
 
   return (

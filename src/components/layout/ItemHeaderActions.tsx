@@ -3,8 +3,9 @@ import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { ButtonGroup } from "../ui/button-group";
 import { headerChromeBtn, headerChromeBtnActive } from "./header-chrome";
+import type { ItemDetailMode } from "./item-chrome/types";
 
-export type ItemDetailMode = "view" | "form" | "source";
+export type { ItemDetailMode };
 
 export interface ItemHeaderActionsModel {
   mode: ItemDetailMode;

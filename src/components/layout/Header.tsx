@@ -8,7 +8,7 @@ import { headerChromeBtn, headerChromeBtnActive } from "./header-chrome";
 import { ItemHeaderActions } from "./ItemHeaderActions";
 import { ItemHeaderBreadcrumbs } from "./ItemHeaderBreadcrumbs";
 import { SettingsHeaderBreadcrumbs } from "./SettingsHeaderBreadcrumbs";
-import { usePanelHeader } from "./panel-header-context";
+import { useItemChromeHeader } from "./item-chrome";
 
 interface HeaderProps {
   variant: "list" | "item" | "settings";
@@ -33,7 +33,8 @@ export function Header({
   onFolderSelect,
   settingsSection = "general",
 }: HeaderProps) {
-  const { itemHeader, itemActions } = usePanelHeader();
+  const { breadcrumbs: itemHeader, actions: itemActions } =
+    useItemChromeHeader();
   const collapseLabel = sidebarCollapsed
     ? "Развернуть сайдбар"
     : "Свернуть сайдбар";
