@@ -1,101 +1,63 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import type { ItemFile } from "@collector/shared";
+import { useCallback, useState } from "react";
 import type { MediaWithPath } from "@collector/core";
 import { Alert } from "../components/alerts/Alert";
 import { AlertStack } from "../components/alerts/AlertStack";
-import { MarkdownContent } from "../components/content/MarkdownContent";
-import { ItemDetailHero } from "../components/items/ItemDetailHero";
+import { ItemDetailAside } from "../components/items/ItemDetailAside";
 import { ItemDetailInlineEditor } from "../components/items/ItemDetailInlineEditor";
-import { ItemDetailMetadata } from "../components/items/ItemDetailMetadata";
 import { ItemDetailSourceEditor } from "../components/items/ItemDetailSourceEditor";
-import { MediaGallery } from "../components/media/MediaGallery";
+import { ItemDetailViewBody } from "../components/items/ItemDetailViewBody";
 import { MediaPlayerOverlay } from "../components/media/MediaPlayerOverlay";
-import { useShell } from "../components/layout/AppLayout";
-import { useItemChrome } from "../components/layout/item-chrome";
-import type { ItemDetailMode } from "../components/layout/item-chrome";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
+import { useItemDetail } from "../hooks/useItemDetail";
+import { useItemDetailChrome } from "../hooks/useItemDetailChrome";
 import { useMediaPlayerOverlay } from "../hooks/useMediaPlayerOverlay";
-import type { ItemFormValues } from "../types/item";
-import { getCollectorService } from "../services/collector-client";
 import type { PlayableMediaKind } from "../utils/local-media-playback";
 
-function toFormValues(
-  item: ItemFile,
-  content: string | null,
-  tagNames: string[],
-): ItemFormValues {
-  return {
-    title: item.title,
-    description: item.description,
-    url: item.url ?? "",
-    content_type: item.content_type,
-    content: content ?? "",
-    tags: tagNames,
-    folder_path: item.folder_path,
-  };
-}
-
-function sameTagNames(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-  const sortedA = [...a].map((name) => name.trim().toLowerCase()).sort();
-  const sortedB = [...b].map((name) => name.trim().toLowerCase()).sort();
-  return sortedA.every((name, index) => name === sortedB[index]);
-}
-
-function isFormDirty(
-  form: ItemFormValues,
-  item: ItemFile,
-  content: string | null,
-  itemTagNames: string[],
-): boolean {
-  return (
-    form.title.trim() !== item.title ||
-    form.description.trim() !== item.description ||
-    (form.url.trim() || null) !== (item.url ?? null) ||
-    form.content_type !== item.content_type ||
-    form.content.trim() !== (content ?? "").trim() ||
-    form.folder_path !== item.folder_path ||
-    !sameTagNames(form.tags, itemTagNames)
-  );
-}
-
 export function ItemDetailPage() {
-  const params = useParams();
-  const id = params["*"];
-  const navigate = useNavigate();
-  const { refreshVault } = useShell();
-  const { publish, clear } = useItemChrome();
-  const [item, setItem] = useState<ItemFile | null>(null);
-  const [content, setContent] = useState<string | null>(null);
-  const [formValues, setFormValues] = useState<ItemFormValues | null>(null);
-  const [itemTagNames, setItemTagNames] = useState<string[]>([]);
-  const [sourceText, setSourceText] = useState<string | null>(null);
-  const [sourceBaseline, setSourceBaseline] = useState<string | null>(null);
-  const [mode, setMode] = useState<ItemDetailMode>("view");
-  const [isSaving, setIsSaving] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [idCopyFeedback, setIdCopyFeedback] = useState<
-    "copied" | "failed" | null
-  >(null);
+  const detail = useItemDetail();
+  const {
+    item,
+    content,
+    formValues,
+    setFormValues,
+    sourceText,
+    setSourceText,
+    mode,
+    isFormMode,
+    isSourceMode,
+    isSaving,
+    isDeleting,
+    error,
+    switchToView,
+    switchToForm,
+    switchToSource,
+    handleConfirmDelete,
+    handleItemUpdated,
+  } = detail;
+
+  const {
+    deleteConfirmOpen,
+    setDeleteConfirmOpen,
+    idCopyFeedback,
+    dismissIdCopyFeedback,
+  } = useItemDetailChrome({
+    item,
+    error,
+    mode,
+    isSaving,
+    isDeleting,
+    onView: switchToView,
+    onForm: switchToForm,
+    onSource: switchToSource,
+  });
+
   const [mediaPlayError, setMediaPlayError] = useState<string | null>(null);
-  const idCopyFeedbackTimer = useRef<number | null>(null);
   const {
     session: mediaPlayerSession,
     openItemMedia,
     openMediaRef,
     close: closeMediaPlayer,
   } = useMediaPlayerOverlay();
-  const isFormMode = mode === "form";
-  const isSourceMode = mode === "source";
-  const isSourceDirty =
-    sourceText !== null &&
-    sourceBaseline !== null &&
-    sourceText !== sourceBaseline;
 
   const handlePlayHeroVideo = useCallback(() => {
     if (!item) {
@@ -129,299 +91,13 @@ export function ItemDetailPage() {
     [openMediaRef],
   );
 
-  const resolveTagNames = async (loaded: ItemFile): Promise<string[]> => {
-    if (loaded.tag_ids.length === 0) {
-      return [];
-    }
-    const allTags = await getCollectorService().tags.listTags();
-    const byId = new Map(allTags.map((tag) => [tag.id, tag.name]));
-    return loaded.tag_ids
-      .map((tagId) => byId.get(tagId))
-      .filter((name): name is string => typeof name === "string");
-  };
-
-  const reloadItem = async (itemId: string) => {
-    const { item: loadedItem, content: loadedContent } =
-      await getCollectorService().items.getItemById(itemId);
-    const tagNames = await resolveTagNames(loadedItem);
-    setItem(loadedItem);
-    setContent(loadedContent);
-    setItemTagNames(tagNames);
-    setFormValues(toFormValues(loadedItem, loadedContent, tagNames));
-    return { item: loadedItem, content: loadedContent };
-  };
-
-  useEffect(() => {
-    return () => {
-      clear();
-    };
-  }, [clear]);
-
-  useEffect(() => {
-    if (!id) {
-      setError("Item id is missing");
-      return;
-    }
-
-    setItem(null);
-    setError(null);
-
-    reloadItem(id).catch((err: unknown) => {
-      setError(err instanceof Error ? err.message : String(err));
-    });
-  }, [id]);
-
-  const handleSave = async (): Promise<boolean> => {
-    if (!id || !formValues) {
-      return false;
-    }
-    if (!formValues.title.trim()) {
-      setError("Название обязательно");
-      return false;
-    }
-
-    setIsSaving(true);
-    setError(null);
-
-    try {
-      const updated = await getCollectorService().items.updateItem(id, {
-        title: formValues.title.trim(),
-        description: formValues.description.trim(),
-        url: formValues.url.trim() || null,
-        content_type: formValues.content_type,
-        content: formValues.content.trim() || null,
-        tags: formValues.tags,
-        folder_path: formValues.folder_path,
-      });
-      const updatedContent = formValues.content.trim() || null;
-      const tagNames = await resolveTagNames(updated);
-      setItem(updated);
-      setContent(updatedContent);
-      setItemTagNames(tagNames);
-      setFormValues(toFormValues(updated, updatedContent, tagNames));
-      setMode("view");
-      refreshVault();
-      if (updated.id !== id) {
-        navigate(`/item/${updated.id}`, { replace: true });
-      }
-      return true;
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-      return false;
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleSourceSave = async (): Promise<boolean> => {
-    if (!id || sourceText === null) {
-      return false;
-    }
-
-    setIsSaving(true);
-    setError(null);
-
-    try {
-      const updated = await getCollectorService().items.updateItemSource(id, sourceText);
-      await reloadItem(updated.id);
-      setSourceText(null);
-      setSourceBaseline(null);
-      setMode("view");
-      refreshVault();
-      if (updated.id !== id) {
-        navigate(`/item/${updated.id}`, { replace: true });
-      }
-      return true;
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-      return false;
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!id) {
-      return;
-    }
-
-    setIsDeleting(true);
-    setError(null);
-
-    try {
-      await getCollectorService().items.deleteItem(id);
-      refreshVault();
-      navigate("/");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-      throw err;
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  const clearSource = () => {
-    setSourceText(null);
-    setSourceBaseline(null);
-  };
-
-  const switchToView = () => {
-    if (mode === "view" || isSaving) {
-      return;
-    }
-    if (mode === "source") {
-      if (!isSourceDirty) {
-        clearSource();
-        setMode("view");
-        setError(null);
-        return;
-      }
-      void handleSourceSave();
-      return;
-    }
-    if (!formValues || !item) {
-      setMode("view");
-      return;
-    }
-    if (!isFormDirty(formValues, item, content, itemTagNames)) {
-      setMode("view");
-      setError(null);
-      return;
-    }
-    void handleSave();
-  };
-
-  const switchToForm = () => {
-    if (isSaving) {
-      return;
-    }
-
-    const enter = async () => {
-      if (mode === "source" && isSourceDirty) {
-        const saved = await handleSourceSave();
-        if (!saved) {
-          return;
-        }
-      } else if (mode === "source") {
-        clearSource();
-      }
-      setMode("form");
-      setError(null);
-    };
-
-    void enter();
-  };
-
-  const switchToSource = () => {
-    if (!id || isSaving) {
-      return;
-    }
-
-    const enter = async () => {
-      if (
-        mode === "form" &&
-        formValues &&
-        item &&
-        isFormDirty(formValues, item, content, itemTagNames)
-      ) {
-        const saved = await handleSave();
-        if (!saved) {
-          return;
-        }
-      }
-
-      setIsSaving(true);
-      setError(null);
-      try {
-        const raw = await getCollectorService().items.getItemSource(id);
-        setSourceText(raw);
-        setSourceBaseline(raw);
-        setMode("source");
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setIsSaving(false);
-      }
-    };
-
-    void enter();
-  };
-
-  const handleItemUpdated = () => {
-    if (!item) {
-      return;
-    }
-
-    void reloadItem(item.id).finally(() => refreshVault());
-  };
-
-  useEffect(() => {
-    return () => {
-      if (idCopyFeedbackTimer.current !== null) {
-        window.clearTimeout(idCopyFeedbackTimer.current);
-      }
-    };
-  }, []);
-
-  const showIdCopyFeedback = (next: "copied" | "failed") => {
-    if (idCopyFeedbackTimer.current !== null) {
-      window.clearTimeout(idCopyFeedbackTimer.current);
-    }
-    setIdCopyFeedback(next);
-    idCopyFeedbackTimer.current = window.setTimeout(() => {
-      setIdCopyFeedback(null);
-      idCopyFeedbackTimer.current = null;
-    }, 2000);
-  };
-
-  const handleCopyItemId = async () => {
-    if (!item) {
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(item.id);
-      showIdCopyFeedback("copied");
-    } catch (err: unknown) {
-      console.error("Item id copy failed", { error: err, itemId: item.id });
-      showIdCopyFeedback("failed");
-    }
-  };
-
-  useEffect(() => {
-    const status = item ? "ready" : error ? "error" : "loading";
-    publish({
-      status,
-      item: item
-        ? {
-            id: item.id,
-            title: item.title,
-            folder_path: item.folder_path,
-          }
-        : null,
-      mode,
-      idCopyFeedback,
-      isSaving,
-      isDeleting,
-      onCopyId: () => {
-        void handleCopyItemId();
-      },
-      onView: switchToView,
-      onForm: switchToForm,
-      onSource: switchToSource,
-      onDelete: () => {
-        setDeleteConfirmOpen(true);
-      },
-    });
-  }, [
-    item,
-    error,
-    mode,
-    idCopyFeedback,
-    isSaving,
-    isDeleting,
-    publish,
-  ]);
+  const aside = item ? (
+    <ItemDetailAside
+      item={item}
+      onUpdated={handleItemUpdated}
+      onPlayMedia={handlePlayGalleryMedia}
+    />
+  ) : null;
 
   return (
     <div className="@container w-full pb-4 md:pb-8">
@@ -438,13 +114,7 @@ export function ItemDetailPage() {
         <AlertStack>
           <Alert
             tone={idCopyFeedback === "failed" ? "danger" : "info"}
-            onDismiss={() => {
-              if (idCopyFeedbackTimer.current !== null) {
-                window.clearTimeout(idCopyFeedbackTimer.current);
-                idCopyFeedbackTimer.current = null;
-              }
-              setIdCopyFeedback(null);
-            }}
+            onDismiss={dismissIdCopyFeedback}
           >
             {idCopyFeedback === "failed"
               ? "Не удалось скопировать id"
@@ -461,62 +131,38 @@ export function ItemDetailPage() {
 
       {item && (
         <article className="grid grid-cols-1 gap-6 @[1100px]:grid-cols-12 @[1100px]:items-start @[1100px]:gap-8">
-          {mode === "view" && (
-            <ItemDetailHero
+          {mode === "view" ? (
+            <ItemDetailViewBody
               item={item}
+              content={content}
+              aside={aside}
               onPlayLocalVideo={handlePlayHeroVideo}
               playError={mediaPlayError}
             />
-          )}
-
-          <aside className="min-w-0 @[1100px]:col-span-3 @[1100px]:col-start-10 @[1100px]:row-span-6 @[1100px]:row-start-1">
-            <div className="mx-auto w-full max-w-[900px] @[1100px]:max-w-none @[1100px]:sticky @[1100px]:top-4">
-              <ItemDetailMetadata item={item} />
-              <MediaGallery
-                itemId={item.id}
-                item={item}
-                onUpdated={handleItemUpdated}
-                onPlayMedia={handlePlayGalleryMedia}
-              />
-            </div>
-          </aside>
-
-          {isFormMode && formValues ? (
-            <div className="min-w-0 @[1100px]:col-span-9">
-              <div className="mx-auto w-full max-w-[900px]">
-                <ItemDetailInlineEditor
-                  values={formValues}
-                  onChange={setFormValues}
-                />
-              </div>
-            </div>
-          ) : isSourceMode && sourceText !== null ? (
-            <div className="min-w-0 @[1100px]:col-span-9">
-              <div className="mx-auto w-full max-w-[900px]">
-                <ItemDetailSourceEditor
-                  value={sourceText}
-                  onChange={setSourceText}
-                />
-              </div>
-            </div>
           ) : (
             <>
-              <header className="min-w-0 @[1100px]:col-span-9">
-                <div className="mx-auto w-full max-w-[900px]">
-                  <h1 className="text-2xl font-semibold">{item.title}</h1>
-                </div>
-              </header>
-
-              {content && (
-                <section className="min-w-0 @[1100px]:col-span-9">
+              {aside}
+              {isFormMode && formValues ? (
+                <div className="min-w-0 @[1100px]:col-span-9">
                   <div className="mx-auto w-full max-w-[900px]">
-                    <MarkdownContent content={content} />
+                    <ItemDetailInlineEditor
+                      values={formValues}
+                      onChange={setFormValues}
+                    />
                   </div>
-                </section>
-              )}
+                </div>
+              ) : isSourceMode && sourceText !== null ? (
+                <div className="min-w-0 @[1100px]:col-span-9">
+                  <div className="mx-auto w-full max-w-[900px]">
+                    <ItemDetailSourceEditor
+                      value={sourceText}
+                      onChange={setSourceText}
+                    />
+                  </div>
+                </div>
+              ) : null}
             </>
           )}
-
         </article>
       )}
 
