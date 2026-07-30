@@ -22,6 +22,11 @@ import {
 
 export type VaultEntry = { meta: VaultMeta; path: string };
 
+type ActiveVaultState = {
+  get: () => VaultEntry | null;
+  set: (entry: VaultEntry | null) => void;
+};
+
 /** Vault dirs are UUID folders only — skip backups / stray names under vaults/. */
 const VAULT_DIR_ID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -55,7 +60,8 @@ export interface VaultsService {
   clearActiveVault(): void;
 }
 
-function pickVaultEntry(
+/** Prefer stored id, then is_default, then first entry. */
+export function pickVaultEntry(
   entries: VaultEntry[],
   preferredId: string | null,
 ): VaultEntry | null {
@@ -101,97 +107,182 @@ function defaultWelcomeItem(
   };
 }
 
+async function listVaultEntriesForDeps(
+  deps: VaultsServiceDeps,
+): Promise<VaultEntry[]> {
+  await deps.ensureInitialized();
+  const root = vaultsRoot(deps.getDataDir());
+  const fs = deps.getContext().fs;
+  if (!(await fs.exists(root))) {
+    return [];
+  }
+
+  const entries: VaultEntry[] = [];
+  for (const vaultId of await fs.readDir(root)) {
+    if (!VAULT_DIR_ID_RE.test(vaultId)) {
+      continue;
+    }
+    const path = vaultRoot(root, vaultId);
+    if (await fs.exists(vaultMetaPath(path))) {
+      // Do not assert layout here: orphan/legacy neighbors must not block listing
+      // or opening a healthy active vault. Assert only when selecting a vault.
+      const meta = await readVaultMeta(fs, path);
+      entries.push({ meta, path });
+    }
+  }
+
+  return entries.sort((a, b) => a.meta.name.localeCompare(b.meta.name));
+}
+
+async function tryResolveExistingUnderBootstrap(
+  deps: VaultsServiceDeps,
+  listVaultEntries: () => Promise<VaultEntry[]>,
+  storedVaultId: string | null,
+): Promise<{ meta: VaultMeta; path: string } | null> {
+  const existingAfterLock = await listVaultEntries();
+  const selectedAfterLock = pickVaultEntry(existingAfterLock, storedVaultId);
+  if (!selectedAfterLock) {
+    return null;
+  }
+  await assertVaultTreeLayout(deps.getContext().fs, selectedAfterLock.path);
+  return {
+    meta: selectedAfterLock.meta,
+    path: selectedAfterLock.path,
+  };
+}
+
+async function createDefaultVaultWithWelcome(
+  deps: VaultsServiceDeps,
+): Promise<{ meta: VaultMeta; path: string }> {
+  const ctx = deps.getContext();
+  const created = await createVault(ctx, deps.getDataDir(), {
+    name: "Default Vault",
+    isDefault: true,
+  });
+
+  const inboxFolder = await resolveOrCreateInboxFolder(ctx, created.path);
+  const welcome =
+    deps.createWelcomeItem?.(created.meta.id) ??
+    defaultWelcomeItem(created.meta.id, inboxFolder);
+
+  await upsertItem(ctx, created.path, created.meta.id, welcome);
+
+  await deps.updateAppSettings({ active_vault_id: created.meta.id });
+  return { meta: created.meta, path: created.path };
+}
+
+async function resolveActiveVaultOnce(
+  deps: VaultsServiceDeps,
+  state: ActiveVaultState,
+  listVaultEntries: () => Promise<VaultEntry[]>,
+): Promise<{ vault: VaultMeta; path: string }> {
+  const cached = state.get();
+  if (cached) {
+    return { vault: cached.meta, path: cached.path };
+  }
+
+  const ctx = deps.getContext();
+  const root = vaultsRoot(deps.getDataDir());
+  await ctx.fs.mkdir(root);
+
+  const settings = await deps.ensureAppSettings();
+  const storedVaultId = settings.active_vault_id ?? null;
+  const existing = await listVaultEntries();
+  const selected = pickVaultEntry(existing, storedVaultId);
+
+  let meta: VaultMeta | null = selected?.meta ?? null;
+  let vaultPath = selected?.path ?? "";
+
+  if (!meta) {
+    const bootstrapped = await runEmptyVaultBootstrap(ctx.fs, root, {
+      tryResolveExisting: () =>
+        tryResolveExistingUnderBootstrap(
+          deps,
+          listVaultEntries,
+          storedVaultId,
+        ),
+      create: () => createDefaultVaultWithWelcome(deps),
+    });
+    meta = bootstrapped.meta;
+    vaultPath = bootstrapped.path;
+  } else {
+    await assertVaultTreeLayout(ctx.fs, vaultPath);
+  }
+
+  state.set({ meta, path: vaultPath });
+  return { vault: meta, path: vaultPath };
+}
+
+async function switchVaultForDeps(
+  deps: VaultsServiceDeps,
+  state: ActiveVaultState,
+  listVaultEntries: () => Promise<VaultEntry[]>,
+  vaultId: string,
+): Promise<VaultMeta> {
+  const entries = await listVaultEntries();
+  const selected = entries.find((entry) => entry.meta.id === vaultId);
+  if (!selected) {
+    throw new Error(`Vault not found: ${vaultId}`);
+  }
+
+  await assertVaultTreeLayout(deps.getContext().fs, selected.path);
+
+  state.set(selected);
+  deps.enableVaultWatcher(vaultId);
+  await deps.stopVaultFilesystemWatcher();
+  await deps.clearDashboardSnapshot();
+  await deps.updateAppSettings({ active_vault_id: vaultId });
+  return selected.meta;
+}
+
+async function setDefaultVaultForDeps(
+  deps: VaultsServiceDeps,
+  state: ActiveVaultState,
+  listVaultEntries: () => Promise<VaultEntry[]>,
+  vaultId: string,
+): Promise<void> {
+  const ctx = deps.getContext();
+  const entries = await listVaultEntries();
+  const selected = entries.find((entry) => entry.meta.id === vaultId);
+  if (!selected) {
+    throw new Error(`Vault not found: ${vaultId}`);
+  }
+
+  const timestamp = deps.nowIso?.() ?? new Date().toISOString();
+  const active = state.get();
+  for (const entry of entries) {
+    const isDefault = entry.meta.id === vaultId;
+    if (entry.meta.is_default === isDefault) {
+      continue;
+    }
+
+    const updated: VaultMeta = {
+      ...entry.meta,
+      is_default: isDefault,
+      updated_at: timestamp,
+    };
+    await writeVaultMeta(ctx.fs, entry.path, updated);
+    await ctx.index.upsertVault(updated, entry.path);
+
+    if (active?.meta.id === entry.meta.id) {
+      state.set({ meta: updated, path: entry.path });
+    }
+  }
+}
+
 export function createVaultsService(deps: VaultsServiceDeps): VaultsService {
   let activeVault: VaultEntry | null = null;
-
-  const listVaultEntries = async (): Promise<VaultEntry[]> => {
-    await deps.ensureInitialized();
-    const root = vaultsRoot(deps.getDataDir());
-    const fs = deps.getContext().fs;
-    if (!(await fs.exists(root))) {
-      return [];
-    }
-
-    const entries: VaultEntry[] = [];
-    for (const vaultId of await fs.readDir(root)) {
-      if (!VAULT_DIR_ID_RE.test(vaultId)) {
-        continue;
-      }
-      const path = vaultRoot(root, vaultId);
-      if (await fs.exists(vaultMetaPath(path))) {
-        // Do not assert layout here: orphan/legacy neighbors must not block listing
-        // or opening a healthy active vault. Assert only when selecting a vault.
-        const meta = await readVaultMeta(fs, path);
-        entries.push({ meta, path });
-      }
-    }
-
-    return entries.sort((a, b) => a.meta.name.localeCompare(b.meta.name));
+  const state: ActiveVaultState = {
+    get: () => activeVault,
+    set: (entry) => {
+      activeVault = entry;
+    },
   };
 
-  const resolveActiveVaultShared = createSingleFlight(async () => {
-    if (activeVault) {
-      return { vault: activeVault.meta, path: activeVault.path };
-    }
-
-    const ctx = deps.getContext();
-    const root = vaultsRoot(deps.getDataDir());
-    await ctx.fs.mkdir(root);
-
-    const settings = await deps.ensureAppSettings();
-    const storedVaultId = settings.active_vault_id ?? null;
-    const existing = await listVaultEntries();
-    const selected = pickVaultEntry(existing, storedVaultId);
-
-    let meta: VaultMeta | null = selected?.meta ?? null;
-    let vaultPath = selected?.path ?? "";
-
-    if (!meta) {
-      const bootstrapped = await runEmptyVaultBootstrap(ctx.fs, root, {
-        tryResolveExisting: async () => {
-          const existingAfterLock = await listVaultEntries();
-          const selectedAfterLock = pickVaultEntry(
-            existingAfterLock,
-            storedVaultId,
-          );
-          if (!selectedAfterLock) {
-            return null;
-          }
-          await assertVaultTreeLayout(ctx.fs, selectedAfterLock.path);
-          return {
-            meta: selectedAfterLock.meta,
-            path: selectedAfterLock.path,
-          };
-        },
-        create: async () => {
-          const created = await createVault(ctx, deps.getDataDir(), {
-            name: "Default Vault",
-            isDefault: true,
-          });
-
-          const inboxFolder = await resolveOrCreateInboxFolder(
-            ctx,
-            created.path,
-          );
-          const welcome =
-            deps.createWelcomeItem?.(created.meta.id) ??
-            defaultWelcomeItem(created.meta.id, inboxFolder);
-
-          await upsertItem(ctx, created.path, created.meta.id, welcome);
-
-          await deps.updateAppSettings({ active_vault_id: created.meta.id });
-          return { meta: created.meta, path: created.path };
-        },
-      });
-      meta = bootstrapped.meta;
-      vaultPath = bootstrapped.path;
-    } else {
-      await assertVaultTreeLayout(ctx.fs, vaultPath);
-    }
-
-    activeVault = { meta, path: vaultPath };
-    return { vault: meta, path: vaultPath };
-  });
+  const listVaultEntries = () => listVaultEntriesForDeps(deps);
+  const resolveActiveVaultShared = createSingleFlight(() =>
+    resolveActiveVaultOnce(deps, state, listVaultEntries),
+  );
 
   const resolveActiveVault = async (): Promise<{
     vault: VaultMeta;
@@ -199,8 +290,9 @@ export function createVaultsService(deps: VaultsServiceDeps): VaultsService {
   }> => {
     await deps.ensureInitialized();
 
-    if (activeVault) {
-      return { vault: activeVault.meta, path: activeVault.path };
+    const cached = state.get();
+    if (cached) {
+      return { vault: cached.meta, path: cached.path };
     }
 
     return resolveActiveVaultShared();
@@ -216,57 +308,17 @@ export function createVaultsService(deps: VaultsServiceDeps): VaultsService {
       const { vault } = await resolveActiveVault();
       return vault;
     },
-    async switchVault(vaultId) {
-      const entries = await listVaultEntries();
-      const selected = entries.find((entry) => entry.meta.id === vaultId);
-      if (!selected) {
-        throw new Error(`Vault not found: ${vaultId}`);
-      }
-
-      await assertVaultTreeLayout(deps.getContext().fs, selected.path);
-
-      activeVault = selected;
-      deps.enableVaultWatcher(vaultId);
-      await deps.stopVaultFilesystemWatcher();
-      await deps.clearDashboardSnapshot();
-      await deps.updateAppSettings({ active_vault_id: vaultId });
-      return selected.meta;
-    },
-    async setDefaultVault(vaultId) {
-      const ctx = deps.getContext();
-      const entries = await listVaultEntries();
-      const selected = entries.find((entry) => entry.meta.id === vaultId);
-      if (!selected) {
-        throw new Error(`Vault not found: ${vaultId}`);
-      }
-
-      const timestamp = deps.nowIso?.() ?? new Date().toISOString();
-      for (const entry of entries) {
-        const isDefault = entry.meta.id === vaultId;
-        if (entry.meta.is_default === isDefault) {
-          continue;
-        }
-
-        const updated: VaultMeta = {
-          ...entry.meta,
-          is_default: isDefault,
-          updated_at: timestamp,
-        };
-        await writeVaultMeta(ctx.fs, entry.path, updated);
-        await ctx.index.upsertVault(updated, entry.path);
-
-        if (activeVault?.meta.id === entry.meta.id) {
-          activeVault = { meta: updated, path: entry.path };
-        }
-      }
-    },
+    switchVault: (vaultId) =>
+      switchVaultForDeps(deps, state, listVaultEntries, vaultId),
+    setDefaultVault: (vaultId) =>
+      setDefaultVaultForDeps(deps, state, listVaultEntries, vaultId),
     resolveActiveVault,
     ensureActiveVault: resolveActiveVault,
     getActiveVaultEntry() {
-      return activeVault;
+      return state.get();
     },
     clearActiveVault() {
-      activeVault = null;
+      state.set(null);
     },
   };
 }

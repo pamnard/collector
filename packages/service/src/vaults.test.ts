@@ -22,7 +22,47 @@ vi.mock("@collector/core", async (importOriginal) => {
   };
 });
 
-import { createVaultsService } from "./vaults.js";
+import { createVaultsService, pickVaultEntry } from "./vaults.js";
+
+function entry(
+  id: string,
+  opts: { is_default?: boolean; name?: string } = {},
+) {
+  return {
+    meta: {
+      id,
+      name: opts.name ?? id,
+      is_default: opts.is_default ?? false,
+      created_at: "a",
+      updated_at: "a",
+    },
+    path: `/data/vaults/${id}`,
+  };
+}
+
+describe("pickVaultEntry", () => {
+  const preferred = entry("preferred-id");
+  const asDefault = entry("default-id", { is_default: true });
+  const other = entry("other-id");
+
+  it("prefers stored id when present", () => {
+    expect(pickVaultEntry([asDefault, preferred, other], "preferred-id")).toBe(
+      preferred,
+    );
+  });
+
+  it("falls back to is_default when preferred missing", () => {
+    expect(pickVaultEntry([other, asDefault], "missing")).toBe(asDefault);
+  });
+
+  it("falls back to first entry when no preferred and no default", () => {
+    expect(pickVaultEntry([other, preferred], null)).toBe(other);
+  });
+
+  it("returns null for empty list", () => {
+    expect(pickVaultEntry([], "anything")).toBeNull();
+  });
+});
 
 describe("createVaultsService", () => {
   const vault = {

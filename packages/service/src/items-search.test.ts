@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { NavFilter } from "@collector/api";
+import { queryDashboardIndexPage } from "./dashboard-index-page.js";
 import {
   createItemsSearchService,
-  queryDashboardIndexPage,
   type ItemsIndexPort,
 } from "./items-search.js";
 
