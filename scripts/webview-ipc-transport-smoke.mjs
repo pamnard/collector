@@ -13,6 +13,7 @@
  *    await tauriServiceIpcRequest('getDataDirectory')
  *    await tauriServiceIpcDisconnect()
  *
- * Default UI path stays LocalAdapter until #170.
+ * Production UI path is IPC after service-mode bootstrap (#170 / #332).
+ * Web/:1420 uses explicit DevMock CollectorService (#332).
  */
 console.log("See file header for #239 WebView IPC transport smoke steps.");

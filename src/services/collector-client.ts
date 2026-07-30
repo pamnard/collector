@@ -1,24 +1,27 @@
 /**
- * UI CollectorService singleton (#169 / epic #142 / #369 / #370).
+ * UI CollectorService singleton (#169 / epic #142 / #332 / #369 / #370).
  *
- * Default: LocalAdapter ports (web/dev-mock / tests). Tauri service mode (#170)
- * swaps to IPC before React mounts. LocalAdapter cannot open SQLite (#171).
+ * No default adapter at module load. {@link main} installs DevMock (web) or
+ * IPC (Tauri service mode) via bootstrap before React mounts.
  * Call sites use {@link getCollectorService} (+ {@link getUiSession}).
  */
 
 import type { CollectorService, UiSession } from "@collector/api";
 import {
-  createLocalCollectorService,
-  createLocalUiSession,
-} from "./local-adapter";
+  createDevMockCollectorService,
+  createDevMockUiSession,
+} from "../dev/mock-collector-service";
 import { setUiSession } from "./ui-session";
 
-let activeService: CollectorService = createLocalCollectorService();
-let activeSession: UiSession = createLocalUiSession(activeService);
-setUiSession(activeSession);
+let activeService: CollectorService | null = null;
+
+const NOT_INSTALLED = "CollectorService not installed (#332)";
 
 /** Domain ports — primary UI contract (#369). */
 export function getCollectorService(): CollectorService {
+  if (!activeService) {
+    throw new Error(NOT_INSTALLED);
+  }
   return activeService;
 }
 
@@ -28,15 +31,20 @@ export function setCollectorService(
   session: UiSession,
 ): void {
   activeService = service;
-  activeSession = session;
   setUiSession(session);
 }
 
+/** Web/:1420 + unit-test default (#332). */
+export function installDevMockCollectorService(): void {
+  const service = createDevMockCollectorService();
+  setCollectorService(service, createDevMockUiSession(service));
+}
+
 export {
-  createLocalCollectorService,
-  createLocalDashboardSnapshotPort,
-  createLocalUiSession,
-} from "./local-adapter";
+  createDevMockCollectorService,
+  createDevMockUiSession,
+} from "../dev/mock-collector-service";
+export { createUiDashboardSnapshotPort } from "./ui-dashboard-snapshot-port";
 export {
   createIpcCollectorService,
   createIpcDashboardSnapshotPort,

@@ -7,6 +7,7 @@ import App from "./App";
 import "./index.css";
 import { StartupErrorScreen } from "./components/startup/StartupErrorScreen";
 import { setupStartupSmokeCapture } from "./startup-smoke-capture";
+import { installDevMockCollectorService } from "./services/collector-client";
 import { bootstrapServiceModeCutover } from "./services/service-mode-bootstrap";
 
 function formatBootstrapError(error: unknown): string {
@@ -19,7 +20,10 @@ function formatBootstrapError(error: unknown): string {
 async function main(): Promise<void> {
   await setupStartupSmokeCapture();
   try {
-    await bootstrapServiceModeCutover();
+    const cutover = await bootstrapServiceModeCutover();
+    if (cutover === "web") {
+      installDevMockCollectorService();
+    }
   } catch (error) {
     ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
       <React.StrictMode>

@@ -1,9 +1,9 @@
 /**
- * Service-mode cutover bootstrap (#170 / #369).
+ * Service-mode cutover bootstrap (#170 / #332 / #369).
  *
- * Tauri default-ON: spawn supervised domain host with canonical layout,
- * dial via Tauri IPC proxy, swap CollectorService to IPC ports.
- * Opt out: COLLECTOR_SERVICE_MODE=0 (Rust env). Web / non-Tauri stays LocalAdapter.
+ * Tauri: spawn supervised domain host, dial via Tauri IPC proxy, swap to IPC.
+ * Opt out (COLLECTOR_SERVICE_MODE=0) throws — no zombie LocalAdapter.
+ * Web / non-Tauri returns "web"; caller installs DevMock.
  */
 
 import { invoke } from "@tauri-apps/api/core";
@@ -15,6 +15,8 @@ import { setCollectorService } from "./collector-client";
 import { getCollectorProfileLayout } from "./profile-layout";
 import { createTauriServiceIpcTransport } from "./tauri-service-ipc-transport";
 
+export type BootstrapCutoverResult = "ipc" | "web";
+
 function isTauriRuntime(): boolean {
   return (
     typeof globalThis !== "undefined" &&
@@ -25,14 +27,16 @@ function isTauriRuntime(): boolean {
   );
 }
 
-export async function bootstrapServiceModeCutover(): Promise<boolean> {
+export async function bootstrapServiceModeCutover(): Promise<BootstrapCutoverResult> {
   if (!isTauriRuntime()) {
-    return false;
+    return "web";
   }
 
   const enabled = await invoke<boolean>("service_mode_is_enabled");
   if (!enabled) {
-    return false;
+    throw new Error(
+      "COLLECTOR_SERVICE_MODE=0 is unsupported (#332); desktop UI requires service IPC",
+    );
   }
 
   const layout = await getCollectorProfileLayout();
@@ -46,5 +50,5 @@ export async function bootstrapServiceModeCutover(): Promise<boolean> {
   );
   const service = createIpcCollectorService(transport);
   setCollectorService(service, createIpcUiSession(transport, service));
-  return true;
+  return "ipc";
 }

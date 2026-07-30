@@ -1,15 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CollectorService } from "@collector/api";
 import {
+  createDevMockCollectorService,
+  createDevMockUiSession,
+  createUiDashboardSnapshotPort,
   getCollectorService,
   getUiSession,
+  installDevMockCollectorService,
   setCollectorService,
 } from "./collector-client";
-import {
-  createLocalCollectorService,
-  createLocalDashboardSnapshotPort,
-  createLocalUiSession,
-} from "./local-adapter";
 
 const PORT_KEYS = [
   "boot",
@@ -22,8 +21,9 @@ const PORT_KEYS = [
   "vaults",
 ] as const;
 
-describe("CollectorService / LocalAdapter (#169 / #365 / #369 / #370)", () => {
-  it("getCollectorService defaults to LocalAdapter ports and setCollectorService swaps", () => {
+describe("CollectorService / DevMock (#332 / #365 / #369 / #370)", () => {
+  it("installDevMockCollectorService wires getCollectorService; setCollectorService swaps", () => {
+    installDevMockCollectorService();
     const original = getCollectorService();
     const originalSession = getUiSession();
     expect(Object.keys(original).sort()).toEqual([...PORT_KEYS].sort());
@@ -32,7 +32,7 @@ describe("CollectorService / LocalAdapter (#169 / #365 / #369 / #370)", () => {
     const stub = {
       items: { searchItems: vi.fn(async () => []) },
     } as unknown as CollectorService;
-    const session = createLocalUiSession(createLocalCollectorService());
+    const session = createDevMockUiSession(createDevMockCollectorService());
     setCollectorService(stub, session);
     expect(getCollectorService()).toBe(stub);
     expect(getUiSession()).toBe(session);
@@ -40,8 +40,8 @@ describe("CollectorService / LocalAdapter (#169 / #365 / #369 / #370)", () => {
     expect(getCollectorService()).toBe(original);
   });
 
-  it("createLocalCollectorService exposes eight domain ports (#365)", () => {
-    const service = createLocalCollectorService();
+  it("createDevMockCollectorService exposes eight domain ports (#365)", () => {
+    const service = createDevMockCollectorService();
     expect(Object.keys(service).sort()).toEqual([...PORT_KEYS].sort());
     expect(typeof service.items.searchItems).toBe("function");
     expect(typeof service.boot.getDataDirectory).toBe("function");
@@ -52,8 +52,8 @@ describe("CollectorService / LocalAdapter (#169 / #365 / #369 / #370)", () => {
     expect(service.items).not.toHaveProperty("listItems");
   });
 
-  it("createLocalDashboardSnapshotPort exposes snapshot methods (#365)", () => {
-    const snapshot = createLocalDashboardSnapshotPort();
+  it("createUiDashboardSnapshotPort exposes snapshot methods (#365)", () => {
+    const snapshot = createUiDashboardSnapshotPort();
     expect(typeof snapshot.ensureDashboardSnapshot).toBe("function");
     expect(typeof snapshot.peekMatchingDashboardSnapshot).toBe("function");
     expect(typeof snapshot.persistDashboardSnapshot).toBe("function");
@@ -61,8 +61,8 @@ describe("CollectorService / LocalAdapter (#169 / #365 / #369 / #370)", () => {
     expect(typeof snapshot.buildDashboardSnapshot).toBe("function");
   });
 
-  it("LocalAdapter exposes queryIndex and hydrate (#362)", async () => {
-    const service = createLocalCollectorService();
+  it("DevMock exposes queryIndex and hydrate (#362)", async () => {
+    const service = createDevMockCollectorService();
     expect(typeof service.items.queryIndex).toBe("function");
     expect(typeof service.items.hydrate).toBe("function");
     const items: unknown[] = [];
@@ -72,9 +72,9 @@ describe("CollectorService / LocalAdapter (#169 / #365 / #369 / #370)", () => {
     expect(items).toEqual([]);
   });
 
-  it("createLocalUiSession wires snapshot, sync settings, thumbnails (#363)", () => {
-    const service = createLocalCollectorService();
-    const session = createLocalUiSession(service);
+  it("createDevMockUiSession wires snapshot, sync settings, thumbnails (#363)", () => {
+    const service = createDevMockCollectorService();
+    const session = createDevMockUiSession(service);
     expect(Object.keys(session).sort()).toEqual(
       ["settingsSync", "snapshot", "thumbnails"].sort(),
     );
@@ -87,10 +87,8 @@ describe("CollectorService / LocalAdapter (#169 / #365 / #369 / #370)", () => {
   });
 
   it("getUiSession tracks setCollectorService (#368/#369)", () => {
-    const original = getCollectorService();
-    const originalSession = getUiSession();
-    const service = createLocalCollectorService();
-    const session = createLocalUiSession(service);
+    const service = createDevMockCollectorService();
+    const session = createDevMockUiSession(service);
     setCollectorService(service, session);
     expect(getUiSession()).toBe(session);
     expect(typeof getUiSession().snapshot.ensureDashboardSnapshot).toBe(
@@ -99,9 +97,10 @@ describe("CollectorService / LocalAdapter (#169 / #365 / #369 / #370)", () => {
     expect(typeof getUiSession().thumbnails.resolveItemThumbnailPaths).toBe(
       "function",
     );
-    expect(typeof getUiSession().settingsSync.getAppSettingsSync).toBe(
-      "function",
-    );
-    setCollectorService(original, originalSession);
+  });
+
+  it("unsupported DevMock writes throw mock-specific error (#332)", async () => {
+    const service = createDevMockCollectorService();
+    await expect(service.items.searchItems("x", "all")).rejects.toThrow(/#332/);
   });
 });

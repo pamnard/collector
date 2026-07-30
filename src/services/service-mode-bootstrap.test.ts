@@ -47,7 +47,7 @@ vi.mock("./ipc-adapter", () => ({
 
 import { bootstrapServiceModeCutover } from "./service-mode-bootstrap";
 
-describe("bootstrapServiceModeCutover (#170 / #369)", () => {
+describe("bootstrapServiceModeCutover (#170 / #332 / #369)", () => {
   beforeEach(() => {
     invoke.mockReset();
     setCollectorService.mockReset();
@@ -65,7 +65,7 @@ describe("bootstrapServiceModeCutover (#170 / #369)", () => {
       if (cmd === "service_mode_bootstrap") return "/tmp/sock";
       throw new Error(cmd);
     });
-    await expect(bootstrapServiceModeCutover()).resolves.toBe(true);
+    await expect(bootstrapServiceModeCutover()).resolves.toBe("ipc");
     expect(invoke).toHaveBeenCalledWith("service_mode_bootstrap", {
       dataDir: "/data",
       configDir: "/config",
@@ -79,9 +79,15 @@ describe("bootstrapServiceModeCutover (#170 / #369)", () => {
     expect(setCollectorService).toHaveBeenCalled();
   });
 
-  it("keeps LocalAdapter when service mode is disabled", async () => {
+  it("throws when service mode is disabled (#332)", async () => {
     invoke.mockResolvedValueOnce(false);
-    await expect(bootstrapServiceModeCutover()).resolves.toBe(false);
+    await expect(bootstrapServiceModeCutover()).rejects.toThrow(/#332/);
+    expect(setCollectorService).not.toHaveBeenCalled();
+  });
+
+  it("returns web when not running under Tauri", async () => {
+    delete (globalThis as { window?: unknown }).window;
+    await expect(bootstrapServiceModeCutover()).resolves.toBe("web");
     expect(setCollectorService).not.toHaveBeenCalled();
   });
 });
