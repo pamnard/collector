@@ -85,17 +85,20 @@ export {
   serializeDocumentMarkdown,
 } from "./vault/frontmatter.js";
 
+export { createVault } from "./vault/vault-operations.js";
 export {
-  createVault,
   deleteItem,
   listItemsByIds,
   listItemsOnDisk,
   streamItemsByIds,
-  syncIndexFromFilesystem,
   upsertItem,
   writeItemRawMarkdown,
-} from "./vault/operations.js";
-export type { StreamedItemRead, StreamItemsByIdsOptions } from "./vault/operations.js";
+} from "./vault/item-operations.js";
+export type {
+  StreamedItemRead,
+  StreamItemsByIdsOptions,
+} from "./vault/item-operations.js";
+export { syncIndexFromFilesystem } from "./vault/sync-operations.js";
 
 export { syncIndexItemsFromFilesystem } from "./vault/item-index-sync.js";
 

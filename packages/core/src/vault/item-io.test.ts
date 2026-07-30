@@ -7,7 +7,7 @@ import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
 import { createId, nowIso } from "../util/ids.js";
-import { createVault } from "./operations.js";
+import { createVault } from "./vault-operations.js";
 import { readTagsFile, writeTagsFile } from "./tag-io.js";
 import { itemMarkdownPath, vaultMetaPath } from "./paths.js";
 import {

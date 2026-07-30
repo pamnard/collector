@@ -13,18 +13,14 @@ import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { createId } from "../util/ids.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
 import { buildFtsMatchQuery } from "../search/fts-query.js";
+import { createVault } from "../vault/vault-operations.js";
 import {
-  createVault,
-  deleteItem,
   listItemsByIds,
-  listItemsOnDisk,
-  streamItemsByIds,
-  syncIndexFromFilesystem,
   upsertItem,
-  writeItemRawMarkdown,
-} from "../vault/operations.js";
+} from "../vault/item-operations.js";
+import { syncIndexFromFilesystem } from "../vault/sync-operations.js";
 import type { ItemFile } from "@collector/shared";
-import { readItemFile, readItemRawMarkdown, writeItemFile } from "../vault/item-io.js";
+import { readItemFile, writeItemFile } from "../vault/item-io.js";
 import { itemMarkdownPath, joinSegments } from "../vault/paths.js";
 import { listTagsOnDisk } from "../vault/tag-io.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
@@ -133,7 +129,7 @@ class CountingFileSystemAdapter implements FileSystemAdapter {
   }
 }
 
-describe("vault operations", () => {
+describe("sync operations", () => {
   let dataDir = "";
   const fs = new NodeFileSystemAdapter();
 
@@ -142,247 +138,6 @@ describe("vault operations", () => {
       await rm(dataDir, { recursive: true, force: true });
       dataDir = "";
     }
-  });
-
-  it("creates vault on disk and in index", async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-"));
-    const sql = new MemorySqlAdapter();
-    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
-    const { meta, path } = await createVault(ctx, dataDir, {
-      name: "My Vault",
-      isDefault: true,
-    });
-
-    expect(meta.name).toBe("My Vault");
-    expect(await fs.exists(path)).toBe(true);
-    expect(await fs.exists(join(path, "vault.meta.json"))).toBe(true);
-  });
-
-  it("upserts item to disk and index; delete removes both", async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-"));
-    const sql = new MemorySqlAdapter();
-    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
-    const { meta, path } = await createVault(ctx, dataDir, {
-      name: "Vault",
-    });
-
-    const itemId = `${createId()}.md`;
-    await upsertItem(ctx, path, meta.id, {
-      item: {
-        id: itemId,
-        vault_id: meta.id,
-        title: "Test note",
-        description: "desc",
-        content_type: "note",
-        source_type: "manual",
-        metadata: {},
-        tag_ids: [],
-        collection_ids: [],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      content: "# Hello",
-    });
-
-    const items = await listItemsOnDisk(ctx, path);
-    expect(items).toHaveLength(1);
-    expect(items[0]?.title).toBe("Test note");
-
-    await deleteItem(ctx, path, itemId);
-    expect(await listItemsOnDisk(ctx, path)).toHaveLength(0);
-  });
-
-  it("writes raw markdown as-is and reindexes from parse", async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-raw-"));
-    const sql = new MemorySqlAdapter();
-    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
-    const { meta, path } = await createVault(ctx, dataDir, {
-      name: "Vault",
-    });
-
-    const itemId = `${createId()}.md`;
-    const created = "2024-01-01T00:00:00.000Z";
-    await upsertItem(ctx, path, meta.id, {
-      item: {
-        id: itemId,
-        vault_id: meta.id,
-        title: "Original",
-        description: "",
-        content_type: "note",
-        source_type: "manual",
-        metadata: {},
-        tag_ids: [],
-        collection_ids: [],
-        created_at: created,
-        updated_at: created,
-      },
-      content: "old body",
-    });
-
-    const raw = [
-      "---",
-      "title: From source",
-      "description: edited raw",
-      "type: note",
-      `created: ${created}`,
-      `updated: ${created}`,
-      "---",
-      "",
-      "# Source body",
-      "",
-      "kept verbatim spacing  ",
-      "",
-    ].join("\n");
-
-    const updated = await writeItemRawMarkdown(
-      ctx,
-      path,
-      meta.id,
-      itemId,
-      raw,
-    );
-    expect(updated.title).toBe("From source");
-    expect(updated.description).toBe("edited raw");
-
-    const onDisk = await readItemRawMarkdown(fs, path, itemId);
-    expect(onDisk).toBe(raw);
-
-    const indexed = await listItemsByIds(ctx, path, [itemId]);
-    expect(indexed[0]?.title).toBe("From source");
-    expect(indexed[0]?.description).toBe("edited raw");
-  });
-
-  it("listItemsByIds preserves order and skips missing items", async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-"));
-    const sql = new MemorySqlAdapter();
-    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
-    const { meta, path } = await createVault(ctx, dataDir, {
-      name: "Vault",
-    });
-
-    const itemIds = [`${createId()}.md`, `${createId()}.md`, `${createId()}.md`];
-    const titles = ["Third", "First", "Second"];
-    for (const [index, itemId] of itemIds.entries()) {
-      await upsertItem(ctx, path, meta.id, {
-        item: {
-          id: itemId,
-          vault_id: meta.id,
-          title: titles[index]!,
-          description: "",
-          content_type: "note",
-          source_type: "manual",
-          metadata: {},
-          tag_ids: [],
-          collection_ids: [],
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-      });
-    }
-
-    const missingId = `${createId()}.md`;
-    const loaded = await listItemsByIds(ctx, path, [
-      itemIds[2]!,
-      missingId,
-      itemIds[0]!,
-      itemIds[1]!,
-    ]);
-
-    expect(loaded.map((item) => item.id)).toEqual([
-      itemIds[2]!,
-      itemIds[0]!,
-      itemIds[1]!,
-    ]);
-    expect(loaded.map((item) => item.title)).toEqual([
-      titles[2]!,
-      titles[0]!,
-      titles[1]!,
-    ]);
-  });
-
-  it("streamItemsByIds invokes onItem for each id", async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-"));
-    const sql = new MemorySqlAdapter();
-    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
-    const { meta, path } = await createVault(ctx, dataDir, {
-      name: "Vault",
-    });
-
-    const itemIds = [`${createId()}.md`, `${createId()}.md`];
-    for (const itemId of itemIds) {
-      await upsertItem(ctx, path, meta.id, {
-        item: {
-          id: itemId,
-          vault_id: meta.id,
-          title: `Item ${itemId.slice(0, 4)}`,
-          description: "",
-          content_type: "note",
-          source_type: "manual",
-          metadata: {},
-          tag_ids: [],
-          collection_ids: [],
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-      });
-    }
-
-    const seen = new Map<string, ItemFile>();
-    await streamItemsByIds(ctx, path, itemIds, {
-      onItem: ({ itemId, item }) => {
-        if (item) {
-          seen.set(itemId, item);
-        }
-      },
-    });
-
-    expect([...seen.keys()].sort()).toEqual([...itemIds].sort());
-  });
-
-  it("streamItemsByIds reuses batch mtime and shared tag maps (#195)", async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "collector-stream-batch-"));
-    const countingFs = new CountingFileSystemAdapter(fs);
-    const ctx = { fs: countingFs, index: new SqlVaultIndexStore(new MemorySqlAdapter()) };
-    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
-    const itemCount = 12;
-    const itemIds: string[] = [];
-    const timestamp = new Date().toISOString();
-
-    for (let i = 0; i < itemCount; i += 1) {
-      const itemId = `${createId()}.md`;
-      itemIds.push(itemId);
-      await upsertItem(ctx, path, meta.id, {
-        item: {
-          id: itemId,
-          vault_id: meta.id,
-          title: `Note ${i}`,
-          description: "",
-          content_type: "note",
-          source_type: "manual",
-          metadata: {},
-          tag_ids: [],
-          collection_ids: [],
-          created_at: timestamp,
-          updated_at: timestamp,
-        },
-        content: `body ${i}`,
-      });
-    }
-
-    countingFs.statCount = 0;
-    countingFs.tagsJsonReadCount = 0;
-    const seen: ItemFile[] = [];
-    await streamItemsByIds(ctx, path, itemIds, {
-      onItem: ({ item }) => {
-        if (item) {
-          seen.push(item);
-        }
-      },
-    });
-
-    expect(seen).toHaveLength(itemCount);
-    expect(countingFs.tagsJsonReadCount).toBe(1);
-    expect(countingFs.statCount).toBe(itemCount);
   });
 
   it("rebuilds index from filesystem", async () => {

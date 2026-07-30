@@ -9,7 +9,8 @@ import { SqlVaultIndexStore } from "../index/sql-index.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import { createId, nowIso } from "../util/ids.js";
 import { readItemFile } from "./item-io.js";
-import { createVault, upsertItem } from "./operations.js";
+import { createVault } from "./vault-operations.js";
+import { upsertItem } from "./item-operations.js";
 import { createTag, deleteTag, listTagsWithCounts } from "./tag-operations.js";
 import { writeTagsFile } from "./tag-io.js";
 

@@ -8,7 +8,8 @@ import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import type { VaultIndexAdapter } from "../adapters/types.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
 import { createId } from "../util/ids.js";
-import { createVault, upsertItem } from "../vault/operations.js";
+import { createVault } from "../vault/vault-operations.js";
+import { upsertItem } from "../vault/item-operations.js";
 import { createTag } from "../vault/tag-operations.js";
 import { syncVaultIndexFromFilesystem } from "../vault/index-sync.js";
 

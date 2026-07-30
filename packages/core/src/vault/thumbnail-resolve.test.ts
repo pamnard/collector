@@ -11,7 +11,8 @@ import {
   resolveItemThumbnailAbsolutePath,
 } from "./cover-operations.js";
 import { attachMediaFile } from "./media-operations.js";
-import { createVault, upsertItem } from "./operations.js";
+import { createVault } from "./vault-operations.js";
+import { upsertItem } from "./item-operations.js";
 import { itemCoverPath } from "./paths.js";
 import { resolveItemThumbnailPathsBatch } from "./thumbnail-resolve.js";
 

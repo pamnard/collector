@@ -11,7 +11,9 @@ import type {
 } from "../adapters/types.js";
 import { createId } from "../util/ids.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
-import { createVault, syncIndexFromFilesystem, upsertItem } from "./operations.js";
+import { createVault } from "./vault-operations.js";
+import { upsertItem } from "./item-operations.js";
+import { syncIndexFromFilesystem } from "./sync-operations.js";
 import { writeItemFile } from "./item-io.js";
 import {
   hasVaultFsBatch,
