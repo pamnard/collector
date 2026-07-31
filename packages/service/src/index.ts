@@ -71,3 +71,22 @@ export {
   type DropImportService,
   type DropImportServiceDeps,
 } from "./drop-import.js";
+
+export {
+  createSyncPluginHandoff,
+  type SyncPluginHandoff,
+  type SyncPluginHandoffDeps,
+  type SyncPluginImportResult,
+} from "./sync-plugin-handoff.js";
+
+export {
+  runSyncPluginCycle,
+  type RunSyncPluginCycleInput,
+  type RunSyncPluginCycleResult,
+} from "./sync-plugin-cycle.js";
+
+export {
+  createMockSyncPlugin,
+  type MockSyncPlugin,
+  type MockSyncPluginOptions,
+} from "./sync-plugin-mock.js";

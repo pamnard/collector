@@ -3,7 +3,13 @@
  * Declared here so `@collector/api` stays free of core runtime.
  */
 
-import type { ItemFile, MediaFileMeta, SourceType, Tag } from "@collector/shared";
+import type {
+  ItemFile,
+  MediaFileMeta,
+  SourceRef,
+  SourceType,
+  Tag,
+} from "@collector/shared";
 
 export type NavFilter =
   | "all"
@@ -46,6 +52,8 @@ export interface CreateItemInput {
   content?: string | null;
   folder_path?: string;
   source_type?: SourceType;
+  /** Optional plugin provenance (#28); written via upsertItem sourceRef. */
+  sourceRef?: SourceRef;
 }
 
 /** One file from a list/folder drop (relativePath includes name within the drop tree). */

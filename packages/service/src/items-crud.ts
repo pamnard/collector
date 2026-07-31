@@ -139,6 +139,7 @@ export function createItemsCrud(
         updated_at: timestamp,
       },
       content: input.content ?? null,
+      sourceRef: input.sourceRef,
     });
   };
 
