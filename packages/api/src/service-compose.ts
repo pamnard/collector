@@ -1,5 +1,6 @@
 import type {
   BootPort,
+  CredentialsPort,
   DashboardSnapshotPort,
   FoldersPort,
   IndexPort,
@@ -82,6 +83,14 @@ export const SETTINGS_PORT_KEYS = [
   "subscribeAppSettings",
   "getAppConfigDirectory",
 ] as const satisfies readonly (keyof SettingsPort)[];
+
+export const CREDENTIALS_PORT_KEYS = [
+  "setCredential",
+  "getCredential",
+  "hasCredential",
+  "deleteCredential",
+  "getCredentialsAvailability",
+] as const satisfies readonly (keyof CredentialsPort)[];
 
 export const DASHBOARD_SNAPSHOT_PORT_KEYS = [
   "ensureDashboardSnapshot",

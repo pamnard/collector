@@ -352,6 +352,17 @@ export function createDevMockCollectorService(): CollectorService {
       subscribeAppSettings,
       getAppConfigDirectory,
     },
+    credentials: {
+      setCredential: async () => refuseUnsupported(),
+      getCredential: async () => refuseUnsupported(),
+      hasCredential: async () => refuseUnsupported(),
+      deleteCredential: async () => refuseUnsupported(),
+      getCredentialsAvailability: async () => ({
+        available: false,
+        reason:
+          "DevMock has no OS keychain; use the domain host (desktop / service IPC)",
+      }),
+    },
   };
 }
 

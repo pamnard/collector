@@ -18,6 +18,10 @@ import {
 import { NodeFileSystemAdapter } from "@collector/core/node";
 import type { CollectorProfileLayout } from "@collector/shared";
 import { createAppSettingsService } from "../app-settings.js";
+import {
+  createCredentialsService,
+  createOsKeychainBackend,
+} from "../credentials.js";
 import { createCollectorIndexBoot } from "../index-boot.js";
 import { createDashboardSnapshotService } from "../dashboard-snapshot.js";
 import { createItemsSearchService } from "../items-search.js";
@@ -101,6 +105,7 @@ export interface ServiceDomainRuntime {
   dropImport: ReturnType<typeof createDropImportService>;
   vaults: ReturnType<typeof createVaultsService>;
   appSettings: ReturnType<typeof createAppSettingsService>;
+  credentials: ReturnType<typeof createCredentialsService>;
   dashboardSnapshot: ReturnType<typeof createDashboardSnapshotService>;
 }
 
@@ -491,6 +496,10 @@ export function createServiceDomainRuntime(
       itemsSearch.updateItemSource(itemId, raw),
   });
 
+  const credentials = createCredentialsService({
+    backend: createOsKeychainBackend(),
+  });
+
   return {
     dataDir,
     open: () => indexBoot.open(),
@@ -516,6 +525,7 @@ export function createServiceDomainRuntime(
     dropImport,
     vaults,
     appSettings,
+    credentials,
     dashboardSnapshot,
   };
 }
