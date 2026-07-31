@@ -30,6 +30,26 @@ struct ServiceSuperviseState {
     supervisor: Mutex<Option<ServiceSupervisor>>,
 }
 
+/// Take the managed supervisor (if any) and ask it to exit (#424).
+fn stop_managed_supervisor(
+    state: &ServiceSuperviseState,
+    timeout: Duration,
+) -> Result<(), String> {
+    let mut guard = state.supervisor.lock().map_err(|e| e.to_string())?;
+    let Some(mut sup) = guard.take() else {
+        return Ok(());
+    };
+    sup.stop(timeout).map_err(|e| e.to_string())
+}
+
+fn kill_managed_supervisor(state: &ServiceSuperviseState) -> Result<(), String> {
+    let mut guard = state.supervisor.lock().map_err(|e| e.to_string())?;
+    let Some(mut sup) = guard.take() else {
+        return Ok(());
+    };
+    sup.kill().map_err(|e| e.to_string())
+}
+
 pub(crate) fn host_target_triple() -> Result<String, String> {
     // Tauri may export TAURI_ENV_TARGET_TRIPLE="" into the parent shell; treat
     // empty as unset so release-smoke / plain binary launches still resolve.
@@ -368,26 +388,14 @@ fn service_supervise_spawn(
 fn service_supervise_stop(
     state: tauri::State<'_, ServiceSuperviseState>,
 ) -> Result<(), String> {
-    let mut guard = state.supervisor.lock().map_err(|e| e.to_string())?;
-    let Some(sup) = guard.as_mut() else {
-        return Ok(());
-    };
-    sup.stop(Duration::from_secs(5)).map_err(|e| e.to_string())?;
-    *guard = None;
-    Ok(())
+    stop_managed_supervisor(&state, Duration::from_secs(5))
 }
 
 #[tauri::command]
 fn service_supervise_kill(
     state: tauri::State<'_, ServiceSuperviseState>,
 ) -> Result<(), String> {
-    let mut guard = state.supervisor.lock().map_err(|e| e.to_string())?;
-    let Some(sup) = guard.as_mut() else {
-        return Ok(());
-    };
-    sup.kill().map_err(|e| e.to_string())?;
-    *guard = None;
-    Ok(())
+    kill_managed_supervisor(&state)
 }
 
 #[tauri::command]
@@ -494,6 +502,17 @@ pub fn run() {
             service_mode_is_enabled,
             service_mode_bootstrap,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // Stop supervised sidecar (+ domain host via SIGTERM forward) on quit (#424).
+            // Drop on ServiceSupervisor is the safety net if managed state is discarded
+            // without this hook; Exit runs earlier so we can wait for a clean stop.
+            if let tauri::RunEvent::Exit = event {
+                let state = app_handle.state::<ServiceSuperviseState>();
+                if let Err(e) = stop_managed_supervisor(&state, Duration::from_secs(5)) {
+                    eprintln!("collector: stop supervised service on exit: {e}");
+                }
+            }
+        });
 }

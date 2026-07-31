@@ -1,4 +1,4 @@
-//! Service process supervise helpers (#166 / #167 / #168 / #237 / epic #142).
+//! Service process supervise helpers (#166 / #167 / #168 / #237 / #424 / epic #142).
 //!
 //! Dead by default: [`supervise_enabled`] is false unless
 //! `COLLECTOR_ENABLE_SERVICE_SUPERVISE=1`. Callers must check the flag before
@@ -11,6 +11,7 @@
 //! Spawn runs orphan cleanup (#167) and refuses when a live lock holder remains.
 //! Child stdout/stderr append to `{data-dir}/logs/collector-service.log` (#168).
 //! The sidecar launches the real Node domain host (#237); READY includes IPC endpoint.
+//! [`Drop`] stops a still-live child so desktop quit does not leave orphans (#424).
 
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -223,6 +224,19 @@ impl ServiceSupervisor {
     }
 }
 
+impl Drop for ServiceSupervisor {
+    fn drop(&mut self) {
+        // Best-effort stop-on-discard (#424). std::process::Child does not kill
+        // on Drop; without this, desktop quit leaves collector-service orphans.
+        match self.child.try_wait() {
+            Ok(Some(_)) => {}
+            Ok(None) | Err(_) => {
+                let _ = self.stop(Duration::from_secs(2));
+            }
+        }
+    }
+}
+
 /// Poll `log` from `start_offset` until a READY `ipcPath` line appears or `timeout`.
 fn wait_for_ready_in_log(
     log: &Path,
@@ -418,6 +432,38 @@ mod tests {
         assert!(sup.is_running().expect("running"));
         sup.stop(Duration::from_secs(10)).expect("stop");
         assert!(!sup.is_running().expect("stopped check"));
+        let _ = std::fs::remove_dir_all(dir);
+        std::env::remove_var(SUPERVISE_ENABLE_ENV);
+    }
+
+    #[test]
+    #[serial]
+    fn drop_stops_supervised_service() {
+        let sidecar = sidecar_path();
+        if !require_sidecar_or_skip(&sidecar) {
+            return;
+        }
+        std::env::set_var(SUPERVISE_ENABLE_ENV, "1");
+        let dir = std::env::temp_dir().join(format!(
+            "collector-supervise-drop-{}",
+            std::process::id()
+        ));
+        let sup = ServiceSupervisor::spawn(&sidecar, &dir, None, None).expect("spawn");
+        let pid = sup.pid();
+        let body = wait_for_ready_log(&sup.log_path(), Duration::from_secs(20));
+        assert!(
+            body.contains("COLLECTOR_SERVICE_READY ") && body.contains("\"ipcPath\""),
+            "expected domain host READY, got: {body:?}"
+        );
+        assert!(
+            crate::service_lock::process_alive(pid),
+            "service pid {pid} must be alive before drop"
+        );
+        drop(sup);
+        assert!(
+            !crate::service_lock::process_alive(pid),
+            "drop must stop supervised service pid {pid}"
+        );
         let _ = std::fs::remove_dir_all(dir);
         std::env::remove_var(SUPERVISE_ENABLE_ENV);
     }
