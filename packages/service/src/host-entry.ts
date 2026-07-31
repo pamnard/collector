@@ -101,3 +101,16 @@ export {
   createServiceDomainRuntime,
   type ServiceDomainRuntime,
 } from "./host/domain-runtime.js";
+
+/** OS keychain credentials (#30) — Node/host only; never `@collector/service` barrel. */
+export {
+  CREDENTIALS_KEYCHAIN_SERVICE,
+  createCredentialsService,
+  createMemoryKeychainBackend,
+  createOsKeychainBackend,
+  createUnavailableKeychainBackend,
+  credentialAccount,
+  type CredentialsServiceDeps,
+  type KeychainBackend,
+} from "./credentials.js";
+

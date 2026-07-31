@@ -52,17 +52,6 @@ export {
 } from "./app-settings.js";
 
 export {
-  CREDENTIALS_KEYCHAIN_SERVICE,
-  createCredentialsService,
-  createMemoryKeychainBackend,
-  createOsKeychainBackend,
-  createUnavailableKeychainBackend,
-  credentialAccount,
-  type CredentialsServiceDeps,
-  type KeychainBackend,
-} from "./credentials.js";
-
-export {
   createDashboardSnapshotService,
   type DashboardSnapshotService,
   type DashboardSnapshotServiceDeps,
