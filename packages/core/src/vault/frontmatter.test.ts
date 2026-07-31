@@ -65,6 +65,55 @@ hi
   });
 });
 
+describe("buildCanonicalFrontmatter omission", () => {
+  it("omits empty optional fields", () => {
+    const fm = buildCanonicalFrontmatter({
+      title: "T",
+      description: "",
+      url: null,
+      tags: [],
+      metadata: {},
+    });
+    expect(fm).toEqual({ title: "T" });
+    expect(fm).not.toHaveProperty("content_revision");
+  });
+
+  it("omits empty string url and keeps present url", () => {
+    expect(buildCanonicalFrontmatter({ title: "T", url: "" })).toEqual({ title: "T" });
+    expect(buildCanonicalFrontmatter({ title: "T", url: "https://example.com" }).url).toBe(
+      "https://example.com",
+    );
+  });
+
+  it("keeps content_revision 0 and clones tags", () => {
+    const tags = ["a"];
+    const fm = buildCanonicalFrontmatter({
+      title: "T",
+      content_revision: 0,
+      tags,
+    });
+    expect(fm.content_revision).toBe(0);
+    expect(fm.tags).toEqual(["a"]);
+    expect(fm.tags).not.toBe(tags);
+  });
+
+  it("strips known legacy keys from extra and keeps portable keys", () => {
+    const fm = buildCanonicalFrontmatter({
+      title: "T",
+      extra: {
+        folder_path: "Inbox",
+        is_favorite: true,
+        custom_key: "kept",
+        also: undefined,
+      },
+    });
+    expect(fm.folder_path).toBeUndefined();
+    expect(fm.is_favorite).toBeUndefined();
+    expect(fm.also).toBeUndefined();
+    expect(fm.custom_key).toBe("kept");
+  });
+});
+
 describe("serializeDocumentMarkdown round-trip", () => {
   it("round-trips YAML canonically", () => {
     const fm = buildCanonicalFrontmatter({

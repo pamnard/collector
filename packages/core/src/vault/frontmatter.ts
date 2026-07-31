@@ -213,11 +213,7 @@ function orderFrontmatterKeys(data: Record<string, unknown>): Record<string, unk
   return ordered;
 }
 
-/**
- * Build canonical frontmatter object for writers (YAML only).
- * Drops empty optional fields; keeps unknown portable keys from `extra`.
- */
-export function buildCanonicalFrontmatter(input: {
+type CanonicalFrontmatterInput = {
   title: string;
   description?: string;
   url?: string | null;
@@ -231,42 +227,71 @@ export function buildCanonicalFrontmatter(input: {
   updated?: string;
   metadata?: Record<string, unknown>;
   extra?: Record<string, unknown>;
-}): Record<string, unknown> {
+};
+
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === "string" && v.length > 0;
+}
+
+function isPresentString(v: unknown): v is string {
+  return v !== undefined && v !== null && v !== "";
+}
+
+function isNonEmptyStringArray(v: unknown): v is string[] {
+  return Array.isArray(v) && v.length > 0;
+}
+
+function isNonEmptyPlainObject(v: unknown): v is Record<string, unknown> {
+  return isPlainObject(v) && Object.keys(v).length > 0;
+}
+
+type OptionalCanonicalField = {
+  key: (typeof KNOWN_KEY_ORDER)[number];
+  read: (input: CanonicalFrontmatterInput) => unknown;
+  include: (value: unknown) => boolean;
+  map?: (value: unknown) => unknown;
+};
+
+/** Optional fields in KNOWN_KEY_ORDER; title and `extra` handled separately. */
+const OPTIONAL_CANONICAL_FIELDS: readonly OptionalCanonicalField[] = [
+  { key: "description", read: (i) => i.description, include: isNonEmptyString },
+  { key: "url", read: (i) => i.url, include: isPresentString },
+  { key: "content_type", read: (i) => i.content_type, include: isNonEmptyString },
+  { key: "source_type", read: (i) => i.source_type, include: isNonEmptyString },
+  { key: "source_id", read: (i) => i.source_id, include: isPresentString },
+  {
+    key: "tags",
+    read: (i) => i.tags,
+    include: isNonEmptyStringArray,
+    map: (v) => [...(v as string[])],
+  },
+  { key: "thumbnail", read: (i) => i.thumbnail, include: isPresentString },
+  {
+    key: "content_revision",
+    read: (i) => i.content_revision,
+    include: (v) => v !== undefined,
+  },
+  { key: "created", read: (i) => i.created, include: isNonEmptyString },
+  { key: "updated", read: (i) => i.updated, include: isNonEmptyString },
+  { key: "metadata", read: (i) => i.metadata, include: isNonEmptyPlainObject },
+];
+
+/**
+ * Build canonical frontmatter object for writers (YAML only).
+ * Drops empty optional fields; keeps unknown portable keys from `extra`.
+ */
+export function buildCanonicalFrontmatter(
+  input: CanonicalFrontmatterInput,
+): Record<string, unknown> {
   const data: Record<string, unknown> = {
     title: input.title,
   };
-  if (input.description) {
-    data.description = input.description;
-  }
-  if (input.url !== undefined && input.url !== null && input.url !== "") {
-    data.url = input.url;
-  }
-  if (input.content_type) {
-    data.content_type = input.content_type;
-  }
-  if (input.source_type) {
-    data.source_type = input.source_type;
-  }
-  if (input.source_id !== undefined && input.source_id !== null && input.source_id !== "") {
-    data.source_id = input.source_id;
-  }
-  if (input.tags && input.tags.length > 0) {
-    data.tags = [...input.tags];
-  }
-  if (input.thumbnail !== undefined && input.thumbnail !== null && input.thumbnail !== "") {
-    data.thumbnail = input.thumbnail;
-  }
-  if (input.content_revision !== undefined) {
-    data.content_revision = input.content_revision;
-  }
-  if (input.created) {
-    data.created = input.created;
-  }
-  if (input.updated) {
-    data.updated = input.updated;
-  }
-  if (input.metadata && Object.keys(input.metadata).length > 0) {
-    data.metadata = input.metadata;
+  for (const field of OPTIONAL_CANONICAL_FIELDS) {
+    const raw = field.read(input);
+    if (!field.include(raw)) {
+      continue;
+    }
+    data[field.key] = field.map ? field.map(raw) : raw;
   }
   if (input.extra) {
     for (const [key, value] of Object.entries(input.extra)) {
