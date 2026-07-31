@@ -25,6 +25,7 @@ type _CollectorServiceKeys = Expect<
     | "vaults"
     | "index"
     | "settings"
+    | "credentials"
   >
 >;
 

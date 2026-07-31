@@ -15,6 +15,7 @@ cd "$ROOT"
 NODE_VERSION="${COLLECTOR_BUNDLED_NODE_VERSION:-22.22.3}"
 BETTER_SQLITE3_VERSION="${COLLECTOR_BETTER_SQLITE3_VERSION:-11.10.0}"
 SHARP_VERSION="${COLLECTOR_SHARP_VERSION:-0.34.2}"
+NAPI_RS_KEYRING_VERSION="${COLLECTOR_NAPI_RS_KEYRING_VERSION:-1.3.0}"
 # Static ffmpeg for video cover.webp extract (#267). Override to pin / skip fetch.
 FFMPEG_STATIC_VERSION="${COLLECTOR_FFMPEG_STATIC_VERSION:-5.3.0}"
 
@@ -163,6 +164,7 @@ echo "==> esbuild domain host → $HOST_OUT/cli.js"
   --packages=bundle \
   --external:better-sqlite3 \
   --external:sharp \
+  --external:@napi-rs/keyring \
   --outfile="$HOST_OUT/cli.js"
 
 echo "==> esbuild user CLI + MCP (#258) → $HOST_OUT/collector-{cli,mcp}.js"
@@ -173,6 +175,7 @@ echo "==> esbuild user CLI + MCP (#258) → $HOST_OUT/collector-{cli,mcp}.js"
   --packages=bundle \
   --external:better-sqlite3 \
   --external:sharp \
+  --external:@napi-rs/keyring \
   --outfile="$HOST_OUT/collector-cli.js"
 "$ESBUILD" "$MCP_SRC" \
   --bundle \
@@ -181,6 +184,7 @@ echo "==> esbuild user CLI + MCP (#258) → $HOST_OUT/collector-{cli,mcp}.js"
   --packages=bundle \
   --external:better-sqlite3 \
   --external:sharp \
+  --external:@napi-rs/keyring \
   --outfile="$HOST_OUT/collector-mcp.js"
 
 # Thin wrappers: invoke bundled Node + JS (always ship unix + .cmd).
@@ -222,7 +226,7 @@ EOF
 cp -f "$BUNDLED_NODE" "$HOST_OUT/${NODE_BIN_NAME}"
 chmod +x "$HOST_OUT/${NODE_BIN_NAME}" 2>/dev/null || true
 
-echo "==> rebuild better-sqlite3@${BETTER_SQLITE3_VERSION} + sharp@${SHARP_VERSION} against bundled Node"
+echo "==> rebuild better-sqlite3@${BETTER_SQLITE3_VERSION} + sharp@${SHARP_VERSION} + @napi-rs/keyring@${NAPI_RS_KEYRING_VERSION} against bundled Node"
 REBUILD_DIR="$CACHE_ROOT/native-modules-rebuild-${PLATFORM_ARCH}"
 rm -rf "$REBUILD_DIR"
 mkdir -p "$REBUILD_DIR"
@@ -232,7 +236,8 @@ cat >"$REBUILD_DIR/package.json" <<EOF
   "private": true,
   "dependencies": {
     "better-sqlite3": "${BETTER_SQLITE3_VERSION}",
-    "sharp": "${SHARP_VERSION}"
+    "sharp": "${SHARP_VERSION}",
+    "@napi-rs/keyring": "${NAPI_RS_KEYRING_VERSION}"
   }
 }
 EOF
@@ -352,6 +357,7 @@ echo "==> ABI probe: open :memory: DB + sharp with bundled Node"
   cd "$HOST_OUT"
   "./${NODE_BIN_NAME}" -e "require('better-sqlite3')(':memory:'); console.log('better-sqlite3 ok')"
   "./${NODE_BIN_NAME}" -e "require('sharp'); console.log('sharp ok')"
+  "./${NODE_BIN_NAME}" -e "require('@napi-rs/keyring'); console.log('keyring ok')"
   "./bin/${FFMPEG_BIN_NAME}" -version | head -1
 )
 
@@ -422,6 +428,10 @@ if [[ ! -d "$HOST_OUT/node_modules/better-sqlite3" ]]; then
 fi
 if [[ ! -d "$HOST_OUT/node_modules/sharp" ]]; then
   echo "FAIL: missing sharp under $HOST_OUT" >&2
+  exit 1
+fi
+if [[ ! -d "$HOST_OUT/node_modules/@napi-rs/keyring" ]]; then
+  echo "FAIL: missing @napi-rs/keyring under $HOST_OUT" >&2
   exit 1
 fi
 if [[ ! -f "$HOST_OUT/bin/${FFMPEG_BIN_NAME}" ]]; then

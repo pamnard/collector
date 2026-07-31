@@ -68,6 +68,13 @@ function stubRuntime(overrides: {
       updateAppSettings: vi.fn(),
       getAppConfigDirectory: vi.fn(async () => "/tmp"),
     },
+    credentials: {
+      setCredential: vi.fn(async () => undefined),
+      getCredential: vi.fn(async () => null),
+      hasCredential: vi.fn(async () => false),
+      deleteCredential: vi.fn(async () => undefined),
+      getCredentialsAvailability: vi.fn(async () => ({ available: true })),
+    },
     vaultIndexSyncStatus: { get: vi.fn(async () => ({})) },
     startVaultFilesystemWatcher: vi.fn(),
     stopVaultFilesystemWatcher: vi.fn(),

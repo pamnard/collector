@@ -12,6 +12,7 @@ import {
 
 const PORT_KEYS = [
   "boot",
+  "credentials",
   "folders",
   "index",
   "items",
@@ -40,13 +41,16 @@ describe("CollectorService / DevMock (#332 / #365 / #369 / #370)", () => {
     expect(getCollectorService()).toBe(original);
   });
 
-  it("createDevMockCollectorService exposes eight domain ports (#365)", () => {
+  it("createDevMockCollectorService exposes nine domain ports (#365 / #30)", () => {
     const service = createDevMockCollectorService();
     expect(Object.keys(service).sort()).toEqual([...PORT_KEYS].sort());
     expect(typeof service.items.searchItems).toBe("function");
     expect(typeof service.boot.getDataDirectory).toBe("function");
     expect(typeof service.settings.getAppSettingsSync).toBe("function");
     expect(typeof service.index.getVaultIndexSyncStatus).toBe("function");
+    expect(typeof service.credentials.getCredentialsAvailability).toBe(
+      "function",
+    );
     expect(typeof service.folders.listFolderTree).toBe("function");
     expect(service.folders).not.toHaveProperty("loadFolderTree");
     expect(service.items).not.toHaveProperty("listItems");

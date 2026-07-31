@@ -39,6 +39,9 @@ export {
   type AdjacentItemsResult,
   type BootPort,
   type CollectorService,
+  type CredentialRef,
+  type CredentialsAvailability,
+  type CredentialsPort,
   type DashboardIndexPage,
   type DashboardItemIdsResult,
   type DashboardItemSort,
@@ -61,6 +64,7 @@ export {
 
 export {
   BOOT_PORT_KEYS,
+  CREDENTIALS_PORT_KEYS,
   DASHBOARD_SNAPSHOT_PORT_KEYS,
   FOLDERS_PORT_KEYS,
   INDEX_PORT_KEYS,

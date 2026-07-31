@@ -16,6 +16,7 @@ import {
 import type { DashboardIndexPage, VaultIndexSyncStatus } from "@collector/api";
 import {
   BOOT_PORT_KEYS,
+  CREDENTIALS_PORT_KEYS,
   DASHBOARD_SNAPSHOT_PORT_KEYS,
   FOLDERS_PORT_KEYS,
   INDEX_PORT_KEYS,
@@ -709,6 +710,7 @@ describe("CollectorIpcServiceClient", () => {
 
 const PORT_KEYS = [
   "boot",
+  "credentials",
   "folders",
   "index",
   "items",
@@ -749,7 +751,7 @@ describe("CollectorIpcService ports (#366)", () => {
     }
   });
 
-  it("createCollectorIpcService exposes eight domain ports with PORT_KEYS methods", () => {
+  it("createCollectorIpcService exposes nine domain ports with PORT_KEYS methods", () => {
     const service = createCollectorIpcService(mockTransport());
     expect(Object.keys(service).sort()).toEqual([...PORT_KEYS].sort());
 
@@ -776,6 +778,11 @@ describe("CollectorIpcService ports (#366)", () => {
     }
     for (const key of SETTINGS_PORT_KEYS) {
       expect(typeof service.settings[key], `settings.${key}`).toBe("function");
+    }
+    for (const key of CREDENTIALS_PORT_KEYS) {
+      expect(typeof service.credentials[key], `credentials.${key}`).toBe(
+        "function",
+      );
     }
   });
 
@@ -844,6 +851,21 @@ describe("CollectorIpcService ports (#366)", () => {
         ).resolves.toMatchObject({
           theme: expect.any(String),
         });
+
+        const credAvail = await service.credentials.getCredentialsAvailability();
+        expect(credAvail).toMatchObject({ available: expect.any(Boolean) });
+        if (credAvail.available) {
+          const ref = { pluginId: "collector", key: "issue30_ipc_probe" };
+          await service.credentials.setCredential({
+            ...ref,
+            secret: "ipc-probe-secret",
+          });
+          await expect(service.credentials.getCredential(ref)).resolves.toBe(
+            "ipc-probe-secret",
+          );
+          await service.credentials.deleteCredential(ref);
+          await expect(service.credentials.getCredential(ref)).resolves.toBeNull();
+        }
       } finally {
         await transport.close();
       }

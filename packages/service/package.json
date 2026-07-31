@@ -36,6 +36,7 @@
     "@collector/core": "*",
     "@collector/db": "*",
     "@collector/shared": "*",
+    "@napi-rs/keyring": "^1.3.0",
     "better-sqlite3": "^11.9.1",
     "sharp": "^0.34.2"
   },
