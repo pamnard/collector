@@ -32,6 +32,13 @@ export type {
   UpdateItemInput,
 } from "./domain.js";
 
+export type {
+  NormalizedSyncItem,
+  PullResult,
+  SyncCursor,
+  SyncPlugin,
+} from "./sync-plugin.js";
+
 export {
   DASHBOARD_PREFETCH_SIZE,
   type ActiveVaultResult,
