@@ -476,7 +476,9 @@ export const DOMAIN_DISPATCH_REGISTRY: Record<
       const p = asObject(params, M.switchVault);
       const vaultId = requireString(p.vaultId, "vaultId", M.switchVault);
       await runtime.ensureInitialized();
-      return runtime.vaults.switchVault(vaultId);
+      const result = await runtime.vaults.switchVault(vaultId);
+      await runtime.syncPluginWake.notifyVaultReady();
+      return result;
     },
   },
   [M.setDefaultVault]: {
@@ -491,7 +493,9 @@ export const DOMAIN_DISPATCH_REGISTRY: Record<
   [M.ensureActiveVault]: {
     handle: async (runtime) => {
       await runtime.ensureInitialized();
-      return runtime.vaults.ensureActiveVault();
+      const result = await runtime.vaults.ensureActiveVault();
+      await runtime.syncPluginWake.notifyVaultReady();
+      return result;
     },
   },
   [M.getDataDirectory]: {

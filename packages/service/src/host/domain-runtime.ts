@@ -31,6 +31,11 @@ import { createTagsFoldersService } from "../tags-folders.js";
 import { createVaultsService } from "../vaults.js";
 import { createSyncPluginRegistry } from "../sync-plugin-registry.js";
 import {
+  createSyncPluginWakeController,
+  type SyncPluginWakePolicy,
+  type SyncPluginWakeController,
+} from "../sync-plugin-wake.js";
+import {
   createVaultIndexSyncStatusStore,
   type VaultIndexSyncStatusStore,
 } from "../sync-status.js";
@@ -108,11 +113,18 @@ export interface ServiceDomainRuntime {
   appSettings: ReturnType<typeof createAppSettingsService>;
   credentials: ReturnType<typeof createCredentialsService>;
   syncPlugins: ReturnType<typeof createSyncPluginRegistry>;
+  syncPluginWake: SyncPluginWakeController;
   dashboardSnapshot: ReturnType<typeof createDashboardSnapshotService>;
+}
+
+export interface ServiceDomainRuntimeOptions {
+  /** Build-time wake policies (#31). Default: none registered. */
+  wakePolicies?: Record<string, SyncPluginWakePolicy>;
 }
 
 export function createServiceDomainRuntime(
   layout: CollectorProfileLayout,
+  options: ServiceDomainRuntimeOptions = {},
 ): ServiceDomainRuntime {
   const fs = new NodeFileSystemAdapter();
   const { dataDir, configDir, indexDbPath: dbPath } = layout;
@@ -514,6 +526,13 @@ export function createServiceDomainRuntime(
       mediaCover.attachMediaFiles(itemId, files),
   });
 
+  const syncPluginWake = createSyncPluginWakeController({
+    syncNow: (pluginId) => syncPlugins.syncNow(pluginId),
+  });
+  for (const [pluginId, policy] of Object.entries(options.wakePolicies ?? {})) {
+    syncPluginWake.register(pluginId, policy);
+  }
+
   return {
     dataDir,
     open: () => indexBoot.open(),
@@ -521,6 +540,7 @@ export function createServiceDomainRuntime(
     isHealthy: () => indexBoot.isHealthy(),
     async close() {
       runtimeClosed = true;
+      syncPluginWake.dispose();
       await Promise.allSettled([...vaultSyncPromises.values()]);
       await vaultFsWatcher.stop();
       const sql = indexBoot.getSql();
@@ -541,6 +561,7 @@ export function createServiceDomainRuntime(
     appSettings,
     credentials,
     syncPlugins,
+    syncPluginWake,
     dashboardSnapshot,
   };
 }
