@@ -90,3 +90,10 @@ export {
   type MockSyncPlugin,
   type MockSyncPluginOptions,
 } from "./sync-plugin-mock.js";
+
+export {
+  createSyncPluginRegistry,
+  MOCK_SYNC_PLUGIN_ID,
+  SYNC_PLUGIN_STATE_DIR,
+  type SyncPluginRegistryDeps,
+} from "./sync-plugin-registry.js";

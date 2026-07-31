@@ -195,4 +195,14 @@ export const mockStore = {
     items = [...items.slice(0, index), updated, ...items.slice(index + 1)];
     return updated;
   },
+
+  addItem(item: ItemFile): ItemFile {
+    if (items.some((existing) => existing.id === item.id)) {
+      throw new Error(`Item already exists: ${item.id}`);
+    }
+    items = [item, ...items];
+    folderTree = null;
+    tags = null;
+    return item;
+  },
 };

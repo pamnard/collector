@@ -64,6 +64,8 @@ export {
   type ServiceSubscribeHandlers,
   type SettingsPort,
   type Subscription,
+  type SyncNowResult,
+  type SyncPluginsPort,
   type TagsPort,
   type VaultIndexSyncStatus,
   type VaultsPort,
@@ -78,6 +80,7 @@ export {
   ITEMS_PORT_KEYS,
   MEDIA_PORT_KEYS,
   SETTINGS_PORT_KEYS,
+  SYNC_PLUGINS_PORT_KEYS,
   TAGS_PORT_KEYS,
   VAULTS_PORT_KEYS,
 } from "./service-compose.js";

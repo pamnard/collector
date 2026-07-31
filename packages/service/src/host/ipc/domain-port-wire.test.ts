@@ -11,6 +11,7 @@ import {
   ITEMS_PORT_KEYS,
   MEDIA_PORT_KEYS,
   SETTINGS_PORT_KEYS,
+  SYNC_PLUGINS_PORT_KEYS,
   TAGS_PORT_KEYS,
   VAULTS_PORT_KEYS,
 } from "@collector/api";
@@ -34,6 +35,7 @@ describe("domain port→wire map (#366)", () => {
       ...INDEX_PORT_KEYS,
       ...SETTINGS_PORT_KEYS,
       ...CREDENTIALS_PORT_KEYS,
+      ...SYNC_PLUGINS_PORT_KEYS,
       ...DASHBOARD_SNAPSHOT_PORT_KEYS,
     ]);
     expect(new Set(ALL_PORT_METHOD_KEYS)).toEqual(expected);
