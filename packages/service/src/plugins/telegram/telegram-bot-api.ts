@@ -1,5 +1,5 @@
 /**
- * Telegram Bot API client for Path C sync (#415).
+ * Telegram Bot API client for Path C sync (#415 / #433).
  * All requests use a hard AbortSignal timeout — no hanging fetch.
  */
 
@@ -8,6 +8,9 @@ export const TELEGRAM_REQUEST_TIMEOUT_MS = 15_000;
 export const TELEGRAM_DOWNLOAD_TIMEOUT_MS = 60_000;
 /** Bot API getFile download limit for bots (20 MiB). */
 export const TELEGRAM_MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024;
+
+export const TELEGRAM_WEBHOOK_BLOCKS_POLLING_MESSAGE =
+  "На боте включён webhook, мешает опросу. Снимите webhook или сохраните токен снова.";
 
 export type TelegramFetch = typeof fetch;
 
@@ -50,14 +53,30 @@ export interface TelegramDocument {
   file_size?: number;
 }
 
+/** Shared file fields for video / animation / audio / voice / video_note / sticker. */
+export interface TelegramFileAttachment {
+  file_id: string;
+  file_unique_id: string;
+  file_size?: number;
+  file_name?: string;
+  mime_type?: string;
+}
+
 export interface TelegramMessage {
   message_id: number;
   date: number;
   chat: TelegramChat;
   text?: string;
   caption?: string;
+  media_group_id?: string;
   photo?: TelegramPhotoSize[];
   document?: TelegramDocument;
+  video?: TelegramFileAttachment;
+  animation?: TelegramFileAttachment;
+  audio?: TelegramFileAttachment;
+  voice?: TelegramFileAttachment;
+  video_note?: TelegramFileAttachment;
+  sticker?: TelegramFileAttachment;
   forward_origin?: unknown;
   forward_from?: unknown;
   forward_from_chat?: unknown;
@@ -74,6 +93,16 @@ export interface TelegramFile {
   file_unique_id: string;
   file_size?: number;
   file_path?: string;
+}
+
+export interface TelegramWebhookInfo {
+  url: string;
+  has_custom_certificate?: boolean;
+  pending_update_count?: number;
+  last_error_date?: number;
+  last_error_message?: string;
+  max_connections?: number;
+  ip_address?: string;
 }
 
 interface TelegramApiResponse<T> {
@@ -95,6 +124,32 @@ export class TelegramBotApiError extends Error {
     this.statusCode = options?.statusCode;
     this.telegramDescription = options?.telegramDescription;
   }
+}
+
+export function isTelegramDownloadLimitError(error: unknown): boolean {
+  if (!(error instanceof TelegramBotApiError)) {
+    return false;
+  }
+  return /exceeds download limit|exceeds limit/.test(error.message);
+}
+
+export function isTelegramWebhookConflictError(error: unknown): boolean {
+  if (!(error instanceof TelegramBotApiError)) {
+    return false;
+  }
+  const text = `${error.telegramDescription ?? ""} ${error.message}`;
+  return /webhook/i.test(text) || /Conflict:.*getUpdates/i.test(text);
+}
+
+/** User-facing Russian message for settings / sync errors. */
+export function formatTelegramSyncError(error: unknown): string {
+  if (isTelegramWebhookConflictError(error)) {
+    return TELEGRAM_WEBHOOK_BLOCKS_POLLING_MESSAGE;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
 }
 
 function abortAfter(ms: number): { signal: AbortSignal; cancel: () => void } {
@@ -163,6 +218,37 @@ export function createTelegramBotApi(deps: TelegramBotApiDeps = {}) {
   return {
     getMe(token: string): Promise<TelegramUser> {
       return callMethod<TelegramUser>(token, "getMe");
+    },
+
+    getWebhookInfo(token: string): Promise<TelegramWebhookInfo> {
+      return callMethod<TelegramWebhookInfo>(token, "getWebhookInfo");
+    },
+
+    deleteWebhook(
+      token: string,
+      input?: { drop_pending_updates?: boolean },
+    ): Promise<true> {
+      return callMethod<true>(token, "deleteWebhook", {
+        ...(input?.drop_pending_updates !== undefined
+          ? { drop_pending_updates: input.drop_pending_updates }
+          : {}),
+      });
+    },
+
+    /**
+     * If a webhook URL is set, clear it so getUpdates can poll.
+     * No-op when url is empty.
+     */
+    async ensurePollingClearsWebhook(token: string): Promise<boolean> {
+      const info = await callMethod<TelegramWebhookInfo>(
+        token,
+        "getWebhookInfo",
+      );
+      if (!info.url?.trim()) {
+        return false;
+      }
+      await callMethod<true>(token, "deleteWebhook", {});
+      return true;
     },
 
     getUpdates(

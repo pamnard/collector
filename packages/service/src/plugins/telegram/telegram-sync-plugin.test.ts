@@ -4,19 +4,31 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NodeFileSystemAdapter } from "@collector/core/node";
 import { INBOX_FOLDER_NAME } from "@collector/shared";
-import { createMemoryKeychainBackend, createCredentialsService } from "../../credentials.js";
+import {
+  createMemoryKeychainBackend,
+  createCredentialsService,
+} from "../../credentials.js";
 import { createSyncPluginRegistry } from "../../sync-plugin-registry.js";
+import {
+  TelegramBotApiError,
+  type TelegramBotApi,
+} from "./telegram-bot-api.js";
 import {
   flattenFolderPaths,
   loadTelegramPluginConfig,
   resolveTelegramDestinationFolder,
   saveTelegramPluginConfig,
+  TELEGRAM_PLUGIN_ID,
   updateTelegramPluginConfig,
+  type TelegramPluginConfig,
 } from "./telegram-config.js";
-import { deriveTelegramTitle, mapTelegramMessageToItem } from "./telegram-map.js";
+import {
+  deriveTelegramTitle,
+  mapTelegramMessageToItem,
+  messageHasImportableContent,
+  selectAlbumsToClose,
+} from "./telegram-map.js";
 import { createTelegramSyncPlugin } from "./telegram-sync-plugin.js";
-import type { TelegramBotApi } from "./telegram-bot-api.js";
-import { TELEGRAM_PLUGIN_ID } from "./telegram-config.js";
 
 const dirs: string[] = [];
 
@@ -35,7 +47,43 @@ async function tempDataDir(): Promise<string> {
   return dir;
 }
 
-describe("telegram-config / map (#415)", () => {
+function baseConfig(
+  patch: Partial<TelegramPluginConfig> = {},
+): TelegramPluginConfig {
+  return {
+    schema_version: 1,
+    enabled: true,
+    folder_path: "Inbox",
+    bot_username: "bot",
+    last_sync_at: null,
+    awaiting_delete: [],
+    pending_albums: [],
+    album_ack_parts: {},
+    last_pull_warnings: [],
+    ...patch,
+  };
+}
+
+function mockApi(overrides: Partial<TelegramBotApi> = {}): TelegramBotApi {
+  return {
+    getMe: vi.fn(async () => ({
+      id: 1,
+      is_bot: true,
+      first_name: "B",
+      username: "bot",
+    })),
+    getWebhookInfo: vi.fn(async () => ({ url: "" })),
+    deleteWebhook: vi.fn(async () => true as const),
+    ensurePollingClearsWebhook: vi.fn(async () => false),
+    getUpdates: vi.fn(async () => []),
+    deleteMessage: vi.fn(async () => true as const),
+    getFile: vi.fn(),
+    downloadFile: vi.fn(),
+    ...overrides,
+  } as TelegramBotApi;
+}
+
+describe("telegram-config / map (#415 / #433)", () => {
   it("resolveTelegramDestinationFolder falls back to Inbox", () => {
     expect(
       resolveTelegramDestinationFolder("Missing", ["Inbox", "Work"]),
@@ -69,6 +117,22 @@ describe("telegram-config / map (#415)", () => {
         text: "Hello\nworld",
       }),
     ).toBe("Hello");
+    expect(
+      messageHasImportableContent({
+        message_id: 1,
+        date: 0,
+        chat: { id: 1, type: "private" },
+        video: { file_id: "v", file_unique_id: "u" },
+      }),
+    ).toBe(true);
+    expect(
+      deriveTelegramTitle({
+        message_id: 1,
+        date: 0,
+        chat: { id: 1, type: "private" },
+        video: { file_id: "v", file_unique_id: "u" },
+      }),
+    ).toBe("Telegram video");
     const item = mapTelegramMessageToItem(
       {
         message_id: 2,
@@ -83,17 +147,54 @@ describe("telegram-config / map (#415)", () => {
     expect(item.folder_path).toBe("Inbox");
   });
 
+  it("selectAlbumsToClose settles idle pending albums", () => {
+    const albums = new Map([
+      [
+        "100:g1",
+        {
+          chat_id: 100,
+          media_group_id: "g1",
+          messages: [
+            {
+              message_id: 1,
+              date: 0,
+              chat: { id: 100, type: "private" },
+              media_group_id: "g1",
+              photo: [
+                {
+                  file_id: "p",
+                  file_unique_id: "u",
+                  width: 1,
+                  height: 1,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    ]);
+    expect(
+      selectAlbumsToClose({
+        pendingBeforeKeys: new Set(["100:g1"]),
+        albums,
+        touchedKeys: new Set(),
+        batchMessagesInOrder: [],
+      }),
+    ).toEqual(["100:g1"]);
+  });
+
   it("load/save/update config persists awaiting_delete and snaps folder", async () => {
     const dataDir = await tempDataDir();
     const fs = new NodeFileSystemAdapter();
-    await saveTelegramPluginConfig(fs, dataDir, "v1", {
-      schema_version: 1,
-      enabled: true,
-      folder_path: "Gone",
-      bot_username: "bot",
-      last_sync_at: null,
-      awaiting_delete: [{ chat_id: 1, message_id: 2 }],
-    });
+    await saveTelegramPluginConfig(
+      fs,
+      dataDir,
+      "v1",
+      baseConfig({
+        folder_path: "Gone",
+        awaiting_delete: [{ chat_id: 1, message_id: 2 }],
+      }),
+    );
     const updated = await updateTelegramPluginConfig(
       fs,
       dataDir,
@@ -106,30 +207,29 @@ describe("telegram-config / map (#415)", () => {
     const loaded = await loadTelegramPluginConfig(fs, dataDir, "v1");
     expect(loaded.enabled).toBe(true);
     expect(loaded.bot_username).toBe("bot");
+    expect(loaded.pending_albums).toEqual([]);
   });
 });
 
-describe("createTelegramSyncPlugin (#415)", () => {
+describe("createTelegramSyncPlugin (#415 / #433)", () => {
   it("disabled / missing token is a quiet no-op pull", async () => {
     const dataDir = await tempDataDir();
     const fs = new NodeFileSystemAdapter();
     const credentials = createCredentialsService({
       backend: createMemoryKeychainBackend(),
     });
-    const api = {
-      getMe: vi.fn(),
+    const api = mockApi({
       getUpdates: vi.fn(),
-      deleteMessage: vi.fn(),
-      getFile: vi.fn(),
-      downloadFile: vi.fn(),
-    } as unknown as TelegramBotApi;
+    });
 
     const plugin = createTelegramSyncPlugin({
       credentials,
       fs,
       dataDir,
       resolveActiveVaultId: async () => "v1",
-      listFolderTree: async () => [{ name: "Inbox", path: "Inbox", item_count: 0, children: [] }],
+      listFolderTree: async () => [
+        { name: "Inbox", path: "Inbox", item_count: 0, children: [] },
+      ],
       api,
     });
 
@@ -138,6 +238,303 @@ describe("createTelegramSyncPlugin (#415)", () => {
       nextCursor: null,
     });
     expect(api.getUpdates).not.toHaveBeenCalled();
+  });
+
+  it("clears webhook before getUpdates when url is set", async () => {
+    const dataDir = await tempDataDir();
+    const fs = new NodeFileSystemAdapter();
+    const credentials = createCredentialsService({
+      backend: createMemoryKeychainBackend(),
+    });
+    await credentials.setCredential({
+      pluginId: TELEGRAM_PLUGIN_ID,
+      key: "bot_token",
+      secret: "tok",
+    });
+    await saveTelegramPluginConfig(fs, dataDir, "v1", baseConfig());
+
+    const order: string[] = [];
+    const api = mockApi({
+      ensurePollingClearsWebhook: vi.fn(async () => {
+        order.push("webhook");
+        return true;
+      }),
+      getUpdates: vi.fn(async () => {
+        order.push("updates");
+        return [];
+      }),
+    });
+
+    const plugin = createTelegramSyncPlugin({
+      credentials,
+      fs,
+      dataDir,
+      resolveActiveVaultId: async () => "v1",
+      listFolderTree: async () => [
+        { name: "Inbox", path: "Inbox", item_count: 0, children: [] },
+      ],
+      api,
+    });
+
+    await plugin.pull(null);
+    expect(order).toEqual(["webhook", "updates"]);
+  });
+
+  it("imports video-only and video+caption", async () => {
+    const dataDir = await tempDataDir();
+    const fs = new NodeFileSystemAdapter();
+    const credentials = createCredentialsService({
+      backend: createMemoryKeychainBackend(),
+    });
+    await credentials.setCredential({
+      pluginId: TELEGRAM_PLUGIN_ID,
+      key: "bot_token",
+      secret: "tok",
+    });
+    await saveTelegramPluginConfig(fs, dataDir, "v1", baseConfig());
+
+    const api = mockApi({
+      getUpdates: vi.fn(async () => [
+        {
+          update_id: 1,
+          message: {
+            message_id: 10,
+            date: 1,
+            chat: { id: 100, type: "private" },
+            video: {
+              file_id: "vid1",
+              file_unique_id: "u1",
+              file_size: 4,
+            },
+          },
+        },
+        {
+          update_id: 2,
+          message: {
+            message_id: 11,
+            date: 1,
+            chat: { id: 100, type: "private" },
+            caption: "cap",
+            video: {
+              file_id: "vid2",
+              file_unique_id: "u2",
+              file_size: 4,
+            },
+          },
+        },
+      ]),
+      getFile: vi.fn(async (_t: string, fileId: string) => ({
+        file_id: fileId,
+        file_unique_id: fileId,
+        file_path: `videos/${fileId}.mp4`,
+        file_size: 4,
+      })),
+      downloadFile: vi.fn(async () => new Uint8Array([1, 2, 3, 4])),
+    });
+
+    const plugin = createTelegramSyncPlugin({
+      credentials,
+      fs,
+      dataDir,
+      resolveActiveVaultId: async () => "v1",
+      listFolderTree: async () => [
+        { name: "Inbox", path: "Inbox", item_count: 0, children: [] },
+      ],
+      api,
+    });
+
+    const pulled = await plugin.pull(null);
+    expect(pulled.items).toHaveLength(2);
+    expect(pulled.items[0]?.title).toBe("Telegram video");
+    expect(pulled.items[0]?.media).toHaveLength(1);
+    expect(pulled.items[1]?.title).toBe("cap");
+    expect(pulled.items[1]?.body).toBe("cap");
+    expect(pulled.items[1]?.media).toHaveLength(1);
+  });
+
+  it("album becomes one item; ack deletes all message ids", async () => {
+    const dataDir = await tempDataDir();
+    const fs = new NodeFileSystemAdapter();
+    const credentials = createCredentialsService({
+      backend: createMemoryKeychainBackend(),
+    });
+    await credentials.setCredential({
+      pluginId: TELEGRAM_PLUGIN_ID,
+      key: "bot_token",
+      secret: "tok",
+    });
+    await saveTelegramPluginConfig(fs, dataDir, "v1", baseConfig());
+
+    const deleteMessage = vi.fn(async () => true as const);
+    let pullCount = 0;
+    const api = mockApi({
+      getUpdates: vi.fn(async () => {
+        pullCount += 1;
+        if (pullCount === 1) {
+          return [
+            {
+              update_id: 1,
+              message: {
+                message_id: 1,
+                date: 1,
+                chat: { id: 100, type: "private" },
+                media_group_id: "album1",
+                caption: "album",
+                photo: [
+                  {
+                    file_id: "p1",
+                    file_unique_id: "u1",
+                    width: 10,
+                    height: 10,
+                    file_size: 4,
+                  },
+                ],
+              },
+            },
+            {
+              update_id: 2,
+              message: {
+                message_id: 2,
+                date: 1,
+                chat: { id: 100, type: "private" },
+                media_group_id: "album1",
+                photo: [
+                  {
+                    file_id: "p2",
+                    file_unique_id: "u2",
+                    width: 10,
+                    height: 10,
+                    file_size: 4,
+                  },
+                ],
+              },
+            },
+          ];
+        }
+        return [];
+      }),
+      deleteMessage,
+      getFile: vi.fn(async (_t: string, fileId: string) => ({
+        file_id: fileId,
+        file_unique_id: fileId,
+        file_path: `photos/${fileId}.jpg`,
+        file_size: 4,
+      })),
+      downloadFile: vi.fn(async () => new Uint8Array([9, 9, 9, 9])),
+    });
+
+    const plugin = createTelegramSyncPlugin({
+      credentials,
+      fs,
+      dataDir,
+      resolveActiveVaultId: async () => "v1",
+      listFolderTree: async () => [
+        { name: "Inbox", path: "Inbox", item_count: 0, children: [] },
+      ],
+      api,
+    });
+
+    const first = await plugin.pull(null);
+    expect(first.items).toHaveLength(0);
+    const pending = await loadTelegramPluginConfig(fs, dataDir, "v1");
+    expect(pending.pending_albums).toHaveLength(1);
+
+    const attachMediaFiles = vi.fn(async () => []);
+    const createItem = vi.fn(async (input: { title: string }) => ({
+      id: `Inbox/${input.title}.md`,
+      title: input.title,
+    }));
+    const registry = createSyncPluginRegistry({
+      fs,
+      dataDir,
+      resolveActiveVaultId: async () => "v1",
+      createItem: createItem as never,
+      attachMediaFiles,
+      createCatalog: () => [plugin],
+    });
+
+    const second = await registry.syncNow(TELEGRAM_PLUGIN_ID);
+    expect(second.importedCount).toBe(1);
+    expect(createItem).toHaveBeenCalledTimes(1);
+    expect(attachMediaFiles).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.arrayContaining([
+        expect.objectContaining({ name: expect.any(String) }),
+        expect.objectContaining({ name: expect.any(String) }),
+      ]),
+    );
+    expect(deleteMessage).toHaveBeenCalledWith("tok", 100, 1);
+    expect(deleteMessage).toHaveBeenCalledWith("tok", 100, 2);
+  });
+
+  it("oversized file is skipped with warning; pull continues", async () => {
+    const dataDir = await tempDataDir();
+    const fs = new NodeFileSystemAdapter();
+    const credentials = createCredentialsService({
+      backend: createMemoryKeychainBackend(),
+    });
+    await credentials.setCredential({
+      pluginId: TELEGRAM_PLUGIN_ID,
+      key: "bot_token",
+      secret: "tok",
+    });
+    await saveTelegramPluginConfig(fs, dataDir, "v1", baseConfig());
+
+    const api = mockApi({
+      getUpdates: vi.fn(async () => [
+        {
+          update_id: 1,
+          message: {
+            message_id: 1,
+            date: 1,
+            chat: { id: 100, type: "private" },
+            text: "ok text",
+          },
+        },
+        {
+          update_id: 2,
+          message: {
+            message_id: 2,
+            date: 1,
+            chat: { id: 100, type: "private" },
+            video: {
+              file_id: "huge",
+              file_unique_id: "uh",
+              file_size: 30 * 1024 * 1024,
+            },
+          },
+        },
+      ]),
+      getFile: vi.fn(async () => ({
+        file_id: "huge",
+        file_unique_id: "uh",
+        file_path: "videos/huge.mp4",
+        file_size: 30 * 1024 * 1024,
+      })),
+      downloadFile: vi.fn(async () => {
+        throw new TelegramBotApiError(
+          "telegram: file exceeds download limit (31457280 > 20971520)",
+        );
+      }),
+    });
+
+    const plugin = createTelegramSyncPlugin({
+      credentials,
+      fs,
+      dataDir,
+      resolveActiveVaultId: async () => "v1",
+      listFolderTree: async () => [
+        { name: "Inbox", path: "Inbox", item_count: 0, children: [] },
+      ],
+      api,
+    });
+
+    const pulled = await plugin.pull(null);
+    expect(pulled.items).toHaveLength(1);
+    expect(pulled.items[0]?.remoteId).toBe("100:1");
+    expect(pulled.warnings?.some((w) => /20 МБ/.test(w))).toBe(true);
+    const cfg = await loadTelegramPluginConfig(fs, dataDir, "v1");
+    expect(cfg.last_pull_warnings.length).toBeGreaterThan(0);
   });
 
   it("pull → import → ack deletes; awaiting_delete skips re-import", async () => {
@@ -151,23 +548,10 @@ describe("createTelegramSyncPlugin (#415)", () => {
       key: "bot_token",
       secret: "tok",
     });
-    await saveTelegramPluginConfig(fs, dataDir, "v1", {
-      schema_version: 1,
-      enabled: true,
-      folder_path: "Inbox",
-      bot_username: "bot",
-      last_sync_at: null,
-      awaiting_delete: [],
-    });
+    await saveTelegramPluginConfig(fs, dataDir, "v1", baseConfig());
 
     const deleteMessage = vi.fn(async () => true as const);
-    const api = {
-      getMe: vi.fn(async () => ({
-        id: 1,
-        is_bot: true,
-        first_name: "B",
-        username: "bot",
-      })),
+    const api = mockApi({
       getUpdates: vi.fn(async () => [
         {
           update_id: 10,
@@ -180,9 +564,7 @@ describe("createTelegramSyncPlugin (#415)", () => {
         },
       ]),
       deleteMessage,
-      getFile: vi.fn(),
-      downloadFile: vi.fn(),
-    } as unknown as TelegramBotApi;
+    });
 
     const plugin = createTelegramSyncPlugin({
       credentials,
@@ -213,7 +595,6 @@ describe("createTelegramSyncPlugin (#415)", () => {
     expect(deleteMessage).toHaveBeenCalledWith("tok", 100, 5);
     expect(createItem).toHaveBeenCalledTimes(1);
 
-    // Simulate delete residue: keep awaiting_delete and fail further deletes.
     deleteMessage.mockImplementation(async () => {
       throw new Error("delete still failing");
     });
@@ -243,17 +624,9 @@ describe("createTelegramSyncPlugin (#415)", () => {
       key: "bot_token",
       secret: "tok",
     });
-    await saveTelegramPluginConfig(fs, dataDir, "v1", {
-      schema_version: 1,
-      enabled: true,
-      folder_path: "Inbox",
-      bot_username: "bot",
-      last_sync_at: null,
-      awaiting_delete: [],
-    });
+    await saveTelegramPluginConfig(fs, dataDir, "v1", baseConfig());
 
-    const api = {
-      getMe: vi.fn(async () => ({ id: 1, is_bot: true, first_name: "B" })),
+    const api = mockApi({
       getUpdates: vi.fn(async () => [
         {
           update_id: 1,
@@ -268,9 +641,7 @@ describe("createTelegramSyncPlugin (#415)", () => {
       deleteMessage: vi.fn(async () => {
         throw new Error("delete failed");
       }),
-      getFile: vi.fn(),
-      downloadFile: vi.fn(),
-    } as unknown as TelegramBotApi;
+    });
 
     const plugin = createTelegramSyncPlugin({
       credentials,

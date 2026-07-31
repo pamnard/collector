@@ -31,6 +31,8 @@ export interface PullResult {
   items: NormalizedSyncItem[];
   /** Next cursor to store; null = unchanged / not applicable. */
   nextCursor: SyncCursor | null;
+  /** Non-fatal skip reasons (e.g. oversized Telegram file). */
+  warnings?: string[];
 }
 
 export interface SyncPlugin {

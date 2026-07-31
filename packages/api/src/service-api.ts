@@ -281,6 +281,8 @@ export interface CredentialsPort {
 export interface SyncNowResult {
   importedCount: number;
   itemIds: string[];
+  /** Non-fatal skip reasons from the plugin pull (e.g. oversized file). */
+  warnings?: string[];
 }
 
 /**
@@ -297,6 +299,8 @@ export interface TelegramSyncSettings {
   folder_path: string;
   bot_username: string | null;
   last_sync_at: string | null;
+  /** Non-fatal skips from last pull (oversized files, empty after skip). */
+  last_pull_warnings?: string[];
 }
 
 export type TelegramSyncSettingsPatch = Partial<{
