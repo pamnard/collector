@@ -10,11 +10,12 @@ import {
 } from "@tanstack/react-table";
 import type { TagWithCount } from "@collector/core";
 import type { ItemFile } from "@collector/shared";
-import { Columns3 } from "lucide-react";
 import { DashboardTableSkeleton } from "./DashboardListSkeleton";
 import { selectionQueryKey } from "./table/dashboard-table-selection";
+import { columnWidthClass } from "./table/column-width";
 import { ITEM_TABLE_COLUMN_SPECS } from "./table/item-table-column-specs";
 import { createItemTableColumns } from "./table/item-table-columns";
+import { ItemTableToolbar } from "./table/item-table-toolbar";
 import { resolveColumnVisibility } from "./table/resolve-column-visibility";
 import { useDashboardTableSelection } from "./table/use-dashboard-table-selection";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
@@ -24,15 +25,6 @@ import { useShell } from "../layout/AppLayout";
 import type { useDashboardItems } from "../../hooks/useDashboardItems";
 import { getCollectorService } from "../../services/collector-client";
 import { navFilterKey } from "../../types/ui";
-import { Button } from "../ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -50,24 +42,6 @@ interface ItemTableViewProps {
 
 const ROW_ESTIMATE_PX = 40;
 const ROW_OVERSCAN = 10;
-
-function columnWidthClass(columnId: string): string {
-  switch (columnId) {
-    case "select":
-      return "w-10";
-    case "content_type":
-      return "w-28";
-    case "tags":
-      return "w-40";
-    case "created_at":
-    case "updated_at":
-      return "w-28";
-    case "actions":
-      return "w-16";
-    default:
-      return "";
-  }
-}
 
 export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
   const navigate = useNavigate();
@@ -178,7 +152,6 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
 
   const rows = table.getRowModel().rows;
   const visibleColumnCount = table.getVisibleLeafColumns().length;
-  const hideableSpecs = ITEM_TABLE_COLUMN_SPECS.filter((spec) => spec.enableHiding);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -207,59 +180,16 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
 
   return (
     <>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="min-h-7 flex items-center gap-3 text-sm text-neutral-600 dark:text-neutral-300">
-          {selection.selectedCount > 0 ? (
-            <>
-              <span>Выбрано {selection.selectedCount}</span>
-              {selection.showSelectAllMatching ? (
-                <Button
-                  type="button"
-                  variant="link"
-                  size="sm"
-                  className="h-auto p-0"
-                  onClick={() => {
-                    selection.selectAllMatching();
-                  }}
-                >
-                  Выбрать все {dashboard.totalCount}
-                </Button>
-              ) : null}
-            </>
-          ) : null}
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-              />
-            }
-          >
-            <Columns3 size={16} />
-            Столбцы
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-44">
-            <DropdownMenuGroup>
-              <DropdownMenuLabel>Видимые столбцы</DropdownMenuLabel>
-              {hideableSpecs.map((spec) => (
-                <DropdownMenuCheckboxItem
-                  key={spec.id}
-                  checked={columnVisibility[spec.id] !== false}
-                  onCheckedChange={(checked) => {
-                    table.getColumn(spec.id)?.toggleVisibility(!!checked);
-                  }}
-                >
-                  {spec.label}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      <ItemTableToolbar
+        selectedCount={selection.selectedCount}
+        totalCount={dashboard.totalCount}
+        showSelectAllMatching={selection.showSelectAllMatching}
+        onSelectAllMatching={() => {
+          selection.selectAllMatching();
+        }}
+        table={table}
+        columnVisibility={columnVisibility}
+      />
 
       <div
         ref={tableTopRef}

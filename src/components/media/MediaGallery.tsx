@@ -1,31 +1,15 @@
-import {
-  File,
-  FileAudio,
-  ImagePlus,
-  Play,
-  Star,
-  Trash2,
-} from "lucide-react";
+import { ImagePlus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MediaWithPath } from "@collector/core";
 import type { ItemFile } from "@collector/shared";
-import {
-  Attachment,
-  AttachmentAction,
-  AttachmentActions,
-  AttachmentContent,
-  AttachmentDescription,
-  AttachmentMedia,
-  AttachmentTitle,
-  AttachmentTrigger,
-} from "@/components/ui/attachment";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toDisplayAssetSrc } from "../../utils/asset-src";
-import type { PlayableMediaKind } from "../../utils/local-media-playback";
 import {
   getCollectorService,
   getUiSession,
 } from "../../services/collector-client";
+import { MediaGalleryListRow } from "./MediaGalleryListRow";
+import { MediaGalleryVisualTile } from "./MediaGalleryVisualTile";
 
 interface MediaGalleryProps {
   itemId: string;
@@ -33,26 +17,6 @@ interface MediaGalleryProps {
   item?: ItemFile;
   onUpdated?: () => void;
   onPlayMedia?: (file: MediaWithPath) => void;
-}
-
-function isPlayableMediaType(
-  mediaType: string,
-): mediaType is PlayableMediaKind {
-  return mediaType === "video" || mediaType === "audio";
-}
-
-function fileTypeLabel(filename: string, mediaType: string): string {
-  const ext = filename.includes(".")
-    ? filename.slice(filename.lastIndexOf(".") + 1).toUpperCase()
-    : mediaType.toUpperCase();
-  return ext || mediaType.toUpperCase();
-}
-
-function NonImageIcon({ mediaType }: { mediaType: string }) {
-  if (mediaType === "audio") {
-    return <FileAudio />;
-  }
-  return <File />;
 }
 
 export function MediaGallery({
@@ -183,6 +147,10 @@ export function MediaGallery({
     }
   };
 
+  const requestDelete = (file: MediaWithPath) => {
+    setPendingDelete({ id: file.id, filename: file.filename });
+  };
+
   const visualFiles = useMemo(
     () => [...images, ...others.filter((f) => f.media_type === "video")],
     [images, others],
@@ -237,130 +205,30 @@ export function MediaGallery({
         <div className="space-y-3">
           {visualFiles.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              {visualFiles.map((file) => {
-                const isVideo = file.media_type === "video";
-                const src = toDisplayAssetSrc(file.absolute_path);
-                return (
-                  <Attachment
-                    key={file.id}
-                    orientation="vertical"
-                    size="default"
-                    state="done"
-                    className="w-32! flex-col! flex-nowrap! items-stretch"
-                  >
-                    <AttachmentMedia
-                      variant="image"
-                      className="aspect-square w-full!"
-                    >
-                      {isVideo ? (
-                        <>
-                          {coverSrc ? (
-                            <img src={coverSrc} alt="" />
-                          ) : (
-                            <video
-                              src={`${src}#t=0.1`}
-                              muted
-                              preload="metadata"
-                              playsInline
-                              aria-hidden
-                            />
-                          )}
-                          <span className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center">
-                            <span className="flex size-8 items-center justify-center rounded-full bg-black/65 text-white shadow-sm">
-                              <Play
-                                className="ml-px size-4 fill-current"
-                                strokeWidth={0}
-                              />
-                            </span>
-                          </span>
-                        </>
-                      ) : (
-                        <img src={src} alt="" />
-                      )}
-                    </AttachmentMedia>
-                    <AttachmentContent>
-                      <AttachmentTitle>{file.filename}</AttachmentTitle>
-                      <AttachmentDescription>
-                        {fileTypeLabel(file.filename, file.media_type)}
-                      </AttachmentDescription>
-                    </AttachmentContent>
-                    <AttachmentActions className="opacity-0 transition-opacity group-hover/attachment:opacity-100 group-focus-within/attachment:opacity-100">
-                      <AttachmentAction
-                        aria-label={`Сделать обложкой ${file.filename}`}
-                        title="Сделать обложкой"
-                        disabled={coverMediaId === file.id}
-                        onClick={() => void handleSetCover(file.id)}
-                      >
-                        <Star />
-                      </AttachmentAction>
-                      <AttachmentAction
-                        aria-label={`Удалить ${file.filename}`}
-                        onClick={() =>
-                          setPendingDelete({
-                            id: file.id,
-                            filename: file.filename,
-                          })
-                        }
-                      >
-                        <Trash2 />
-                      </AttachmentAction>
-                    </AttachmentActions>
-                    {isVideo && onPlayMedia ? (
-                      <AttachmentTrigger
-                        aria-label={`Смотреть ${file.filename}`}
-                        onClick={() => onPlayMedia(file)}
-                      />
-                    ) : null}
-                  </Attachment>
-                );
-              })}
+              {visualFiles.map((file) => (
+                <MediaGalleryVisualTile
+                  key={file.id}
+                  file={file}
+                  coverSrc={coverSrc}
+                  coverBusy={coverMediaId === file.id}
+                  onSetCover={(mediaId) => void handleSetCover(mediaId)}
+                  onRequestDelete={requestDelete}
+                  onPlayMedia={onPlayMedia}
+                />
+              ))}
             </div>
           )}
 
           {listFiles.length > 0 && (
             <div className="flex flex-col gap-2">
-              {listFiles.map((file) => {
-                const playable =
-                  isPlayableMediaType(file.media_type) && onPlayMedia;
-                return (
-                  <Attachment
-                    key={file.id}
-                    orientation="horizontal"
-                    size="sm"
-                    state="done"
-                    className="w-full max-w-none"
-                  >
-                    <AttachmentMedia variant="icon">
-                      <NonImageIcon mediaType={file.media_type} />
-                    </AttachmentMedia>
-                    <AttachmentContent>
-                      <AttachmentTitle>{file.filename}</AttachmentTitle>
-                      <AttachmentDescription>
-                        {fileTypeLabel(file.filename, file.media_type)}
-                      </AttachmentDescription>
-                    </AttachmentContent>
-                    <AttachmentActions>
-                      <AttachmentAction
-                        aria-label={`Удалить ${file.filename}`}
-                        onClick={() =>
-                          setPendingDelete({
-                            id: file.id,
-                            filename: file.filename,
-                          })
-                        }
-                      >
-                        <Trash2 />
-                      </AttachmentAction>
-                    </AttachmentActions>
-                    {playable ? (
-                      <AttachmentTrigger
-                        aria-label={`Слушать ${file.filename}`}
-                        onClick={() => onPlayMedia(file)}
-                      />
-                    ) : null}
-                  </Attachment>
-                );
-              })}
+              {listFiles.map((file) => (
+                <MediaGalleryListRow
+                  key={file.id}
+                  file={file}
+                  onRequestDelete={requestDelete}
+                  onPlayMedia={onPlayMedia}
+                />
+              ))}
             </div>
           )}
         </div>

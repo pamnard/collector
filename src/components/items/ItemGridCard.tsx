@@ -1,21 +1,8 @@
-import {
-  FileText,
-  Image as ImageIcon,
-  Link as LinkIcon,
-  Music,
-  Video,
-} from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import type { ItemFile } from "@collector/shared";
 import type { TagWithCount } from "@collector/core";
-import { Badge } from "@/components/ui/badge";
-import { toDisplayAssetSrc } from "../../utils/asset-src";
-import { formatItemDate } from "../../utils/formatItemDate";
-import { getYouTubeThumbnail } from "../../utils/youtube-thumbnail";
-import { itemGridCoverSlot } from "./item-grid-cover-slot";
-
-/** Cover is portrait when height/width >= this (1.2 ≈ «чуть выше квадрата»). */
-const PORTRAIT_COVER_RATIO = 1.2;
+import { ItemGridCardMeta } from "./ItemGridCardMeta";
+import { useItemGridCover } from "./use-item-grid-cover";
 
 interface ItemGridCardProps {
   item: ItemFile;
@@ -23,43 +10,6 @@ interface ItemGridCardProps {
   thumbnailPath?: string | null;
   tagsById: Map<string, TagWithCount>;
   onOpen: (itemId: string) => void;
-}
-
-function iconForContentType(type: string) {
-  switch (type) {
-    case "image":
-      return <ImageIcon size={16} />;
-    case "video":
-      return <Video size={16} />;
-    case "audio":
-      return <Music size={16} />;
-    case "article":
-    case "pdf":
-    case "document":
-      return <FileText size={16} />;
-    default:
-      return <LinkIcon size={16} />;
-  }
-}
-
-function isPortraitNaturalSize(img: HTMLImageElement): boolean {
-  if (img.naturalWidth === 0) {
-    return false;
-  }
-  return img.naturalHeight / img.naturalWidth >= PORTRAIT_COVER_RATIO;
-}
-
-function resolveCoverSrc(
-  thumbnailPath: string | null,
-  itemUrl: string | undefined,
-): string | null {
-  if (thumbnailPath) {
-    return toDisplayAssetSrc(thumbnailPath);
-  }
-  if (itemUrl) {
-    return getYouTubeThumbnail(itemUrl);
-  }
-  return null;
 }
 
 export function ItemGridCard({
@@ -70,11 +20,6 @@ export function ItemGridCard({
 }: ItemGridCardProps) {
   const optimisticPortrait =
     item.content_type === "image" || item.content_type === "video";
-  const [coverSrc, setCoverSrc] = useState<string | null>(null);
-  /** Attempt finished (ok or fail). Fail must not leave the gray teaser forever. */
-  const [coverSettled, setCoverSettled] = useState(false);
-  const [isPortraitCover, setIsPortraitCover] = useState(optimisticPortrait);
-  const coverSrcRef = useRef(coverSrc);
 
   const tags = useMemo(
     () =>
@@ -84,80 +29,21 @@ export function ItemGridCard({
     [item.tag_ids, tagsById],
   );
 
-  const expectedCoverSrc =
-    thumbnailPath === undefined
-      ? null
-      : resolveCoverSrc(thumbnailPath, item.url ?? undefined);
-  const { coverPending, showCover } = itemGridCoverSlot({
-    expectedCoverSrc,
+  const {
     coverSrc,
-    coverSettled,
+    isPortraitCover,
+    coverPending,
+    showCover,
+    pathUnresolved,
+  } = useItemGridCover({
+    thumbnailPath,
+    itemUrl: item.url ?? undefined,
+    optimisticPortrait,
   });
-
-  useEffect(() => {
-    coverSrcRef.current = coverSrc;
-  }, [coverSrc]);
-
-  useEffect(() => {
-    // Path still resolving — wait; do not tear down chrome once path is known.
-    if (thumbnailPath === undefined) {
-      return;
-    }
-
-    const src = resolveCoverSrc(thumbnailPath, item.url ?? undefined);
-    // Skip only when the same successful src is already shown (ref holds coverSrc).
-    if (src !== null && src === coverSrcRef.current) {
-      return;
-    }
-
-    setCoverSrc(null);
-    setCoverSettled(false);
-    setIsPortraitCover(optimisticPortrait);
-
-    if (!src) {
-      setCoverSettled(true);
-      return;
-    }
-
-    let cancelled = false;
-    let settled = false;
-    const img = new Image();
-    const finish = (next: { src: string | null; portrait: boolean }) => {
-      if (cancelled || settled) {
-        return;
-      }
-      settled = true;
-      clearTimeout(timer);
-      setCoverSrc(next.src);
-      setCoverSettled(true);
-      setIsPortraitCover(next.portrait);
-    };
-    const timer = setTimeout(() => {
-      console.warn("[ItemGridCard] cover decode timed out", { src });
-      finish({ src: null, portrait: false });
-    }, 4_000);
-    img.onload = () => {
-      finish({
-        src,
-        portrait: isPortraitNaturalSize(img),
-      });
-    };
-    img.onerror = () => {
-      finish({ src: null, portrait: false });
-    };
-    img.src = src;
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-      img.onload = null;
-      img.onerror = null;
-    };
-  }, [item.url, optimisticPortrait, thumbnailPath]);
 
   // Only while dashboard paths are unresolved. Once path is known, keep card chrome
   // mounted — pulse→fade was the second ms-blink on image-heavy folder switches.
-  if (thumbnailPath === undefined) {
+  if (pathUnresolved) {
     return (
       <div
         aria-hidden
@@ -171,81 +57,14 @@ export function ItemGridCard({
   );
 
   const meta = (
-    <>
-      <h3
-        className={
-          overlayLayout
-            ? "mb-2 line-clamp-3 text-lg font-bold leading-snug text-white dark:text-neutral-900"
-            : "mb-2 line-clamp-3 text-lg font-bold leading-snug text-neutral-900 dark:text-neutral-100"
-        }
-      >
-        {item.title}
-      </h3>
-
-      {item.description && (
-        <p
-          className={
-            overlayLayout
-              ? "mb-4 line-clamp-3 flex-1 text-sm text-white/80 dark:text-neutral-700"
-              : "mb-4 line-clamp-3 flex-1 text-sm text-neutral-500 dark:text-neutral-400"
-          }
-        >
-          {item.description}
-        </p>
-      )}
-
-      {tags.length > 0 && (
-        <div className="mt-auto flex flex-wrap gap-2">
-          {tags.slice(0, 3).map((tag) => (
-            <Badge
-              key={tag.id}
-              variant="outline"
-              className={
-                overlayLayout
-                  ? "border-white/25 bg-white/15 text-white dark:border-neutral-900/20 dark:bg-neutral-900/10 dark:text-neutral-800"
-                  : undefined
-              }
-              style={
-                !overlayLayout && tag.color ? { color: tag.color } : undefined
-              }
-            >
-              {tag.name}
-            </Badge>
-          ))}
-          {tags.length > 3 && (
-            <Badge
-              variant="outline"
-              className={
-                overlayLayout
-                  ? "border-white/25 bg-white/15 text-white dark:border-neutral-900/20 dark:bg-neutral-900/10 dark:text-neutral-800"
-                  : undefined
-              }
-            >
-              +{tags.length - 3}
-            </Badge>
-          )}
-        </div>
-      )}
-
-      <div
-        className={
-          overlayLayout
-            ? "mt-4 flex items-center text-sm leading-none text-white/70 dark:text-neutral-600"
-            : "mt-4 flex items-center text-sm leading-none text-neutral-500"
-        }
-      >
-        <div className="flex items-center gap-2">
-          <span
-            className={
-              item.content_type === "image" ? "text-purple-400" : "text-indigo-400"
-            }
-          >
-            {iconForContentType(item.content_type)}
-          </span>
-          <span>{formatItemDate(item.created_at)}</span>
-        </div>
-      </div>
-    </>
+    <ItemGridCardMeta
+      title={item.title}
+      description={item.description}
+      contentType={item.content_type}
+      createdAt={item.created_at}
+      tags={tags}
+      overlayLayout={overlayLayout}
+    />
   );
 
   return (

@@ -1,17 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { TagWithCount } from "@collector/core";
 import { getCollectorService } from "../../services/collector-client";
-import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../ui/dialog";
-import { Input } from "../ui/input";
+import { TagPickerChip } from "./TagPickerChip";
+import { TagRenameDialog } from "./TagRenameDialog";
 
 interface TagPickerProps {
   selectedTagNames: string[];
@@ -33,8 +25,8 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
   const [isRenaming, setIsRenaming] = useState(false);
 
   useEffect(() => {
-    getCollectorService().tags
-      .listTags()
+    getCollectorService()
+      .tags.listTags()
       .then(setTags)
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : String(err));
@@ -155,44 +147,15 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
             sameName(selected, name),
           );
           return (
-            <div key={name.toLowerCase()} className="inline-flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => toggleTag(name)}
-                className={`rounded-full px-3 py-1 text-sm border transition-colors ${
-                  selected
-                    ? "border-indigo-500/50 bg-indigo-500/15 text-indigo-300"
-                    : "border-black/10 dark:border-white/10 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100/65 dark:hover:bg-neutral-700/65"
-                }`}
-                style={
-                  known?.color
-                    ? { borderColor: known.color, color: known.color }
-                    : undefined
-                }
-              >
-                {name}
-              </button>
-              {known ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => openRename(known)}
-                    className="text-neutral-500 hover:text-neutral-500 dark:hover:text-neutral-400 text-sm px-1"
-                    aria-label={`Переименовать ${known.name}`}
-                  >
-                    ✎
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPendingDelete(known)}
-                    className="text-neutral-500 hover:text-red-400 text-sm px-1"
-                    aria-label={`Удалить ${known.name}`}
-                  >
-                    ×
-                  </button>
-                </>
-              ) : null}
-            </div>
+            <TagPickerChip
+              key={name.toLowerCase()}
+              name={name}
+              known={known}
+              selected={selected}
+              onToggle={toggleTag}
+              onRename={openRename}
+              onDelete={setPendingDelete}
+            />
           );
         })}
       </div>
@@ -234,55 +197,20 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
         onConfirm={handleConfirmDelete}
       />
 
-      <Dialog
+      <TagRenameDialog
         open={pendingRename !== null}
+        tagName={pendingRename?.name ?? ""}
+        renameValue={renameValue}
+        isRenaming={isRenaming}
+        onRenameValueChange={setRenameValue}
         onOpenChange={(open) => {
-          if (isRenaming) {
-            return;
-          }
           if (!open) {
             setPendingRename(null);
           }
         }}
-      >
-        <DialogContent showCloseButton={!isRenaming}>
-          <DialogHeader>
-            <DialogTitle>Переименовать тег</DialogTitle>
-            <DialogDescription>
-              Новое имя для «{pendingRename?.name ?? ""}».
-            </DialogDescription>
-          </DialogHeader>
-          <Input
-            value={renameValue}
-            onChange={(event) => setRenameValue(event.target.value)}
-            disabled={isRenaming}
-            autoFocus
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void handleConfirmRename();
-              }
-            }}
-          />
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={isRenaming}
-              onClick={() => setPendingRename(null)}
-            >
-              Отмена
-            </Button>
-            <Button
-              type="button"
-              disabled={isRenaming || !renameValue.trim()}
-              onClick={() => void handleConfirmRename()}
-            >
-              Сохранить
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onConfirm={() => void handleConfirmRename()}
+        onCancel={() => setPendingRename(null)}
+      />
     </div>
   );
 }
