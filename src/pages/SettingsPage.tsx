@@ -4,6 +4,7 @@ import { parseSettingsSection } from "../types/sidebar-mode";
 import { McpSettingsSection } from "./McpSettingsSection";
 import { SettingsGeneralSection } from "./SettingsGeneralSection";
 import { SettingsUpdatesSection } from "./SettingsUpdatesSection";
+import { TelegramSettingsSection } from "./TelegramSettingsSection";
 
 export function SettingsPage() {
   const [searchParams] = useSearchParams();
@@ -15,6 +16,10 @@ export function SettingsPage() {
 
   if (section === "mcp") {
     return <McpSettingsSection />;
+  }
+
+  if (section === "telegram") {
+    return <TelegramSettingsSection />;
   }
 
   return (

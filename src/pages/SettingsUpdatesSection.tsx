@@ -12,7 +12,7 @@ export function SettingsUpdatesSection() {
       <div className="flex items-center justify-between gap-4">
         <div>
           <p className="font-medium">Обновления</p>
-          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">
+          <p className="text-neutral-500 dark:text-neutral-400 mt-1">
             Канал: GitHub Releases (`latest.json`)
           </p>
         </div>
@@ -32,8 +32,8 @@ export function SettingsUpdatesSection() {
 
       <div className="flex items-center justify-between gap-4">
         <div>
-          <p className="font-medium text-sm">Проверять при запуске</p>
-          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-0.5">
+          <p className="font-medium">Проверять при запуске</p>
+          <p className="text-neutral-500 dark:text-neutral-400 mt-0.5">
             {checkUpdatesOnStart ? "Включено" : "Выключено"}
           </p>
         </div>
@@ -53,7 +53,7 @@ export function SettingsUpdatesSection() {
       </div>
 
       {progress.stage === "available" && (
-        <div className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 p-3 text-sm space-y-2">
+        <div className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 p-3 space-y-2">
           <p>Доступна версия {progress.version}</p>
           {progress.notes && (
             <p className="text-neutral-500 dark:text-neutral-400 whitespace-pre-wrap">
@@ -71,13 +71,13 @@ export function SettingsUpdatesSection() {
       )}
 
       {progress.stage === "uptodate" && (
-        <p className="text-neutral-500 dark:text-neutral-400 text-sm">
+        <p className="text-neutral-500 dark:text-neutral-400">
           Установлена последняя версия.
         </p>
       )}
 
       {progress.stage === "downloading" && (
-        <p className="text-neutral-500 dark:text-neutral-400 text-sm">
+        <p className="text-neutral-500 dark:text-neutral-400">
           Загрузка…
           {progress.total
             ? ` ${Math.round((progress.downloaded / progress.total) * 100)}%`
@@ -86,13 +86,13 @@ export function SettingsUpdatesSection() {
       )}
 
       {progress.stage === "installing" && (
-        <p className="text-neutral-500 dark:text-neutral-400 text-sm">
+        <p className="text-neutral-500 dark:text-neutral-400">
           Установка…
         </p>
       )}
 
       {progress.stage === "error" && (
-        <p className="text-red-400 text-sm whitespace-pre-wrap">
+        <p className="text-red-400 whitespace-pre-wrap">
           {progress.message}
         </p>
       )}

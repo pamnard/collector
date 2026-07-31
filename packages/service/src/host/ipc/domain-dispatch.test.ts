@@ -78,6 +78,20 @@ function stubRuntime(overrides: {
     syncPlugins: {
       syncNow: vi.fn(async () => ({ importedCount: 0, itemIds: [] })),
     },
+    telegramSync: {
+      getTelegramSyncSettings: vi.fn(async () => ({
+        enabled: false,
+        folder_path: "Inbox",
+        bot_username: null,
+        last_sync_at: null,
+      })),
+      updateTelegramSyncSettings: vi.fn(async (patch: unknown) => patch),
+      validateTelegramBotToken: vi.fn(async () => ({
+        id: 1,
+        username: "bot",
+        first_name: "Bot",
+      })),
+    },
     syncPluginWake: {
       register: vi.fn(),
       notifyVaultReady: vi.fn(async () => undefined),

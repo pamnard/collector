@@ -9,6 +9,7 @@ import type {
   SettingsPort,
   SyncPluginsPort,
   TagsPort,
+  TelegramSyncPort,
   VaultsPort,
 } from "./service-api.js";
 
@@ -96,6 +97,12 @@ export const CREDENTIALS_PORT_KEYS = [
 export const SYNC_PLUGINS_PORT_KEYS = [
   "syncNow",
 ] as const satisfies readonly (keyof SyncPluginsPort)[];
+
+export const TELEGRAM_SYNC_PORT_KEYS = [
+  "getTelegramSyncSettings",
+  "updateTelegramSyncSettings",
+  "validateTelegramBotToken",
+] as const satisfies readonly (keyof TelegramSyncPort)[];
 
 export const DASHBOARD_SNAPSHOT_PORT_KEYS = [
   "ensureDashboardSnapshot",

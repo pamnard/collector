@@ -20,6 +20,7 @@ import { createIpcIndexPort } from "./ipc-ports/index.js";
 import { createIpcSettingsPort } from "./ipc-ports/settings.js";
 import { createIpcCredentialsPort } from "./ipc-ports/credentials.js";
 import { createIpcSyncPluginsPort } from "./ipc-ports/sync-plugins.js";
+import { createIpcTelegramSyncPort } from "./ipc-ports/telegram-sync.js";
 
 export type IpcBacking = {
   service: CollectorService;
@@ -47,6 +48,7 @@ export function createIpcBacking(
     settings: createIpcSettingsPort(ctx),
     credentials: createIpcCredentialsPort(ctx),
     syncPlugins: createIpcSyncPluginsPort(ctx),
+    telegramSync: createIpcTelegramSyncPort(ctx),
   };
   const snapshot = options.snapshot ?? createMemoryDashboardSnapshotPort();
   return { service, snapshot, extras };

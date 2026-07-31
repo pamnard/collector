@@ -65,7 +65,7 @@ export function SettingsGeneralSection({ onError }: SettingsGeneralSectionProps)
       <div className="p-4 flex items-center justify-between gap-4">
         <div>
           <p className="font-medium">Тема</p>
-          <p className="text-neutral-500 dark:text-neutral-400 text-sm">
+          <p className="text-neutral-500 dark:text-neutral-400">
             {theme === "dark" ? "Тёмная" : "Светлая"}
           </p>
         </div>
@@ -80,7 +80,7 @@ export function SettingsGeneralSection({ onError }: SettingsGeneralSectionProps)
 
       <div className="p-4">
         <p className="font-medium">Вид по умолчанию</p>
-        <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">
+        <p className="text-neutral-500 dark:text-neutral-400 mt-1">
           {viewMode === "grid" ? "Сетка" : "Таблица"}
         </p>
       </div>
@@ -102,40 +102,40 @@ export function SettingsGeneralSection({ onError }: SettingsGeneralSectionProps)
             ))}
           </select>
         ) : (
-          <p className="text-neutral-500 text-sm mt-1">Загрузка…</p>
+          <p className="text-neutral-500 mt-1">Загрузка…</p>
         )}
       </div>
 
       <div className="p-4">
         <p className="font-medium">Каталог данных</p>
         {appName && (
-          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">
+          <p className="text-neutral-500 dark:text-neutral-400 mt-1">
             Среда: {appName.includes("Dev") ? "разработка" : "release"}
           </p>
         )}
         {dataDir ? (
-          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1 break-all">
+          <p className="text-neutral-500 dark:text-neutral-400 mt-1 break-all">
             {dataDir}
           </p>
         ) : (
-          <p className="text-neutral-500 text-sm mt-1">Загрузка…</p>
+          <p className="text-neutral-500 mt-1">Загрузка…</p>
         )}
       </div>
 
       <div className="p-4">
         <p className="font-medium">Настройки приложения</p>
         {configDir ? (
-          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1 break-all">
+          <p className="text-neutral-500 dark:text-neutral-400 mt-1 break-all">
             {configDir}/settings.json
           </p>
         ) : (
-          <p className="text-neutral-500 text-sm mt-1">Загрузка…</p>
+          <p className="text-neutral-500 mt-1">Загрузка…</p>
         )}
       </div>
 
       <div className="p-4">
         <p className="font-medium">Версия</p>
-        <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">
+        <p className="text-neutral-500 dark:text-neutral-400 mt-1">
           {__APP_VERSION__}
         </p>
       </div>
