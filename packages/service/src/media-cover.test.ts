@@ -105,6 +105,71 @@ describe("createMediaCoverService", () => {
     expect(result).toEqual([{ id: "m1", filename: "a.png" }]);
   });
 
+  it("attachMediaFiles syncs cover from video when no image (#435)", async () => {
+    attachMediaFile.mockResolvedValue({ id: "m1", filename: "clip.mp4" });
+    listItemMediaWithPaths.mockResolvedValue([
+      {
+        id: "m1",
+        media_type: "video",
+        filename: "clip.mp4",
+        absolute_path: "/vault/note.media/clip.mp4",
+      },
+    ]);
+    applyItemCover.mockResolvedValue({ id: "note.md" });
+
+    const result = await createService().attachMediaFiles("note.md", [
+      { name: "clip.mp4", bytes: new Uint8Array([1]) },
+    ]);
+
+    expect(generateCoverFromMedia).toHaveBeenCalledWith(
+      new Uint8Array([1, 2, 3]),
+      "clip.mp4",
+      "video",
+    );
+    expect(applyItemCover).toHaveBeenCalled();
+    expect(clearItemCover).not.toHaveBeenCalled();
+    expect(result).toEqual([{ id: "m1", filename: "clip.mp4" }]);
+  });
+
+  it("attachMediaFiles throws when cover generate returns null (#437)", async () => {
+    attachMediaFile.mockResolvedValue({ id: "m1", filename: "clip.mp4" });
+    listItemMediaWithPaths.mockResolvedValue([
+      {
+        id: "m1",
+        media_type: "video",
+        filename: "clip.mp4",
+        absolute_path: "/vault/note.media/clip.mp4",
+      },
+    ]);
+    generateCoverFromMedia.mockResolvedValueOnce(null);
+
+    await expect(
+      createService().attachMediaFiles("note.md", [
+        { name: "clip.mp4", bytes: new Uint8Array([1]) },
+      ]),
+    ).rejects.toThrow(/Failed to generate cover from media/);
+    expect(clearItemCover).not.toHaveBeenCalled();
+    expect(applyItemCover).not.toHaveBeenCalled();
+  });
+
+  it("setItemCoverFromMedia throws when cover generate returns null (#437)", async () => {
+    listItemMediaWithPaths.mockResolvedValue([
+      {
+        id: "m1",
+        media_type: "image",
+        filename: "a.png",
+        absolute_path: "/vault/note.media/a.png",
+      },
+    ]);
+    generateCoverFromMedia.mockResolvedValueOnce(null);
+
+    await expect(
+      createService().setItemCoverFromMedia("note.md", "m1"),
+    ).rejects.toThrow(/Failed to generate cover from media/);
+    expect(clearItemCover).not.toHaveBeenCalled();
+    expect(applyItemCover).not.toHaveBeenCalled();
+  });
+
   it("setItemCoverFromMedia rejects missing media", async () => {
     listItemMediaWithPaths.mockResolvedValue([]);
     await expect(

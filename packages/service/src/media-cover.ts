@@ -89,11 +89,13 @@ export function createMediaCoverService(
       candidate.media_type,
     );
 
-    if (cover) {
-      await applyItemCover(ctx, path, vault.id, itemId, cover);
-    } else {
-      await clearItemCover(ctx, path, vault.id, itemId);
+    if (!cover) {
+      throw new Error(
+        `Failed to generate cover from media (${candidate.media_type}: ${candidate.filename}) for item ${itemId}`,
+      );
     }
+
+    await applyItemCover(ctx, path, vault.id, itemId, cover);
   };
 
   const resolveItemThumbnailPathsUncached = async (

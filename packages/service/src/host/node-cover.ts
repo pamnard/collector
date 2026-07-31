@@ -153,6 +153,9 @@ async function generateCoverFromVideo(
 ): Promise<Uint8Array | null> {
   const ffmpegBin = resolveFfmpegBinary();
   if (!ffmpegBin) {
+    console.error("[node-cover] video cover soft-fail: ffmpeg binary not resolved", {
+      filename,
+    });
     return null;
   }
 
@@ -171,6 +174,10 @@ async function generateCoverFromVideo(
       });
     } catch {
       // Missing binary / not on PATH — soft-fail like browser decode miss.
+      console.error("[node-cover] video cover soft-fail: ffmpeg -version failed", {
+        filename,
+        ffmpegBin,
+      });
       return null;
     }
 
@@ -180,8 +187,13 @@ async function generateCoverFromVideo(
 
     const frame = readFileSync(framePath);
     return imageBytesToCoverWebp(new Uint8Array(frame));
-  } catch {
+  } catch (error) {
     // Decode / seek / encode failure — soft-fail like browser path.
+    console.error("[node-cover] video cover soft-fail: decode/seek/encode", {
+      filename,
+      ffmpegBin,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return null;
   } finally {
     rmSync(dir, { recursive: true, force: true });
