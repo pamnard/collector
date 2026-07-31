@@ -400,6 +400,16 @@ export function createDevMockCollectorService(): CollectorService {
       }),
     },
     syncPlugins: createDevMockSyncPluginsPort(),
+    telegramSync: {
+      getTelegramSyncSettings: async () => ({
+        enabled: false,
+        folder_path: INBOX_FOLDER_NAME,
+        bot_username: null,
+        last_sync_at: null,
+      }),
+      updateTelegramSyncSettings: async () => refuseUnsupported(),
+      validateTelegramBotToken: async () => refuseUnsupported(),
+    },
   };
 }
 

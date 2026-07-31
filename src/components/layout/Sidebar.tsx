@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import type { TagWithCount } from "@collector/core";
 import type { Theme } from "../../hooks/useTheme";
 import type { NavFilter } from "../../types/ui";
-import type { SidebarMode } from "../../types/sidebar-mode";
+import type { SidebarMode, SettingsSection } from "../../types/sidebar-mode";
 import { parseSettingsSection } from "../../types/sidebar-mode";
 import { getCollectorService } from "../../services/collector-client";
 import {
@@ -70,6 +70,10 @@ export function Sidebar({
   const [searchParams, setSearchParams] = useSearchParams();
   const isSettings = pathname === "/settings";
   const settingsSection = parseSettingsSection(searchParams.get("section"));
+
+  const handleSettingsSection = (section: SettingsSection) => {
+    setSearchParams({ section });
+  };
   const [tags, setTags] = useState<TagWithCount[]>([]);
 
   useEffect(() => {
@@ -100,10 +104,6 @@ export function Sidebar({
       navigate("/");
     }
     onClose();
-  };
-
-  const handleSettingsSection = (section: "general" | "mcp") => {
-    setSearchParams({ section });
   };
 
   const nested = (

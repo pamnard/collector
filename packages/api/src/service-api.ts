@@ -291,6 +291,41 @@ export interface SyncPluginsPort {
   syncNow(pluginId: string): Promise<SyncNowResult>;
 }
 
+/** Non-secret Telegram Path C settings (#415). Token stays in CredentialsPort. */
+export interface TelegramSyncSettings {
+  enabled: boolean;
+  folder_path: string;
+  bot_username: string | null;
+  last_sync_at: string | null;
+}
+
+export type TelegramSyncSettingsPatch = Partial<{
+  enabled: boolean;
+  folder_path: string;
+  bot_username: string | null;
+  last_sync_at: string | null;
+}>;
+
+export interface TelegramBotIdentity {
+  id: number;
+  username: string | null;
+  first_name: string;
+}
+
+/**
+ * Telegram plugin settings + token validation (#415).
+ * Secrets via CredentialsPort only.
+ */
+export interface TelegramSyncPort {
+  getTelegramSyncSettings(): Promise<TelegramSyncSettings>;
+  updateTelegramSyncSettings(
+    patch: TelegramSyncSettingsPatch,
+  ): Promise<TelegramSyncSettings>;
+  validateTelegramBotToken(input: {
+    token: string;
+  }): Promise<TelegramBotIdentity>;
+}
+
 /**
  * Dashboard snapshot cache — primary home is {@link UiSession.snapshot} (#363).
  * Not a {@link CollectorService} key.
@@ -333,4 +368,6 @@ export interface CollectorService {
   settings: SettingsPort;
   credentials: CredentialsPort;
   syncPlugins: SyncPluginsPort;
+  /** Telegram Path C settings (#415). */
+  telegramSync: TelegramSyncPort;
 }

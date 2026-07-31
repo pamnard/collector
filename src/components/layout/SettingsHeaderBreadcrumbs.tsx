@@ -1,6 +1,8 @@
 import { Settings2 } from "lucide-react";
 import {
+  SETTINGS_NAV_GROUP_LABELS,
   SETTINGS_SECTION_LABELS,
+  isPluginSettingsSection,
   type SettingsSection,
 } from "../../types/sidebar-mode";
 import { cn } from "../../lib/utils";
@@ -14,6 +16,7 @@ export function SettingsHeaderBreadcrumbs({
   section,
 }: SettingsHeaderBreadcrumbsProps) {
   const sectionLabel = SETTINGS_SECTION_LABELS[section];
+  const pluginGroup = isPluginSettingsSection(section);
 
   return (
     <nav
@@ -37,6 +40,22 @@ export function SettingsHeaderBreadcrumbs({
             Настройки
           </span>
         </li>
+        {pluginGroup ? (
+          <li className="flex shrink-0 items-center overflow-hidden">
+            <span
+              className="mx-[1em] shrink-0 text-neutral-400 dark:text-neutral-500"
+              aria-hidden
+            >
+              /
+            </span>
+            <span
+              className="text-neutral-500 dark:text-neutral-400"
+              title={SETTINGS_NAV_GROUP_LABELS.plugins}
+            >
+              {SETTINGS_NAV_GROUP_LABELS.plugins}
+            </span>
+          </li>
+        ) : null}
         <li className="flex min-w-0 flex-1 items-center overflow-hidden">
           <span
             className="mx-[1em] shrink-0 text-neutral-400 dark:text-neutral-500"

@@ -122,11 +122,13 @@ export function createSyncPluginWakeController(
       }
       // Re-arm intervals on vault ready / switch (fresh session).
       armIntervals();
+      // Fire-and-forget (#415 isolation): never block vault switch / host boot
+      // on plugin network I/O. Errors stay inside runSync → logError.
       for (const [pluginId, policy] of policies) {
         if (!policy.onVaultReady) {
           continue;
         }
-        await runSync(pluginId);
+        void runSync(pluginId);
       }
     },
 

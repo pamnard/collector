@@ -1,0 +1,109 @@
+import { describe, expect, it, vi } from "vitest";
+import {
+  createTelegramBotApi,
+  TelegramBotApiError,
+  TELEGRAM_REQUEST_TIMEOUT_MS,
+} from "./telegram-bot-api.js";
+
+describe("createTelegramBotApi (#415)", () => {
+  it("getMe returns user on ok response", async () => {
+    const fetchFn = vi.fn(async () =>
+      Response.json({
+        ok: true,
+        result: { id: 1, is_bot: true, first_name: "Bot", username: "my_bot" },
+      }),
+    );
+    const api = createTelegramBotApi({ fetchFn });
+    await expect(api.getMe("tok")).resolves.toEqual({
+      id: 1,
+      is_bot: true,
+      first_name: "Bot",
+      username: "my_bot",
+    });
+    expect(fetchFn).toHaveBeenCalledWith(
+      "https://api.telegram.org/bottok/getMe",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("throws TelegramBotApiError on telegram failure", async () => {
+    const fetchFn = vi.fn(async () =>
+      Response.json({ ok: false, description: "Unauthorized" }, { status: 401 }),
+    );
+    const api = createTelegramBotApi({ fetchFn });
+    await expect(api.getMe("bad")).rejects.toBeInstanceOf(TelegramBotApiError);
+    await expect(api.getMe("bad")).rejects.toThrow(/Unauthorized/);
+  });
+
+  it("getUpdates posts offset and returns updates", async () => {
+    const fetchFn = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { offset: number };
+      expect(body.offset).toBe(42);
+      return Response.json({
+        ok: true,
+        result: [{ update_id: 42, message: { message_id: 1, date: 0, chat: { id: 9, type: "private" }, text: "hi" } }],
+      });
+    });
+    const api = createTelegramBotApi({ fetchFn });
+    const updates = await api.getUpdates("tok", { offset: 42 });
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.update_id).toBe(42);
+  });
+
+  it("deleteMessage calls Bot API", async () => {
+    const fetchFn = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as {
+        chat_id: number;
+        message_id: number;
+      };
+      expect(body).toEqual({ chat_id: 5, message_id: 7 });
+      return Response.json({ ok: true, result: true });
+    });
+    const api = createTelegramBotApi({ fetchFn });
+    await expect(api.deleteMessage("tok", 5, 7)).resolves.toBe(true);
+  });
+
+  it("downloadFile returns bytes and rejects oversized", async () => {
+    const fetchFn = vi.fn(async (url: string) => {
+      if (url.includes("/getFile")) {
+        return Response.json({
+          ok: true,
+          result: { file_id: "f", file_unique_id: "u", file_path: "docs/a.bin", file_size: 4 },
+        });
+      }
+      return new Response(new Uint8Array([1, 2, 3, 4]));
+    });
+    const api = createTelegramBotApi({ fetchFn, maxDownloadBytes: 10 });
+    const file = await api.getFile("tok", "f");
+    const bytes = await api.downloadFile("tok", file.file_path!);
+    expect([...bytes]).toEqual([1, 2, 3, 4]);
+
+    await expect(
+      api.downloadFile("tok", "docs/a.bin", 100),
+    ).rejects.toThrow(/exceeds download limit/);
+  });
+
+  it("aborts on request timeout", async () => {
+    const fetchFn = vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+          if (!signal) {
+            reject(new Error("missing signal"));
+            return;
+          }
+          signal.addEventListener("abort", () => {
+            const err = new Error("aborted");
+            err.name = "AbortError";
+            reject(err);
+          });
+        }),
+    );
+    const api = createTelegramBotApi({
+      fetchFn,
+      requestTimeoutMs: 20,
+    });
+    await expect(api.getMe("tok")).rejects.toThrow(/timed out/);
+    expect(TELEGRAM_REQUEST_TIMEOUT_MS).toBe(15_000);
+  });
+});

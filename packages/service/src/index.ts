@@ -104,3 +104,11 @@ export {
   type SyncPluginWakeControllerDeps,
   type SyncPluginWakePolicy,
 } from "./sync-plugin-wake.js";
+
+export {
+  TELEGRAM_PLUGIN_ID,
+  TELEGRAM_BOT_TOKEN_KEY,
+  createTelegramSyncPlugin,
+  createTelegramSyncService,
+  createTelegramBotApi,
+} from "./plugins/telegram/index.js";

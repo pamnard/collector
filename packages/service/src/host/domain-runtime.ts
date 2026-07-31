@@ -36,6 +36,13 @@ import {
   type SyncPluginWakeController,
 } from "../sync-plugin-wake.js";
 import {
+  TELEGRAM_PLUGIN_ID,
+  createTelegramSyncPlugin,
+  createTelegramSyncService,
+  markTelegramLastSyncAt,
+} from "../plugins/telegram/index.js";
+import type { TelegramSyncPort, SyncPluginsPort } from "@collector/api";
+import {
   createVaultIndexSyncStatusStore,
   type VaultIndexSyncStatusStore,
 } from "../sync-status.js";
@@ -112,7 +119,8 @@ export interface ServiceDomainRuntime {
   vaults: ReturnType<typeof createVaultsService>;
   appSettings: ReturnType<typeof createAppSettingsService>;
   credentials: ReturnType<typeof createCredentialsService>;
-  syncPlugins: ReturnType<typeof createSyncPluginRegistry>;
+  syncPlugins: SyncPluginsPort;
+  telegramSync: TelegramSyncPort;
   syncPluginWake: SyncPluginWakeController;
   dashboardSnapshot: ReturnType<typeof createDashboardSnapshotService>;
 }
@@ -514,22 +522,58 @@ export function createServiceDomainRuntime(
     backend: createOsKeychainBackend(),
   });
 
-  const syncPlugins = createSyncPluginRegistry({
+  const resolveActiveVaultId = async () => {
+    const { vault } = await vaults.resolveActiveVault();
+    return vault.id;
+  };
+
+  const telegramPlugin = createTelegramSyncPlugin({
+    credentials,
     fs,
     dataDir,
-    resolveActiveVaultId: async () => {
-      const { vault } = await vaults.resolveActiveVault();
-      return vault.id;
-    },
+    resolveActiveVaultId,
+    listFolderTree: () => tagsFolders.listFolderTree(),
+  });
+
+  const registry = createSyncPluginRegistry({
+    fs,
+    dataDir,
+    resolveActiveVaultId,
     createItem: (input) => itemsSearch.createItem(input),
     attachMediaFiles: (itemId, files) =>
       mediaCover.attachMediaFiles(itemId, files),
+    createCatalog: () => [telegramPlugin],
+  });
+
+  const syncPlugins: SyncPluginsPort = {
+    async syncNow(pluginId) {
+      const result = await registry.syncNow(pluginId);
+      if (pluginId === TELEGRAM_PLUGIN_ID) {
+        await markTelegramLastSyncAt({
+          fs,
+          dataDir,
+          resolveActiveVaultId,
+        });
+      }
+      return result;
+    },
+  };
+
+  const telegramSync = createTelegramSyncService({
+    fs,
+    dataDir,
+    resolveActiveVaultId,
+    listFolderTree: () => tagsFolders.listFolderTree(),
   });
 
   const syncPluginWake = createSyncPluginWakeController({
     syncNow: (pluginId) => syncPlugins.syncNow(pluginId),
   });
-  for (const [pluginId, policy] of Object.entries(options.wakePolicies ?? {})) {
+  const wakePolicies: Record<string, SyncPluginWakePolicy> = {
+    [TELEGRAM_PLUGIN_ID]: { onVaultReady: true },
+    ...options.wakePolicies,
+  };
+  for (const [pluginId, policy] of Object.entries(wakePolicies)) {
     syncPluginWake.register(pluginId, policy);
   }
 
@@ -561,6 +605,7 @@ export function createServiceDomainRuntime(
     appSettings,
     credentials,
     syncPlugins,
+    telegramSync,
     syncPluginWake,
     dashboardSnapshot,
   };

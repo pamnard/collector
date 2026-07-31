@@ -20,6 +20,7 @@ const PORT_KEYS = [
   "settings",
   "syncPlugins",
   "tags",
+  "telegramSync",
   "vaults",
 ] as const;
 
@@ -42,7 +43,7 @@ describe("CollectorService / DevMock (#332 / #365 / #369 / #370)", () => {
     expect(getCollectorService()).toBe(original);
   });
 
-  it("createDevMockCollectorService exposes ten domain ports (#365 / #30 / #29)", () => {
+  it("createDevMockCollectorService exposes domain ports (#365 / #30 / #29 / #415)", () => {
     const service = createDevMockCollectorService();
     expect(Object.keys(service).sort()).toEqual([...PORT_KEYS].sort());
     expect(typeof service.items.searchItems).toBe("function");

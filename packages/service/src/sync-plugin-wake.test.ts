@@ -13,9 +13,29 @@ describe("createSyncPluginWakeController (#31)", () => {
     wake.register("b", { onVaultReady: false });
 
     await wake.notifyVaultReady();
+    await Promise.resolve();
 
     expect(syncNow).toHaveBeenCalledTimes(1);
     expect(syncNow).toHaveBeenCalledWith("a");
+    wake.dispose();
+  });
+
+  it("notifyVaultReady returns before syncNow finishes (isolation)", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const syncNow = vi.fn(async () => {
+      await gate;
+    });
+    const wake = createSyncPluginWakeController({ syncNow });
+    wake.register("a", { onVaultReady: true });
+
+    const ready = wake.notifyVaultReady();
+    await expect(ready).resolves.toBeUndefined();
+    expect(syncNow).toHaveBeenCalledTimes(1);
+    release();
+    await Promise.resolve();
     wake.dispose();
   });
 
@@ -39,10 +59,11 @@ describe("createSyncPluginWakeController (#31)", () => {
     wake.register("good", { onVaultReady: true });
 
     await wake.notifyVaultReady();
-
-    expect(syncNow).toHaveBeenCalledWith("bad");
-    expect(syncNow).toHaveBeenCalledWith("good");
-    expect(logError).toHaveBeenCalledWith("bad", expect.any(Error));
+    await vi.waitFor(() => {
+      expect(syncNow).toHaveBeenCalledWith("bad");
+      expect(syncNow).toHaveBeenCalledWith("good");
+      expect(logError).toHaveBeenCalledWith("bad", expect.any(Error));
+    });
     wake.dispose();
   });
 
@@ -59,12 +80,11 @@ describe("createSyncPluginWakeController (#31)", () => {
 
     const first = wake.notifyVaultReady();
     const second = wake.notifyVaultReady();
-    // First notify started sync; second should attach to inflight.
+    await Promise.all([first, second]);
     await Promise.resolve();
     expect(syncNow).toHaveBeenCalledTimes(1);
     release();
-    await Promise.all([first, second]);
-    expect(syncNow).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(syncNow).toHaveBeenCalledTimes(1));
     wake.dispose();
   });
 

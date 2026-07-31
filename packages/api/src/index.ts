@@ -67,6 +67,10 @@ export {
   type SyncNowResult,
   type SyncPluginsPort,
   type TagsPort,
+  type TelegramBotIdentity,
+  type TelegramSyncPort,
+  type TelegramSyncSettings,
+  type TelegramSyncSettingsPatch,
   type VaultIndexSyncStatus,
   type VaultsPort,
 } from "./service-api.js";
@@ -82,6 +86,7 @@ export {
   SETTINGS_PORT_KEYS,
   SYNC_PLUGINS_PORT_KEYS,
   TAGS_PORT_KEYS,
+  TELEGRAM_SYNC_PORT_KEYS,
   VAULTS_PORT_KEYS,
 } from "./service-compose.js";
 

@@ -17,6 +17,7 @@ import {
   SETTINGS_PORT_KEYS,
   SYNC_PLUGINS_PORT_KEYS,
   TAGS_PORT_KEYS,
+  TELEGRAM_SYNC_PORT_KEYS,
   VAULTS_PORT_KEYS,
 } from "@collector/api";
 import type { DomainIpcHandlerMap } from "./domain-methods.js";
@@ -57,6 +58,7 @@ export const ALL_PORT_METHOD_KEYS = [
   ...SETTINGS_PORT_KEYS,
   ...CREDENTIALS_PORT_KEYS,
   ...SYNC_PLUGINS_PORT_KEYS,
+  ...TELEGRAM_SYNC_PORT_KEYS,
   ...DASHBOARD_SNAPSHOT_PORT_KEYS,
 ] as const;
 

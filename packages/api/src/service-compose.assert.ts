@@ -27,6 +27,7 @@ type _CollectorServiceKeys = Expect<
     | "settings"
     | "credentials"
     | "syncPlugins"
+    | "telegramSync"
   >
 >;
 
