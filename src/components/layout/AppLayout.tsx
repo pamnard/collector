@@ -2,8 +2,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
-  useRef,
   useState,
 } from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -17,7 +15,10 @@ import {
   useStartupUpdateCheck,
 } from "../../hooks/useUpdaterSettings";
 import { useViewMode } from "../../hooks/useViewMode";
-import { useDashboardItems, DEFAULT_DASHBOARD_SORT } from "../../hooks/useDashboardItems";
+import { useDashboardItems } from "../../hooks/useDashboardItems";
+import { useSidebarShell } from "../../hooks/useSidebarShell";
+import { useDashboardShellSort } from "../../hooks/useDashboardShellSort";
+import { useCreateItemShell } from "../../hooks/useCreateItemShell";
 import type { DashboardItemSort } from "@collector/api";
 import { useAppSettings } from "../../context/AppSettingsContext";
 import { useVaultIndexSyncStatus } from "../../hooks/useVaultIndexSyncStatus";
@@ -25,24 +26,16 @@ import {
   SIDEBAR_RAIL_WIDTH_PX,
   SIDEBAR_WIDTH_MAX,
   SIDEBAR_WIDTH_MIN,
-  readSidebarCollapsed,
-  readSidebarWidthPx,
-  writeSidebarCollapsed,
-  writeSidebarWidthPx,
 } from "../../lib/sidebar-width";
 import { formatIndexingBannerLabel } from "@collector/core";
 import type { NavFilter, ViewMode } from "../../types/ui";
-import {
-  parseSettingsSection,
-  type SidebarMode,
-} from "../../types/sidebar-mode";
+import { parseSettingsSection } from "../../types/sidebar-mode";
 import { Alert } from "../alerts/Alert";
 import { AlertStack } from "../alerts/AlertStack";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
-  usePanelRef,
 } from "../ui/resizable";
 import { TooltipProvider } from "../ui/tooltip";
 import { SmokeUiReadyBeacon } from "../startup/SmokeUiReadyBeacon";
@@ -81,18 +74,24 @@ export function AppLayout() {
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
   const isDesktop = useMediaQuery("(min-width: 768px)");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [vaultRevision, setVaultRevision] = useState(0);
-  const [sidebarWidthPx, setSidebarWidthPx] = useState(() => readSidebarWidthPx());
-  const sidebarWidthRef = useRef(sidebarWidthPx);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
-    readSidebarCollapsed(),
-  );
-  const sidebarPanelRef = usePanelRef();
-  const [sidebarMode, setSidebarMode] = useState<SidebarMode>(() =>
-    pathname === "/settings" ? "settings" : "collections",
-  );
+  const bumpVaultRevision = useCallback(() => {
+    setVaultRevision((value) => value + 1);
+  }, []);
+
+  const {
+    isSidebarOpen,
+    setIsSidebarOpen,
+    sidebarWidthPx,
+    sidebarCollapsed,
+    sidebarPanelRef,
+    sidebarMode,
+    setSidebarMode,
+    persistSidebarWidth,
+    handleToggleSidebarCollapse,
+    handleExpandSidebar,
+  } = useSidebarShell(pathname);
+
   const {
     activeFilter,
     setActiveFilter,
@@ -102,19 +101,11 @@ export function AppLayout() {
   const { viewMode, setViewMode } = useViewMode();
   const { theme, toggleTheme } = useTheme();
   const { settings } = useAppSettings();
-  const [dashboardSort, setDashboardSort] = useState<DashboardItemSort>(
-    DEFAULT_DASHBOARD_SORT,
-  );
   const activeVaultId = settings.active_vault_id ?? null;
-  const prevVaultIdRef = useRef(activeVaultId);
-
-  useEffect(() => {
-    if (prevVaultIdRef.current === activeVaultId) {
-      return;
-    }
-    prevVaultIdRef.current = activeVaultId;
-    setDashboardSort(DEFAULT_DASHBOARD_SORT);
-  }, [activeVaultId]);
+  const { dashboardSort, setDashboardSort } =
+    useDashboardShellSort(activeVaultId);
+  const { isCreateOpen, openCreate, closeCreate, handleCreated } =
+    useCreateItemShell({ bumpVaultRevision, navigate });
 
   const { enabled: checkUpdatesOnStart } = useCheckUpdatesOnStart();
   const [startupUpdateVersion, setStartupUpdateVersion] = useState<string | null>(
@@ -129,12 +120,6 @@ export function AppLayout() {
   const searchIndexBuilding =
     !indexSync.ftsReady &&
     (indexSync.status === "running" || indexSync.status === "rebuilding");
-
-  useEffect(() => {
-    if (pathname === "/settings") {
-      setSidebarMode("settings");
-    }
-  }, [pathname]);
 
   const handleStartupUpdateFound = useCallback((version: string) => {
     setStartupUpdateVersion(version);
@@ -187,44 +172,8 @@ export function AppLayout() {
       setSidebarMode("collections");
       navigate("/");
     },
-    [navigate, setActiveFilter],
+    [navigate, setActiveFilter, setSidebarMode],
   );
-
-  const setCollapsed = useCallback((collapsed: boolean) => {
-    setSidebarCollapsed(collapsed);
-    writeSidebarCollapsed(collapsed);
-  }, []);
-
-  const persistSidebarWidth = useCallback((inPixels: number) => {
-    if (inPixels < SIDEBAR_WIDTH_MIN) {
-      return;
-    }
-    sidebarWidthRef.current = inPixels;
-    writeSidebarWidthPx(inPixels);
-  }, []);
-
-  const handleToggleSidebarCollapse = useCallback(() => {
-    if (sidebarCollapsed) {
-      // Remount uses last persisted width; sync state so defaultSize matches.
-      setSidebarWidthPx(sidebarWidthRef.current);
-      setCollapsed(false);
-      return;
-    }
-    const panel = sidebarPanelRef.current;
-    if (panel) {
-      const { inPixels } = panel.getSize();
-      if (inPixels >= SIDEBAR_WIDTH_MIN) {
-        persistSidebarWidth(inPixels);
-        setSidebarWidthPx(inPixels);
-      }
-    }
-    setCollapsed(true);
-  }, [persistSidebarWidth, setCollapsed, sidebarCollapsed, sidebarPanelRef]);
-
-  const handleExpandSidebar = useCallback(() => {
-    setSidebarWidthPx(sidebarWidthRef.current);
-    setCollapsed(false);
-  }, [setCollapsed]);
 
   const headerVariant = pathname === "/"
     ? "list"
@@ -245,7 +194,7 @@ export function AppLayout() {
                 onToggleSidebarCollapse={handleToggleSidebarCollapse}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
-                onAddClick={() => setIsCreateOpen(true)}
+                onAddClick={openCreate}
                 onFolderSelect={handleFolderSelectFromHeader}
                 settingsSection={settingsSection}
               />
@@ -284,7 +233,7 @@ export function AppLayout() {
         searchQuery,
         activeFilter,
         vaultRevision,
-        refreshVault: () => setVaultRevision((value) => value + 1),
+        refreshVault: bumpVaultRevision,
         dashboardCache,
         dashboardSort,
         setDashboardSort,
@@ -418,12 +367,8 @@ export function AppLayout() {
 
         {isCreateOpen && (
           <CreateItemDialog
-            onClose={() => setIsCreateOpen(false)}
-            onCreated={(itemId) => {
-              setIsCreateOpen(false);
-              setVaultRevision((value) => value + 1);
-              navigate(`/item/${itemId}`);
-            }}
+            onClose={closeCreate}
+            onCreated={handleCreated}
           />
         )}
       </ItemChromeProvider>
