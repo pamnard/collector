@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { isAbsolute } from "node:path";
+import { createRequire } from "node:module";
 import {
   CREDENTIALS_KEYCHAIN_SERVICE,
+  createCredentialsNativeRequire,
   createCredentialsService,
   createMemoryKeychainBackend,
   createOsKeychainBackend,
   createUnavailableKeychainBackend,
   credentialAccount,
+  credentialsNativeRequireFilenames,
 } from "./credentials.js";
 
 describe("credentials (#30)", () => {
@@ -14,6 +18,23 @@ describe("credentials (#30)", () => {
     expect(
       credentialAccount({ pluginId: "telegram", key: "bot_token" }),
     ).toBe("telegram.bot_token");
+  });
+
+  it("native require filenames are absolute (packaged-host createRequire)", () => {
+    const filenames = credentialsNativeRequireFilenames();
+    expect(filenames.length).toBeGreaterThan(0);
+    for (const filename of filenames) {
+      expect(isAbsolute(filename), filename).toBe(true);
+    }
+    // Models the release symptom: createRequire(undefined) throws Node's message.
+    expect(() => createRequire(undefined as unknown as string)).toThrow(
+      /filename/,
+    );
+  });
+
+  it("createCredentialsNativeRequire resolves @napi-rs/keyring", () => {
+    const req = createCredentialsNativeRequire();
+    expect(req.resolve("@napi-rs/keyring")).toMatch(/@napi-rs[/\\]keyring/);
   });
 
   it("rejects empty pluginId/key/secret", async () => {

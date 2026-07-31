@@ -6,11 +6,15 @@
  */
 
 import { createRequire } from "node:module";
+import { isAbsolute, resolve as resolvePath } from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
   CredentialRef,
   CredentialsAvailability,
   CredentialsPort,
 } from "@collector/api";
+
+type NodeRequire = ReturnType<typeof createRequire>;
 
 /** Keychain service name — matches Tauri app identifier. */
 export const CREDENTIALS_KEYCHAIN_SERVICE = "com.collector.app";
@@ -84,12 +88,71 @@ type KeyringEntry = {
 type KeyringEntryCtor = new (service: string, username: string) => KeyringEntry;
 
 /**
+ * Absolute filenames for `createRequire` (ESM source + CJS packaged host).
+ * Packaged esbuild CJS can leave `import.meta.url` undefined; Node then throws
+ * "filename ... Received undefined" and Telegram shows keychain unavailable.
+ */
+export function credentialsNativeRequireFilenames(): string[] {
+  const out: string[] = [];
+  const push = (value: string | undefined): void => {
+    if (typeof value !== "string" || value.length === 0) {
+      return;
+    }
+    const absolute = isAbsolute(value) ? value : resolvePath(value);
+    if (!out.includes(absolute)) {
+      out.push(absolute);
+    }
+  };
+
+  const metaUrl = import.meta.url;
+  if (typeof metaUrl === "string" && metaUrl.length > 0) {
+    push(fileURLToPath(metaUrl));
+  }
+
+  // Packaged host: `node …/collector-service-host/cli.js` → argv[1] is cli.js.
+  push(process.argv[1]);
+
+  // Bundled Node next to cli.js / node_modules/@napi-rs/keyring.
+  push(resolvePath(process.execPath, "..", "cli.js"));
+
+  return out;
+}
+
+/**
+ * Prefer a require() that can resolve `@napi-rs/keyring` from the host layout.
+ */
+export function createCredentialsNativeRequire(): NodeRequire {
+  const filenames = credentialsNativeRequireFilenames();
+  if (filenames.length === 0) {
+    throw new Error(
+      "credentials: no absolute path for createRequire (OS keychain)",
+    );
+  }
+
+  const errors: string[] = [];
+  for (const filename of filenames) {
+    try {
+      const req = createRequire(filename);
+      req.resolve("@napi-rs/keyring");
+      return req;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`${filename}: ${message}`);
+    }
+  }
+
+  throw new Error(
+    `credentials: cannot resolve @napi-rs/keyring (${errors.join("; ")})`,
+  );
+}
+
+/**
  * Load `@napi-rs/keyring`. On module load failure → unavailable (no file fallback).
  */
 export function createOsKeychainBackend(): KeychainBackend {
   let Entry: KeyringEntryCtor;
   try {
-    const require = createRequire(import.meta.url);
+    const require = createCredentialsNativeRequire();
     const mod = require("@napi-rs/keyring") as { Entry: KeyringEntryCtor };
     Entry = mod.Entry;
   } catch (error) {
