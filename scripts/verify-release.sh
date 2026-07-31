@@ -47,8 +47,12 @@ if [[ -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" ]]; then
   _collector_signing_pw="${USER_HOME}/.tauri/collector.key.password"
   if [[ -f "${_collector_signing_pw}" ]]; then
     TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(<"$_collector_signing_pw")"
-    export TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+  else
+    # Key was generated with an empty passphrase. Leaving the var unset makes
+    # tauri-cli prompt on a TTY; headless verify then fails with ENXIO.
+    TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
   fi
+  export TAURI_SIGNING_PRIVATE_KEY_PASSWORD
   unset _collector_signing_pw
 fi
 

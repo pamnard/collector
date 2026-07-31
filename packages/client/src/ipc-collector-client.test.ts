@@ -23,7 +23,9 @@ import {
   ITEMS_PORT_KEYS,
   MEDIA_PORT_KEYS,
   SETTINGS_PORT_KEYS,
+  SYNC_PLUGINS_PORT_KEYS,
   TAGS_PORT_KEYS,
+  TELEGRAM_SYNC_PORT_KEYS,
   VAULTS_PORT_KEYS,
 } from "@collector/api";
 import type { AppSettings } from "@collector/shared";
@@ -716,7 +718,9 @@ const PORT_KEYS = [
   "items",
   "media",
   "settings",
+  "syncPlugins",
   "tags",
+  "telegramSync",
   "vaults",
 ] as const;
 
@@ -751,7 +755,7 @@ describe("CollectorIpcService ports (#366)", () => {
     }
   });
 
-  it("createCollectorIpcService exposes nine domain ports with PORT_KEYS methods", () => {
+  it("createCollectorIpcService exposes domain ports with PORT_KEYS methods", () => {
     const service = createCollectorIpcService(mockTransport());
     expect(Object.keys(service).sort()).toEqual([...PORT_KEYS].sort());
 
@@ -781,6 +785,16 @@ describe("CollectorIpcService ports (#366)", () => {
     }
     for (const key of CREDENTIALS_PORT_KEYS) {
       expect(typeof service.credentials[key], `credentials.${key}`).toBe(
+        "function",
+      );
+    }
+    for (const key of SYNC_PLUGINS_PORT_KEYS) {
+      expect(typeof service.syncPlugins[key], `syncPlugins.${key}`).toBe(
+        "function",
+      );
+    }
+    for (const key of TELEGRAM_SYNC_PORT_KEYS) {
+      expect(typeof service.telegramSync[key], `telegramSync.${key}`).toBe(
         "function",
       );
     }

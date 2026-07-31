@@ -13,6 +13,7 @@ import {
   SETTINGS_PORT_KEYS,
   SYNC_PLUGINS_PORT_KEYS,
   TAGS_PORT_KEYS,
+  TELEGRAM_SYNC_PORT_KEYS,
   VAULTS_PORT_KEYS,
 } from "@collector/api";
 import { DOMAIN_IPC_METHODS } from "./domain-methods.js";
@@ -36,6 +37,7 @@ describe("domain port→wire map (#366)", () => {
       ...SETTINGS_PORT_KEYS,
       ...CREDENTIALS_PORT_KEYS,
       ...SYNC_PLUGINS_PORT_KEYS,
+      ...TELEGRAM_SYNC_PORT_KEYS,
       ...DASHBOARD_SNAPSHOT_PORT_KEYS,
     ]);
     expect(new Set(ALL_PORT_METHOD_KEYS)).toEqual(expected);
