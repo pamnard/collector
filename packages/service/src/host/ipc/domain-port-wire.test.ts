@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BOOT_PORT_KEYS,
+  CREDENTIALS_PORT_KEYS,
   DASHBOARD_SNAPSHOT_PORT_KEYS,
   FOLDERS_PORT_KEYS,
   INDEX_PORT_KEYS,
@@ -32,6 +33,7 @@ describe("domain port→wire map (#366)", () => {
       ...VAULTS_PORT_KEYS,
       ...INDEX_PORT_KEYS,
       ...SETTINGS_PORT_KEYS,
+      ...CREDENTIALS_PORT_KEYS,
       ...DASHBOARD_SNAPSHOT_PORT_KEYS,
     ]);
     expect(new Set(ALL_PORT_METHOD_KEYS)).toEqual(expected);
