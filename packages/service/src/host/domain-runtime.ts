@@ -29,6 +29,7 @@ import { createMediaCoverService } from "../media-cover.js";
 import { createDropImportService } from "../drop-import.js";
 import { createTagsFoldersService } from "../tags-folders.js";
 import { createVaultsService } from "../vaults.js";
+import { createSyncPluginRegistry } from "../sync-plugin-registry.js";
 import {
   createVaultIndexSyncStatusStore,
   type VaultIndexSyncStatusStore,
@@ -106,6 +107,7 @@ export interface ServiceDomainRuntime {
   vaults: ReturnType<typeof createVaultsService>;
   appSettings: ReturnType<typeof createAppSettingsService>;
   credentials: ReturnType<typeof createCredentialsService>;
+  syncPlugins: ReturnType<typeof createSyncPluginRegistry>;
   dashboardSnapshot: ReturnType<typeof createDashboardSnapshotService>;
 }
 
@@ -500,6 +502,18 @@ export function createServiceDomainRuntime(
     backend: createOsKeychainBackend(),
   });
 
+  const syncPlugins = createSyncPluginRegistry({
+    fs,
+    dataDir,
+    resolveActiveVaultId: async () => {
+      const { vault } = await vaults.resolveActiveVault();
+      return vault.id;
+    },
+    createItem: (input) => itemsSearch.createItem(input),
+    attachMediaFiles: (itemId, files) =>
+      mediaCover.attachMediaFiles(itemId, files),
+  });
+
   return {
     dataDir,
     open: () => indexBoot.open(),
@@ -526,6 +540,7 @@ export function createServiceDomainRuntime(
     vaults,
     appSettings,
     credentials,
+    syncPlugins,
     dashboardSnapshot,
   };
 }

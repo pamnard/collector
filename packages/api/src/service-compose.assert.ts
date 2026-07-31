@@ -26,6 +26,7 @@ type _CollectorServiceKeys = Expect<
     | "index"
     | "settings"
     | "credentials"
+    | "syncPlugins"
   >
 >;
 

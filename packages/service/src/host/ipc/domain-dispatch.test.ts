@@ -75,6 +75,9 @@ function stubRuntime(overrides: {
       deleteCredential: vi.fn(async () => undefined),
       getCredentialsAvailability: vi.fn(async () => ({ available: true })),
     },
+    syncPlugins: {
+      syncNow: vi.fn(async () => ({ importedCount: 0, itemIds: [] })),
+    },
     vaultIndexSyncStatus: { get: vi.fn(async () => ({})) },
     startVaultFilesystemWatcher: vi.fn(),
     stopVaultFilesystemWatcher: vi.fn(),
@@ -225,5 +228,24 @@ describe("createDomainIpcRequestHandler (#330)", () => {
       ],
     });
     expect(ensureInitialized).toHaveBeenCalledTimes(1);
+  });
+
+  it("syncNow (#29)", async () => {
+    const syncNow = vi.fn(async () => ({
+      importedCount: 1,
+      itemIds: ["Inbox/x.md"],
+    }));
+    const { runtime, ensureInitialized } = stubRuntime({});
+    (runtime as { syncPlugins: unknown }).syncPlugins = { syncNow };
+    const dispatch = createDomainIpcRequestHandler(runtime);
+
+    await expect(dispatch(M.syncNow, { pluginId: "mock" })).resolves.toEqual({
+      importedCount: 1,
+      itemIds: ["Inbox/x.md"],
+    });
+    expect(syncNow).toHaveBeenCalledWith("mock");
+    expect(ensureInitialized).toHaveBeenCalledTimes(1);
+
+    await expectBadRequest(() => dispatch(M.syncNow, {}));
   });
 });

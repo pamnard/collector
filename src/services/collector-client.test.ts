@@ -18,6 +18,7 @@ const PORT_KEYS = [
   "items",
   "media",
   "settings",
+  "syncPlugins",
   "tags",
   "vaults",
 ] as const;
@@ -41,7 +42,7 @@ describe("CollectorService / DevMock (#332 / #365 / #369 / #370)", () => {
     expect(getCollectorService()).toBe(original);
   });
 
-  it("createDevMockCollectorService exposes nine domain ports (#365 / #30)", () => {
+  it("createDevMockCollectorService exposes ten domain ports (#365 / #30 / #29)", () => {
     const service = createDevMockCollectorService();
     expect(Object.keys(service).sort()).toEqual([...PORT_KEYS].sort());
     expect(typeof service.items.searchItems).toBe("function");
@@ -51,6 +52,7 @@ describe("CollectorService / DevMock (#332 / #365 / #369 / #370)", () => {
     expect(typeof service.credentials.getCredentialsAvailability).toBe(
       "function",
     );
+    expect(typeof service.syncPlugins.syncNow).toBe("function");
     expect(typeof service.folders.listFolderTree).toBe("function");
     expect(service.folders).not.toHaveProperty("loadFolderTree");
     expect(service.items).not.toHaveProperty("listItems");

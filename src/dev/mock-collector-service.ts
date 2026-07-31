@@ -13,6 +13,8 @@ import type {
   ImportDroppedFilesResult,
   NavFilter as ApiNavFilter,
   Subscription,
+  SyncNowResult,
+  SyncPluginsPort,
   UiSession,
 } from "@collector/api";
 import {
@@ -30,12 +32,15 @@ import type {
   FolderTreeNode,
   TagWithCount,
 } from "@collector/core";
+import { INBOX_FOLDER_NAME } from "@collector/shared";
 import type {
   CreateItemInput as UiCreateItemInput,
   UpdateItemInput as UiUpdateItemInput,
 } from "../types/item";
 import type { NavFilter as UiNavFilter } from "../types/ui";
 import * as mockCollector from "./mock-collector";
+import { MOCK_VAULT_ID } from "./mock-data";
+import { mockStore } from "./mock-store";
 import {
   ensureAppSettings,
   getAppConfigDirectory,
@@ -48,6 +53,37 @@ import { createUiDashboardSnapshotPort } from "../services/ui-dashboard-snapshot
 
 const DEV_MOCK_UNSUPPORTED =
   "DevMock CollectorService does not support this operation (#332); use service IPC on desktop";
+
+function createDevMockSyncPluginsPort(): SyncPluginsPort {
+  return {
+    async syncNow(pluginId): Promise<SyncNowResult> {
+      if (pluginId !== "mock") {
+        throw new Error(`Unknown sync plugin: ${pluginId}`);
+      }
+      const stamp = new Date().toISOString();
+      const slug = stamp.replace(/[:.]/g, "-");
+      const itemId = `${INBOX_FOLDER_NAME}/mock-sync-${slug}.md`;
+      mockStore.addItem({
+        id: itemId,
+        vault_id: MOCK_VAULT_ID,
+        title: `Mock sync ${stamp}`,
+        description: `Imported by mock sync plugin at ${stamp}`,
+        url: null,
+        content_type: "note",
+        source_type: "plugin",
+        metadata: {},
+        thumbnail: null,
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: INBOX_FOLDER_NAME,
+        content_revision: 1,
+        created_at: stamp,
+        updated_at: stamp,
+      });
+      return { importedCount: 1, itemIds: [itemId] };
+    },
+  };
+}
 
 const vaultIndexSyncStatusStore = createVaultIndexSyncStatusStore();
 
@@ -363,6 +399,7 @@ export function createDevMockCollectorService(): CollectorService {
           "DevMock has no OS keychain; use the domain host (desktop / service IPC)",
       }),
     },
+    syncPlugins: createDevMockSyncPluginsPort(),
   };
 }
 

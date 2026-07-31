@@ -568,6 +568,16 @@ export const DOMAIN_DISPATCH_REGISTRY: Record<
     handle: async (runtime) => runtime.credentials.getCredentialsAvailability(),
   },
 
+  // #29 sync plugin registry (run entrypoint only — not settings)
+  [M.syncNow]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.syncNow);
+      const pluginId = requireString(p.pluginId, "pluginId", M.syncNow);
+      await runtime.ensureInitialized();
+      return runtime.syncPlugins.syncNow(pluginId);
+    },
+  },
+
   // #163 sync status
   [M.getVaultIndexSyncStatus]: {
     handle: async (runtime) => {

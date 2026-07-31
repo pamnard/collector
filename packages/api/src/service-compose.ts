@@ -7,6 +7,7 @@ import type {
   ItemsPort,
   MediaPort,
   SettingsPort,
+  SyncPluginsPort,
   TagsPort,
   VaultsPort,
 } from "./service-api.js";
@@ -91,6 +92,10 @@ export const CREDENTIALS_PORT_KEYS = [
   "deleteCredential",
   "getCredentialsAvailability",
 ] as const satisfies readonly (keyof CredentialsPort)[];
+
+export const SYNC_PLUGINS_PORT_KEYS = [
+  "syncNow",
+] as const satisfies readonly (keyof SyncPluginsPort)[];
 
 export const DASHBOARD_SNAPSHOT_PORT_KEYS = [
   "ensureDashboardSnapshot",
