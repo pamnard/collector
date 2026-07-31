@@ -101,6 +101,7 @@ export async function startServiceHost(
   await runtime.ensureInitialized();
   // Ensure default vault + welcome item exist for host smokes/tests.
   await runtime.vaults.ensureActiveVault();
+  await runtime.syncPluginWake.notifyVaultReady();
 
   const healthPayload = () => {
     const healthy = runtime.isHealthy();

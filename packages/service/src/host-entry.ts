@@ -100,7 +100,16 @@ export {
 export {
   createServiceDomainRuntime,
   type ServiceDomainRuntime,
+  type ServiceDomainRuntimeOptions,
 } from "./host/domain-runtime.js";
+
+/** Sync plugin wake controller (#31) — also on service barrel; host uses runtime.syncPluginWake. */
+export {
+  createSyncPluginWakeController,
+  type SyncPluginWakeController,
+  type SyncPluginWakeControllerDeps,
+  type SyncPluginWakePolicy,
+} from "./sync-plugin-wake.js";
 
 /** OS keychain credentials (#30) — Node/host only; never `@collector/service` barrel. */
 export {

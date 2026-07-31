@@ -78,6 +78,11 @@ function stubRuntime(overrides: {
     syncPlugins: {
       syncNow: vi.fn(async () => ({ importedCount: 0, itemIds: [] })),
     },
+    syncPluginWake: {
+      register: vi.fn(),
+      notifyVaultReady: vi.fn(async () => undefined),
+      dispose: vi.fn(),
+    },
     vaultIndexSyncStatus: { get: vi.fn(async () => ({})) },
     startVaultFilesystemWatcher: vi.fn(),
     stopVaultFilesystemWatcher: vi.fn(),
@@ -248,4 +253,30 @@ describe("createDomainIpcRequestHandler (#330)", () => {
 
     await expectBadRequest(() => dispatch(M.syncNow, {}));
   });
+
+  it("ensureActiveVault notifies sync plugin wake (#31)", async () => {
+    const ensureActiveVault = vi.fn(async () => ({
+      vault: { id: "v1" },
+      path: "/tmp/v",
+    }));
+    const notifyVaultReady = vi.fn(async () => undefined);
+    const { runtime, ensureInitialized } = stubRuntime({});
+    (runtime as { vaults: { ensureActiveVault: unknown } }).vaults = {
+      ...runtime.vaults,
+      ensureActiveVault,
+    };
+    (runtime as { syncPluginWake: { notifyVaultReady: unknown } }).syncPluginWake =
+      {
+        register: vi.fn(),
+        notifyVaultReady,
+        dispose: vi.fn(),
+      };
+    const dispatch = createDomainIpcRequestHandler(runtime);
+    await expect(dispatch(M.ensureActiveVault)).resolves.toMatchObject({
+      vault: { id: "v1" },
+    });
+    expect(ensureInitialized).toHaveBeenCalled();
+    expect(notifyVaultReady).toHaveBeenCalledTimes(1);
+  });
 });
+

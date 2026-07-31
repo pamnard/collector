@@ -97,3 +97,10 @@ export {
   SYNC_PLUGIN_STATE_DIR,
   type SyncPluginRegistryDeps,
 } from "./sync-plugin-registry.js";
+
+export {
+  createSyncPluginWakeController,
+  type SyncPluginWakeController,
+  type SyncPluginWakeControllerDeps,
+  type SyncPluginWakePolicy,
+} from "./sync-plugin-wake.js";
