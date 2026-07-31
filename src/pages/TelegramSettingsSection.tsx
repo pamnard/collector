@@ -52,12 +52,14 @@ export function TelegramSettingsSection() {
   const [folders, setFolders] = useState<FolderOption[]>([]);
   const [credReason, setCredReason] = useState<string | null>(null);
   const [inlineError, setInlineError] = useState<string | null>(null);
+  const [inlineWarn, setInlineWarn] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const credsAvailable = credReason === null && !loading;
 
   const reload = useCallback(async () => {
     setInlineError(null);
+    setInlineWarn(null);
     const availability =
       await service.credentials.getCredentialsAvailability();
     if (!availability.available) {
@@ -76,6 +78,14 @@ export function TelegramSettingsSection() {
     setFolderPath(settings.folder_path || INBOX_FOLDER_NAME);
     setBotUsername(settings.bot_username);
     setLastSyncAt(settings.last_sync_at);
+    const warnings =
+      "last_pull_warnings" in settings &&
+      Array.isArray(
+        (settings as { last_pull_warnings?: string[] }).last_pull_warnings,
+      )
+        ? (settings as { last_pull_warnings: string[] }).last_pull_warnings
+        : [];
+    setInlineWarn(warnings.length > 0 ? warnings.join("\n") : null);
     setFolders(flattenFolders(tree));
 
     if (availability.available) {
@@ -114,6 +124,7 @@ export function TelegramSettingsSection() {
   const saveToken = async () => {
     setBusy(true);
     setInlineError(null);
+    setInlineWarn(null);
     try {
       const identity = await service.telegramSync.validateTelegramBotToken({
         token: tokenDraft.trim(),
@@ -196,10 +207,19 @@ export function TelegramSettingsSection() {
   const syncNow = async () => {
     setBusy(true);
     setInlineError(null);
+    setInlineWarn(null);
     try {
       await service.syncPlugins.syncNow("telegram");
       const settings = await service.telegramSync.getTelegramSyncSettings();
       setLastSyncAt(settings.last_sync_at);
+      const warnings =
+        "last_pull_warnings" in settings &&
+        Array.isArray(
+          (settings as { last_pull_warnings?: string[] }).last_pull_warnings,
+        )
+          ? (settings as { last_pull_warnings: string[] }).last_pull_warnings
+          : [];
+      setInlineWarn(warnings.length > 0 ? warnings.join("\n") : null);
     } catch (err: unknown) {
       setInlineError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -212,6 +232,11 @@ export function TelegramSettingsSection() {
       {inlineError && (
         <pre className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-400 whitespace-pre-wrap">
           {inlineError}
+        </pre>
+      )}
+      {inlineWarn && (
+        <pre className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-amber-800 dark:text-amber-200 whitespace-pre-wrap">
+          {inlineWarn}
         </pre>
       )}
 

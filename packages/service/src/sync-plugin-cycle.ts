@@ -24,6 +24,7 @@ export interface RunSyncPluginCycleResult {
    * caller keeps the previous cursor.
    */
   nextCursor: SyncCursor | null;
+  warnings: string[];
 }
 
 export async function runSyncPluginCycle(
@@ -60,5 +61,6 @@ export async function runSyncPluginCycle(
     importedRemoteIds,
     itemIds,
     nextCursor: pulled.nextCursor,
+    warnings: pulled.warnings ?? [],
   };
 }

@@ -406,6 +406,7 @@ export function createDevMockCollectorService(): CollectorService {
         folder_path: INBOX_FOLDER_NAME,
         bot_username: null,
         last_sync_at: null,
+        last_pull_warnings: [],
       }),
       updateTelegramSyncSettings: async () => refuseUnsupported(),
       validateTelegramBotToken: async () => refuseUnsupported(),

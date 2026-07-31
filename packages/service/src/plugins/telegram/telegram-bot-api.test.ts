@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createTelegramBotApi,
+  formatTelegramSyncError,
+  TELEGRAM_WEBHOOK_BLOCKS_POLLING_MESSAGE,
   TelegramBotApiError,
   TELEGRAM_REQUEST_TIMEOUT_MS,
 } from "./telegram-bot-api.js";
 
-describe("createTelegramBotApi (#415)", () => {
+describe("createTelegramBotApi (#415 / #433)", () => {
   it("getMe returns user on ok response", async () => {
     const fetchFn = vi.fn(async () =>
       Response.json({
@@ -41,7 +43,17 @@ describe("createTelegramBotApi (#415)", () => {
       expect(body.offset).toBe(42);
       return Response.json({
         ok: true,
-        result: [{ update_id: 42, message: { message_id: 1, date: 0, chat: { id: 9, type: "private" }, text: "hi" } }],
+        result: [
+          {
+            update_id: 42,
+            message: {
+              message_id: 1,
+              date: 0,
+              chat: { id: 9, type: "private" },
+              text: "hi",
+            },
+          },
+        ],
       });
     });
     const api = createTelegramBotApi({ fetchFn });
@@ -63,12 +75,73 @@ describe("createTelegramBotApi (#415)", () => {
     await expect(api.deleteMessage("tok", 5, 7)).resolves.toBe(true);
   });
 
+  it("getWebhookInfo and deleteWebhook round-trip", async () => {
+    const fetchFn = vi.fn(async (url: string) => {
+      if (url.includes("/getWebhookInfo")) {
+        return Response.json({
+          ok: true,
+          result: { url: "https://example.com/hook", pending_update_count: 1 },
+        });
+      }
+      if (url.includes("/deleteWebhook")) {
+        return Response.json({ ok: true, result: true });
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+    const api = createTelegramBotApi({ fetchFn });
+    await expect(api.getWebhookInfo("tok")).resolves.toEqual({
+      url: "https://example.com/hook",
+      pending_update_count: 1,
+    });
+    await expect(api.deleteWebhook("tok")).resolves.toBe(true);
+  });
+
+  it("ensurePollingClearsWebhook deletes only when url is set", async () => {
+    const calls: string[] = [];
+    const fetchFn = vi.fn(async (url: string) => {
+      if (url.includes("/getWebhookInfo")) {
+        calls.push("info");
+        return Response.json({ ok: true, result: { url: "" } });
+      }
+      if (url.includes("/deleteWebhook")) {
+        calls.push("delete");
+        return Response.json({ ok: true, result: true });
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+    const api = createTelegramBotApi({ fetchFn });
+    await expect(api.ensurePollingClearsWebhook("tok")).resolves.toBe(false);
+    expect(calls).toEqual(["info"]);
+
+    fetchFn.mockImplementation(async (url: string) => {
+      if (url.includes("/getWebhookInfo")) {
+        calls.push("info2");
+        return Response.json({
+          ok: true,
+          result: { url: "https://hook.example" },
+        });
+      }
+      if (url.includes("/deleteWebhook")) {
+        calls.push("delete2");
+        return Response.json({ ok: true, result: true });
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+    await expect(api.ensurePollingClearsWebhook("tok")).resolves.toBe(true);
+    expect(calls).toEqual(["info", "info2", "delete2"]);
+  });
+
   it("downloadFile returns bytes and rejects oversized", async () => {
     const fetchFn = vi.fn(async (url: string) => {
       if (url.includes("/getFile")) {
         return Response.json({
           ok: true,
-          result: { file_id: "f", file_unique_id: "u", file_path: "docs/a.bin", file_size: 4 },
+          result: {
+            file_id: "f",
+            file_unique_id: "u",
+            file_path: "docs/a.bin",
+            file_size: 4,
+          },
         });
       }
       return new Response(new Uint8Array([1, 2, 3, 4]));
@@ -105,5 +178,18 @@ describe("createTelegramBotApi (#415)", () => {
     });
     await expect(api.getMe("tok")).rejects.toThrow(/timed out/);
     expect(TELEGRAM_REQUEST_TIMEOUT_MS).toBe(15_000);
+  });
+
+  it("formatTelegramSyncError maps webhook Conflict", () => {
+    const webhookErr = new TelegramBotApiError(
+      "telegram: getUpdates failed: Conflict: can't use getUpdates method while webhook is active",
+      {
+        telegramDescription:
+          "Conflict: can't use getUpdates method while webhook is active",
+      },
+    );
+    expect(formatTelegramSyncError(webhookErr)).toBe(
+      TELEGRAM_WEBHOOK_BLOCKS_POLLING_MESSAGE,
+    );
   });
 });

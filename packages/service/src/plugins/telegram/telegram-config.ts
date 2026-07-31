@@ -1,19 +1,31 @@
 /**
- * Per-vault Telegram plugin config (#415).
- * Non-secret settings + awaiting_delete ledger. Token stays in keychain.
+ * Per-vault Telegram plugin config (#415 / #433).
+ * Non-secret settings + awaiting_delete ledger + pending albums.
+ * Token stays in keychain.
  */
 
 import type { FileSystemAdapter } from "@collector/core";
 import { INBOX_FOLDER_NAME } from "@collector/shared";
+import type { TelegramMessage } from "./telegram-bot-api.js";
 
 export const TELEGRAM_PLUGIN_ID = "telegram";
 export const TELEGRAM_BOT_TOKEN_KEY = "bot_token";
 export const TELEGRAM_CONFIG_DIR = "sync-plugins/telegram";
+export const TELEGRAM_ALBUM_REMOTE_MARKER = "mg";
 
 export interface TelegramAwaitingDelete {
   chat_id: number;
   message_id: number;
 }
+
+export interface TelegramPendingAlbum {
+  chat_id: number;
+  media_group_id: string;
+  messages: TelegramMessage[];
+}
+
+/** remoteId → message ids to delete after album import. */
+export type TelegramAlbumAckParts = Record<string, TelegramAwaitingDelete[]>;
 
 export interface TelegramPluginConfig {
   schema_version: 1;
@@ -22,6 +34,9 @@ export interface TelegramPluginConfig {
   bot_username: string | null;
   last_sync_at: string | null;
   awaiting_delete: TelegramAwaitingDelete[];
+  pending_albums: TelegramPendingAlbum[];
+  album_ack_parts: TelegramAlbumAckParts;
+  last_pull_warnings: string[];
 }
 
 export interface TelegramSyncSettings {
@@ -29,6 +44,7 @@ export interface TelegramSyncSettings {
   folder_path: string;
   bot_username: string | null;
   last_sync_at: string | null;
+  last_pull_warnings: string[];
 }
 
 export type TelegramSyncSettingsPatch = Partial<{
@@ -46,6 +62,9 @@ export function defaultTelegramPluginConfig(): TelegramPluginConfig {
     bot_username: null,
     last_sync_at: null,
     awaiting_delete: [],
+    pending_albums: [],
+    album_ack_parts: {},
+    last_pull_warnings: [],
   };
 }
 
@@ -57,6 +76,7 @@ export function toTelegramSyncSettings(
     folder_path: config.folder_path,
     bot_username: config.bot_username,
     last_sync_at: config.last_sync_at,
+    last_pull_warnings: [...config.last_pull_warnings],
   };
 }
 
@@ -64,9 +84,30 @@ export function telegramRemoteId(chatId: number, messageId: number): string {
   return `${chatId}:${messageId}`;
 }
 
+export function telegramAlbumRemoteId(
+  chatId: number,
+  mediaGroupId: string,
+): string {
+  return `${chatId}:${TELEGRAM_ALBUM_REMOTE_MARKER}:${mediaGroupId}`;
+}
+
+export function isTelegramAlbumRemoteId(remoteId: string): boolean {
+  const marker = `:${TELEGRAM_ALBUM_REMOTE_MARKER}:`;
+  return remoteId.includes(marker);
+}
+
+export function pendingAlbumKey(chatId: number, mediaGroupId: string): string {
+  return `${chatId}:${mediaGroupId}`;
+}
+
 export function parseTelegramRemoteId(
   remoteId: string,
 ): TelegramAwaitingDelete {
+  if (isTelegramAlbumRemoteId(remoteId)) {
+    throw new Error(
+      `telegram: album remoteId ${remoteId} must be expanded via album_ack_parts`,
+    );
+  }
   const sep = remoteId.lastIndexOf(":");
   if (sep <= 0 || sep === remoteId.length - 1) {
     throw new Error(`telegram: invalid remoteId ${remoteId}`);
@@ -77,6 +118,22 @@ export function parseTelegramRemoteId(
     throw new Error(`telegram: invalid remoteId ${remoteId}`);
   }
   return { chat_id, message_id };
+}
+
+export function expandRemoteIdToDeletes(
+  remoteId: string,
+  albumAckParts: TelegramAlbumAckParts,
+): TelegramAwaitingDelete[] {
+  if (isTelegramAlbumRemoteId(remoteId)) {
+    const parts = albumAckParts[remoteId];
+    if (!parts || parts.length === 0) {
+      throw new Error(
+        `telegram: missing album_ack_parts for remoteId ${remoteId}`,
+      );
+    }
+    return parts.map((row) => ({ ...row }));
+  }
+  return [parseTelegramRemoteId(remoteId)];
 }
 
 export function flattenFolderPaths(
@@ -119,6 +176,68 @@ function configPath(fs: FileSystemAdapter, dataDir: string, vaultId: string): st
   return fs.join(dataDir, TELEGRAM_CONFIG_DIR, `${vaultId}.json`);
 }
 
+function normalizeAwaitingDelete(raw: unknown): TelegramAwaitingDelete[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.filter(
+    (row): row is TelegramAwaitingDelete =>
+      !!row &&
+      typeof row === "object" &&
+      typeof (row as TelegramAwaitingDelete).chat_id === "number" &&
+      typeof (row as TelegramAwaitingDelete).message_id === "number",
+  );
+}
+
+function normalizePendingAlbums(raw: unknown): TelegramPendingAlbum[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const out: TelegramPendingAlbum[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") {
+      continue;
+    }
+    const album = row as TelegramPendingAlbum;
+    if (
+      typeof album.chat_id !== "number" ||
+      typeof album.media_group_id !== "string" ||
+      !album.media_group_id.trim() ||
+      !Array.isArray(album.messages)
+    ) {
+      continue;
+    }
+    out.push({
+      chat_id: album.chat_id,
+      media_group_id: album.media_group_id,
+      messages: album.messages.filter(
+        (m): m is TelegramMessage =>
+          !!m &&
+          typeof m === "object" &&
+          typeof m.message_id === "number" &&
+          typeof m.date === "number" &&
+          !!m.chat &&
+          typeof m.chat.id === "number",
+      ),
+    });
+  }
+  return out;
+}
+
+function normalizeAlbumAckParts(raw: unknown): TelegramAlbumAckParts {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {};
+  }
+  const out: TelegramAlbumAckParts = {};
+  for (const [key, value] of Object.entries(raw)) {
+    const parts = normalizeAwaitingDelete(value);
+    if (parts.length > 0) {
+      out[key] = parts;
+    }
+  }
+  return out;
+}
+
 export async function loadTelegramPluginConfig(
   fs: FileSystemAdapter,
   dataDir: string,
@@ -147,14 +266,19 @@ export async function loadTelegramPluginConfig(
       typeof raw.last_sync_at === "string" && raw.last_sync_at.trim()
         ? raw.last_sync_at
         : null,
-    awaiting_delete: Array.isArray(raw.awaiting_delete)
-      ? raw.awaiting_delete.filter(
-          (row): row is TelegramAwaitingDelete =>
-            !!row &&
-            typeof row === "object" &&
-            typeof row.chat_id === "number" &&
-            typeof row.message_id === "number",
-        )
+    awaiting_delete: normalizeAwaitingDelete(raw.awaiting_delete),
+    pending_albums: normalizePendingAlbums(
+      (raw as { pending_albums?: unknown }).pending_albums,
+    ),
+    album_ack_parts: normalizeAlbumAckParts(
+      (raw as { album_ack_parts?: unknown }).album_ack_parts,
+    ),
+    last_pull_warnings: Array.isArray(
+      (raw as { last_pull_warnings?: unknown }).last_pull_warnings,
+    )
+      ? (
+          (raw as { last_pull_warnings: unknown[] }).last_pull_warnings
+        ).filter((w): w is string => typeof w === "string" && w.trim().length > 0)
       : [],
   };
 }
@@ -177,6 +301,9 @@ export async function updateTelegramPluginConfig(
   vaultId: string,
   patch: TelegramSyncSettingsPatch & {
     awaiting_delete?: TelegramAwaitingDelete[];
+    pending_albums?: TelegramPendingAlbum[];
+    album_ack_parts?: TelegramAlbumAckParts;
+    last_pull_warnings?: string[];
   },
   existingFolders?: readonly string[],
 ): Promise<TelegramPluginConfig> {
@@ -192,6 +319,15 @@ export async function updateTelegramPluginConfig(
       : {}),
     ...(patch.awaiting_delete !== undefined
       ? { awaiting_delete: patch.awaiting_delete }
+      : {}),
+    ...(patch.pending_albums !== undefined
+      ? { pending_albums: patch.pending_albums }
+      : {}),
+    ...(patch.album_ack_parts !== undefined
+      ? { album_ack_parts: patch.album_ack_parts }
+      : {}),
+    ...(patch.last_pull_warnings !== undefined
+      ? { last_pull_warnings: patch.last_pull_warnings }
       : {}),
   };
 

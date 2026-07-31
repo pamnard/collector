@@ -10,7 +10,7 @@ import type {
   TelegramSyncSettingsPatch,
 } from "@collector/api";
 import type { FileSystemAdapter } from "@collector/core";
-import { createTelegramBotApi, type TelegramBotApi } from "./telegram-bot-api.js";
+import { createTelegramBotApi, formatTelegramSyncError, type TelegramBotApi } from "./telegram-bot-api.js";
 import {
   flattenFolderPaths,
   loadTelegramPluginConfig,
@@ -70,6 +70,11 @@ export function createTelegramSyncService(
         throw new Error("telegram: bot token required");
       }
       const me = await api.getMe(token);
+      try {
+        await api.ensurePollingClearsWebhook(token);
+      } catch (error) {
+        throw new Error(formatTelegramSyncError(error));
+      }
       return {
         id: me.id,
         username: me.username ?? null,

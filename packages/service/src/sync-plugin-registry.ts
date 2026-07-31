@@ -112,6 +112,7 @@ export function createSyncPluginRegistry(
       return {
         importedCount: result.itemIds.length,
         itemIds: result.itemIds,
+        ...(result.warnings.length > 0 ? { warnings: result.warnings } : {}),
       };
     },
   };
