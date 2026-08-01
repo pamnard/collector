@@ -20,8 +20,8 @@ export interface NormalizedSyncItem {
   /** Destination list folder; omit/empty → inbox via createItem. */
   folder_path?: string;
   /**
-   * Optional vault SourceRef. Telegram Path C (#415): omit —
-   * dedup is delete-after-save, not persisted Telegram ids on the item.
+   * Optional vault SourceRef. Telegram Path C (#415/#436): omit —
+   * dedup is plugin ledgers (`imported` / `awaiting_delete`), not item ids.
    */
   sourceRef?: SourceRef;
   media?: BinaryPayload[];
@@ -51,9 +51,21 @@ export interface SyncPlugin {
   pull(cursor: SyncCursor | null): Promise<PullResult>;
 
   /**
+   * Persist “already imported” before remote release (Telegram: ledger on disk).
+   * Called immediately after each successful vault create.
+   */
+  markImported?(remoteIds: string[]): Promise<void>;
+
+  /**
    * After core successfully imported `remoteIds`, release remote queue
    * (Telegram: deleteMessage). Retry-safe. Omit if the source has no
    * post-import remote side effect.
    */
   ack?(remoteIds: string[]): Promise<void>;
+
+  /**
+   * Drop durable imported marks after the sync cursor was persisted
+   * (Telegram: clear `imported` once offset advanced).
+   */
+  clearImported?(remoteIds: string[]): Promise<void>;
 }

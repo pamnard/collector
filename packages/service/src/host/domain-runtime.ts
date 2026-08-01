@@ -36,9 +36,11 @@ import {
   type SyncPluginWakeController,
 } from "../sync-plugin-wake.js";
 import {
+  DEFAULT_TELEGRAM_SYNC_INTERVAL_MS,
   TELEGRAM_PLUGIN_ID,
   createTelegramSyncPlugin,
   createTelegramSyncService,
+  loadTelegramPluginConfig,
   markTelegramLastSyncAt,
 } from "../plugins/telegram/index.js";
 import type { TelegramSyncPort, SyncPluginsPort } from "@collector/api";
@@ -559,23 +561,81 @@ export function createServiceDomainRuntime(
     },
   };
 
-  const telegramSync = createTelegramSyncService({
+  const telegramSyncBase = createTelegramSyncService({
     fs,
     dataDir,
     resolveActiveVaultId,
     listFolderTree: () => tagsFolders.listFolderTree(),
   });
 
-  const syncPluginWake = createSyncPluginWakeController({
+  const syncPluginWakeInner = createSyncPluginWakeController({
     syncNow: (pluginId) => syncPlugins.syncNow(pluginId),
   });
-  const wakePolicies: Record<string, SyncPluginWakePolicy> = {
-    [TELEGRAM_PLUGIN_ID]: { onVaultReady: true },
-    ...options.wakePolicies,
+
+  const telegramWakeOverridden =
+    options.wakePolicies?.[TELEGRAM_PLUGIN_ID] !== undefined;
+
+  const armTelegramWake = (
+    enabled: boolean,
+    syncIntervalMs = DEFAULT_TELEGRAM_SYNC_INTERVAL_MS,
+  ): void => {
+    if (telegramWakeOverridden) {
+      return;
+    }
+    syncPluginWakeInner.register(
+      TELEGRAM_PLUGIN_ID,
+      enabled
+        ? { onVaultReady: true, intervalMs: syncIntervalMs }
+        : { onVaultReady: false },
+    );
   };
-  for (const [pluginId, policy] of Object.entries(wakePolicies)) {
-    syncPluginWake.register(pluginId, policy);
+
+  const refreshTelegramWakeFromConfig = async (): Promise<void> => {
+    if (telegramWakeOverridden) {
+      return;
+    }
+    const vaultId = await resolveActiveVaultId();
+    const config = await loadTelegramPluginConfig(fs, dataDir, vaultId);
+    armTelegramWake(config.enabled, config.sync_interval_ms);
+  };
+
+  for (const [pluginId, policy] of Object.entries(options.wakePolicies ?? {})) {
+    if (pluginId === TELEGRAM_PLUGIN_ID) {
+      continue;
+    }
+    syncPluginWakeInner.register(pluginId, policy);
   }
+  if (telegramWakeOverridden) {
+    const override = options.wakePolicies?.[TELEGRAM_PLUGIN_ID];
+    if (!override) {
+      throw new Error("telegram wake override missing after guard");
+    }
+    syncPluginWakeInner.register(TELEGRAM_PLUGIN_ID, override);
+  } else {
+    armTelegramWake(false);
+  }
+
+  const syncPluginWake: SyncPluginWakeController = {
+    register: (pluginId, policy) =>
+      syncPluginWakeInner.register(pluginId, policy),
+    dispose: () => syncPluginWakeInner.dispose(),
+    async notifyVaultReady() {
+      await refreshTelegramWakeFromConfig();
+      await syncPluginWakeInner.notifyVaultReady();
+    },
+  };
+
+  const telegramSync: TelegramSyncPort = {
+    getTelegramSyncSettings: () => telegramSyncBase.getTelegramSyncSettings(),
+    validateTelegramBotToken: (input) =>
+      telegramSyncBase.validateTelegramBotToken(input),
+    async updateTelegramSyncSettings(patch) {
+      const settings =
+        await telegramSyncBase.updateTelegramSyncSettings(patch);
+      armTelegramWake(settings.enabled, settings.sync_interval_ms);
+      return settings;
+    },
+  };
 
   return {
     dataDir,

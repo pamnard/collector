@@ -493,9 +493,9 @@ export const DOMAIN_DISPATCH_REGISTRY: Record<
   [M.ensureActiveVault]: {
     handle: async (runtime) => {
       await runtime.ensureInitialized();
-      const result = await runtime.vaults.ensureActiveVault();
-      await runtime.syncPluginWake.notifyVaultReady();
-      return result;
+      // Do not wake sync plugins here — thumbnails/dashboard call this path.
+      // Boot and switchVault still notifyVaultReady explicitly.
+      return runtime.vaults.ensureActiveVault();
     },
   },
   [M.getDataDirectory]: {
@@ -603,6 +603,9 @@ export const DOMAIN_DISPATCH_REGISTRY: Record<
           : {}),
         ...(p.last_sync_at === null || typeof p.last_sync_at === "string"
           ? { last_sync_at: p.last_sync_at as string | null }
+          : {}),
+        ...(typeof p.sync_interval_ms === "number"
+          ? { sync_interval_ms: p.sync_interval_ms }
           : {}),
       });
     },

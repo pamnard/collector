@@ -89,31 +89,69 @@ export function createSyncPluginRegistry(
     );
   };
 
+  /** One in-flight leader loop per plugin; concurrent callers coalesce. */
+  const leaders = new Map<string, Promise<SyncNowResult>>();
+  const rerunRequested = new Map<string, boolean>();
+
+  const runOnce = async (pluginId: string): Promise<SyncNowResult> => {
+    const plugin = byId.get(pluginId);
+    if (!plugin) {
+      throw new Error(`Unknown sync plugin: ${pluginId}`);
+    }
+
+    const vaultId = await deps.resolveActiveVaultId();
+    const state = await loadState(vaultId);
+    const cursor = state.cursors[pluginId] ?? null;
+
+    const result = await runSyncPluginCycle({
+      plugin,
+      cursor,
+      importItem: (item) => handoff.importItem(item),
+    });
+
+    state.cursors[pluginId] = result.nextCursor;
+    await saveState(vaultId, state);
+
+    if (plugin.clearImported && result.importedRemoteIds.length > 0) {
+      await plugin.clearImported(result.importedRemoteIds);
+    }
+
+    return {
+      importedCount: result.itemIds.length,
+      itemIds: result.itemIds,
+      ...(result.warnings.length > 0 ? { warnings: result.warnings } : {}),
+    };
+  };
+
   return {
     async syncNow(pluginId: string): Promise<SyncNowResult> {
-      const plugin = byId.get(pluginId);
-      if (!plugin) {
-        throw new Error(`Unknown sync plugin: ${pluginId}`);
+      const existing = leaders.get(pluginId);
+      if (existing) {
+        rerunRequested.set(pluginId, true);
+        return existing;
       }
 
-      const vaultId = await deps.resolveActiveVaultId();
-      const state = await loadState(vaultId);
-      const cursor = state.cursors[pluginId] ?? null;
+      const loop = (async (): Promise<SyncNowResult> => {
+        let last!: SyncNowResult;
+        for (;;) {
+          rerunRequested.set(pluginId, false);
+          last = await runOnce(pluginId);
+          if (!rerunRequested.get(pluginId)) {
+            break;
+          }
+        }
+        return last;
+      })();
 
-      const result = await runSyncPluginCycle({
-        plugin,
-        cursor,
-        importItem: (item) => handoff.importItem(item),
-      });
-
-      state.cursors[pluginId] = result.nextCursor;
-      await saveState(vaultId, state);
-
-      return {
-        importedCount: result.itemIds.length,
-        itemIds: result.itemIds,
-        ...(result.warnings.length > 0 ? { warnings: result.warnings } : {}),
-      };
+      leaders.set(pluginId, loop);
+      try {
+        return await loop;
+      } finally {
+        if (leaders.get(pluginId) === loop) {
+          leaders.delete(pluginId);
+          rerunRequested.delete(pluginId);
+        }
+      }
     },
   };
 }

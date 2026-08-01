@@ -130,4 +130,52 @@ describe("createSyncPluginRegistry (#29)", () => {
       false,
     );
   });
+
+  it("serializes concurrent syncNow and coalesces into one follow-up run", async () => {
+    const dataDir = await tempDataDir();
+    let releasePull!: () => void;
+    const pullGate = new Promise<void>((resolve) => {
+      releasePull = resolve;
+    });
+    let pullCount = 0;
+    const slow: SyncPlugin = {
+      id: "slow",
+      async pull() {
+        pullCount += 1;
+        if (pullCount === 1) {
+          await pullGate;
+        }
+        return {
+          items: [note(`r-${pullCount}`, `T-${pullCount}`)],
+          nextCursor: `c-${pullCount}`,
+        };
+      },
+    };
+    const createItem = vi.fn(async (input: { title: string }) => ({
+      id: `Inbox/${input.title}.md`,
+      title: input.title,
+    }));
+    const registry = createSyncPluginRegistry({
+      fs: new NodeFileSystemAdapter(),
+      dataDir,
+      resolveActiveVaultId: async () => "vault-1",
+      createItem,
+      attachMediaFiles: vi.fn(async () => []),
+      createCatalog: () => [slow],
+    });
+
+    const first = registry.syncNow("slow");
+    await vi.waitFor(() => expect(pullCount).toBe(1));
+    const second = registry.syncNow("slow");
+    const third = registry.syncNow("slow");
+    expect(pullCount).toBe(1);
+
+    releasePull();
+    const results = await Promise.all([first, second, third]);
+    expect(pullCount).toBe(2);
+    expect(createItem).toHaveBeenCalledTimes(2);
+    expect(results.every((r) => r.importedCount === 1)).toBe(true);
+    expect(results[0]?.itemIds).toEqual(results[1]?.itemIds);
+    expect(results[1]?.itemIds).toEqual(results[2]?.itemIds);
+  });
 });

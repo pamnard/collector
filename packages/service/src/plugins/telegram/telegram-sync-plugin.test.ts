@@ -57,6 +57,8 @@ function baseConfig(
     bot_username: "bot",
     last_sync_at: null,
     awaiting_delete: [],
+    imported: [],
+    sync_interval_ms: 300_000,
     pending_albums: [],
     album_ack_parts: {},
     last_pull_warnings: [],
@@ -193,6 +195,8 @@ describe("telegram-config / map (#415 / #433)", () => {
       baseConfig({
         folder_path: "Gone",
         awaiting_delete: [{ chat_id: 1, message_id: 2 }],
+        imported: [{ chat_id: 1, message_id: 2 }],
+        sync_interval_ms: 120_000,
       }),
     );
     const updated = await updateTelegramPluginConfig(
@@ -204,10 +208,35 @@ describe("telegram-config / map (#415 / #433)", () => {
     );
     expect(updated.folder_path).toBe(INBOX_FOLDER_NAME);
     expect(updated.awaiting_delete).toEqual([{ chat_id: 1, message_id: 2 }]);
+    expect(updated.imported).toEqual([{ chat_id: 1, message_id: 2 }]);
+    expect(updated.sync_interval_ms).toBe(120_000);
     const loaded = await loadTelegramPluginConfig(fs, dataDir, "v1");
     expect(loaded.enabled).toBe(true);
     expect(loaded.bot_username).toBe("bot");
     expect(loaded.pending_albums).toEqual([]);
+    expect(loaded.imported).toEqual([{ chat_id: 1, message_id: 2 }]);
+    expect(loaded.sync_interval_ms).toBe(120_000);
+  });
+
+  it("missing imported / sync_interval_ms normalize to defaults", async () => {
+    const dataDir = await tempDataDir();
+    const fs = new NodeFileSystemAdapter();
+    const path = join(dataDir, "sync-plugins", "telegram", "v1.json");
+    await fs.mkdir(join(dataDir, "sync-plugins", "telegram"));
+    await fs.writeText(
+      path,
+      `${JSON.stringify({
+        schema_version: 1,
+        enabled: true,
+        folder_path: "Inbox",
+        bot_username: null,
+        last_sync_at: null,
+        awaiting_delete: [],
+      })}\n`,
+    );
+    const loaded = await loadTelegramPluginConfig(fs, dataDir, "v1");
+    expect(loaded.imported).toEqual([]);
+    expect(loaded.sync_interval_ms).toBe(300_000);
   });
 });
 
@@ -671,5 +700,151 @@ describe("createTelegramSyncPlugin (#415 / #433)", () => {
     );
     const cfg = await loadTelegramPluginConfig(fs, dataDir, "v1");
     expect(cfg.awaiting_delete).toEqual([{ chat_id: 3, message_id: 9 }]);
+    expect(cfg.imported).toEqual([{ chat_id: 3, message_id: 9 }]);
+  });
+
+  it("imported blocks re-import until clearImported after cursor", async () => {
+    const dataDir = await tempDataDir();
+    const fs = new NodeFileSystemAdapter();
+    const credentials = createCredentialsService({
+      backend: createMemoryKeychainBackend(),
+    });
+    await credentials.setCredential({
+      pluginId: TELEGRAM_PLUGIN_ID,
+      key: "bot_token",
+      secret: "tok",
+    });
+    await saveTelegramPluginConfig(fs, dataDir, "v1", baseConfig());
+
+    const update = {
+      update_id: 10,
+      message: {
+        message_id: 5,
+        date: 1,
+        chat: { id: 100, type: "private" as const },
+        text: "hello",
+      },
+    };
+    const getUpdates = vi.fn(async () => [update]);
+    const deleteMessage = vi.fn(async () => true as const);
+    const api = mockApi({ getUpdates, deleteMessage });
+
+    const plugin = createTelegramSyncPlugin({
+      credentials,
+      fs,
+      dataDir,
+      resolveActiveVaultId: async () => "v1",
+      listFolderTree: async () => [
+        { name: "Inbox", path: "Inbox", item_count: 0, children: [] },
+      ],
+      api,
+    });
+
+    const createItem = vi.fn(async (input: { title: string }) => ({
+      id: `Inbox/${input.title}.md`,
+      title: input.title,
+    }));
+    const registry = createSyncPluginRegistry({
+      fs,
+      dataDir,
+      resolveActiveVaultId: async () => "v1",
+      createItem: createItem as never,
+      attachMediaFiles: vi.fn(async () => []),
+      createCatalog: () => [plugin],
+    });
+
+    const first = await registry.syncNow(TELEGRAM_PLUGIN_ID);
+    expect(first.importedCount).toBe(1);
+    expect(createItem).toHaveBeenCalledTimes(1);
+    let cfg = await loadTelegramPluginConfig(fs, dataDir, "v1");
+    expect(cfg.imported).toEqual([]);
+    expect(cfg.awaiting_delete).toEqual([]);
+
+    await fs.writeText(
+      join(dataDir, "sync-plugins", "v1.json"),
+      `${JSON.stringify({ schema_version: 1, cursors: { telegram: null } }, null, 2)}\n`,
+    );
+    await saveTelegramPluginConfig(fs, dataDir, "v1", {
+      ...(await loadTelegramPluginConfig(fs, dataDir, "v1")),
+      imported: [{ chat_id: 100, message_id: 5 }],
+    });
+
+    const second = await registry.syncNow(TELEGRAM_PLUGIN_ID);
+    expect(second.importedCount).toBe(0);
+    expect(createItem).toHaveBeenCalledTimes(1);
+
+    cfg = await loadTelegramPluginConfig(fs, dataDir, "v1");
+    // No new imports → clearImported not called; mark stays until a successful import cycle.
+    expect(cfg.imported).toEqual([{ chat_id: 100, message_id: 5 }]);
+  });
+
+  it("new message_id imports again after successful cycle", async () => {
+    const dataDir = await tempDataDir();
+    const fs = new NodeFileSystemAdapter();
+    const credentials = createCredentialsService({
+      backend: createMemoryKeychainBackend(),
+    });
+    await credentials.setCredential({
+      pluginId: TELEGRAM_PLUGIN_ID,
+      key: "bot_token",
+      secret: "tok",
+    });
+    await saveTelegramPluginConfig(fs, dataDir, "v1", baseConfig());
+
+    const getUpdates = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          update_id: 1,
+          message: {
+            message_id: 1,
+            date: 1,
+            chat: { id: 100, type: "private" },
+            text: "one",
+          },
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          update_id: 2,
+          message: {
+            message_id: 2,
+            date: 2,
+            chat: { id: 100, type: "private" },
+            text: "two",
+          },
+        },
+      ]);
+    const api = mockApi({
+      getUpdates,
+      deleteMessage: vi.fn(async () => true as const),
+    });
+
+    const plugin = createTelegramSyncPlugin({
+      credentials,
+      fs,
+      dataDir,
+      resolveActiveVaultId: async () => "v1",
+      listFolderTree: async () => [
+        { name: "Inbox", path: "Inbox", item_count: 0, children: [] },
+      ],
+      api,
+    });
+    const createItem = vi.fn(async (input: { title: string }) => ({
+      id: `Inbox/${input.title}.md`,
+      title: input.title,
+    }));
+    const registry = createSyncPluginRegistry({
+      fs,
+      dataDir,
+      resolveActiveVaultId: async () => "v1",
+      createItem: createItem as never,
+      attachMediaFiles: vi.fn(async () => []),
+      createCatalog: () => [plugin],
+    });
+
+    expect((await registry.syncNow(TELEGRAM_PLUGIN_ID)).importedCount).toBe(1);
+    expect((await registry.syncNow(TELEGRAM_PLUGIN_ID)).importedCount).toBe(1);
+    expect(createItem).toHaveBeenCalledTimes(2);
   });
 });

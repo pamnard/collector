@@ -3,6 +3,7 @@
  *
  * Host lifecycle hooks that call #29 `syncNow` for plugins that opt in.
  * Not a settings surface — wake policy is registered per plugin at build time.
+ * Serialization / coalesce lives in the registry — wake always forwards.
  */
 
 export interface SyncPluginWakePolicy {
@@ -36,29 +37,20 @@ export function createSyncPluginWakeController(
   deps: SyncPluginWakeControllerDeps,
 ): SyncPluginWakeController {
   const policies = new Map<string, SyncPluginWakePolicy>();
-  const inflight = new Map<string, Promise<void>>();
   const timers = new Map<string, ReturnType<typeof setInterval>>();
   const logError = deps.logError ?? defaultLogError;
   const setIntervalFn = deps.setIntervalFn ?? setInterval;
   const clearIntervalFn = deps.clearIntervalFn ?? clearInterval;
   let disposed = false;
 
-  const runSync = (pluginId: string): Promise<void> => {
-    const existing = inflight.get(pluginId);
-    if (existing) {
-      return existing;
-    }
-    const run = (async () => {
+  const runSync = (pluginId: string): void => {
+    void (async () => {
       try {
         await deps.syncNow(pluginId);
       } catch (error) {
         logError(pluginId, error);
-      } finally {
-        inflight.delete(pluginId);
       }
     })();
-    inflight.set(pluginId, run);
-    return run;
   };
 
   const clearTimers = (): void => {
@@ -87,7 +79,7 @@ export function createSyncPluginWakeController(
         );
       }
       const timer = setIntervalFn(() => {
-        void runSync(pluginId);
+        runSync(pluginId);
       }, policy.intervalMs);
       timers.set(pluginId, timer);
     }
@@ -128,7 +120,7 @@ export function createSyncPluginWakeController(
         if (!policy.onVaultReady) {
           continue;
         }
-        void runSync(pluginId);
+        runSync(pluginId);
       }
     },
 
@@ -136,7 +128,6 @@ export function createSyncPluginWakeController(
       disposed = true;
       clearTimers();
       policies.clear();
-      inflight.clear();
     },
   };
 }
