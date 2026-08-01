@@ -5,6 +5,13 @@ import {
 } from "@collector/shared";
 import { useShell } from "../layout/AppLayout";
 import { useFolderTree } from "../../hooks/useFolderTree";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 
 interface FolderPickerProps {
   value: string;
@@ -48,21 +55,35 @@ export function FolderPicker({ value, onChange }: FolderPickerProps) {
   }, [tree]);
 
   const selectValue = value || INBOX_FOLDER_NAME;
+  const items = useMemo(
+    () => paths.map((path) => ({ value: path, label: path })),
+    [paths],
+  );
 
   return (
-    <label className="block">
+    <div>
       <span className="text-sm font-medium">Папка</span>
-      <select
+      <Select
         value={selectValue}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full rounded-lg border border-black/10 dark:border-white/10 bg-neutral-100/20 dark:bg-neutral-700/20 px-3 py-2 text-sm"
+        onValueChange={(next) => {
+          if (typeof next !== "string") {
+            throw new Error("folder_path must be a string");
+          }
+          onChange(next);
+        }}
+        items={items}
       >
-        {paths.map((path) => (
-          <option key={path} value={path}>
-            {path}
-          </option>
-        ))}
-      </select>
-    </label>
+        <SelectTrigger className="mt-1 w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent alignItemWithTrigger={false} align="start">
+          {items.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }

@@ -1,9 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getName } from "@tauri-apps/api/app";
 import type { VaultMeta } from "@collector/shared";
 import { useShell } from "../components/layout/AppLayout";
-import { useTheme } from "../hooks/useTheme";
-import { useViewMode } from "../hooks/useViewMode";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import { getCollectorService } from "../services/collector-client";
 
 interface SettingsGeneralSectionProps {
@@ -11,8 +16,6 @@ interface SettingsGeneralSectionProps {
 }
 
 export function SettingsGeneralSection({ onError }: SettingsGeneralSectionProps) {
-  const { theme, toggleTheme } = useTheme();
-  const { viewMode } = useViewMode();
   const { refreshVault } = useShell();
   const [dataDir, setDataDir] = useState<string | null>(null);
   const [configDir, setConfigDir] = useState<string | null>(null);
@@ -60,47 +63,44 @@ export function SettingsGeneralSection({ onError }: SettingsGeneralSectionProps)
     }
   };
 
+  const vaultItems = useMemo(
+    () =>
+      vaults.map((vault) => ({
+        value: vault.id,
+        label: vault.is_default
+          ? `${vault.name} (по умолчанию)`
+          : vault.name,
+      })),
+    [vaults],
+  );
+
   return (
     <>
-      <div className="p-4 flex items-center justify-between gap-4">
-        <div>
-          <p className="font-medium">Тема</p>
-          <p className="text-neutral-500 dark:text-neutral-400">
-            {theme === "dark" ? "Тёмная" : "Светлая"}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="px-3 py-1.5 rounded-lg border border-black/10 dark:border-white/10 hover:bg-neutral-100/65 dark:hover:bg-neutral-700/65 transition-colors text-sm"
-        >
-          Переключить
-        </button>
-      </div>
-
-      <div className="p-4">
-        <p className="font-medium">Вид по умолчанию</p>
-        <p className="text-neutral-500 dark:text-neutral-400 mt-1">
-          {viewMode === "grid" ? "Сетка" : "Таблица"}
-        </p>
-      </div>
-
       <div className="p-4">
         <p className="font-medium">Vault по умолчанию</p>
         {vaults.length > 0 && activeVaultId ? (
-          <select
+          <Select
             value={activeVaultId}
             disabled={isSavingVault}
-            onChange={(event) => handleVaultChange(event.target.value)}
-            className="mt-2 w-full rounded-lg border border-black/10 dark:border-white/10 bg-neutral-100/20 dark:bg-neutral-700/20 px-3 py-2 text-sm"
+            onValueChange={(next) => {
+              if (typeof next !== "string") {
+                throw new Error("vault id must be a string");
+              }
+              void handleVaultChange(next);
+            }}
+            items={vaultItems}
           >
-            {vaults.map((vault) => (
-              <option key={vault.id} value={vault.id}>
-                {vault.name}
-                {vault.is_default ? " (по умолчанию)" : ""}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="mt-2 w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false} align="start">
+              {vaultItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         ) : (
           <p className="text-neutral-500 mt-1">Загрузка…</p>
         )}

@@ -2,6 +2,13 @@ import { CONTENT_TYPES, type ContentType } from "@collector/shared";
 import type { ItemFormValues } from "../../types/item";
 import { FolderPicker } from "../folders/FolderPicker";
 import { TagPicker } from "../tags/TagPicker";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 
 const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
   article: "Статья",
@@ -50,22 +57,33 @@ export function ItemDetailInlineEditor({
       />
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="block">
+        <div>
           <span className="text-sm font-medium">Тип</span>
-          <select
+          <Select
             value={values.content_type}
-            onChange={(event) =>
-              update("content_type", event.target.value as ContentType)
-            }
-            className="mt-1 w-full rounded-lg border border-black/10 dark:border-white/10 bg-neutral-100/20 dark:bg-neutral-700/20 px-3 py-2 text-sm"
+            onValueChange={(next) => {
+              if (typeof next !== "string") {
+                throw new Error("content_type must be a string");
+              }
+              update("content_type", next as ContentType);
+            }}
+            items={CONTENT_TYPES.map((type) => ({
+              value: type,
+              label: CONTENT_TYPE_LABELS[type],
+            }))}
           >
-            {CONTENT_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {CONTENT_TYPE_LABELS[type]}
-              </option>
-            ))}
-          </select>
-        </label>
+            <SelectTrigger className="mt-1 w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false} align="start">
+              {CONTENT_TYPES.map((type) => (
+                <SelectItem key={type} value={type}>
+                  {CONTENT_TYPE_LABELS[type]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
         <label className="block">
           <span className="text-sm font-medium">URL</span>
