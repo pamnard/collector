@@ -301,6 +301,8 @@ export interface TelegramSyncSettings {
   last_sync_at: string | null;
   /** Non-fatal skips from last pull (oversized files, empty after skip). */
   last_pull_warnings?: string[];
+  /** Periodic sync interval; default 300_000 (5 minutes). */
+  sync_interval_ms: number;
 }
 
 export type TelegramSyncSettingsPatch = Partial<{
@@ -308,6 +310,7 @@ export type TelegramSyncSettingsPatch = Partial<{
   folder_path: string;
   bot_username: string | null;
   last_sync_at: string | null;
+  sync_interval_ms: number;
 }>;
 
 export interface TelegramBotIdentity {

@@ -1,6 +1,7 @@
 /**
- * Telegram Path C SyncPlugin (#415 / #433).
- * pull → host handoff → ack(deleteMessage). Dedup via awaiting_delete ledger.
+ * Telegram Path C SyncPlugin (#415 / #433 / #436).
+ * pull → host handoff → markImported → ack(deleteMessage) → clearImported.
+ * Dedup via imported + awaiting_delete ledgers (not sourceRef on the item).
  */
 
 import type {
@@ -108,8 +109,24 @@ function awaitingKey(row: TelegramAwaitingDelete): string {
   return telegramRemoteId(row.chat_id, row.message_id);
 }
 
-function messageAwaiting(message: TelegramMessage, awaiting: Set<string>): boolean {
-  return awaiting.has(telegramRemoteId(message.chat.id, message.message_id));
+function messageBlocked(
+  message: TelegramMessage,
+  blocked: Set<string>,
+): boolean {
+  return blocked.has(telegramRemoteId(message.chat.id, message.message_id));
+}
+
+function rowsForRemoteIds(
+  remoteIds: string[],
+  albumAckParts: TelegramAlbumAckParts,
+): TelegramAwaitingDelete[] {
+  const byKey = new Map<string, TelegramAwaitingDelete>();
+  for (const remoteId of remoteIds) {
+    for (const row of expandRemoteIdToDeletes(remoteId, albumAckParts)) {
+      byKey.set(awaitingKey(row), row);
+    }
+  }
+  return [...byKey.values()];
 }
 
 function mergeAlbumMessage(
@@ -129,23 +146,45 @@ export function createTelegramSyncPlugin(
 ): SyncPlugin {
   const api = deps.api ?? createTelegramBotApi();
 
+  /** In-process config for one sync cycle — avoids reload-per-item N+1. */
+  let configCache: { vaultId: string; config: TelegramPluginConfig } | null =
+    null;
+
   const readToken = async (): Promise<string | null> =>
     deps.credentials.getCredential({
       pluginId: TELEGRAM_PLUGIN_ID,
       key: TELEGRAM_BOT_TOKEN_KEY,
     });
 
-  const loadConfig = async (): Promise<{
+  const loadConfig = async (options?: {
+    fresh?: boolean;
+  }): Promise<{
     vaultId: string;
     config: TelegramPluginConfig;
   }> => {
     const vaultId = await deps.resolveActiveVaultId();
+    if (
+      !options?.fresh &&
+      configCache &&
+      configCache.vaultId === vaultId
+    ) {
+      return configCache;
+    }
     const config = await loadTelegramPluginConfig(
       deps.fs,
       deps.dataDir,
       vaultId,
     );
-    return { vaultId, config };
+    configCache = { vaultId, config };
+    return configCache;
+  };
+
+  const persistConfig = async (
+    vaultId: string,
+    config: TelegramPluginConfig,
+  ): Promise<void> => {
+    await saveTelegramPluginConfig(deps.fs, deps.dataDir, vaultId, config);
+    configCache = { vaultId, config };
   };
 
   const resolveFolder = async (
@@ -160,7 +199,7 @@ export function createTelegramSyncPlugin(
     );
     if (folderPath !== config.folder_path) {
       const next = { ...config, folder_path: folderPath };
-      await saveTelegramPluginConfig(deps.fs, deps.dataDir, vaultId, next);
+      await persistConfig(vaultId, next);
       return { folderPath, config: next };
     }
     return { folderPath, config };
@@ -186,7 +225,7 @@ export function createTelegramSyncPlugin(
       return config;
     }
     const next = { ...config, awaiting_delete: remaining };
-    await saveTelegramPluginConfig(deps.fs, deps.dataDir, vaultId, next);
+    await persistConfig(vaultId, next);
     return next;
   };
 
@@ -198,7 +237,7 @@ export function createTelegramSyncPlugin(
       if (!token) {
         return;
       }
-      const { config } = await loadConfig();
+      const { config } = await loadConfig({ fresh: true });
       if (!config.enabled) {
         return;
       }
@@ -207,7 +246,7 @@ export function createTelegramSyncPlugin(
 
     async pull(cursor: SyncCursor | null): Promise<PullResult> {
       const token = await readToken();
-      const { vaultId, config: loaded } = await loadConfig();
+      const { vaultId, config: loaded } = await loadConfig({ fresh: true });
 
       if (!token || !loaded.enabled) {
         return { items: [], nextCursor: cursor };
@@ -224,7 +263,10 @@ export function createTelegramSyncPlugin(
       config = resolved.config;
       const { folderPath } = resolved;
 
-      const awaiting = new Set(config.awaiting_delete.map(awaitingKey));
+      const blocked = new Set([
+        ...config.awaiting_delete.map(awaitingKey),
+        ...config.imported.map(awaitingKey),
+      ]);
       const offset = parseTelegramCursor(cursor);
 
       let updates;
@@ -235,7 +277,7 @@ export function createTelegramSyncPlugin(
       }
 
       const importable = collectImportableMessages(updates).filter(
-        (message) => !messageAwaiting(message, awaiting),
+        (message) => !messageBlocked(message, blocked),
       );
 
       const pendingBeforeKeys = new Set(
@@ -342,7 +384,7 @@ export function createTelegramSyncPlugin(
       }
 
       const pending_albums = [...albums.values()];
-      await saveTelegramPluginConfig(deps.fs, deps.dataDir, vaultId, {
+      await persistConfig(vaultId, {
         ...config,
         pending_albums,
         album_ack_parts: albumAckParts,
@@ -361,6 +403,30 @@ export function createTelegramSyncPlugin(
       };
     },
 
+    async markImported(remoteIds: string[]) {
+      if (remoteIds.length === 0) {
+        return;
+      }
+      const { vaultId, config } = await loadConfig();
+      const importedMap = new Map(
+        config.imported.map((row) => [awaitingKey(row), row]),
+      );
+      const awaitingMap = new Map(
+        config.awaiting_delete.map((row) => [awaitingKey(row), row]),
+      );
+      for (const row of rowsForRemoteIds(remoteIds, config.album_ack_parts)) {
+        const key = awaitingKey(row);
+        importedMap.set(key, row);
+        awaitingMap.set(key, row);
+      }
+      // One durable write per successfully created item (anti-dup under crash).
+      await persistConfig(vaultId, {
+        ...config,
+        imported: [...importedMap.values()],
+        awaiting_delete: [...awaitingMap.values()],
+      });
+    },
+
     async ack(remoteIds: string[]) {
       if (remoteIds.length === 0) {
         return;
@@ -370,45 +436,53 @@ export function createTelegramSyncPlugin(
         throw new Error("telegram: bot token missing for ack");
       }
       const { vaultId, config } = await loadConfig();
-      const byKey = new Map(
-        config.awaiting_delete.map((row) => [awaitingKey(row), row]),
-      );
-      const nextAlbumAck = { ...config.album_ack_parts };
-
-      for (const remoteId of remoteIds) {
-        const rows = expandRemoteIdToDeletes(remoteId, config.album_ack_parts);
-        for (const row of rows) {
-          byKey.set(awaitingKey(row), row);
-        }
-        if (nextAlbumAck[remoteId]) {
-          delete nextAlbumAck[remoteId];
-        }
-      }
-
-      const queue = [...byKey.values()];
-      await saveTelegramPluginConfig(deps.fs, deps.dataDir, vaultId, {
-        ...config,
-        awaiting_delete: queue,
-        album_ack_parts: nextAlbumAck,
-      });
+      const queue = rowsForRemoteIds(remoteIds, config.album_ack_parts);
+      const queueKeys = new Set(queue.map(awaitingKey));
 
       for (let i = 0; i < queue.length; i += 1) {
         const row = queue[i]!;
         try {
           await api.deleteMessage(token, row.chat_id, row.message_id);
         } catch (error) {
-          await saveTelegramPluginConfig(deps.fs, deps.dataDir, vaultId, {
+          const remaining = [
+            ...config.awaiting_delete.filter(
+              (r) => !queueKeys.has(awaitingKey(r)),
+            ),
+            ...queue.slice(i),
+          ];
+          await persistConfig(vaultId, {
             ...config,
-            awaiting_delete: queue.slice(i),
-            album_ack_parts: nextAlbumAck,
+            awaiting_delete: remaining,
           });
           throw error;
         }
       }
 
-      await saveTelegramPluginConfig(deps.fs, deps.dataDir, vaultId, {
+      await persistConfig(vaultId, {
         ...config,
-        awaiting_delete: [],
+        awaiting_delete: config.awaiting_delete.filter(
+          (row) => !queueKeys.has(awaitingKey(row)),
+        ),
+      });
+    },
+
+    async clearImported(remoteIds: string[]) {
+      if (remoteIds.length === 0) {
+        return;
+      }
+      const { vaultId, config } = await loadConfig();
+      const removeKeys = new Set(
+        rowsForRemoteIds(remoteIds, config.album_ack_parts).map(awaitingKey),
+      );
+      const nextAlbumAck = { ...config.album_ack_parts };
+      for (const remoteId of remoteIds) {
+        delete nextAlbumAck[remoteId];
+      }
+      await persistConfig(vaultId, {
+        ...config,
+        imported: config.imported.filter(
+          (row) => !removeKeys.has(awaitingKey(row)),
+        ),
         album_ack_parts: nextAlbumAck,
       });
     },

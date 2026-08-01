@@ -84,6 +84,7 @@ function stubRuntime(overrides: {
         folder_path: "Inbox",
         bot_username: null,
         last_sync_at: null,
+        sync_interval_ms: 300_000,
       })),
       updateTelegramSyncSettings: vi.fn(async (patch: unknown) => patch),
       validateTelegramBotToken: vi.fn(async () => ({
@@ -268,7 +269,7 @@ describe("createDomainIpcRequestHandler (#330)", () => {
     await expectBadRequest(() => dispatch(M.syncNow, {}));
   });
 
-  it("ensureActiveVault notifies sync plugin wake (#31)", async () => {
+  it("ensureActiveVault does not notify sync plugin wake (#436)", async () => {
     const ensureActiveVault = vi.fn(async () => ({
       vault: { id: "v1" },
       path: "/tmp/v",
@@ -289,6 +290,31 @@ describe("createDomainIpcRequestHandler (#330)", () => {
     await expect(dispatch(M.ensureActiveVault)).resolves.toMatchObject({
       vault: { id: "v1" },
     });
+    expect(ensureInitialized).toHaveBeenCalled();
+    expect(notifyVaultReady).not.toHaveBeenCalled();
+  });
+
+  it("switchVault still notifies sync plugin wake", async () => {
+    const switchVault = vi.fn(async () => ({
+      vault: { id: "v2" },
+      path: "/tmp/v2",
+    }));
+    const notifyVaultReady = vi.fn(async () => undefined);
+    const { runtime, ensureInitialized } = stubRuntime({});
+    (runtime as { vaults: { switchVault: unknown } }).vaults = {
+      ...runtime.vaults,
+      switchVault,
+    };
+    (runtime as { syncPluginWake: { notifyVaultReady: unknown } }).syncPluginWake =
+      {
+        register: vi.fn(),
+        notifyVaultReady,
+        dispose: vi.fn(),
+      };
+    const dispatch = createDomainIpcRequestHandler(runtime);
+    await expect(
+      dispatch(M.switchVault, { vaultId: "v2" }),
+    ).resolves.toMatchObject({ vault: { id: "v2" } });
     expect(ensureInitialized).toHaveBeenCalled();
     expect(notifyVaultReady).toHaveBeenCalledTimes(1);
   });

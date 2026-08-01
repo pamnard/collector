@@ -1,6 +1,6 @@
 /**
  * Per-vault Telegram plugin config (#415 / #433).
- * Non-secret settings + awaiting_delete ledger + pending albums.
+ * Non-secret settings + imported/awaiting_delete ledgers + pending albums.
  * Token stays in keychain.
  */
 
@@ -12,6 +12,10 @@ export const TELEGRAM_PLUGIN_ID = "telegram";
 export const TELEGRAM_BOT_TOKEN_KEY = "bot_token";
 export const TELEGRAM_CONFIG_DIR = "sync-plugins/telegram";
 export const TELEGRAM_ALBUM_REMOTE_MARKER = "mg";
+/** Default periodic sync: 5 minutes. */
+export const DEFAULT_TELEGRAM_SYNC_INTERVAL_MS = 300_000;
+/** Minimum allowed periodic sync interval: 1 minute. */
+export const MIN_TELEGRAM_SYNC_INTERVAL_MS = 60_000;
 
 export interface TelegramAwaitingDelete {
   chat_id: number;
@@ -34,6 +38,9 @@ export interface TelegramPluginConfig {
   bot_username: string | null;
   last_sync_at: string | null;
   awaiting_delete: TelegramAwaitingDelete[];
+  /** Messages already saved locally; cleared after cursor advances. */
+  imported: TelegramAwaitingDelete[];
+  sync_interval_ms: number;
   pending_albums: TelegramPendingAlbum[];
   album_ack_parts: TelegramAlbumAckParts;
   last_pull_warnings: string[];
@@ -45,6 +52,7 @@ export interface TelegramSyncSettings {
   bot_username: string | null;
   last_sync_at: string | null;
   last_pull_warnings: string[];
+  sync_interval_ms: number;
 }
 
 export type TelegramSyncSettingsPatch = Partial<{
@@ -52,6 +60,7 @@ export type TelegramSyncSettingsPatch = Partial<{
   folder_path: string;
   bot_username: string | null;
   last_sync_at: string | null;
+  sync_interval_ms: number;
 }>;
 
 export function defaultTelegramPluginConfig(): TelegramPluginConfig {
@@ -62,6 +71,8 @@ export function defaultTelegramPluginConfig(): TelegramPluginConfig {
     bot_username: null,
     last_sync_at: null,
     awaiting_delete: [],
+    imported: [],
+    sync_interval_ms: DEFAULT_TELEGRAM_SYNC_INTERVAL_MS,
     pending_albums: [],
     album_ack_parts: {},
     last_pull_warnings: [],
@@ -77,7 +88,20 @@ export function toTelegramSyncSettings(
     bot_username: config.bot_username,
     last_sync_at: config.last_sync_at,
     last_pull_warnings: [...config.last_pull_warnings],
+    sync_interval_ms: config.sync_interval_ms,
   };
+}
+
+export function normalizeTelegramSyncIntervalMs(raw: unknown): number {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    return DEFAULT_TELEGRAM_SYNC_INTERVAL_MS;
+  }
+  if (raw < MIN_TELEGRAM_SYNC_INTERVAL_MS) {
+    throw new Error(
+      `telegram: sync_interval_ms must be >= ${MIN_TELEGRAM_SYNC_INTERVAL_MS}`,
+    );
+  }
+  return Math.floor(raw);
 }
 
 export function telegramRemoteId(chatId: number, messageId: number): string {
@@ -247,10 +271,13 @@ export async function loadTelegramPluginConfig(
   if (!(await fs.exists(path))) {
     return defaultTelegramPluginConfig();
   }
-  const raw = JSON.parse(await fs.readText(path)) as TelegramPluginConfig;
+  const raw = JSON.parse(await fs.readText(path)) as Record<string, unknown> & {
+    schema_version?: unknown;
+  };
   if (raw.schema_version !== 1 || typeof raw !== "object" || !raw) {
     throw new Error(`telegram config corrupt at ${path}: expected schema_version 1`);
   }
+  const syncIntervalRaw = raw.sync_interval_ms;
   return {
     schema_version: 1,
     enabled: Boolean(raw.enabled),
@@ -267,18 +294,17 @@ export async function loadTelegramPluginConfig(
         ? raw.last_sync_at
         : null,
     awaiting_delete: normalizeAwaitingDelete(raw.awaiting_delete),
-    pending_albums: normalizePendingAlbums(
-      (raw as { pending_albums?: unknown }).pending_albums,
-    ),
-    album_ack_parts: normalizeAlbumAckParts(
-      (raw as { album_ack_parts?: unknown }).album_ack_parts,
-    ),
-    last_pull_warnings: Array.isArray(
-      (raw as { last_pull_warnings?: unknown }).last_pull_warnings,
-    )
-      ? (
-          (raw as { last_pull_warnings: unknown[] }).last_pull_warnings
-        ).filter((w): w is string => typeof w === "string" && w.trim().length > 0)
+    imported: normalizeAwaitingDelete(raw.imported),
+    sync_interval_ms:
+      syncIntervalRaw === undefined
+        ? DEFAULT_TELEGRAM_SYNC_INTERVAL_MS
+        : normalizeTelegramSyncIntervalMs(syncIntervalRaw),
+    pending_albums: normalizePendingAlbums(raw.pending_albums),
+    album_ack_parts: normalizeAlbumAckParts(raw.album_ack_parts),
+    last_pull_warnings: Array.isArray(raw.last_pull_warnings)
+      ? raw.last_pull_warnings.filter(
+          (w): w is string => typeof w === "string" && w.trim().length > 0,
+        )
       : [],
   };
 }
@@ -301,6 +327,7 @@ export async function updateTelegramPluginConfig(
   vaultId: string,
   patch: TelegramSyncSettingsPatch & {
     awaiting_delete?: TelegramAwaitingDelete[];
+    imported?: TelegramAwaitingDelete[];
     pending_albums?: TelegramPendingAlbum[];
     album_ack_parts?: TelegramAlbumAckParts;
     last_pull_warnings?: string[];
@@ -317,9 +344,17 @@ export async function updateTelegramPluginConfig(
     ...(patch.last_sync_at !== undefined
       ? { last_sync_at: patch.last_sync_at }
       : {}),
+    ...(patch.sync_interval_ms !== undefined
+      ? {
+          sync_interval_ms: normalizeTelegramSyncIntervalMs(
+            patch.sync_interval_ms,
+          ),
+        }
+      : {}),
     ...(patch.awaiting_delete !== undefined
       ? { awaiting_delete: patch.awaiting_delete }
       : {}),
+    ...(patch.imported !== undefined ? { imported: patch.imported } : {}),
     ...(patch.pending_albums !== undefined
       ? { pending_albums: patch.pending_albums }
       : {}),

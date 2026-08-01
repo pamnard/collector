@@ -34,7 +34,7 @@ describe("runSyncPluginCycle", () => {
     expect(plugin.authenticateCalls).toBe(1);
     expect(plugin.pullCalls).toBe(1);
     expect(importItem).toHaveBeenCalledTimes(2);
-    expect(plugin.ackCalls).toEqual([["a", "b"]]);
+    expect(plugin.ackCalls).toEqual([["a"], ["b"]]);
     expect(plugin.pending()).toEqual([]);
     expect(result.itemIds).toEqual(["Inbox/A.md", "Inbox/B.md"]);
     expect(cursor).toMatch(/^mock:1:/);
@@ -46,7 +46,64 @@ describe("runSyncPluginCycle", () => {
     });
     expect(second.importedRemoteIds).toEqual([]);
     expect(second.nextCursor).toMatch(/^mock:2:/);
-    expect(plugin.ackCalls).toHaveLength(1);
+    expect(plugin.ackCalls).toHaveLength(2);
+  });
+
+  it("calls markImported per item and batches ack when markImported is present", async () => {
+    const markCalls: string[][] = [];
+    const ackCalls: string[][] = [];
+    const plugin: SyncPlugin = {
+      id: "marked",
+      async pull() {
+        return {
+          items: [note("a", "A"), note("b", "B")],
+          nextCursor: "c1",
+        };
+      },
+      async markImported(remoteIds) {
+        markCalls.push([...remoteIds]);
+      },
+      async ack(remoteIds) {
+        ackCalls.push([...remoteIds]);
+      },
+    };
+    await runSyncPluginCycle({
+      plugin,
+      cursor: null,
+      importItem: async (item) => ({
+        remoteId: item.remoteId,
+        itemId: `Inbox/${item.title}.md`,
+      }),
+    });
+    expect(markCalls).toEqual([["a"], ["b"]]);
+    expect(ackCalls).toEqual([["a", "b"]]);
+  });
+
+  it("on mid-batch failure with markImported: ack already marked ids", async () => {
+    const ackCalls: string[][] = [];
+    const plugin: SyncPlugin = {
+      id: "marked-fail",
+      async pull() {
+        return {
+          items: [note("ok", "Ok"), note("bad", "Bad")],
+          nextCursor: "c1",
+        };
+      },
+      async markImported() {},
+      async ack(remoteIds) {
+        ackCalls.push([...remoteIds]);
+      },
+    };
+    const importItem = vi.fn(async (item: NormalizedSyncItem) => {
+      if (item.remoteId === "bad") {
+        throw new Error("import failed");
+      }
+      return { remoteId: item.remoteId, itemId: "Inbox/Ok.md" };
+    });
+    await expect(
+      runSyncPluginCycle({ plugin, cursor: null, importItem }),
+    ).rejects.toThrow(/import failed/);
+    expect(ackCalls).toEqual([["ok"]]);
   });
 
   it("on mid-batch import failure: ack successes, keep cursor (throw)", async () => {

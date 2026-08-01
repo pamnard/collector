@@ -67,7 +67,7 @@ describe("createSyncPluginWakeController (#31)", () => {
     wake.dispose();
   });
 
-  it("single-flight: concurrent wakes share one syncNow", async () => {
+  it("forwards every vault-ready wake to syncNow (registry serializes)", async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -82,9 +82,9 @@ describe("createSyncPluginWakeController (#31)", () => {
     const second = wake.notifyVaultReady();
     await Promise.all([first, second]);
     await Promise.resolve();
-    expect(syncNow).toHaveBeenCalledTimes(1);
+    expect(syncNow).toHaveBeenCalledTimes(2);
     release();
-    await vi.waitFor(() => expect(syncNow).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(syncNow).toHaveBeenCalledTimes(2));
     wake.dispose();
   });
 

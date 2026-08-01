@@ -3,6 +3,12 @@ import { INBOX_FOLDER_NAME } from "@collector/shared";
 import { getCollectorService } from "../services/collector-client";
 import { TelegramBrandIcon } from "../components/TelegramBrandIcon";
 import { Input } from "../components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from "../components/ui/input-group";
 import { Switch } from "../components/ui/switch";
 import {
   Select,
@@ -47,6 +53,7 @@ export function TelegramSettingsSection() {
   const [folderPath, setFolderPath] = useState(INBOX_FOLDER_NAME);
   const [botUsername, setBotUsername] = useState<string | null>(null);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const [syncIntervalMinutes, setSyncIntervalMinutes] = useState(5);
   const [hasToken, setHasToken] = useState(false);
   const [tokenDraft, setTokenDraft] = useState("");
   const [folders, setFolders] = useState<FolderOption[]>([]);
@@ -78,6 +85,9 @@ export function TelegramSettingsSection() {
     setFolderPath(settings.folder_path || INBOX_FOLDER_NAME);
     setBotUsername(settings.bot_username);
     setLastSyncAt(settings.last_sync_at);
+    setSyncIntervalMinutes(
+      Math.max(1, Math.round(settings.sync_interval_ms / 60_000)),
+    );
     const warnings =
       "last_pull_warnings" in settings &&
       Array.isArray(
@@ -204,6 +214,28 @@ export function TelegramSettingsSection() {
     }
   };
 
+  const changeIntervalMinutes = async (raw: string) => {
+    const minutes = Number(raw);
+    if (!Number.isFinite(minutes) || minutes < 1) {
+      setInlineError("Интервал должен быть целым числом минут ≥ 1");
+      return;
+    }
+    setBusy(true);
+    setInlineError(null);
+    try {
+      const settings = await service.telegramSync.updateTelegramSyncSettings({
+        sync_interval_ms: Math.floor(minutes) * 60_000,
+      });
+      setSyncIntervalMinutes(
+        Math.max(1, Math.round(settings.sync_interval_ms / 60_000)),
+      );
+    } catch (err: unknown) {
+      setInlineError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const syncNow = async () => {
     setBusy(true);
     setInlineError(null);
@@ -263,7 +295,10 @@ export function TelegramSettingsSection() {
             <li>Создай бота у @BotFather и скопируй токен.</li>
             <li>Вставь токен ниже и сохрани.</li>
             <li>Напиши боту /start, затем шли или пересылай сообщения.</li>
-            <li>Нажми «Синхронизировать» или просто открой приложение снова.</li>
+            <li>
+              Нажми «Синхронизировать», либо дождись автосинка после запуска и
+              дальше по интервалу.
+            </li>
           </ol>
         </div>
 
@@ -346,6 +381,37 @@ export function TelegramSettingsSection() {
               ))}
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="p-4">
+          <p className="font-medium">Интервал</p>
+          <p className="text-neutral-500 dark:text-neutral-400 mt-1">
+            Первый синк после запуска приложения, дальше каждые N минут.
+          </p>
+          <InputGroup className="mt-2 max-w-[10rem]">
+            <InputGroupInput
+              type="number"
+              min={1}
+              step={1}
+              value={String(syncIntervalMinutes)}
+              disabled={busy || loading}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                if (Number.isFinite(next) && next >= 1) {
+                  setSyncIntervalMinutes(Math.floor(next));
+                } else if (e.target.value === "") {
+                  setSyncIntervalMinutes(1);
+                }
+              }}
+              onBlur={(e) => {
+                void changeIntervalMinutes(e.target.value);
+              }}
+              aria-label="Интервал синхронизации в минутах"
+            />
+            <InputGroupAddon align="inline-end">
+              <InputGroupText>мин</InputGroupText>
+            </InputGroupAddon>
+          </InputGroup>
         </div>
 
         <div className="p-4 flex items-center justify-between gap-4">

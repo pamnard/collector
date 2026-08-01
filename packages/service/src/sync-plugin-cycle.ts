@@ -1,5 +1,5 @@
 /**
- * One-plugin sync cycle (#28): authenticate → pull → import → ack → nextCursor.
+ * One-plugin sync cycle (#28): authenticate → pull → import → mark → ack → nextCursor.
  * Wake/schedule is per-plugin; this only runs after something decided to sync.
  */
 
@@ -45,15 +45,26 @@ export async function runSyncPluginCycle(
       const imported = await importItem(item);
       importedRemoteIds.push(imported.remoteId);
       itemIds.push(imported.itemId);
+
+      if (plugin.markImported) {
+        // Durable per-item mark; ack is batched below to avoid N remote deletes / saves.
+        await plugin.markImported([imported.remoteId]);
+      } else if (plugin.ack) {
+        await plugin.ack([imported.remoteId]);
+      }
     } catch (error) {
-      if (importedRemoteIds.length > 0 && plugin.ack) {
+      if (
+        plugin.markImported &&
+        plugin.ack &&
+        importedRemoteIds.length > 0
+      ) {
         await plugin.ack(importedRemoteIds);
       }
       throw error;
     }
   }
 
-  if (importedRemoteIds.length > 0 && plugin.ack) {
+  if (plugin.markImported && plugin.ack && importedRemoteIds.length > 0) {
     await plugin.ack(importedRemoteIds);
   }
 

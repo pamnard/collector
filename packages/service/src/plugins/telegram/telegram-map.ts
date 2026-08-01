@@ -1,6 +1,6 @@
 /**
  * Map Telegram Bot API updates → NormalizedSyncItem (#415 / #433).
- * No sourceRef — dedup is delete-after-save + awaiting_delete ledger.
+ * No sourceRef — dedup is plugin ledgers (`imported` / `awaiting_delete`).
  */
 
 import type { NormalizedSyncItem } from "@collector/api";
