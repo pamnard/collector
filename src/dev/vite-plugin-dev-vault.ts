@@ -152,7 +152,7 @@ async function resolveThumbnailUrl(
 
 async function buildSnapshot(vaultRoot: string): Promise<DevVaultSnapshot> {
   const fs = new NodeFileSystemAdapter();
-  // Inbox folder only; layout remediация is non-blocking (#277).
+  // Inbox folder only; layout remediation is non-blocking (#277).
   await ensureInboxLayout({ fs, index: {} as VaultContext["index"] }, vaultRoot);
   void remediateVaultLayout(fs, vaultRoot).catch((error: unknown) => {
     console.warn("[dev-vault] layout guard failed:", error);

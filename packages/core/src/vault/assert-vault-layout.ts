@@ -12,14 +12,3 @@ export async function vaultHasLegacyItemsLayout(
 ): Promise<boolean> {
   return fs.exists(legacyItemsRoot(vaultPath));
 }
-
-/**
- * @deprecated Prefer vaultHasLegacyItemsLayout + layout guard (#277).
- * Kept as a no-op success so existing call sites do not hard-refuse open.
- */
-export async function assertVaultTreeLayout(
-  _fs: FileSystemAdapter,
-  _vaultPath: string,
-): Promise<void> {
-  return;
-}

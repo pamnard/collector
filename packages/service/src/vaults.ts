@@ -6,7 +6,6 @@
 import type { AppSettings, ItemFile, VaultMeta } from "@collector/shared";
 import { INBOX_FOLDER_NAME } from "@collector/shared";
 import {
-  assertVaultTreeLayout,
   createSingleFlight,
   createVault,
   readVaultMeta,
@@ -124,8 +123,7 @@ async function listVaultEntriesForDeps(
     }
     const path = vaultRoot(root, vaultId);
     if (await fs.exists(vaultMetaPath(path))) {
-      // Do not assert layout here: orphan/legacy neighbors must not block listing
-      // or opening a healthy active vault. Assert only when selecting a vault.
+      // Orphan/legacy neighbors must not block listing a healthy vault.
       const meta = await readVaultMeta(fs, path);
       entries.push({ meta, path });
     }
@@ -144,7 +142,6 @@ async function tryResolveExistingUnderBootstrap(
   if (!selectedAfterLock) {
     return null;
   }
-  await assertVaultTreeLayout(deps.getContext().fs, selectedAfterLock.path);
   return {
     meta: selectedAfterLock.meta,
     path: selectedAfterLock.path,
@@ -205,8 +202,6 @@ async function resolveActiveVaultOnce(
     });
     meta = bootstrapped.meta;
     vaultPath = bootstrapped.path;
-  } else {
-    await assertVaultTreeLayout(ctx.fs, vaultPath);
   }
 
   state.set({ meta, path: vaultPath });
@@ -224,8 +219,6 @@ async function switchVaultForDeps(
   if (!selected) {
     throw new Error(`Vault not found: ${vaultId}`);
   }
-
-  await assertVaultTreeLayout(deps.getContext().fs, selected.path);
 
   state.set(selected);
   deps.enableVaultWatcher(vaultId);

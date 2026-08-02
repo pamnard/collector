@@ -4,7 +4,6 @@
  * Distinct from schema-migrate (`items/<uuid>/` → tree).
  */
 import type { FileSystemAdapter } from "../adapters/types.js";
-import { createId } from "../util/ids.js";
 import {
   basename,
   dirname,
@@ -19,6 +18,7 @@ import {
   VAULT_DIRS,
 } from "./paths.js";
 import {
+  allocateUuidMarkdownName,
   remediateVaultLayout,
   type VaultLayoutRemediateReport,
 } from "./vault-layout-guard.js";
@@ -53,20 +53,6 @@ function isSidecarDirName(name: string): boolean {
 
 function sidecarStem(dirName: string): string {
   return dirName.slice(0, -ITEM_MEDIA_SUFFIX.length);
-}
-
-async function allocateUuidMarkdownName(
-  fs: FileSystemAdapter,
-  vaultPath: string,
-  folderPath: string,
-): Promise<string> {
-  for (;;) {
-    const fileName = `${createId()}.md`;
-    const rel = folderPath ? `${folderPath}/${fileName}` : fileName;
-    if (!(await fs.exists(itemMarkdownPath(vaultPath, rel)))) {
-      return fileName;
-    }
-  }
 }
 
 /**
@@ -127,7 +113,10 @@ async function listFilesRecursive(
     const rel = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
     const abs = joinSegments(absRoot, entry.name);
     if (entry.isDirectory) {
-      out.push(...(await listFilesRecursive(fs, abs, rel)));
+      const nested = await listFilesRecursive(fs, abs, rel);
+      for (const file of nested) {
+        out.push(file);
+      }
     } else {
       out.push(normalizeRelativePath(rel));
     }
