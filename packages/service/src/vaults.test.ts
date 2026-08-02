@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const readVaultMeta = vi.fn();
 const writeVaultMeta = vi.fn();
-const assertVaultTreeLayout = vi.fn();
 const createVault = vi.fn();
 const upsertItem = vi.fn();
 const runEmptyVaultBootstrap = vi.fn();
@@ -13,8 +12,6 @@ vi.mock("@collector/core", async (importOriginal) => {
     ...actual,
     readVaultMeta: (...args: unknown[]) => readVaultMeta(...args),
     writeVaultMeta: (...args: unknown[]) => writeVaultMeta(...args),
-    assertVaultTreeLayout: (...args: unknown[]) =>
-      assertVaultTreeLayout(...args),
     createVault: (...args: unknown[]) => createVault(...args),
     upsertItem: (...args: unknown[]) => upsertItem(...args),
     runEmptyVaultBootstrap: (...args: unknown[]) =>
@@ -89,7 +86,6 @@ describe("createVaultsService", () => {
   beforeEach(() => {
     readVaultMeta.mockReset();
     writeVaultMeta.mockReset();
-    assertVaultTreeLayout.mockReset();
     createVault.mockReset();
     upsertItem.mockReset();
     runEmptyVaultBootstrap.mockReset();
@@ -135,7 +131,6 @@ describe("createVaultsService", () => {
     exists.mockResolvedValue(true);
     readDir.mockResolvedValue([vault.id]);
     readVaultMeta.mockResolvedValue(vault);
-    assertVaultTreeLayout.mockResolvedValue(undefined);
 
     const meta = await createService().switchVault(vault.id);
 

@@ -195,11 +195,9 @@ export type {
   ThumbnailResolveItem,
   ThumbnailResolveResult,
 } from "./vault/thumbnail-resolve.js";
+export { vaultHasLegacyItemsLayout } from "./vault/assert-vault-layout.js";
 export {
-  assertVaultTreeLayout,
-  vaultHasLegacyItemsLayout,
-} from "./vault/assert-vault-layout.js";
-export {
+  allocateUuidMarkdownName,
   inspectVaultLayout,
   remediateVaultLayout,
 } from "./vault/vault-layout-guard.js";

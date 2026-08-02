@@ -39,7 +39,8 @@ export interface RemediateVaultLayoutOptions {
   yieldEvery?: number;
 }
 
-async function allocateUuidMarkdownName(
+/** Allocate an unused `<uuid>.md` basename under `folderPath` ("" = vault root). */
+export async function allocateUuidMarkdownName(
   fs: FileSystemAdapter,
   vaultPath: string,
   folderPath: string,
