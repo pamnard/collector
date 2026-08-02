@@ -40,26 +40,13 @@ describe("vault-layout-guard", () => {
   }
 
   it("renames non-uuid markdown in a collection folder", async () => {
-    const { ctx, meta, path } = await seedVault();
+    const { path } = await seedVault();
     await fs.mkdir(joinSegments(path, "Work"));
-    await upsertItem(ctx, path, meta.id, {
-      item: {
-        id: "Work/note.md",
-        vault_id: meta.id,
-        title: "Note",
-        description: "",
-        content_type: "note",
-        source_type: "manual",
-        metadata: {},
-        tag_ids: [],
-        collection_ids: [],
-        folder_path: "Work",
-        content_revision: 1,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      content: "body",
-    });
+    // Seed via raw FS: upsertItem requires <uuid>.md for media paths (#279).
+    await fs.writeText(
+      joinSegments(path, "Work", "note.md"),
+      "---\ntitle: Note\n---\n\nbody\n",
+    );
 
     const before = await inspectVaultLayout(fs, path);
     expect(before.nonUuidMarkdown).toContain("Work/note.md");

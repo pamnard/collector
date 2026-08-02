@@ -3,12 +3,7 @@ import { inferMediaType } from "@collector/shared";
 import type { VaultContext } from "../adapters/types.js";
 import { createId, nowIso } from "../util/ids.js";
 import { itemMediaRoot } from "./paths.js";
-import {
-  listMediaFiles,
-  mediaFilePath,
-  readMediaManifest,
-  writeMediaManifest,
-} from "./media-io.js";
+import { listMediaFiles, mediaFilePath } from "./media-io.js";
 
 export interface MediaWithPath extends MediaFileMeta {
   absolute_path: string;
@@ -20,7 +15,6 @@ export async function attachMediaFile(
   itemId: string,
   input: { filename: string; data: Uint8Array; mediaType?: MediaFileMeta["media_type"] },
 ): Promise<MediaFileMeta> {
-  const manifest = await readMediaManifest(ctx.fs, vaultPath, itemId);
   const mediaId = createId();
   const mediaType = input.mediaType ?? inferMediaType(input.filename);
   const entry: MediaFileMeta = {
@@ -34,9 +28,6 @@ export async function attachMediaFile(
   const destination = mediaFilePath(vaultPath, itemId, mediaId, input.filename);
   await ctx.fs.mkdir(itemMediaRoot(vaultPath, itemId));
   await ctx.fs.writeBinary(destination, input.data);
-
-  manifest.files.push(entry);
-  await writeMediaManifest(ctx.fs, vaultPath, itemId, manifest);
   await ctx.index.upsertMedia(entry);
   return entry;
 }
@@ -59,8 +50,8 @@ export async function deleteMediaFile(
   itemId: string,
   mediaId: string,
 ): Promise<void> {
-  const manifest = await readMediaManifest(ctx.fs, vaultPath, itemId);
-  const target = manifest.files.find((file) => file.id === mediaId);
+  const files = await listMediaFiles(ctx.fs, vaultPath, itemId);
+  const target = files.find((file) => file.id === mediaId);
   if (!target) {
     throw new Error(`Media not found: ${mediaId}`);
   }
@@ -70,8 +61,6 @@ export async function deleteMediaFile(
     await ctx.fs.remove(destination);
   }
 
-  manifest.files = manifest.files.filter((file) => file.id !== mediaId);
-  await writeMediaManifest(ctx.fs, vaultPath, itemId, manifest);
   await ctx.index.deleteMedia(mediaId);
 }
 
@@ -82,13 +71,12 @@ export async function replaceMediaFile(
   mediaId: string,
   input: { filename: string; data: Uint8Array; mediaType?: MediaFileMeta["media_type"] },
 ): Promise<MediaFileMeta> {
-  const manifest = await readMediaManifest(ctx.fs, vaultPath, itemId);
-  const index = manifest.files.findIndex((file) => file.id === mediaId);
-  if (index < 0) {
+  const files = await listMediaFiles(ctx.fs, vaultPath, itemId);
+  const previous = files.find((file) => file.id === mediaId);
+  if (!previous) {
     throw new Error(`Media not found: ${mediaId}`);
   }
 
-  const previous = manifest.files[index]!;
   const oldPath = mediaFilePath(vaultPath, itemId, mediaId, previous.filename);
   if (await ctx.fs.exists(oldPath)) {
     await ctx.fs.remove(oldPath);
@@ -106,9 +94,6 @@ export async function replaceMediaFile(
   const destination = mediaFilePath(vaultPath, itemId, mediaId, input.filename);
   await ctx.fs.mkdir(itemMediaRoot(vaultPath, itemId));
   await ctx.fs.writeBinary(destination, input.data);
-
-  manifest.files[index] = entry;
-  await writeMediaManifest(ctx.fs, vaultPath, itemId, manifest);
   await ctx.index.upsertMedia(entry);
   return entry;
 }

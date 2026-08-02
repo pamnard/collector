@@ -10,6 +10,10 @@ import { folderPathFromItemPath } from "@collector/shared";
 
 export const RECONCILE_TOUCH_FILE = ".collector-touch";
 
+/** UUID stem for item filenames (`createId()` / `crypto.randomUUID()`). */
+const ITEM_FILE_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function vaultsRoot(dataDir: string): string {
   return joinSegments(dataDir, "vaults");
 }
@@ -31,7 +35,31 @@ export function itemMarkdownPath(vaultRootPath: string, itemRelativePath: string
   return joinSegments(vaultRootPath, normalizeRelativePath(itemRelativePath));
 }
 
-/** `note.md` → `note.media` (directory name). */
+export function isMarkdownItemFile(name: string): boolean {
+  return name.toLowerCase().endsWith(".md") && !name.startsWith(".");
+}
+
+/** True when `name` is `<uuid>.md` (case-insensitive uuid). */
+export function isUuidMarkdownBasename(name: string): boolean {
+  if (!isMarkdownItemFile(name)) {
+    return false;
+  }
+  return ITEM_FILE_UUID_RE.test(name.slice(0, -3));
+}
+
+/** UUID stem of an item `.md` path (`Inbox/<uuid>.md` → `<uuid>`). */
+export function noteUuidFromItemPath(itemRelativePath: string): string {
+  const base = basename(normalizeRelativePath(itemRelativePath));
+  if (!isUuidMarkdownBasename(base)) {
+    throw new Error(`Item path must be <uuid>.md: ${itemRelativePath}`);
+  }
+  return base.slice(0, -3);
+}
+
+/**
+ * Legacy sibling sidecar dir name (`note.md` → `note.media`).
+ * New writes use {@link noteSharedMediaRoot}; kept for watch/skip of leftovers.
+ */
 export function itemMediaDirName(itemRelativePath: string): string {
   const base = basename(itemRelativePath);
   if (!base.toLowerCase().endsWith(".md")) {
@@ -41,13 +69,24 @@ export function itemMediaDirName(itemRelativePath: string): string {
   return `${stem}${ITEM_MEDIA_SUFFIX}`;
 }
 
-/** Absolute media root for an item (`…/note.media`). */
-export function itemMediaRoot(vaultRootPath: string, itemRelativePath: string): string {
-  const dir = dirname(normalizeRelativePath(itemRelativePath));
-  const mediaName = itemMediaDirName(itemRelativePath);
-  return dir
-    ? joinSegments(vaultRootPath, dir, mediaName)
-    : joinSegments(vaultRootPath, mediaName);
+/** Shared vault media folder for a note uuid: `media/<noteUuid>/` (#276). */
+export function noteSharedMediaRoot(
+  vaultRootPath: string,
+  noteUuid: string,
+): string {
+  const id = noteUuid.trim();
+  if (!ITEM_FILE_UUID_RE.test(id)) {
+    throw new Error(`noteUuid must be a UUID: ${noteUuid}`);
+  }
+  return joinSegments(vaultRootPath, VAULT_DIRS.media, id);
+}
+
+/** Absolute media root for an item: `media/<noteUuid>/` (#279). */
+export function itemMediaRoot(
+  vaultRootPath: string,
+  itemRelativePath: string,
+): string {
+  return noteSharedMediaRoot(vaultRootPath, noteUuidFromItemPath(itemRelativePath));
 }
 
 export function itemSourcePath(vaultRootPath: string, itemRelativePath: string): string {
@@ -58,8 +97,10 @@ export function itemCoverPath(vaultRootPath: string, itemRelativePath: string): 
   return joinSegments(itemMediaRoot(vaultRootPath, itemRelativePath), ITEM_FILES.cover);
 }
 
+/** Vault-relative cover path for frontmatter thumbnail (#279). */
 export function itemCoverRelativePath(itemRelativePath: string): string {
-  return joinSegments(itemMediaDirName(itemRelativePath), ITEM_FILES.cover);
+  const uuid = noteUuidFromItemPath(itemRelativePath);
+  return joinSegments(VAULT_DIRS.media, uuid, ITEM_FILES.cover);
 }
 
 export function itemMediaManifestPath(
@@ -103,34 +144,6 @@ export function legacyFoldersPath(vaultRootPath: string): string {
 
 export function isReservedVaultEntry(name: string): boolean {
   return RESERVED_VAULT_ENTRIES.has(name) || name.endsWith(ITEM_MEDIA_SUFFIX);
-}
-
-export function isMarkdownItemFile(name: string): boolean {
-  return name.toLowerCase().endsWith(".md") && !name.startsWith(".");
-}
-
-/** UUID stem for item filenames (`createId()` / `crypto.randomUUID()`). */
-const ITEM_FILE_UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** True when `name` is `<uuid>.md` (case-insensitive uuid). */
-export function isUuidMarkdownBasename(name: string): boolean {
-  if (!isMarkdownItemFile(name)) {
-    return false;
-  }
-  return ITEM_FILE_UUID_RE.test(name.slice(0, -3));
-}
-
-/** Shared vault media folder for a note uuid: `media/<noteUuid>/` (#276). */
-export function noteSharedMediaRoot(
-  vaultRootPath: string,
-  noteUuid: string,
-): string {
-  const id = noteUuid.trim();
-  if (!ITEM_FILE_UUID_RE.test(id)) {
-    throw new Error(`noteUuid must be a UUID: ${noteUuid}`);
-  }
-  return joinSegments(vaultRootPath, VAULT_DIRS.media, id);
 }
 
 export function normalizeRelativePath(path: string): string {

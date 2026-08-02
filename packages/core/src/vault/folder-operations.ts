@@ -20,7 +20,6 @@ import {
 import {
   basename,
   itemMarkdownPath,
-  itemMediaRoot,
   joinSegments,
   normalizeRelativePath,
 } from "./paths.js";
@@ -173,7 +172,7 @@ export async function deleteFolder(
   await ctx.fs.touch(vaultPath);
 }
 
-/** Rename the item's `.md` file (+ sibling `.media/`) into the target folder. */
+/** Rename the item's `.md` file into the target folder (`media/<uuid>/` stays put, #279). */
 export async function moveItemToFolder(
   ctx: VaultContext,
   vaultPath: string,
@@ -206,11 +205,6 @@ export async function moveItemToFolder(
     await ctx.fs.mkdir(joinSegments(vaultPath, normalized));
   }
   await ctx.fs.rename(fromPath, toPath);
-
-  const fromMediaRoot = itemMediaRoot(vaultPath, id);
-  if (await ctx.fs.exists(fromMediaRoot)) {
-    await ctx.fs.rename(fromMediaRoot, itemMediaRoot(vaultPath, newId));
-  }
 
   await ctx.fs.touch(vaultPath);
   await ctx.index.deleteItem(id);

@@ -18,7 +18,8 @@ import { DISK_ITEM_READ_CONCURRENCY } from "../util/concurrency.js";
 import {
   folderPathFromItemId,
   itemMarkdownPath,
-  itemMediaRoot,
+  noteSharedMediaRoot,
+  noteUuidFromItemPath,
   normalizeRelativePath,
 } from "./paths.js";
 import { listItemRelativePaths } from "./scan.js";
@@ -131,7 +132,7 @@ export async function deleteItem(
   if (await ctx.fs.exists(docPath)) {
     await ctx.fs.remove(docPath);
   }
-  const mediaRoot = itemMediaRoot(vaultPath, id);
+  const mediaRoot = noteSharedMediaRoot(vaultPath, noteUuidFromItemPath(id));
   if (await ctx.fs.exists(mediaRoot)) {
     await ctx.fs.remove(mediaRoot, { recursive: true });
   }

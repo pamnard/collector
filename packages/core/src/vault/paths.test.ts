@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  itemCoverRelativePath,
+  itemMediaRoot,
   isUuidMarkdownBasename,
   joinSegments,
   noteSharedMediaRoot,
+  noteUuidFromItemPath,
   vaultsRoot,
 } from "./paths.js";
 
@@ -52,5 +55,25 @@ describe("noteSharedMediaRoot", () => {
 
   it("rejects non-uuid note ids", () => {
     expect(() => noteSharedMediaRoot("/vault", "note")).toThrow(/UUID/);
+  });
+});
+
+describe("noteUuidFromItemPath / itemMediaRoot (#279)", () => {
+  const uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+
+  it("reads uuid stem from nested item path", () => {
+    expect(noteUuidFromItemPath(`Inbox/${uuid}.md`)).toBe(uuid);
+  });
+
+  it("rejects non-uuid basenames", () => {
+    expect(() => noteUuidFromItemPath("Inbox/note.md")).toThrow(
+      /Item path must be <uuid>\.md/,
+    );
+  });
+
+  it("points itemMediaRoot and cover relative path at media/<uuid>/", () => {
+    const itemId = `Work/${uuid}.md`;
+    expect(itemMediaRoot("/vault", itemId)).toBe(`/vault/media/${uuid}`);
+    expect(itemCoverRelativePath(itemId)).toBe(`media/${uuid}/cover.webp`);
   });
 });

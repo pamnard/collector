@@ -20,8 +20,9 @@ import {
   writeItemRawMarkdown,
 } from "../vault/item-operations.js";
 import { readItemRawMarkdown } from "../vault/item-io.js";
-import { itemMarkdownPath } from "../vault/paths.js";
+import { itemMarkdownPath, itemMediaRoot } from "../vault/paths.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
+import { attachMediaFile } from "../vault/media-operations.js";
 
 class CountingFileSystemAdapter implements FileSystemAdapter {
   statCount = 0;
@@ -168,8 +169,16 @@ describe("item operations", () => {
     expect(items).toHaveLength(1);
     expect(items[0]?.title).toBe("Test note");
 
+    await attachMediaFile(ctx, path, itemId, {
+      filename: "a.png",
+      data: Uint8Array.from([1]),
+    });
+    const mediaRoot = itemMediaRoot(path, itemId);
+    expect(await fs.exists(mediaRoot)).toBe(true);
+
     await deleteItem(ctx, path, itemId);
     expect(await listItemsOnDisk(ctx, path)).toHaveLength(0);
+    expect(await fs.exists(mediaRoot)).toBe(false);
   });
 
   it("writes raw markdown as-is and reindexes from parse", async () => {

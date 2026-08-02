@@ -1,4 +1,5 @@
 import type { ItemFile } from "@collector/shared";
+import { VAULT_DIRS } from "@collector/shared";
 import type { VaultContext } from "../adapters/types.js";
 import { nowIso } from "../util/ids.js";
 import {
@@ -13,6 +14,7 @@ import {
   itemCoverRelativePath,
   itemMediaRoot,
   joinSegments,
+  normalizeRelativePath,
 } from "./paths.js";
 
 export function resolveItemThumbnailAbsolutePath(
@@ -28,10 +30,16 @@ export function resolveItemThumbnailAbsolutePath(
     return thumbnail;
   }
 
+  const relative = normalizeRelativePath(thumbnail);
+  if (relative === VAULT_DIRS.media || relative.startsWith(`${VAULT_DIRS.media}/`)) {
+    return joinSegments(vaultPath, relative);
+  }
+
+  // Legacy sidecar-relative thumbnails (pre-#279 / until #281).
   const folder = dirname(itemId);
   return folder
-    ? joinSegments(vaultPath, folder, thumbnail)
-    : joinSegments(vaultPath, thumbnail);
+    ? joinSegments(vaultPath, folder, relative)
+    : joinSegments(vaultPath, relative);
 }
 
 export async function applyItemCover(
