@@ -28,6 +28,7 @@ function entry(
     streamEndOffset: partial.streamEndOffset ?? partial.itemIds.length,
     totalCount: partial.totalCount ?? partial.itemIds.length,
     thumbnailPaths: partial.thumbnailPaths ?? new Map(),
+    thumbnailStamps: partial.thumbnailStamps ?? new Map(),
     updatedAt: partial.updatedAt ?? Date.now(),
   };
 }
@@ -90,6 +91,7 @@ describe("dashboard query cache LRU", () => {
         itemIds: ["x", "y"],
         totalCount: 2,
         thumbnailPaths: new Map([["x", "/x"], ["y", "/y"]]),
+        thumbnailStamps: new Map([["x", "t:x"], ["y", "t:y"]]),
       }),
     );
     setDashboardQueryCache(
@@ -102,6 +104,7 @@ describe("dashboard query cache LRU", () => {
     assert.deepEqual(a?.itemIds, ["y"]);
     assert.equal(a?.totalCount, 1);
     assert.equal(a?.thumbnailPaths.has("x"), false);
+    assert.equal(a?.thumbnailStamps.has("x"), false);
     assert.deepEqual(b?.itemIds, []);
     assert.equal(b?.totalCount, 0);
   });

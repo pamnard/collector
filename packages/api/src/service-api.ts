@@ -356,6 +356,7 @@ export interface DashboardSnapshotPort {
     items: DashboardSnapshot["items"];
     totalCount: number;
     streamEndOffset: number;
+    coverPaths?: DashboardSnapshot["cover_paths"];
   }): DashboardSnapshot;
 }
 

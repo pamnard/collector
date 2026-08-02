@@ -4,7 +4,10 @@ import type {
   NavFilter,
 } from "@collector/api";
 import type { DashboardSnapshot } from "@collector/shared";
-import { dashboardSnapshotMatchesQuery } from "@collector/shared";
+import {
+  DASHBOARD_SNAPSHOT_VERSION,
+  dashboardSnapshotMatchesQuery,
+} from "@collector/shared";
 import { navFilterToSetting } from "./nav-filter.js";
 
 export function createMemoryDashboardSnapshotPort(): DashboardSnapshotPort {
@@ -57,9 +60,10 @@ export function createMemoryDashboardSnapshotPort(): DashboardSnapshotPort {
       items: DashboardSnapshot["items"];
       totalCount: number;
       streamEndOffset: number;
+      coverPaths?: DashboardSnapshot["cover_paths"];
     }): DashboardSnapshot {
       return {
-        schema_version: 1,
+        schema_version: DASHBOARD_SNAPSHOT_VERSION,
         vault_id: input.vaultId,
         nav_filter: navFilterToSetting(input.filter),
         search: input.search,
@@ -69,6 +73,7 @@ export function createMemoryDashboardSnapshotPort(): DashboardSnapshotPort {
         items: input.items,
         total_count: input.totalCount,
         stream_end_offset: input.streamEndOffset,
+        cover_paths: input.coverPaths ?? {},
         saved_at: new Date().toISOString(),
       };
     },

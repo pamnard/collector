@@ -21,7 +21,7 @@ function syntheticSnapshot(
   overrides: Partial<DashboardSnapshot> = {},
 ): DashboardSnapshot {
   return {
-    schema_version: 1,
+    schema_version: 2,
     vault_id: VAULT_ID,
     nav_filter: "all",
     search: "",
@@ -47,6 +47,7 @@ function syntheticSnapshot(
     ],
     total_count: 1,
     stream_end_offset: 1,
+    cover_paths: {},
     saved_at: NOW,
     ...overrides,
   };
@@ -68,12 +69,43 @@ describe("dashboard-snapshot-io", () => {
   it("round-trips snapshot read/write", async () => {
     const fs = new NodeFileSystemAdapter();
     const configDir = await tempConfigDir();
-    const snapshot = syntheticSnapshot();
+    const snapshot = syntheticSnapshot({
+      cover_paths: {
+        [ITEM_ID]: { path: "/tmp/cover.webp", stamp: `:${NOW}` },
+      },
+    });
 
     await writeDashboardSnapshot(fs, configDir, snapshot);
     const loaded = await readDashboardSnapshot(fs, configDir);
 
     expect(loaded).toEqual(snapshot);
+  });
+
+  it("parses v1 snapshot without cover_paths as empty map", async () => {
+    const fs = new NodeFileSystemAdapter();
+    const configDir = await tempConfigDir();
+    const v1 = {
+      schema_version: 1,
+      vault_id: VAULT_ID,
+      nav_filter: "all",
+      search: "",
+      sort_key: "created_at",
+      sort_dir: "desc",
+      item_ids: [ITEM_ID],
+      items: syntheticSnapshot().items,
+      total_count: 1,
+      stream_end_offset: 1,
+      saved_at: NOW,
+    };
+    await fs.mkdir(configDir);
+    await fs.writeText(
+      `${configDir}/dashboard-snapshot.json`,
+      JSON.stringify(v1, null, 2),
+    );
+
+    const loaded = await readDashboardSnapshot(fs, configDir);
+    expect(loaded?.cover_paths).toEqual({});
+    expect(loaded?.item_ids).toEqual([ITEM_ID]);
   });
 
   it("clearDashboardSnapshot removes persisted file", async () => {

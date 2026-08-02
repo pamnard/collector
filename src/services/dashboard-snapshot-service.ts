@@ -5,6 +5,7 @@ import {
 import { createDashboardSnapshotService } from "@collector/service";
 import { TauriFileSystemAdapter } from "../adapters/tauri-fs";
 import { isDevMock } from "../dev/is-dev-mock";
+import { snapshotToCacheEntry } from "../lib/dashboard-commit";
 import type { NavFilter } from "../types/ui";
 import {
   dashboardQueryCacheKey,
@@ -51,14 +52,7 @@ function seedQueryCacheFromSnapshot(snapshot: DashboardSnapshot): void {
   if (getDashboardQueryCache(key)) {
     return;
   }
-  setDashboardQueryCache(key, {
-    itemIds: [...snapshot.item_ids],
-    itemsById: new Map(snapshot.items.map((item) => [item.id, item])),
-    streamEndOffset: snapshot.stream_end_offset,
-    totalCount: snapshot.total_count,
-    thumbnailPaths: new Map(),
-    updatedAt: Date.now(),
-  });
+  setDashboardQueryCache(key, snapshotToCacheEntry(snapshot));
 }
 
 const dashboardSnapshot = createDashboardSnapshotService({
@@ -107,6 +101,7 @@ export function buildDashboardSnapshot(input: {
   items: DashboardSnapshot["items"];
   totalCount: number;
   streamEndOffset: number;
+  coverPaths?: DashboardSnapshot["cover_paths"];
 }): DashboardSnapshot {
   return dashboardSnapshot.buildDashboardSnapshot(input);
 }

@@ -8,6 +8,7 @@ export interface DashboardQueryCacheEntry {
   streamEndOffset: number;
   totalCount: number;
   thumbnailPaths: Map<string, string | null>;
+  thumbnailStamps: Map<string, string>;
   updatedAt: number;
 }
 
@@ -27,6 +28,18 @@ function touch(key: string, entry: DashboardQueryCacheEntry): void {
   entries.set(key, entry);
 }
 
+function cloneEntry(entry: DashboardQueryCacheEntry): DashboardQueryCacheEntry {
+  return {
+    itemIds: [...entry.itemIds],
+    itemsById: new Map(entry.itemsById),
+    thumbnailPaths: new Map(entry.thumbnailPaths),
+    thumbnailStamps: new Map(entry.thumbnailStamps),
+    streamEndOffset: entry.streamEndOffset,
+    totalCount: entry.totalCount,
+    updatedAt: entry.updatedAt,
+  };
+}
+
 export function getDashboardQueryCache(
   key: string,
 ): DashboardQueryCacheEntry | null {
@@ -35,27 +48,14 @@ export function getDashboardQueryCache(
     return null;
   }
   touch(key, entry);
-  return {
-    itemIds: [...entry.itemIds],
-    itemsById: new Map(entry.itemsById),
-    thumbnailPaths: new Map(entry.thumbnailPaths),
-    streamEndOffset: entry.streamEndOffset,
-    totalCount: entry.totalCount,
-    updatedAt: entry.updatedAt,
-  };
+  return cloneEntry(entry);
 }
 
 export function setDashboardQueryCache(
   key: string,
   entry: DashboardQueryCacheEntry,
 ): void {
-  touch(key, {
-    ...entry,
-    itemsById: new Map(entry.itemsById),
-    thumbnailPaths: new Map(entry.thumbnailPaths),
-    itemIds: [...entry.itemIds],
-    updatedAt: entry.updatedAt,
-  });
+  touch(key, cloneEntry(entry));
 
   while (entries.size > DASHBOARD_QUERY_CACHE_MAX) {
     const oldest = entries.keys().next().value;
@@ -76,11 +76,14 @@ export function removeItemIdFromDashboardQueryCache(itemId: string): void {
     itemsById.delete(itemId);
     const thumbnailPaths = new Map(entry.thumbnailPaths);
     thumbnailPaths.delete(itemId);
+    const thumbnailStamps = new Map(entry.thumbnailStamps);
+    thumbnailStamps.delete(itemId);
     const removedCount = entry.itemIds.length - itemIds.length;
     touch(key, {
       itemIds,
       itemsById,
       thumbnailPaths,
+      thumbnailStamps,
       streamEndOffset: Math.min(entry.streamEndOffset, itemIds.length),
       totalCount: Math.max(0, entry.totalCount - removedCount),
       updatedAt: Date.now(),

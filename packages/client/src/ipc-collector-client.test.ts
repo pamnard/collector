@@ -510,7 +510,7 @@ describe("CollectorIpcServiceClient", () => {
 
         const active = await client.boot.ensureActiveVault();
         const snapshot = {
-          schema_version: 1 as const,
+          schema_version: 2 as const,
           vault_id: active.vault.id,
           nav_filter: "all" as const,
           search: "",
@@ -518,6 +518,7 @@ describe("CollectorIpcServiceClient", () => {
           items: [] as [],
           total_count: 0,
           stream_end_offset: 0,
+          cover_paths: {},
           saved_at: new Date().toISOString(),
         };
         await snapshotPort.persistDashboardSnapshot(snapshot);
