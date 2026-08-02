@@ -109,6 +109,30 @@ export function isMarkdownItemFile(name: string): boolean {
   return name.toLowerCase().endsWith(".md") && !name.startsWith(".");
 }
 
+/** UUID stem for item filenames (`createId()` / `crypto.randomUUID()`). */
+const ITEM_FILE_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** True when `name` is `<uuid>.md` (case-insensitive uuid). */
+export function isUuidMarkdownBasename(name: string): boolean {
+  if (!isMarkdownItemFile(name)) {
+    return false;
+  }
+  return ITEM_FILE_UUID_RE.test(name.slice(0, -3));
+}
+
+/** Shared vault media folder for a note uuid: `media/<noteUuid>/` (#276). */
+export function noteSharedMediaRoot(
+  vaultRootPath: string,
+  noteUuid: string,
+): string {
+  const id = noteUuid.trim();
+  if (!ITEM_FILE_UUID_RE.test(id)) {
+    throw new Error(`noteUuid must be a UUID: ${noteUuid}`);
+  }
+  return joinSegments(vaultRootPath, VAULT_DIRS.media, id);
+}
+
 export function normalizeRelativePath(path: string): string {
   return path
     .replace(/\\/g, "/")

@@ -70,7 +70,7 @@ describe("syncVaultIndexFromFilesystem", () => {
     });
 
     const tag = await createTag(diskCtx, path, meta.id, { name: "inbox" });
-    const itemId = `${createId()}.md`;
+    const itemId = `Inbox/${createId()}.md`;
     await upsertItem(diskCtx, path, meta.id, {
       item: {
         id: itemId,
@@ -83,6 +83,7 @@ describe("syncVaultIndexFromFilesystem", () => {
         metadata: {},
         tag_ids: [tag.id],
         collection_ids: [],
+        folder_path: "Inbox",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       },
@@ -118,11 +119,11 @@ describe("syncVaultIndexFromFilesystem", () => {
       [meta.id],
     );
     expect(itemRows).toHaveLength(1);
-    expect(itemRows[0]?.id).toBe(`Inbox/${itemId}`);
+    expect(itemRows[0]?.id).toBe(itemId);
 
     const itemTagRows = await db.select<{ item_id: string }>(
       "SELECT item_id FROM item_tags WHERE item_id = ? AND tag_id = ?",
-      [`Inbox/${itemId}`, tag.id],
+      [itemId, tag.id],
     );
     expect(itemTagRows).toHaveLength(1);
 

@@ -3,7 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
-import { assertVaultTreeLayout } from "./assert-vault-layout.js";
+import {
+  assertVaultTreeLayout,
+  vaultHasLegacyItemsLayout,
+} from "./assert-vault-layout.js";
 import { legacyItemsRoot } from "./paths.js";
 
 describe("assertVaultTreeLayout", () => {
@@ -23,11 +26,10 @@ describe("assertVaultTreeLayout", () => {
     await assertVaultTreeLayout(fs, vaultPath);
   });
 
-  it("fails loud when legacy items/ is present", async () => {
+  it("does not throw when legacy items/ is present (#277)", async () => {
     vaultPath = await mkdtemp(join(tmpdir(), "collector-tree-legacy-"));
     await mkdir(legacyItemsRoot(vaultPath), { recursive: true });
-    await expect(assertVaultTreeLayout(fs, vaultPath)).rejects.toThrow(
-      /migrate-vault-layout/,
-    );
+    await expect(assertVaultTreeLayout(fs, vaultPath)).resolves.toBeUndefined();
+    expect(await vaultHasLegacyItemsLayout(fs, vaultPath)).toBe(true);
   });
 });

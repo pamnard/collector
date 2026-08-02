@@ -51,6 +51,7 @@ import {
 import { generateCoverFromMedia } from "./node-cover.js";
 import { NodeSqliteExecutor } from "./node-sql.js";
 import { createNodeVaultFilesystemWatcher } from "./vault-fs-watcher.js";
+import { createVaultLayoutGuardRunner } from "../vault-layout-guard-runner.js";
 
 const SYNC_STATUS_THROTTLE_MS = 200;
 
@@ -164,6 +165,16 @@ export function createServiceDomainRuntime(
     throw new Error("forceVaultIndexResync not initialized");
   };
 
+  const vaultLayoutGuard = createVaultLayoutGuardRunner({
+    getContext: () => getContext(),
+    onComplete: (vaultId, vaultPath) => {
+      forceVaultIndexResync(vaultId, vaultPath, { restartWatcher: false });
+    },
+    onError: (vaultId, error) => {
+      console.error("[collector] vault layout guard failed:", vaultId, error);
+    },
+  });
+
   const vaultFsWatcher = createNodeVaultFilesystemWatcher({
     getContext: () => getContext(),
     getActiveVaultId: () =>
@@ -173,6 +184,9 @@ export function createServiceDomainRuntime(
     },
     forceVaultIndexResync: (vaultId, vaultPath) => {
       forceVaultIndexResync(vaultId, vaultPath);
+    },
+    onWatchApplied: (vaultId, vaultPath) => {
+      vaultLayoutGuard.schedule(vaultId, vaultPath);
     },
   });
 
@@ -441,6 +455,7 @@ export function createServiceDomainRuntime(
   }
 
   function kickoffVaultIndexSync(vaultId: string, vaultPath: string): void {
+    vaultLayoutGuard.schedule(vaultId, vaultPath);
     void startVaultIndexSync(vaultId, vaultPath).catch((error: unknown) => {
       console.error("[collector] index sync failed:", error);
     });
@@ -644,6 +659,7 @@ export function createServiceDomainRuntime(
     isHealthy: () => indexBoot.isHealthy(),
     async close() {
       runtimeClosed = true;
+      vaultLayoutGuard.dispose();
       syncPluginWake.dispose();
       await Promise.allSettled([...vaultSyncPromises.values()]);
       await vaultFsWatcher.stop();
