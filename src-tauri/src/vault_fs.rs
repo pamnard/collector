@@ -9,6 +9,7 @@ use std::time::UNIX_EPOCH;
 const ITEM_MEDIA_SUFFIX: &str = ".media";
 const MEDIA_MANIFEST_FILE: &str = "manifest.json";
 const SOURCE_REF_FILE: &str = ".source.json";
+const COVER_FILE: &str = "cover.webp";
 
 /// Top-level names that are never markdown items / real folders. Mirrors
 /// `packages/shared/src/constants.ts` `RESERVED_VAULT_ENTRIES`.
@@ -55,20 +56,6 @@ pub struct ThumbnailResolveItem {
 pub struct ThumbnailResolveResult {
     pub id: String,
     pub path: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct MediaManifest {
-    #[serde(default)]
-    files: Vec<MediaFileEntry>,
-}
-
-#[derive(Deserialize)]
-struct MediaFileEntry {
-    id: String,
-    filename: String,
-    media_type: String,
-    created_at: String,
 }
 
 fn is_reserved_entry(name: &str) -> bool {
@@ -232,104 +219,82 @@ pub fn vault_items_read_source_refs(
     Ok(results)
 }
 
-fn resolve_thumbnail_absolute(vault_path: &str, item_id: &str, thumbnail: &str) -> PathBuf {
-    let normalized = thumbnail.replace('\\', "/");
-    if normalized.starts_with('/') {
-        return PathBuf::from(normalized);
+/// Shared vault media folder `media/<noteUuid>/` (#276 / #279).
+fn shared_item_media_root(vault_path: &str, item_id: &str) -> Result<PathBuf, String> {
+    let base = basename(item_id);
+    if base.len() < 3 || !base.to_lowercase().ends_with(".md") {
+        return Err(format!("Item path must end with .md: {item_id}"));
     }
-
-    if normalized
-        .chars()
-        .nth(1)
-        .is_some_and(|character| character == ':')
-    {
-        return PathBuf::from(normalized);
-    }
-
-    let dir = dirname(item_id);
-    let mut resolved = PathBuf::from(vault_path);
-    if !dir.is_empty() {
-        for segment in dir.split('/') {
-            resolved.push(segment);
-        }
-    }
-    for segment in normalized.split('/').filter(|segment| !segment.is_empty()) {
-        resolved.push(segment);
-    }
-    resolved
+    let note_uuid = &base[..base.len() - 3];
+    Ok(PathBuf::from(vault_path).join("media").join(note_uuid))
 }
 
-fn sanitize_media_filename(filename: &str) -> String {
-    let base = filename
-        .split(&['/', '\\'][..])
-        .next_back()
-        .unwrap_or("file");
-    let cleaned: String = base
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || ".-_".contains(character) {
-                character
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    if cleaned.is_empty() {
-        "file".to_string()
-    } else {
-        cleaned
-    }
+fn is_image_filename(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower.ends_with(".png")
+        || lower.ends_with(".jpg")
+        || lower.ends_with(".jpeg")
+        || lower.ends_with(".gif")
+        || lower.ends_with(".webp")
+        || lower.ends_with(".avif")
+        || lower.ends_with(".bmp")
 }
 
-fn media_file_path(media_root: &Path, media_id: &str, filename: &str) -> PathBuf {
-    let stored = format!("{}-{}", media_id, sanitize_media_filename(filename));
-    media_root.join(stored)
-}
-
-fn first_image_media_path(media_root: &Path) -> Option<PathBuf> {
-    let manifest_path = media_root.join(MEDIA_MANIFEST_FILE);
-    if !manifest_path.is_file() {
-        return None;
-    }
-
-    let raw = fs::read_to_string(&manifest_path).ok()?;
-    let manifest: MediaManifest = serde_json::from_str(&raw).ok()?;
-    let mut files = manifest.files;
-    files.sort_by(|left, right| left.created_at.cmp(&right.created_at));
-
-    for file in files {
-        if file.media_type != "image" {
+/// First gallery image under shared media (skips cover/manifest/source/dotfiles).
+fn first_image_in_shared_media(media_root: &Path) -> Option<PathBuf> {
+    let entries = fs::read_dir(media_root).ok()?;
+    let mut images: Vec<PathBuf> = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
             continue;
         }
-
-        let candidate = media_file_path(media_root, &file.id, &file.filename);
-        if candidate.is_file() {
-            return Some(candidate);
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.')
+            || name == COVER_FILE
+            || name == MEDIA_MANIFEST_FILE
+            || name == SOURCE_REF_FILE
+        {
+            continue;
+        }
+        if is_image_filename(&name) {
+            images.push(path);
         }
     }
-
-    None
+    images.sort();
+    images.into_iter().next()
 }
 
 fn resolve_one_thumbnail(vault_path: &str, item: ThumbnailResolveItem) -> ThumbnailResolveResult {
     let ThumbnailResolveItem { id, thumbnail } = item;
-    if let Some(thumbnail) = thumbnail.as_deref().filter(|value| !value.is_empty()) {
-        let candidate = resolve_thumbnail_absolute(vault_path, &id, thumbnail);
-        if candidate.is_file() {
+
+    if let Ok(media_root) = shared_item_media_root(vault_path, &id) {
+        let cover = media_root.join(COVER_FILE);
+        if cover.is_file() {
             return ThumbnailResolveResult {
                 id,
-                path: Some(candidate.to_string_lossy().into_owned()),
+                path: Some(cover.to_string_lossy().into_owned()),
+            };
+        }
+        if let Some(image) = first_image_in_shared_media(&media_root) {
+            return ThumbnailResolveResult {
+                id,
+                path: Some(image.to_string_lossy().into_owned()),
             };
         }
     }
 
-    let path = match item_media_root(vault_path, &id) {
-        Ok(media_root) => {
-            first_image_media_path(&media_root).map(|candidate| candidate.to_string_lossy().into_owned())
+    // Remote URL only — not vault file paths in frontmatter (#276).
+    if let Some(thumbnail) = thumbnail.as_deref().filter(|value| !value.is_empty()) {
+        if thumbnail.starts_with("http://") || thumbnail.starts_with("https://") {
+            return ThumbnailResolveResult {
+                id,
+                path: Some(thumbnail.to_string()),
+            };
         }
-        Err(_) => None,
-    };
-    ThumbnailResolveResult { id, path }
+    }
+
+    ThumbnailResolveResult { id, path: None }
 }
 
 #[tauri::command]

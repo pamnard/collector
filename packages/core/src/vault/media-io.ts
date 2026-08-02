@@ -5,8 +5,8 @@ import {
   sanitizeMediaFilename,
 } from "@collector/shared";
 import type { MediaFileMeta, MediaManifest } from "@collector/shared";
-import { createHash } from "node:crypto";
 import type { FileSystemAdapter } from "../adapters/types.js";
+import { sha1Bytes } from "../util/sha1.js";
 import {
   itemMediaManifestPath,
   itemMediaRoot,
@@ -45,10 +45,10 @@ function bytesToUuid(bytes: Uint8Array): string {
 }
 
 function uuidV5(name: string, namespaceUuid: string): string {
-  const hash = createHash("sha1")
-    .update(uuidToBytes(namespaceUuid))
-    .update(name, "utf8")
-    .digest();
+  const hash = sha1Bytes([
+    uuidToBytes(namespaceUuid),
+    new TextEncoder().encode(name),
+  ]);
   hash[6] = (hash[6]! & 0x0f) | 0x50;
   hash[8] = (hash[8]! & 0x3f) | 0x80;
   return bytesToUuid(hash.subarray(0, 16));

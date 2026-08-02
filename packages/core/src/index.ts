@@ -210,6 +210,16 @@ export type {
 } from "./vault/vault-layout-guard.js";
 
 export {
+  migrateSidecarMediaToShared,
+  preflightSidecarMediaMigrate,
+} from "./vault/sidecar-media-migrate.js";
+export type {
+  SidecarMediaMigratePreflight,
+  SidecarMediaMigrateProgress,
+  SidecarMediaMigrateReport,
+} from "./vault/sidecar-media-migrate.js";
+
+export {
   assertNoIncompleteVaultDirs,
   listIncompleteVaultDirIds,
   persistActiveVaultIdSetting,

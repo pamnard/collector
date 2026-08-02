@@ -6,10 +6,7 @@ import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import { createId } from "../util/ids.js";
-import {
-  applyItemCover,
-  resolveItemThumbnailAbsolutePath,
-} from "./cover-operations.js";
+import { applyItemCover } from "./cover-operations.js";
 import { attachMediaFile } from "./media-operations.js";
 import { createVault } from "./vault-operations.js";
 import { upsertItem } from "./item-operations.js";
@@ -53,13 +50,13 @@ describe("resolveItemThumbnailPathsBatch", () => {
     return { ctx, path, vaultId: meta.id, itemId };
   }
 
-  it("returns cover path when thumbnail file exists", async () => {
+  it("returns cover path when cover.webp exists on disk", async () => {
     const { ctx, path, vaultId, itemId } = await seedItem("Covered");
     const coverBytes = new TextEncoder().encode("fake-webp");
-    const updated = await applyItemCover(ctx, path, vaultId, itemId, coverBytes);
+    await applyItemCover(ctx, path, vaultId, itemId, coverBytes);
 
     const rows = await resolveItemThumbnailPathsBatch(fs, path, [
-      { id: itemId, thumbnail: updated.thumbnail ?? null },
+      { id: itemId, thumbnail: null },
     ]);
 
     expect(rows).toEqual([
@@ -68,9 +65,24 @@ describe("resolveItemThumbnailPathsBatch", () => {
         path: itemCoverPath(path, itemId),
       },
     ]);
-    expect(rows[0]!.path).toBe(
-      resolveItemThumbnailAbsolutePath(path, itemId, updated.thumbnail),
-    );
+  });
+
+  it("prefers cover.webp over stale frontmatter sidecar path", async () => {
+    const { ctx, path, vaultId, itemId } = await seedItem("Stale FM");
+    const coverBytes = new TextEncoder().encode("fake-webp");
+    await applyItemCover(ctx, path, vaultId, itemId, coverBytes);
+    const uuid = itemId.replace(/\.md$/, "");
+
+    const rows = await resolveItemThumbnailPathsBatch(fs, path, [
+      { id: itemId, thumbnail: `${uuid}.media/cover.webp` },
+    ]);
+
+    expect(rows).toEqual([
+      {
+        id: itemId,
+        path: itemCoverPath(path, itemId),
+      },
+    ]);
   });
 
   it("falls back to first image media when cover missing", async () => {
@@ -99,5 +111,16 @@ describe("resolveItemThumbnailPathsBatch", () => {
     ]);
 
     expect(rows).toEqual([{ id: itemId, path: null }]);
+  });
+
+  it("returns remote http thumbnail when no local cover or image", async () => {
+    const { path, itemId } = await seedItem("Remote");
+    const remote = "https://example.com/thumb.jpg";
+
+    const rows = await resolveItemThumbnailPathsBatch(fs, path, [
+      { id: itemId, thumbnail: remote },
+    ]);
+
+    expect(rows).toEqual([{ id: itemId, path: remote }]);
   });
 });
