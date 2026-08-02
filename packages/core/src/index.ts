@@ -26,6 +26,7 @@ export {
   dirname,
   isMarkdownItemFile,
   isReservedVaultEntry,
+  isUuidMarkdownBasename,
   itemCoverPath,
   itemCoverRelativePath,
   itemMarkdownPath,
@@ -40,6 +41,7 @@ export {
   legacyItemMetaPath,
   legacyItemRoot,
   legacyItemsRoot,
+  noteSharedMediaRoot,
   normalizeRelativePath,
   RECONCILE_TOUCH_FILE,
   vaultMetaPath,
@@ -184,7 +186,19 @@ export type {
   ThumbnailResolveItem,
   ThumbnailResolveResult,
 } from "./vault/thumbnail-resolve.js";
-export { assertVaultTreeLayout } from "./vault/assert-vault-layout.js";
+export {
+  assertVaultTreeLayout,
+  vaultHasLegacyItemsLayout,
+} from "./vault/assert-vault-layout.js";
+export {
+  inspectVaultLayout,
+  remediateVaultLayout,
+} from "./vault/vault-layout-guard.js";
+export type {
+  RemediateVaultLayoutOptions,
+  VaultLayoutInspectReport,
+  VaultLayoutRemediateReport,
+} from "./vault/vault-layout-guard.js";
 
 export {
   assertNoIncompleteVaultDirs,

@@ -15,7 +15,8 @@ import { SqlVaultIndexStore } from "../index/sql-index.js";
 import { createVault } from "./vault-operations.js";
 import { upsertItem } from "./item-operations.js";
 import { ensureInboxLayout, resolveOrCreateInboxFolder } from "./inbox-layout.js";
-import { itemMarkdownPath, itemMediaRoot, joinSegments } from "./paths.js";
+import { remediateVaultLayout } from "./vault-layout-guard.js";
+import { itemMarkdownPath, joinSegments } from "./paths.js";
 import { syncVaultIndexFromFilesystem } from "./index-sync.js";
 
 describe("resolveInboxFolderName", () => {
@@ -74,7 +75,7 @@ describe("ensureInboxLayout", () => {
     expect(await fs.exists(joinSegments(path, INBOX_FOLDER_NAME))).toBe(true);
   });
 
-  it("moves root markdown and media into Inbox", async () => {
+  it("does not move root markdown (layout guard owns that)", async () => {
     const { ctx, meta, path } = await seedVault();
     const id = `${createId()}.md`;
     await upsertItem(ctx, path, meta.id, {
@@ -95,66 +96,9 @@ describe("ensureInboxLayout", () => {
       },
       content: "body",
     });
-    await fs.mkdir(itemMediaRoot(path, id));
-    await fs.writeText(joinSegments(itemMediaRoot(path, id), "x.txt"), "x");
-
-    const inbox = await ensureInboxLayout(ctx, path);
-    expect(await fs.exists(itemMarkdownPath(path, id))).toBe(false);
-    expect(await fs.exists(itemMarkdownPath(path, `${inbox}/${id}`))).toBe(true);
-    expect(await fs.exists(itemMediaRoot(path, `${inbox}/${id}`))).toBe(true);
-  });
-
-  it("assigns a new uuid when Inbox already has the same basename", async () => {
-    const { ctx, meta, path } = await seedVault();
-    const shared = `${createId()}.md`;
-    await resolveOrCreateInboxFolder(ctx, path);
-    await upsertItem(ctx, path, meta.id, {
-      item: {
-        id: `Inbox/${shared}`,
-        vault_id: meta.id,
-        title: "In inbox",
-        description: "",
-        content_type: "note",
-        source_type: "manual",
-        metadata: {},
-        tag_ids: [],
-        collection_ids: [],
-        folder_path: "Inbox",
-        content_revision: 1,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      content: "inbox",
-    });
-    await upsertItem(ctx, path, meta.id, {
-      item: {
-        id: shared,
-        vault_id: meta.id,
-        title: "Root",
-        description: "",
-        content_type: "note",
-        source_type: "manual",
-        metadata: {},
-        tag_ids: [],
-        collection_ids: [],
-        folder_path: "",
-        content_revision: 1,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      content: "root",
-    });
 
     await ensureInboxLayout(ctx, path);
-    expect(await fs.exists(itemMarkdownPath(path, `Inbox/${shared}`))).toBe(
-      true,
-    );
-    expect(await fs.exists(itemMarkdownPath(path, shared))).toBe(false);
-    const inboxEntries = await fs.readDir(joinSegments(path, "Inbox"));
-    const mdFiles = inboxEntries.filter((name) => name.endsWith(".md"));
-    expect(mdFiles).toHaveLength(2);
-    expect(mdFiles).toContain(shared);
-    expect(mdFiles.some((name) => name !== shared)).toBe(true);
+    expect(await fs.exists(itemMarkdownPath(path, id))).toBe(true);
   });
 
   it("recreates Inbox after rename without touching the old folder", async () => {
@@ -196,7 +140,7 @@ describe("ensureInboxLayout", () => {
     );
   });
 
-  it("runs before index sync via syncVaultIndexFromFilesystem", async () => {
+  it("sync leaves root notes; remediate then sync indexes Inbox", async () => {
     const { ctx, meta, path } = await seedVault();
     const id = `${createId()}.md`;
     await upsertItem(ctx, path, meta.id, {
@@ -219,8 +163,13 @@ describe("ensureInboxLayout", () => {
     });
 
     await syncVaultIndexFromFilesystem(ctx, path);
+    expect(await fs.exists(itemMarkdownPath(path, id))).toBe(true);
+
+    await remediateVaultLayout(fs, path);
     expect(await fs.exists(itemMarkdownPath(path, id))).toBe(false);
     expect(await fs.exists(itemMarkdownPath(path, `Inbox/${id}`))).toBe(true);
+
+    await syncVaultIndexFromFilesystem(ctx, path);
     const counts = await ctx.index.listFolderItemCounts(meta.id);
     expect(counts.find((row) => row.folder_path === "Inbox")?.item_count).toBe(
       1,

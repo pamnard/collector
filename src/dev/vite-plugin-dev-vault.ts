@@ -7,6 +7,7 @@ import {
   buildFolderTreeFromSources,
   dirname,
   ensureInboxLayout,
+  remediateVaultLayout,
   joinSegments,
   listFolderRelativePaths,
   listItemRelativePaths,
@@ -154,8 +155,11 @@ async function resolveThumbnailUrl(
 
 async function buildSnapshot(vaultRoot: string): Promise<DevVaultSnapshot> {
   const fs = new NodeFileSystemAdapter();
-  // Layout ensure only touches the filesystem (no index reads/writes).
+  // Inbox folder only; layout remediация is non-blocking (#277).
   await ensureInboxLayout({ fs, index: {} as VaultContext["index"] }, vaultRoot);
+  void remediateVaultLayout(fs, vaultRoot).catch((error: unknown) => {
+    console.warn("[dev-vault] layout guard failed:", error);
+  });
   const vault = await readVaultMeta(fs, vaultRoot);
   const itemIds = await listItemRelativePaths(fs, vaultRoot);
   const items: ItemFile[] = [];

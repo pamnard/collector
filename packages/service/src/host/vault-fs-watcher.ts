@@ -18,6 +18,8 @@ export interface NodeVaultFilesystemWatcherDeps {
   getActiveVaultId: () => string | null;
   onItemsSynced: (vaultId: string) => void;
   forceVaultIndexResync: (vaultId: string, vaultPath: string) => void;
+  /** Fired after a successful targeted watch apply (non-blocking hooks). */
+  onWatchApplied?: (vaultId: string, vaultPath: string) => void;
 }
 
 export interface NodeVaultFilesystemWatcher {
@@ -58,6 +60,7 @@ export function createNodeVaultFilesystemWatcher(
         throw new Error(`targeted index sync failed: ${summary}`);
       }
       deps.onItemsSynced(vaultId);
+      deps.onWatchApplied?.(vaultId, vaultPath);
     }
   }
 

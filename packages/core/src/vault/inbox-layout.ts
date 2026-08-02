@@ -3,12 +3,8 @@ import {
   resolveInboxFolderName,
 } from "@collector/shared";
 import type { VaultContext } from "../adapters/types.js";
-import { createId } from "../util/ids.js";
 import {
-  isMarkdownItemFile,
   isReservedVaultEntry,
-  itemMarkdownPath,
-  itemMediaRoot,
   joinSegments,
 } from "./paths.js";
 
@@ -47,44 +43,11 @@ export async function resolveOrCreateInboxFolder(
 }
 
 /**
- * Ensure Inbox exists and no item `.md` files remain at vault root.
- * Call before index sync. Returns the on-disk Inbox folder name.
+ * Ensure the default collection folder exists (#277: root cleanup is layout-guard).
  */
 export async function ensureInboxLayout(
   ctx: VaultContext,
   vaultPath: string,
 ): Promise<string> {
-  const inbox = await resolveOrCreateInboxFolder(ctx, vaultPath);
-  const entries = await ctx.fs.readDir(vaultPath);
-  const rootMarkdown: string[] = [];
-  for (const name of entries) {
-    if (name.startsWith(".") || isReservedVaultEntry(name)) {
-      continue;
-    }
-    if (isMarkdownItemFile(name)) {
-      rootMarkdown.push(name);
-    }
-  }
-
-  for (const name of rootMarkdown) {
-    let destRel = `${inbox}/${name}`;
-    if (await ctx.fs.exists(itemMarkdownPath(vaultPath, destRel))) {
-      destRel = `${inbox}/${createId()}.md`;
-    }
-
-    await ctx.fs.rename(
-      itemMarkdownPath(vaultPath, name),
-      itemMarkdownPath(vaultPath, destRel),
-    );
-
-    const fromMedia = itemMediaRoot(vaultPath, name);
-    if (await ctx.fs.exists(fromMedia)) {
-      await ctx.fs.rename(fromMedia, itemMediaRoot(vaultPath, destRel));
-    }
-  }
-
-  if (rootMarkdown.length > 0) {
-    await ctx.fs.touch(vaultPath);
-  }
-  return inbox;
+  return resolveOrCreateInboxFolder(ctx, vaultPath);
 }
