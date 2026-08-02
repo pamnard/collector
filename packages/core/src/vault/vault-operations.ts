@@ -2,6 +2,7 @@ import type { VaultMeta } from "@collector/shared";
 import { SCHEMA_VERSION } from "@collector/shared";
 import type { CreateVaultInput, VaultContext } from "../adapters/types.js";
 import { createId, nowIso } from "../util/ids.js";
+import { ensureInboxLayout } from "./inbox-layout.js";
 import { writeVaultMeta } from "./item-io.js";
 import { writeTagsFile } from "./tag-io.js";
 import { vaultRoot, vaultsRoot } from "./paths.js";
@@ -30,6 +31,7 @@ export async function createVault(
   await ctx.fs.mkdir(vaultPath);
   await writeVaultMeta(ctx.fs, vaultPath, meta);
   await writeTagsFile(ctx.fs, vaultPath, { tags: [] });
+  await ensureInboxLayout(ctx, vaultPath);
   await ctx.index.upsertVault(meta, vaultPath);
 
   return { meta, path: vaultPath };
