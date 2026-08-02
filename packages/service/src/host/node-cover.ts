@@ -14,7 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, extname, join } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { MediaType } from "@collector/shared";
@@ -27,8 +27,31 @@ const COVER_WEBP_QUALITY = 85;
 
 const DURATION_RE = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/;
 
+/**
+ * Host directory for bundled `bin/ffmpeg` (ESM source + CJS packaged host).
+ * Packaged esbuild CJS can leave `import.meta.url` undefined (#441).
+ */
+export function resolveServiceHostDir(input: {
+  metaUrl?: string;
+  argv1?: string | undefined;
+  execPath: string;
+}): string {
+  const metaUrl = input.metaUrl;
+  if (typeof metaUrl === "string" && metaUrl.length > 0) {
+    return dirname(fileURLToPath(metaUrl));
+  }
+  if (typeof input.argv1 === "string" && input.argv1.length > 0) {
+    return dirname(resolve(input.argv1));
+  }
+  return dirname(input.execPath);
+}
+
 function moduleDir(): string {
-  return dirname(fileURLToPath(import.meta.url));
+  return resolveServiceHostDir({
+    metaUrl: import.meta.url,
+    argv1: process.argv[1],
+    execPath: process.execPath,
+  });
 }
 
 /**
