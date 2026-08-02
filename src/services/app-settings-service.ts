@@ -22,6 +22,9 @@ const fs = new TauriFileSystemAdapter();
 const DEV_MOCK_SETTINGS_KEY = "collector-dev-mock-settings";
 
 async function ensureConfigDir(): Promise<string> {
+  if (isDevMock()) {
+    return "/dev-mock/config";
+  }
   if (!configDir) {
     configDir = (await getCollectorProfileLayout()).configDir;
   }

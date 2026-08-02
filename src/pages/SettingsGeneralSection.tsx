@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getName } from "@tauri-apps/api/app";
+import { isTauri } from "@tauri-apps/api/core";
 import type { VaultMeta } from "@collector/shared";
 import {
   useAlerts,
@@ -35,7 +36,9 @@ export function SettingsGeneralSection() {
         getCollectorService().boot.getDataDirectory(),
         getCollectorService().vaults.listVaults(),
         getCollectorService().vaults.getActiveVaultMeta(),
-        getName().catch(() => "Collector"),
+        isTauri()
+          ? getName().catch(() => "Collector")
+          : Promise.resolve("Collector"),
         getCollectorService().settings.getAppConfigDirectory(),
       ]);
     setDataDir(directory);

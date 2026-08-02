@@ -1,10 +1,11 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, isTauri } from "@tauri-apps/api/core";
 
 /**
  * Browser/dev URLs stay as-is; absolute disk paths go through Tauri convertFileSrc.
  *
  * Do NOT treat every path starting with `/` as a web URL — on Linux absolute
  * filesystem paths look like `/home/...` and must be converted for the WebView.
+ * Outside Tauri (web DevMock) never call convertFileSrc — no IPC bridge.
  */
 export function toDisplayAssetSrc(pathOrUrl: string): string {
   if (
@@ -15,6 +16,9 @@ export function toDisplayAssetSrc(pathOrUrl: string): string {
     pathOrUrl.startsWith("data:") ||
     pathOrUrl.startsWith("/__dev/")
   ) {
+    return pathOrUrl;
+  }
+  if (!isTauri()) {
     return pathOrUrl;
   }
   return convertFileSrc(pathOrUrl);

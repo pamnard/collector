@@ -108,6 +108,11 @@ export function createAppSettingsService(
       });
     },
     getAppConfigDirectory() {
+      // DevMock / web has no Tauri path APIs; never call ensureConfigDir there
+      // (Settings General used to surface `undefined.Invoke` via AlertStack).
+      if (deps.isDevMock()) {
+        return Promise.resolve("/dev-mock/config");
+      }
       return deps.ensureConfigDir();
     },
   };

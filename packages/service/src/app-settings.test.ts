@@ -86,4 +86,12 @@ describe("createAppSettingsService", () => {
     expect(readLegacySettings).toHaveBeenCalled();
     expect(writeAppSettings).toHaveBeenCalled();
   });
+
+  it("getAppConfigDirectory skips ensureConfigDir on DevMock", async () => {
+    const service = createService(true);
+    await expect(service.getAppConfigDirectory()).resolves.toBe(
+      "/dev-mock/config",
+    );
+    expect(ensureConfigDir).not.toHaveBeenCalled();
+  });
 });
