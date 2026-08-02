@@ -83,19 +83,31 @@ export function createMediaCoverService(
     }
 
     const data = await ctx.fs.readBinary(candidate.absolute_path);
-    const cover = await deps.generateCoverFromMedia(
-      data,
-      candidate.filename,
-      candidate.media_type,
-    );
-
-    if (!cover) {
-      throw new Error(
-        `Failed to generate cover from media (${candidate.media_type}: ${candidate.filename}) for item ${itemId}`,
+    try {
+      const cover = await deps.generateCoverFromMedia(
+        data,
+        candidate.filename,
+        candidate.media_type,
       );
-    }
 
-    await applyItemCover(ctx, path, vault.id, itemId, cover);
+      if (!cover) {
+        console.error("[media-cover] auto-cover soft-fail: generate returned null", {
+          itemId,
+          mediaType: candidate.media_type,
+          filename: candidate.filename,
+        });
+        return;
+      }
+
+      await applyItemCover(ctx, path, vault.id, itemId, cover);
+    } catch (error) {
+      console.error("[media-cover] auto-cover soft-fail: generate/apply threw", {
+        itemId,
+        mediaType: candidate.media_type,
+        filename: candidate.filename,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   };
 
   const resolveItemThumbnailPathsUncached = async (

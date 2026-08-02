@@ -131,7 +131,7 @@ describe("createMediaCoverService", () => {
     expect(result).toEqual([{ id: "m1", filename: "clip.mp4" }]);
   });
 
-  it("attachMediaFiles throws when cover generate returns null (#437)", async () => {
+  it("attachMediaFiles succeeds when cover generate returns null (#447)", async () => {
     attachMediaFile.mockResolvedValue({ id: "m1", filename: "clip.mp4" });
     listItemMediaWithPaths.mockResolvedValue([
       {
@@ -142,14 +142,56 @@ describe("createMediaCoverService", () => {
       },
     ]);
     generateCoverFromMedia.mockResolvedValueOnce(null);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await expect(
-      createService().attachMediaFiles("note.md", [
-        { name: "clip.mp4", bytes: new Uint8Array([1]) },
-      ]),
-    ).rejects.toThrow(/Failed to generate cover from media/);
+    const result = await createService().attachMediaFiles("note.md", [
+      { name: "clip.mp4", bytes: new Uint8Array([1]) },
+    ]);
+
+    expect(result).toEqual([{ id: "m1", filename: "clip.mp4" }]);
     expect(clearItemCover).not.toHaveBeenCalled();
     expect(applyItemCover).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[media-cover] auto-cover soft-fail: generate returned null",
+      expect.objectContaining({
+        itemId: "note.md",
+        mediaType: "video",
+        filename: "clip.mp4",
+      }),
+    );
+    errorSpy.mockRestore();
+  });
+
+  it("attachMediaFiles succeeds when cover generate throws (#447)", async () => {
+    attachMediaFile.mockResolvedValue({ id: "m1", filename: "clip.mp4" });
+    listItemMediaWithPaths.mockResolvedValue([
+      {
+        id: "m1",
+        media_type: "video",
+        filename: "clip.mp4",
+        absolute_path: "/vault/note.media/clip.mp4",
+      },
+    ]);
+    generateCoverFromMedia.mockRejectedValueOnce(new Error("ffmpeg boom"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await createService().attachMediaFiles("note.md", [
+      { name: "clip.mp4", bytes: new Uint8Array([1]) },
+    ]);
+
+    expect(result).toEqual([{ id: "m1", filename: "clip.mp4" }]);
+    expect(clearItemCover).not.toHaveBeenCalled();
+    expect(applyItemCover).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[media-cover] auto-cover soft-fail: generate/apply threw",
+      expect.objectContaining({
+        itemId: "note.md",
+        mediaType: "video",
+        filename: "clip.mp4",
+        error: "ffmpeg boom",
+      }),
+    );
+    errorSpy.mockRestore();
   });
 
   it("setItemCoverFromMedia throws when cover generate returns null (#437)", async () => {
