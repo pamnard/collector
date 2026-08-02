@@ -909,10 +909,10 @@ describe("getAdjacentItems", () => {
     const t2 = "2020-06-01T00:00:00.000Z";
     const t3 = "2021-01-01T00:00:00.000Z";
 
-    const olderId = "notes/a.md";
-    const middleId = "notes/b.md";
-    const newerId = "notes/c.md";
-    const nestedId = "notes/sub/d.md";
+    const olderId = "notes/11111111-1111-4111-8111-111111111111.md";
+    const middleId = "notes/22222222-2222-4222-8222-222222222222.md";
+    const newerId = "notes/33333333-3333-4333-8333-333333333333.md";
+    const nestedId = "notes/sub/44444444-4444-4444-8444-444444444444.md";
 
     for (const [id, title, created_at, folder_path] of [
       [olderId, "Older", t1, "notes"],

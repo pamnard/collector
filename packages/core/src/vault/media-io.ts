@@ -1,9 +1,63 @@
-import { mediaManifestSchema, sanitizeMediaFilename } from "@collector/shared";
+import {
+  ITEM_FILES,
+  inferMediaType,
+  mediaManifestSchema,
+  sanitizeMediaFilename,
+} from "@collector/shared";
 import type { MediaFileMeta, MediaManifest } from "@collector/shared";
+import { createHash } from "node:crypto";
 import type { FileSystemAdapter } from "../adapters/types.js";
-import { itemMediaManifestPath, itemMediaRoot, joinSegments } from "./paths.js";
+import {
+  itemMediaManifestPath,
+  itemMediaRoot,
+  joinSegments,
+} from "./paths.js";
 
 export { itemMediaManifestPath as mediaManifestPath };
+
+const ATTACHED_MEDIA_FILENAME_RE =
+  /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-(.+)$/i;
+
+const SKIP_MEDIA_DIR_NAMES = new Set<string>([
+  ITEM_FILES.source,
+  ITEM_FILES.cover,
+  ITEM_FILES.mediaManifest,
+]);
+
+/** Fixed namespace for bare media file ids under `media/<uuid>/` (#279). */
+const BARE_MEDIA_ID_NAMESPACE = "a1c0ffee-2790-45a0-9e5d-000000000279";
+
+function uuidToBytes(uuid: string): Uint8Array {
+  const hex = uuid.replace(/-/g, "");
+  if (hex.length !== 32) {
+    throw new Error(`Invalid UUID for v5 namespace: ${uuid}`);
+  }
+  const out = new Uint8Array(16);
+  for (let i = 0; i < 16; i += 1) {
+    out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+}
+
+function bytesToUuid(bytes: Uint8Array): string {
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+function uuidV5(name: string, namespaceUuid: string): string {
+  const hash = createHash("sha1")
+    .update(uuidToBytes(namespaceUuid))
+    .update(name, "utf8")
+    .digest();
+  hash[6] = (hash[6]! & 0x0f) | 0x50;
+  hash[8] = (hash[8]! & 0x3f) | 0x80;
+  return bytesToUuid(hash.subarray(0, 16));
+}
+
+/** Stable `MediaFileMeta.id` for files without `{mediaId}-` prefix (#279). */
+export function bareMediaFileId(itemId: string, filename: string): string {
+  return uuidV5(`${itemId}\0${filename}`, BARE_MEDIA_ID_NAMESPACE);
+}
 
 export function mediaStoredFilename(mediaId: string, originalFilename: string): string {
   return `${mediaId}-${sanitizeMediaFilename(originalFilename)}`;
@@ -15,12 +69,14 @@ export function mediaFilePath(
   mediaId: string,
   originalFilename: string,
 ): string {
-  return joinSegments(
-    itemMediaRoot(vaultRootPath, itemRelativePath),
-    mediaStoredFilename(mediaId, originalFilename),
-  );
+  const root = itemMediaRoot(vaultRootPath, itemRelativePath);
+  if (mediaId === bareMediaFileId(itemRelativePath, originalFilename)) {
+    return joinSegments(root, originalFilename);
+  }
+  return joinSegments(root, mediaStoredFilename(mediaId, originalFilename));
 }
 
+/** @deprecated Manifest is not the source of truth for gallery (#279). */
 export async function readMediaManifest(
   fs: FileSystemAdapter,
   vaultRootPath: string,
@@ -35,6 +91,7 @@ export async function readMediaManifest(
   return mediaManifestSchema.parse(JSON.parse(raw));
 }
 
+/** @deprecated Do not write on attach/list (#279). */
 export async function writeMediaManifest(
   fs: FileSystemAdapter,
   vaultRootPath: string,
@@ -49,11 +106,53 @@ export async function writeMediaManifest(
   );
 }
 
+function shouldSkipMediaDirEntry(name: string): boolean {
+  if (!name || name.startsWith(".")) {
+    return true;
+  }
+  return SKIP_MEDIA_DIR_NAMES.has(name);
+}
+
+function createdAtFromMtime(mtimeMs: number | null): string {
+  if (mtimeMs == null) {
+    throw new Error("Media file stat missing mtimeMs");
+  }
+  return new Date(mtimeMs).toISOString();
+}
+
 export async function listMediaFiles(
   fs: FileSystemAdapter,
   vaultRootPath: string,
   itemRelativePath: string,
 ): Promise<MediaFileMeta[]> {
-  const manifest = await readMediaManifest(fs, vaultRootPath, itemRelativePath);
-  return manifest.files.sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const root = itemMediaRoot(vaultRootPath, itemRelativePath);
+  if (!(await fs.exists(root))) {
+    return [];
+  }
+
+  const entries = await fs.readDirEntries(root);
+  const files: MediaFileMeta[] = [];
+
+  for (const entry of entries) {
+    const name = entry.name;
+    if (shouldSkipMediaDirEntry(name) || entry.isDirectory) {
+      continue;
+    }
+    const absolute = joinSegments(root, name);
+
+    const attached = name.match(ATTACHED_MEDIA_FILENAME_RE);
+    const mediaId = attached ? attached[1]! : bareMediaFileId(itemRelativePath, name);
+    const filename = attached ? attached[2]! : name;
+    const { mtimeMs } = await fs.stat(absolute);
+
+    files.push({
+      id: mediaId,
+      item_id: itemRelativePath,
+      filename,
+      media_type: inferMediaType(filename),
+      created_at: createdAtFromMtime(mtimeMs),
+    });
+  }
+
+  return files.sort((a, b) => a.created_at.localeCompare(b.created_at));
 }

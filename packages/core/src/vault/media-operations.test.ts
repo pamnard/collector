@@ -12,9 +12,15 @@ import {
   listItemMediaWithPaths,
   replaceMediaFile,
 } from "../vault/media-operations.js";
+import { listMediaFiles } from "../vault/media-io.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import { createId } from "../util/ids.js";
-import { itemMediaManifestPath } from "../vault/paths.js";
+import {
+  itemMediaManifestPath,
+  itemMediaRoot,
+  joinSegments,
+  noteUuidFromItemPath,
+} from "../vault/paths.js";
 
 describe("media operations", () => {
   let dataDir = "";
@@ -27,7 +33,7 @@ describe("media operations", () => {
     }
   });
 
-  it("attaches and deletes media files on disk and in index", async () => {
+  it("attaches under media/<uuid>/ without manifest; deletes from disk and index", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "collector-media-"));
     const sql = new MemorySqlAdapter();
     const ctx = { fs, index: new SqlVaultIndexStore(sql) };
@@ -62,10 +68,59 @@ describe("media operations", () => {
     const listed = await listItemMediaWithPaths(ctx, path, itemId);
     expect(listed).toHaveLength(1);
     expect(await fs.exists(listed[0]!.absolute_path)).toBe(true);
+    expect(listed[0]!.absolute_path.startsWith(itemMediaRoot(path, itemId))).toBe(
+      true,
+    );
+    expect(itemMediaRoot(path, itemId)).toBe(
+      joinSegments(path, "media", noteUuidFromItemPath(itemId)),
+    );
+    expect(await fs.exists(itemMediaManifestPath(path, itemId))).toBe(false);
+    expect(
+      await fs.exists(
+        joinSegments(path, `${noteUuidFromItemPath(itemId)}.media`),
+      ),
+    ).toBe(false);
 
     await deleteMediaFile(ctx, path, itemId, media.id);
     expect(await listItemMediaWithPaths(ctx, path, itemId)).toHaveLength(0);
-    expect(await fs.exists(itemMediaManifestPath(path, itemId))).toBe(true);
+    expect(await fs.exists(itemMediaManifestPath(path, itemId))).toBe(false);
+  });
+
+  it("lists bare shot.png dropped into media/<uuid>/ (#277/#279)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-media-bare-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemId = `Inbox/${createId()}.md`;
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Bare media",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    });
+
+    const root = itemMediaRoot(path, itemId);
+    await fs.mkdir(root);
+    await fs.writeBinary(
+      joinSegments(root, "shot.png"),
+      Uint8Array.from([1, 2, 3]),
+    );
+
+    const listed = await listMediaFiles(fs, path, itemId);
+    expect(listed).toHaveLength(1);
+    expect(listed[0]!.filename).toBe("shot.png");
   });
 
   it("replaces media bytes keeping stable id and created_at (#353)", async () => {
@@ -97,8 +152,9 @@ describe("media operations", () => {
       filename: "old.png",
       data: Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]),
     });
-    const oldPath = (await listItemMediaWithPaths(ctx, path, itemId))[0]!
-      .absolute_path;
+    const listedBefore = await listItemMediaWithPaths(ctx, path, itemId);
+    const oldPath = listedBefore[0]!.absolute_path;
+    const createdAt = listedBefore[0]!.created_at;
 
     const replaced = await replaceMediaFile(ctx, path, itemId, attached.id, {
       filename: "new.jpg",
@@ -106,7 +162,7 @@ describe("media operations", () => {
     });
 
     expect(replaced.id).toBe(attached.id);
-    expect(replaced.created_at).toBe(attached.created_at);
+    expect(replaced.created_at).toBe(createdAt);
     expect(replaced.filename).toBe("new.jpg");
     expect(replaced.media_type).toBe("image");
 

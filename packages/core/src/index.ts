@@ -42,6 +42,7 @@ export {
   legacyItemRoot,
   legacyItemsRoot,
   noteSharedMediaRoot,
+  noteUuidFromItemPath,
   normalizeRelativePath,
   RECONCILE_TOUCH_FILE,
   vaultMetaPath,
@@ -110,7 +111,11 @@ export {
 } from "./vault/vault-watch-batch.js";
 export type { VaultWatchBatcher } from "./vault/vault-watch-batch.js";
 
-export { parseVaultItemWatchPath } from "./vault/vault-watch-path.js";
+export {
+  parseSharedMediaNoteUuid,
+  parseVaultItemWatchPath,
+  resolveVaultItemWatchPath,
+} from "./vault/vault-watch-path.js";
 
 export {
   createSingleFlight,
@@ -175,7 +180,11 @@ export {
   syncItemMediaToIndex,
 } from "./vault/media-operations.js";
 export type { MediaWithPath } from "./vault/media-operations.js";
-export { listMediaFiles, mediaFilePath } from "./vault/media-io.js";
+export {
+  bareMediaFileId,
+  listMediaFiles,
+  mediaFilePath,
+} from "./vault/media-io.js";
 export {
   applyItemCover,
   clearItemCover,

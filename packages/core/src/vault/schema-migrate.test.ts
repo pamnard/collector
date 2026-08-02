@@ -237,13 +237,15 @@ describe("migrateVaultSchema", () => {
     await writeFile(join(itemDir, "content.md"), "body from legacy");
     await mkdir(join(itemDir, "media"), { recursive: true });
     await writeFile(join(itemDir, "media", "manifest.json"), '{"files":[]}');
+    // itemMediaRoot is media/<uuid>/ (#279); parent must exist for rename.
+    await mkdir(join(vaultPath, "media"), { recursive: true });
     // Simulate crash after writing dest md but before removing legacy:
     await writeFile(join(vaultPath, `${itemId}.md`), "---\ntitle: stale\n---\n\nold\n");
 
     const report = await migrateVaultSchema(fs, vaultPath);
     expect(report.itemsMigrated).toBe(1);
     expect(await exists(itemDir)).toBe(false);
-    expect(await exists(join(vaultPath, `${itemId}.media`))).toBe(true);
+    expect(await exists(join(vaultPath, "media", itemId))).toBe(true);
 
     const md = await readFile(join(vaultPath, `${itemId}.md`), "utf8");
     const parsed = parseDocumentMarkdown(md);

@@ -6,7 +6,7 @@
 import { watch, type FSWatcher } from "node:fs";
 import {
   createVaultWatchBatcher,
-  parseVaultItemWatchPath,
+  resolveVaultItemWatchPath,
   syncIndexItemsFromFilesystem,
   type VaultContext,
 } from "@collector/core";
@@ -124,11 +124,17 @@ export function createNodeVaultFilesystemWatcher(
           return;
         }
         const changedPath = `${vaultPath.replace(/\/+$/, "")}/${String(filename).replace(/\\/g, "/")}`;
-        const itemId = parseVaultItemWatchPath(vaultPath, changedPath);
-        if (!itemId) {
-          return;
-        }
-        batcher.enqueue(itemId);
+        void resolveVaultItemWatchPath(deps.getContext().fs, vaultPath, changedPath).then(
+          (itemId) => {
+            if (!itemId) {
+              return;
+            }
+            if (deps.getActiveVaultId() !== vaultId) {
+              return;
+            }
+            batcher.enqueue(itemId);
+          },
+        );
       },
     );
 

@@ -336,6 +336,7 @@ export async function writeItemSourceRef(
   sourceRef: SourceRef,
 ): Promise<void> {
   const parsed = sourceRefSchema.parse(sourceRef);
+  // Shared `media/<noteUuid>/` (#279), not a sibling `*.media` sidecar.
   await fs.mkdir(itemMediaRoot(vaultRootPath, itemRelativePath));
   await fs.writeText(
     itemSourcePath(vaultRootPath, itemRelativePath),

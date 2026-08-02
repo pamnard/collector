@@ -12,11 +12,18 @@ import { upsertItem } from "../vault/item-operations.js";
 import {
   createFolder,
   listFolderTreeFromIndex,
+  moveItemToFolder,
   reconcileFolderTreeFromDisk,
   renameFolder,
 } from "../vault/folder-operations.js";
 import { readItemFile } from "../vault/item-io.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
+import {
+  itemMediaRoot,
+  joinSegments,
+  noteUuidFromItemPath,
+} from "../vault/paths.js";
+import { attachMediaFile } from "../vault/media-operations.js";
 
 describe("folder operations", () => {
   let dataDir = "";
@@ -203,5 +210,46 @@ describe("folder operations", () => {
     expect(await ctx.index.listItemIdsByFolderPrefix(meta.id, "Work")).toEqual(
       [],
     );
+  });
+
+  it("moveItemToFolder does not move media/<uuid>/ (#279)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-folder-move-media-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const uuid = createId();
+    const itemId = `Inbox/${uuid}.md`;
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Moving",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    });
+
+    await attachMediaFile(ctx, path, itemId, {
+      filename: "keep.png",
+      data: Uint8Array.from([1, 2, 3]),
+    });
+    const mediaRoot = itemMediaRoot(path, itemId);
+    expect(mediaRoot).toBe(joinSegments(path, "media", noteUuidFromItemPath(itemId)));
+    expect(await fs.exists(mediaRoot)).toBe(true);
+
+    await createFolder(ctx, path, "Archive");
+    const moved = await moveItemToFolder(ctx, path, meta.id, itemId, "Archive");
+    expect(moved.id).toBe(`Archive/${uuid}.md`);
+    expect(await fs.exists(mediaRoot)).toBe(true);
+    expect(itemMediaRoot(path, moved.id)).toBe(mediaRoot);
   });
 });
