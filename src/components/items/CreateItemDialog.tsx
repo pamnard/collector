@@ -1,8 +1,15 @@
 import { useState } from "react";
 import { X } from "lucide-react";
+import {
+  useAlerts,
+  useDismissAlertsOnUnmount,
+} from "../alerts/AlertBusProvider";
+import { errorMessage } from "../alerts/alert-store";
 import { EMPTY_ITEM_FORM, type ItemFormValues } from "../../types/item";
 import { ItemForm } from "./ItemForm";
 import { getCollectorService } from "../../services/collector-client";
+
+const CREATE_ITEM_ERROR_ID = "create-item-error";
 
 interface CreateItemDialogProps {
   onClose: () => void;
@@ -10,9 +17,10 @@ interface CreateItemDialogProps {
 }
 
 export function CreateItemDialog({ onClose, onCreated }: CreateItemDialogProps) {
+  const alerts = useAlerts();
+  useDismissAlertsOnUnmount([CREATE_ITEM_ERROR_ID]);
   const [values, setValues] = useState<ItemFormValues>(EMPTY_ITEM_FORM);
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -21,7 +29,7 @@ export function CreateItemDialog({ onClose, onCreated }: CreateItemDialogProps) 
     }
 
     setIsSaving(true);
-    setError(null);
+    alerts.dismiss(CREATE_ITEM_ERROR_ID);
 
     try {
       const item = await getCollectorService().items.createItem({
@@ -34,7 +42,10 @@ export function CreateItemDialog({ onClose, onCreated }: CreateItemDialogProps) 
       });
       onCreated(item.id);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      alerts.upsert(CREATE_ITEM_ERROR_ID, {
+        tone: "danger",
+        message: errorMessage(err),
+      });
     } finally {
       setIsSaving(false);
     }
@@ -63,12 +74,6 @@ export function CreateItemDialog({ onClose, onCreated }: CreateItemDialogProps) 
             <X size={20} />
           </button>
         </div>
-
-        {error && (
-          <pre className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-red-400 text-sm whitespace-pre-wrap">
-            {error}
-          </pre>
-        )}
 
         <ItemForm values={values} onChange={setValues} />
 

@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { INBOX_FOLDER_NAME } from "@collector/shared";
+import {
+  useAlerts,
+  useDismissAlertsOnUnmount,
+} from "../components/alerts/AlertBusProvider";
+import { errorMessage } from "../components/alerts/alert-store";
 import { getCollectorService } from "../services/collector-client";
 import { TelegramBrandIcon } from "../components/TelegramBrandIcon";
 import { Input } from "../components/ui/input";
@@ -46,8 +51,13 @@ function flattenFolders(
   return out;
 }
 
+const TELEGRAM_ERROR_ID = "telegram-error";
+const TELEGRAM_WARN_ID = "telegram-warn";
+
 export function TelegramSettingsSection() {
   const service = getCollectorService();
+  const alerts = useAlerts();
+  useDismissAlertsOnUnmount([TELEGRAM_ERROR_ID, TELEGRAM_WARN_ID]);
   const [loading, setLoading] = useState(true);
   const [enabled, setEnabled] = useState(false);
   const [folderPath, setFolderPath] = useState(INBOX_FOLDER_NAME);
@@ -58,15 +68,35 @@ export function TelegramSettingsSection() {
   const [tokenDraft, setTokenDraft] = useState("");
   const [folders, setFolders] = useState<FolderOption[]>([]);
   const [credReason, setCredReason] = useState<string | null>(null);
-  const [inlineError, setInlineError] = useState<string | null>(null);
-  const [inlineWarn, setInlineWarn] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const credsAvailable = credReason === null && !loading;
 
+  const clearTelegramAlerts = useCallback(() => {
+    alerts.dismiss(TELEGRAM_ERROR_ID);
+    alerts.dismiss(TELEGRAM_WARN_ID);
+  }, [alerts]);
+
+  const showTelegramError = useCallback(
+    (message: string) => {
+      alerts.upsert(TELEGRAM_ERROR_ID, { tone: "danger", message });
+    },
+    [alerts],
+  );
+
+  const showTelegramWarn = useCallback(
+    (message: string | null) => {
+      if (message) {
+        alerts.upsert(TELEGRAM_WARN_ID, { tone: "warning", message });
+      } else {
+        alerts.dismiss(TELEGRAM_WARN_ID);
+      }
+    },
+    [alerts],
+  );
+
   const reload = useCallback(async () => {
-    setInlineError(null);
-    setInlineWarn(null);
+    clearTelegramAlerts();
     const availability =
       await service.credentials.getCredentialsAvailability();
     if (!availability.available) {
@@ -95,7 +125,7 @@ export function TelegramSettingsSection() {
       )
         ? (settings as { last_pull_warnings: string[] }).last_pull_warnings
         : [];
-    setInlineWarn(warnings.length > 0 ? warnings.join("\n") : null);
+    showTelegramWarn(warnings.length > 0 ? warnings.join("\n") : null);
     setFolders(flattenFolders(tree));
 
     if (availability.available) {
@@ -108,14 +138,14 @@ export function TelegramSettingsSection() {
       setHasToken(false);
     }
     setLoading(false);
-  }, [service]);
+  }, [clearTelegramAlerts, service, showTelegramWarn]);
 
   useEffect(() => {
     void reload().catch((err: unknown) => {
-      setInlineError(err instanceof Error ? err.message : String(err));
+      showTelegramError(errorMessage(err));
       setLoading(false);
     });
-  }, [reload]);
+  }, [reload, showTelegramError]);
 
   const lastSyncLabel = useMemo(() => {
     if (!lastSyncAt) {
@@ -133,8 +163,7 @@ export function TelegramSettingsSection() {
 
   const saveToken = async () => {
     setBusy(true);
-    setInlineError(null);
-    setInlineWarn(null);
+    clearTelegramAlerts();
     try {
       const identity = await service.telegramSync.validateTelegramBotToken({
         token: tokenDraft.trim(),
@@ -153,7 +182,7 @@ export function TelegramSettingsSection() {
       setHasToken(true);
       setTokenDraft("");
     } catch (err: unknown) {
-      setInlineError(err instanceof Error ? err.message : String(err));
+      showTelegramError(errorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -164,7 +193,7 @@ export function TelegramSettingsSection() {
       return;
     }
     setBusy(true);
-    setInlineError(null);
+    clearTelegramAlerts();
     try {
       await service.credentials.deleteCredential({
         pluginId: "telegram",
@@ -178,7 +207,7 @@ export function TelegramSettingsSection() {
       setBotUsername(settings.bot_username);
       setEnabled(settings.enabled);
     } catch (err: unknown) {
-      setInlineError(err instanceof Error ? err.message : String(err));
+      showTelegramError(errorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -186,14 +215,14 @@ export function TelegramSettingsSection() {
 
   const toggleEnabled = async (next: boolean) => {
     setBusy(true);
-    setInlineError(null);
+    clearTelegramAlerts();
     try {
       const settings = await service.telegramSync.updateTelegramSyncSettings({
         enabled: next,
       });
       setEnabled(settings.enabled);
     } catch (err: unknown) {
-      setInlineError(err instanceof Error ? err.message : String(err));
+      showTelegramError(errorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -201,14 +230,14 @@ export function TelegramSettingsSection() {
 
   const changeFolder = async (next: string) => {
     setBusy(true);
-    setInlineError(null);
+    clearTelegramAlerts();
     try {
       const settings = await service.telegramSync.updateTelegramSyncSettings({
         folder_path: next,
       });
       setFolderPath(settings.folder_path);
     } catch (err: unknown) {
-      setInlineError(err instanceof Error ? err.message : String(err));
+      showTelegramError(errorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -217,11 +246,11 @@ export function TelegramSettingsSection() {
   const changeIntervalMinutes = async (raw: string) => {
     const minutes = Number(raw);
     if (!Number.isFinite(minutes) || minutes < 1) {
-      setInlineError("Интервал должен быть целым числом минут ≥ 1");
+      showTelegramError("Интервал должен быть целым числом минут ≥ 1");
       return;
     }
     setBusy(true);
-    setInlineError(null);
+    clearTelegramAlerts();
     try {
       const settings = await service.telegramSync.updateTelegramSyncSettings({
         sync_interval_ms: Math.floor(minutes) * 60_000,
@@ -230,7 +259,7 @@ export function TelegramSettingsSection() {
         Math.max(1, Math.round(settings.sync_interval_ms / 60_000)),
       );
     } catch (err: unknown) {
-      setInlineError(err instanceof Error ? err.message : String(err));
+      showTelegramError(errorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -238,8 +267,7 @@ export function TelegramSettingsSection() {
 
   const syncNow = async () => {
     setBusy(true);
-    setInlineError(null);
-    setInlineWarn(null);
+    clearTelegramAlerts();
     try {
       await service.syncPlugins.syncNow("telegram");
       const settings = await service.telegramSync.getTelegramSyncSettings();
@@ -251,9 +279,9 @@ export function TelegramSettingsSection() {
         )
           ? (settings as { last_pull_warnings: string[] }).last_pull_warnings
           : [];
-      setInlineWarn(warnings.length > 0 ? warnings.join("\n") : null);
+      showTelegramWarn(warnings.length > 0 ? warnings.join("\n") : null);
     } catch (err: unknown) {
-      setInlineError(err instanceof Error ? err.message : String(err));
+      showTelegramError(errorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -261,17 +289,6 @@ export function TelegramSettingsSection() {
 
   return (
     <div className="max-w-2xl pb-4 md:pb-8">
-      {inlineError && (
-        <pre className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-400 whitespace-pre-wrap">
-          {inlineError}
-        </pre>
-      )}
-      {inlineWarn && (
-        <pre className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-amber-800 dark:text-amber-200 whitespace-pre-wrap">
-          {inlineWarn}
-        </pre>
-      )}
-
       <section className="rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 divide-y divide-black/10 dark:divide-white/10">
         <div className="p-4 flex items-center gap-3">
           <TelegramBrandIcon className="size-6 text-[#26A5E4]" />

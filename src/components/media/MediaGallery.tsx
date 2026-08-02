@@ -3,6 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MediaWithPath } from "@collector/core";
 import type { ItemFile } from "@collector/shared";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  useAlerts,
+  useDismissAlertsOnUnmount,
+} from "../alerts/AlertBusProvider";
+import { errorMessage } from "../alerts/alert-store";
 import { toDisplayAssetSrc } from "../../utils/asset-src";
 import {
   getCollectorService,
@@ -10,6 +15,8 @@ import {
 } from "../../services/collector-client";
 import { MediaGalleryListRow } from "./MediaGalleryListRow";
 import { MediaGalleryVisualTile } from "./MediaGalleryVisualTile";
+
+const MEDIA_GALLERY_ERROR_ID = "media-gallery-error";
 
 interface MediaGalleryProps {
   itemId: string;
@@ -25,9 +32,10 @@ export function MediaGallery({
   onUpdated,
   onPlayMedia,
 }: MediaGalleryProps) {
+  const alerts = useAlerts();
+  useDismissAlertsOnUnmount([MEDIA_GALLERY_ERROR_ID]);
   const inputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<MediaWithPath[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [coverMediaId, setCoverMediaId] = useState<string | null>(null);
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
@@ -38,13 +46,16 @@ export function MediaGallery({
   const [isDeleting, setIsDeleting] = useState(false);
 
   const loadMedia = useCallback(async () => {
-    setError(null);
+    alerts.dismiss(MEDIA_GALLERY_ERROR_ID);
     try {
       setFiles(await getCollectorService().media.listItemMedia(itemId));
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      alerts.upsert(MEDIA_GALLERY_ERROR_ID, {
+        tone: "danger",
+        message: errorMessage(err),
+      });
     }
-  }, [itemId]);
+  }, [alerts, itemId]);
 
   useEffect(() => {
     void loadMedia();
@@ -93,7 +104,7 @@ export function MediaGallery({
     }
 
     setIsUploading(true);
-    setError(null);
+    alerts.dismiss(MEDIA_GALLERY_ERROR_ID);
     try {
       const payload = await Promise.all(
         [...selected].map(async (file) => ({
@@ -105,7 +116,10 @@ export function MediaGallery({
       await loadMedia();
       onUpdated?.();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      alerts.upsert(MEDIA_GALLERY_ERROR_ID, {
+        tone: "danger",
+        message: errorMessage(err),
+      });
     } finally {
       setIsUploading(false);
       event.target.value = "";
@@ -118,7 +132,7 @@ export function MediaGallery({
     }
 
     setIsDeleting(true);
-    setError(null);
+    alerts.dismiss(MEDIA_GALLERY_ERROR_ID);
     try {
       await getCollectorService().media.deleteItemMedia(
         itemId,
@@ -127,7 +141,10 @@ export function MediaGallery({
       await loadMedia();
       onUpdated?.();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      alerts.upsert(MEDIA_GALLERY_ERROR_ID, {
+        tone: "danger",
+        message: errorMessage(err),
+      });
       throw err;
     } finally {
       setIsDeleting(false);
@@ -136,12 +153,15 @@ export function MediaGallery({
 
   const handleSetCover = async (mediaId: string) => {
     setCoverMediaId(mediaId);
-    setError(null);
+    alerts.dismiss(MEDIA_GALLERY_ERROR_ID);
     try {
       await getCollectorService().media.setItemCoverFromMedia(itemId, mediaId);
       onUpdated?.();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      alerts.upsert(MEDIA_GALLERY_ERROR_ID, {
+        tone: "danger",
+        message: errorMessage(err),
+      });
     } finally {
       setCoverMediaId(null);
     }
@@ -194,8 +214,6 @@ export function MediaGallery({
           onChange={handleUpload}
         />
       </div>
-
-      {error && <p className="text-sm text-red-400">{error}</p>}
 
       {files.length === 0 ? (
         <p className="text-neutral-500 dark:text-neutral-400 text-sm">

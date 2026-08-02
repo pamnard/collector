@@ -1,12 +1,18 @@
-import { useCallback, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { useShell } from "../components/layout/AppLayout";
 import { ItemGridView } from "../components/items/ItemGridView";
 import { ItemTableView } from "../components/items/ItemTableView";
-import { Alert } from "../components/alerts/Alert";
-import { AlertStack } from "../components/alerts/AlertStack";
+import {
+  useAlerts,
+  useDismissAlertsOnUnmount,
+} from "../components/alerts/AlertBusProvider";
+import { errorMessage } from "../components/alerts/alert-store";
 import { collectDroppedFiles } from "../lib/drop-entries";
 import { getCollectorService } from "../services/collector-client";
 import { isFolderFilter } from "../types/ui";
+
+const DASHBOARD_IMPORT_ID = "dashboard-import";
+const DASHBOARD_IMPORT_ERROR_ID = "dashboard-import-error";
 
 export function DashboardPage() {
   const {
@@ -15,14 +21,27 @@ export function DashboardPage() {
     dashboardCache: dashboard,
     activeFilter,
   } = useShell();
+  const alerts = useAlerts();
+  useDismissAlertsOnUnmount([DASHBOARD_IMPORT_ID, DASHBOARD_IMPORT_ERROR_ID]);
   const [isDragging, setIsDragging] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  const [importError, setImportError] = useState<string | null>(null);
   const dragDepthRef = useRef(0);
 
   const targetFolderPath = isFolderFilter(activeFilter)
     ? activeFilter.folderPath
     : undefined;
+
+  useEffect(() => {
+    if (isImporting) {
+      alerts.upsert(DASHBOARD_IMPORT_ID, {
+        tone: "info",
+        dismissible: false,
+        message: "Импорт файлов…",
+      });
+    } else {
+      alerts.dismiss(DASHBOARD_IMPORT_ID);
+    }
+  }, [alerts, isImporting]);
 
   const handleDragEnter = useCallback((event: DragEvent) => {
     event.preventDefault();
@@ -62,7 +81,7 @@ export function DashboardPage() {
       }
 
       setIsImporting(true);
-      setImportError(null);
+      alerts.dismiss(DASHBOARD_IMPORT_ERROR_ID);
       try {
         const files = await collectDroppedFiles(event.dataTransfer);
         if (files.length === 0) {
@@ -74,12 +93,15 @@ export function DashboardPage() {
         });
         refreshVault();
       } catch (err: unknown) {
-        setImportError(err instanceof Error ? err.message : String(err));
+        alerts.upsert(DASHBOARD_IMPORT_ERROR_ID, {
+          tone: "danger",
+          message: errorMessage(err),
+        });
       } finally {
         setIsImporting(false);
       }
     },
-    [isImporting, refreshVault, targetFolderPath],
+    [alerts, isImporting, refreshVault, targetFolderPath],
   );
 
   return (
@@ -112,19 +134,6 @@ export function DashboardPage() {
               : "Отпустите, чтобы импортировать"}
           </p>
         </div>
-      )}
-
-      {(importError || isImporting) && (
-        <AlertStack>
-          {isImporting && (
-            <Alert tone="info">Импорт файлов…</Alert>
-          )}
-          {importError && (
-            <Alert tone="danger" onDismiss={() => setImportError(null)}>
-              {importError}
-            </Alert>
-          )}
-        </AlertStack>
       )}
     </div>
   );

@@ -48,6 +48,12 @@ run(
 );
 
 run(
+  "alerts channel guard (#442)",
+  "node",
+  ["--test", join(root, "scripts/assert-alerts-channel.test.mjs")],
+);
+
+run(
   "assert no leaked test-run processes",
   "node",
   [join(root, "scripts/assert-no-test-orphans.mjs")],
