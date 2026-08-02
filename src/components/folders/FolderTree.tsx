@@ -1,10 +1,17 @@
 import { ChevronDown, ChevronRight, Folder, FolderPlus } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FolderTreeNode } from "@collector/core";
+import {
+  useAlerts,
+  useDismissAlertsOnUnmount,
+} from "../alerts/AlertBusProvider";
+import { errorMessage } from "../alerts/alert-store";
 import { useFolderTree } from "../../hooks/useFolderTree";
 import type { NavFilter } from "../../types/ui";
 import { navFilterKey } from "../../types/ui";
 import { getCollectorService } from "../../services/collector-client";
+
+const FOLDER_TREE_ERROR_ID = "folder-tree-error";
 
 interface FolderTreeProps {
   activeFilter: NavFilter;
@@ -87,10 +94,11 @@ export function FolderTree({
   isSettings,
   onNavigate,
 }: FolderTreeProps) {
+  const alerts = useAlerts();
+  useDismissAlertsOnUnmount([FOLDER_TREE_ERROR_ID]);
   const indexTree = useFolderTree(vaultRevision);
   const [tree, setTree] = useState<FolderTreeNode[]>([]);
   const [newFolder, setNewFolder] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const activeKey = navFilterKey(activeFilter);
 
   useEffect(() => {
@@ -108,13 +116,16 @@ export function FolderTree({
       return;
     }
 
-    setError(null);
+    alerts.dismiss(FOLDER_TREE_ERROR_ID);
     try {
       await getCollectorService().folders.createFolder(path);
       setNewFolder("");
       setTree(await getCollectorService().folders.listFolderTree());
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      alerts.upsert(FOLDER_TREE_ERROR_ID, {
+        tone: "danger",
+        message: errorMessage(err),
+      });
     }
   };
 
@@ -138,7 +149,6 @@ export function FolderTree({
           <FolderPlus size={16} />
         </button>
       </div>
-      {error && <p className="text-sm text-red-400">{error}</p>}
       {tree.map((node) => (
         <FolderTreeNodeView
           key={node.path}

@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getName } from "@tauri-apps/api/app";
 import type { VaultMeta } from "@collector/shared";
+import {
+  useAlerts,
+  useDismissAlertsOnUnmount,
+} from "../components/alerts/AlertBusProvider";
+import { errorMessage } from "../services/runtime-error";
 import { useShell } from "../components/layout/AppLayout";
 import {
   Select,
@@ -11,11 +16,11 @@ import {
 } from "../components/ui/select";
 import { getCollectorService } from "../services/collector-client";
 
-interface SettingsGeneralSectionProps {
-  onError: (message: string | null) => void;
-}
+const SETTINGS_GENERAL_ERROR_ID = "settings-general-error";
 
-export function SettingsGeneralSection({ onError }: SettingsGeneralSectionProps) {
+export function SettingsGeneralSection() {
+  const alerts = useAlerts();
+  useDismissAlertsOnUnmount([SETTINGS_GENERAL_ERROR_ID]);
   const { refreshVault } = useShell();
   const [dataDir, setDataDir] = useState<string | null>(null);
   const [configDir, setConfigDir] = useState<string | null>(null);
@@ -42,13 +47,16 @@ export function SettingsGeneralSection({ onError }: SettingsGeneralSectionProps)
 
   useEffect(() => {
     loadSettings().catch((err: unknown) => {
-      onError(err instanceof Error ? err.message : String(err));
+      alerts.upsert(SETTINGS_GENERAL_ERROR_ID, {
+        tone: "danger",
+        message: errorMessage(err),
+      });
     });
-  }, [loadSettings, onError]);
+  }, [alerts, loadSettings]);
 
   const handleVaultChange = async (vaultId: string) => {
     setIsSavingVault(true);
-    onError(null);
+    alerts.dismiss(SETTINGS_GENERAL_ERROR_ID);
 
     try {
       await getCollectorService().vaults.switchVault(vaultId);
@@ -57,7 +65,10 @@ export function SettingsGeneralSection({ onError }: SettingsGeneralSectionProps)
       refreshVault();
       setActiveVaultId(vaultId);
     } catch (err: unknown) {
-      onError(err instanceof Error ? err.message : String(err));
+      alerts.upsert(SETTINGS_GENERAL_ERROR_ID, {
+        tone: "danger",
+        message: errorMessage(err),
+      });
     } finally {
       setIsSavingVault(false);
     }

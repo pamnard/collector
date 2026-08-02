@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useState,
 } from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -30,8 +31,8 @@ import {
 import { formatIndexingBannerLabel } from "@collector/core";
 import type { NavFilter, ViewMode } from "../../types/ui";
 import { parseSettingsSection } from "../../types/sidebar-mode";
-import { Alert } from "../alerts/Alert";
-import { AlertStack } from "../alerts/AlertStack";
+import { AlertBusProvider, useAlerts } from "../alerts/AlertBusProvider";
+import { AlertHost } from "../alerts/AlertHost";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -40,7 +41,7 @@ import {
 import { TooltipProvider } from "../ui/tooltip";
 import { SmokeUiReadyBeacon } from "../startup/SmokeUiReadyBeacon";
 import { Header } from "./Header";
-import { IndexingStatusAlert } from "./IndexingStatusAlert";
+import { IndexingStatusMessage } from "../alerts/IndexingStatusMessage";
 import { MainScrollArea } from "./MainScrollArea";
 import {
   ItemChromeAdjacentFooter,
@@ -70,6 +71,14 @@ export function useShell(): ShellContextValue {
 }
 
 export function AppLayout() {
+  return (
+    <AlertBusProvider>
+      <AppLayoutInner />
+    </AlertBusProvider>
+  );
+}
+
+function AppLayoutInner() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
@@ -142,11 +151,66 @@ export function AppLayout() {
     dashboardError !== null && dashboardError !== dismissedError;
   const showDashboardLoading = dashboardCache.isLoading;
   const showUpdateAlert = startupUpdateVersion !== null;
-  const showAlertStack =
-    isMetadataIndexing ||
-    showErrorAlert ||
-    showDashboardLoading ||
-    showUpdateAlert;
+  const alerts = useAlerts();
+
+  useEffect(() => {
+    if (showDashboardLoading) {
+      alerts.upsert("layout-dashboard-loading", {
+        tone: "warning",
+        dismissible: false,
+        message: <IndexingStatusMessage label="Загрузка…" />,
+      });
+    } else {
+      alerts.dismiss("layout-dashboard-loading");
+    }
+  }, [alerts, showDashboardLoading]);
+
+  useEffect(() => {
+    if (isMetadataIndexing) {
+      alerts.upsert("layout-indexing", {
+        tone: "warning",
+        dismissible: false,
+        message: <IndexingStatusMessage label={indexingLabel} />,
+      });
+    } else {
+      alerts.dismiss("layout-indexing");
+    }
+  }, [alerts, indexingLabel, isMetadataIndexing]);
+
+  useEffect(() => {
+    if (showErrorAlert && dashboardError !== null) {
+      alerts.upsert("layout-dashboard-error", {
+        tone: "danger",
+        message: dashboardError,
+        onDismiss: () => setDismissedError(dashboardError),
+      });
+    } else {
+      alerts.dismiss("layout-dashboard-error");
+    }
+  }, [alerts, dashboardError, showErrorAlert]);
+
+  useEffect(() => {
+    if (!showUpdateAlert || startupUpdateVersion === null) {
+      alerts.dismiss("layout-update");
+      return;
+    }
+    alerts.upsert("layout-update", {
+      tone: "info",
+      message: (
+        <div className="flex flex-wrap items-center gap-2">
+          <span>Доступно обновление {startupUpdateVersion}.</span>
+          <button
+            type="button"
+            onClick={() => navigate("/settings")}
+            className="rounded-lg border border-indigo-500/40 px-3 py-1 hover:bg-indigo-500/10 transition-colors"
+          >
+            Настройки
+          </button>
+        </div>
+      ),
+      onDismiss: () => setStartupUpdateVersion(null),
+    });
+  }, [alerts, navigate, showUpdateAlert, startupUpdateVersion]);
 
   const sidebarProps = {
     mode: sidebarMode,
@@ -329,41 +393,7 @@ export function AppLayout() {
           )}
         </TooltipProvider>
 
-        {showAlertStack && (
-          <AlertStack>
-            {showDashboardLoading && (
-              <IndexingStatusAlert label="Загрузка…" />
-            )}
-            {isMetadataIndexing && (
-              <IndexingStatusAlert label={indexingLabel} />
-            )}
-            {showErrorAlert && dashboardError !== null && (
-              <Alert
-                tone="danger"
-                onDismiss={() => setDismissedError(dashboardError)}
-              >
-                {dashboardError}
-              </Alert>
-            )}
-            {showUpdateAlert && startupUpdateVersion !== null && (
-              <Alert
-                tone="info"
-                onDismiss={() => setStartupUpdateVersion(null)}
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <span>Доступно обновление {startupUpdateVersion}.</span>
-                  <button
-                    type="button"
-                    onClick={() => navigate("/settings")}
-                    className="rounded-lg border border-indigo-500/40 px-3 py-1 hover:bg-indigo-500/10 transition-colors"
-                  >
-                    Настройки
-                  </button>
-                </div>
-              </Alert>
-            )}
-          </AlertStack>
-        )}
+        <AlertHost />
 
         {isCreateOpen && (
           <CreateItemDialog

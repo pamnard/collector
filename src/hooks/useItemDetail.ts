@@ -1,6 +1,16 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { ItemFile } from "@collector/shared";
+import {
+  useAlerts,
+  useDismissAlertsOnUnmount,
+} from "../components/alerts/AlertBusProvider";
 import { useShell } from "../components/layout/AppLayout";
 import type { ItemDetailMode } from "../components/layout/item-chrome";
 import {
@@ -9,6 +19,9 @@ import {
 } from "../components/items/item-detail-form";
 import type { ItemFormValues } from "../types/item";
 import { getCollectorService } from "../services/collector-client";
+import { errorMessage } from "../services/runtime-error";
+
+export const ITEM_DETAIL_ERROR_ID = "item-detail-error";
 
 export type UseItemDetailResult = {
   id: string | undefined;
@@ -37,6 +50,8 @@ export function useItemDetail(): UseItemDetailResult {
   const id = params["*"];
   const navigate = useNavigate();
   const { refreshVault } = useShell();
+  const alerts = useAlerts();
+  useDismissAlertsOnUnmount([ITEM_DETAIL_ERROR_ID]);
   const [item, setItem] = useState<ItemFile | null>(null);
   const [content, setContent] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<ItemFormValues | null>(null);
@@ -46,7 +61,22 @@ export function useItemDetail(): UseItemDetailResult {
   const [mode, setMode] = useState<ItemDetailMode>("view");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setErrorState] = useState<string | null>(null);
+
+  const setError = useCallback(
+    (message: string | null) => {
+      setErrorState(message);
+      if (message) {
+        alerts.upsert(ITEM_DETAIL_ERROR_ID, {
+          tone: "danger",
+          message,
+        });
+      } else {
+        alerts.dismiss(ITEM_DETAIL_ERROR_ID);
+      }
+    },
+    [alerts],
+  );
 
   const isFormMode = mode === "form";
   const isSourceMode = mode === "source";
@@ -87,9 +117,9 @@ export function useItemDetail(): UseItemDetailResult {
     setError(null);
 
     reloadItem(id).catch((err: unknown) => {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
     });
-  }, [id]);
+  }, [id, setError]);
 
   const handleSave = async (): Promise<boolean> => {
     if (!id || !formValues) {
@@ -126,7 +156,7 @@ export function useItemDetail(): UseItemDetailResult {
       }
       return true;
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
       return false;
     } finally {
       setIsSaving(false);
@@ -156,7 +186,7 @@ export function useItemDetail(): UseItemDetailResult {
       }
       return true;
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
       return false;
     } finally {
       setIsSaving(false);
@@ -176,7 +206,7 @@ export function useItemDetail(): UseItemDetailResult {
       refreshVault();
       navigate("/");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
       throw err;
     } finally {
       setIsDeleting(false);
@@ -261,7 +291,7 @@ export function useItemDetail(): UseItemDetailResult {
         setSourceBaseline(raw);
         setMode("source");
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(errorMessage(err));
       } finally {
         setIsSaving(false);
       }

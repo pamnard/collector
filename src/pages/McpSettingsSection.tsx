@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { COLLECTOR_MCP_TOOLS } from "@collector/mcp/tools-catalog";
+import { useAlerts } from "../components/alerts/AlertBusProvider";
+import { errorMessage } from "../components/alerts/alert-store";
 import { MarkdownPre } from "../components/content/MarkdownCodeBlock";
 import {
   buildMcpClientConfigJson,
@@ -7,13 +9,23 @@ import {
 } from "../services/mcp-setup";
 import { getCollectorService } from "../services/collector-client";
 
+const MCP_ERROR_ID = "mcp-error";
+
 export function McpSettingsSection() {
+  const alerts = useAlerts();
   const [dataDir, setDataDir] = useState<string | null>(null);
   const [command, setCommand] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    const report = (err: unknown) => {
+      if (!cancelled) {
+        alerts.upsert(MCP_ERROR_ID, {
+          tone: "danger",
+          message: errorMessage(err),
+        });
+      }
+    };
     getCollectorService().boot
       .getDataDirectory()
       .then((directory) => {
@@ -21,37 +33,24 @@ export function McpSettingsSection() {
           setDataDir(directory.trim() ? directory : null);
         }
       })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err));
-        }
-      });
+      .catch(report);
     getMcpStdioCommand()
       .then((mcpCommand) => {
         if (!cancelled) {
           setCommand(mcpCommand);
         }
       })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err));
-        }
-      });
+      .catch(report);
     return () => {
       cancelled = true;
+      alerts.dismiss(MCP_ERROR_ID);
     };
-  }, []);
+  }, [alerts]);
 
   const configJson = buildMcpClientConfigJson({ command, dataDir });
 
   return (
     <div className="max-w-2xl pb-4 md:pb-8">
-      {error && (
-        <pre className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-400 whitespace-pre-wrap">
-          {error}
-        </pre>
-      )}
-
       <section className="rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 divide-y divide-black/10 dark:divide-white/10">
         <div className="p-4 space-y-2">
           <p className="font-medium">Зачем это</p>

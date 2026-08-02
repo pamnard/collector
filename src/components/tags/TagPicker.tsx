@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import type { TagWithCount } from "@collector/core";
+import {
+  useAlerts,
+  useDismissAlertsOnUnmount,
+} from "../alerts/AlertBusProvider";
+import { errorMessage } from "../alerts/alert-store";
 import { getCollectorService } from "../../services/collector-client";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { TagPickerChip } from "./TagPickerChip";
 import { TagRenameDialog } from "./TagRenameDialog";
+
+const TAG_PICKER_ERROR_ID = "tag-picker-error";
 
 interface TagPickerProps {
   selectedTagNames: string[];
@@ -15,9 +22,10 @@ function sameName(a: string, b: string): boolean {
 }
 
 export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
+  const alerts = useAlerts();
+  useDismissAlertsOnUnmount([TAG_PICKER_ERROR_ID]);
   const [tags, setTags] = useState<TagWithCount[]>([]);
   const [newTagName, setNewTagName] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<TagWithCount | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [pendingRename, setPendingRename] = useState<TagWithCount | null>(null);
@@ -29,9 +37,12 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
       .tags.listTags()
       .then(setTags)
       .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : String(err));
+        alerts.upsert(TAG_PICKER_ERROR_ID, {
+          tone: "danger",
+          message: errorMessage(err),
+        });
       });
-  }, []);
+  }, [alerts]);
 
   const displayNames = useMemo(() => {
     const known = tags.map((tag) => tag.name);
@@ -68,7 +79,7 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
     }
 
     setIsDeleting(true);
-    setError(null);
+    alerts.dismiss(TAG_PICKER_ERROR_ID);
     try {
       await getCollectorService().tags.deleteTag(pendingDelete.id);
       setTags((current) =>
@@ -80,7 +91,10 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
         ),
       );
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      alerts.upsert(TAG_PICKER_ERROR_ID, {
+        tone: "danger",
+        message: errorMessage(err),
+      });
       throw err;
     } finally {
       setIsDeleting(false);
@@ -104,7 +118,7 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
     }
 
     setIsRenaming(true);
-    setError(null);
+    alerts.dismiss(TAG_PICKER_ERROR_ID);
     try {
       const updated = await getCollectorService().tags.updateTagRecord(
         pendingRename.id,
@@ -128,7 +142,10 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
       );
       setPendingRename(null);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      alerts.upsert(TAG_PICKER_ERROR_ID, {
+        tone: "danger",
+        message: errorMessage(err),
+      });
     } finally {
       setIsRenaming(false);
     }
@@ -137,8 +154,6 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
   return (
     <div className="space-y-3">
       <p className="text-sm font-medium">Теги</p>
-
-      {error && <p className="text-red-400 text-sm">{error}</p>}
 
       <div className="flex flex-wrap gap-2">
         {displayNames.map((name) => {

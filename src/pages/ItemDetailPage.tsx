@@ -1,7 +1,5 @@
 import { useCallback, useState } from "react";
 import type { MediaWithPath } from "@collector/core";
-import { Alert } from "../components/alerts/Alert";
-import { AlertStack } from "../components/alerts/AlertStack";
 import { ItemDetailAside } from "../components/items/ItemDetailAside";
 import { ItemDetailInlineEditor } from "../components/items/ItemDetailInlineEditor";
 import { ItemDetailSourceEditor } from "../components/items/ItemDetailSourceEditor";
@@ -11,6 +9,7 @@ import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { useItemDetail } from "../hooks/useItemDetail";
 import { useItemDetailChrome } from "../hooks/useItemDetailChrome";
 import { useMediaPlayerOverlay } from "../hooks/useMediaPlayerOverlay";
+import { errorMessage } from "../services/runtime-error";
 import type { PlayableMediaKind } from "../utils/local-media-playback";
 
 export function ItemDetailPage() {
@@ -35,12 +34,7 @@ export function ItemDetailPage() {
     handleItemUpdated,
   } = detail;
 
-  const {
-    deleteConfirmOpen,
-    setDeleteConfirmOpen,
-    idCopyFeedback,
-    dismissIdCopyFeedback,
-  } = useItemDetailChrome({
+  const { deleteConfirmOpen, setDeleteConfirmOpen } = useItemDetailChrome({
     item,
     error,
     mode,
@@ -65,7 +59,7 @@ export function ItemDetailPage() {
     }
     setMediaPlayError(null);
     void openItemMedia(item.id, "video").catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errorMessage(err);
       console.error("[ItemDetailPage] hero video open failed", {
         itemId: item.id,
         message,
@@ -109,25 +103,6 @@ export function ItemDetailPage() {
         busy={isDeleting}
         onConfirm={handleConfirmDelete}
       />
-
-      {idCopyFeedback !== null && (
-        <AlertStack>
-          <Alert
-            tone={idCopyFeedback === "failed" ? "danger" : "info"}
-            onDismiss={dismissIdCopyFeedback}
-          >
-            {idCopyFeedback === "failed"
-              ? "Не удалось скопировать id"
-              : "Id скопирован"}
-          </Alert>
-        </AlertStack>
-      )}
-
-      {error && (
-        <pre className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-400 whitespace-pre-wrap">
-          {error}
-        </pre>
-      )}
 
       {item && (
         <article className="grid grid-cols-1 gap-6 @[1100px]:grid-cols-12 @[1100px]:items-start @[1100px]:gap-8">
