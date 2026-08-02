@@ -49,7 +49,7 @@ describe("createDashboardSnapshotService", () => {
 
   it("loads snapshot and seeds query cache once", async () => {
     const snapshot = {
-      schema_version: 1,
+      schema_version: 2,
       vault_id: "v1",
       nav_filter: "all",
       search: "",
@@ -57,6 +57,7 @@ describe("createDashboardSnapshotService", () => {
       items: [],
       total_count: 1,
       stream_end_offset: 0,
+      cover_paths: {},
       saved_at: "t",
     };
     readDashboardSnapshot.mockResolvedValue(snapshot);
@@ -70,7 +71,7 @@ describe("createDashboardSnapshotService", () => {
 
   it("peekMatchingDashboardSnapshot requires matching vault/filter/search", async () => {
     const snapshot = {
-      schema_version: 1,
+      schema_version: 2,
       vault_id: "v1",
       nav_filter: "all",
       search: "x",
@@ -80,6 +81,7 @@ describe("createDashboardSnapshotService", () => {
       items: [],
       total_count: 0,
       stream_end_offset: 0,
+      cover_paths: {},
       saved_at: "t",
     };
     readDashboardSnapshot.mockResolvedValue(snapshot);

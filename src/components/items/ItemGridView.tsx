@@ -7,6 +7,7 @@ import { ItemGridCard } from "./ItemGridCard";
 import { DashboardGridSkeleton } from "./DashboardListSkeleton";
 import { MASONRY_BREAKPOINTS } from "./masonry-breakpoints";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
+import { coverNeedsResolve } from "../../lib/dashboard-commit";
 import { useShell } from "../layout/AppLayout";
 import type { useDashboardItems } from "../../hooks/useDashboardItems";
 import {
@@ -56,8 +57,12 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
       };
     }
 
-    const missing = dashboard.items.filter(
-      (item) => !dashboard.thumbnailPaths.has(item.id),
+    const missing = dashboard.items.filter((item) =>
+      coverNeedsResolve(
+        item,
+        dashboard.thumbnailPaths,
+        dashboard.thumbnailStamps,
+      ),
     );
     if (missing.length === 0) {
       return () => {
@@ -81,7 +86,12 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [thumbnailBatchKey, dashboard.items, dashboard.thumbnailPaths]);
+  }, [
+    thumbnailBatchKey,
+    dashboard.items,
+    dashboard.thumbnailPaths,
+    dashboard.thumbnailStamps,
+  ]);
 
   const tagsById = useMemo(
     () => new Map(tags.map((tag) => [tag.id, tag])),
@@ -92,12 +102,18 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
     return <DashboardGridSkeleton />;
   }
 
-  const resolveThumbnailPath = (itemId: string): string | null | undefined => {
-    if (dashboard.thumbnailPaths.has(itemId)) {
-      return dashboard.thumbnailPaths.get(itemId) ?? null;
+  const resolveThumbnailPath = (item: ItemFile): string | null | undefined => {
+    if (
+      !coverNeedsResolve(
+        item,
+        dashboard.thumbnailPaths,
+        dashboard.thumbnailStamps,
+      )
+    ) {
+      return dashboard.thumbnailPaths.get(item.id) ?? null;
     }
-    if (thumbnailPaths.has(itemId)) {
-      return thumbnailPaths.get(itemId) ?? null;
+    if (thumbnailPaths.has(item.id)) {
+      return thumbnailPaths.get(item.id) ?? null;
     }
     return undefined;
   };
@@ -113,7 +129,7 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
           <div key={item.id}>
             <ItemGridCard
               item={item}
-              thumbnailPath={resolveThumbnailPath(item.id)}
+              thumbnailPath={resolveThumbnailPath(item)}
               tagsById={tagsById}
               onOpen={(itemId) => navigate(`/item/${itemId}`)}
             />

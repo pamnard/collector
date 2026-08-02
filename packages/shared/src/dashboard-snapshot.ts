@@ -2,8 +2,13 @@ import { z } from "zod";
 import { navFilterSettingSchema } from "./folders.js";
 import { itemFileSchema } from "./schemas.js";
 
-export const DASHBOARD_SNAPSHOT_VERSION = 1;
+export const DASHBOARD_SNAPSHOT_VERSION = 2;
 export const DASHBOARD_SNAPSHOT_FILE = "dashboard-snapshot.json";
+
+export const dashboardCoverPathEntrySchema = z.object({
+  path: z.string().nullable(),
+  stamp: z.string(),
+});
 
 export const dashboardSnapshotSchema = z.object({
   schema_version: z.number().int().default(DASHBOARD_SNAPSHOT_VERSION),
@@ -16,9 +21,15 @@ export const dashboardSnapshotSchema = z.object({
   items: z.array(itemFileSchema),
   total_count: z.number().int().nonnegative(),
   stream_end_offset: z.number().int().nonnegative(),
+  cover_paths: z
+    .record(z.string(), dashboardCoverPathEntrySchema)
+    .default({}),
   saved_at: z.string().datetime(),
 });
 
+export type DashboardCoverPathEntry = z.infer<
+  typeof dashboardCoverPathEntrySchema
+>;
 export type DashboardSnapshot = z.infer<typeof dashboardSnapshotSchema>;
 
 export function navFilterSettingKey(

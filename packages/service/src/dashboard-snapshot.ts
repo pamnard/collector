@@ -5,6 +5,7 @@
 
 import type { NavFilter } from "@collector/api";
 import {
+  DASHBOARD_SNAPSHOT_VERSION,
   dashboardSnapshotMatchesQuery,
   dashboardSnapshotSchema,
   type DashboardSnapshot,
@@ -45,6 +46,7 @@ export interface DashboardSnapshotService {
     items: DashboardSnapshot["items"];
     totalCount: number;
     streamEndOffset: number;
+    coverPaths?: DashboardSnapshot["cover_paths"];
   }): DashboardSnapshot;
 }
 
@@ -134,7 +136,7 @@ export function createDashboardSnapshotService(
 
     buildDashboardSnapshot(input) {
       return dashboardSnapshotSchema.parse({
-        schema_version: 1,
+        schema_version: DASHBOARD_SNAPSHOT_VERSION,
         vault_id: input.vaultId,
         nav_filter: navFilterToSetting(input.filter),
         search: input.search,
@@ -144,6 +146,7 @@ export function createDashboardSnapshotService(
         items: input.items,
         total_count: input.totalCount,
         stream_end_offset: input.streamEndOffset,
+        cover_paths: input.coverPaths ?? {},
         saved_at: new Date().toISOString(),
       });
     },

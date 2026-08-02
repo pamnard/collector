@@ -1,8 +1,29 @@
-import type { DashboardSnapshot, ItemFile } from "@collector/shared";
+import type {
+  DashboardCoverPathEntry,
+  DashboardSnapshot,
+  ItemFile,
+} from "@collector/shared";
 import type { DashboardQueryCacheEntry } from "../services/dashboard-query-cache";
 
 export function orderedIds(items: ItemFile[]): string[] {
   return items.map((item) => item.id);
+}
+
+export function itemCoverStamp(
+  item: Pick<ItemFile, "thumbnail" | "updated_at">,
+): string {
+  return `${item.thumbnail ?? ""}:${item.updated_at}`;
+}
+
+export function coverNeedsResolve(
+  item: ItemFile,
+  paths: Map<string, string | null>,
+  stamps: Map<string, string>,
+): boolean {
+  if (!paths.has(item.id)) {
+    return true;
+  }
+  return stamps.get(item.id) !== itemCoverStamp(item);
 }
 
 export function thumbnailPathsEqual(
@@ -66,15 +87,67 @@ export function mergeCommittedThumbnailPaths(
   return mergedPaths;
 }
 
+export function mergeCommittedThumbnailStamps(
+  prev: Map<string, string>,
+  nextStamps: Map<string, string>,
+  orderedItemIds: string[],
+): Map<string, string> {
+  const merged = new Map(prev);
+  for (const id of orderedItemIds) {
+    if (nextStamps.has(id)) {
+      merged.set(id, nextStamps.get(id)!);
+    }
+  }
+  const orderedSet = new Set(orderedItemIds);
+  for (const id of [...merged.keys()]) {
+    if (!orderedSet.has(id)) {
+      merged.delete(id);
+    }
+  }
+  return merged;
+}
+
+export function coverPathsFromMaps(
+  paths: Map<string, string | null>,
+  stamps: Map<string, string>,
+): Record<string, DashboardCoverPathEntry> {
+  const out: Record<string, DashboardCoverPathEntry> = {};
+  for (const [id, path] of paths) {
+    const stamp = stamps.get(id);
+    if (stamp === undefined) {
+      continue;
+    }
+    out[id] = { path, stamp };
+  }
+  return out;
+}
+
+export function mapsFromCoverPaths(coverPaths: DashboardSnapshot["cover_paths"]): {
+  thumbnailPaths: Map<string, string | null>;
+  thumbnailStamps: Map<string, string>;
+} {
+  const thumbnailPaths = new Map<string, string | null>();
+  const thumbnailStamps = new Map<string, string>();
+  for (const [id, entry] of Object.entries(coverPaths ?? {})) {
+    thumbnailPaths.set(id, entry.path);
+    thumbnailStamps.set(id, entry.stamp);
+  }
+  return { thumbnailPaths, thumbnailStamps };
+}
+
 export function snapshotToCacheEntry(
   snap: DashboardSnapshot,
 ): DashboardQueryCacheEntry {
+  const { thumbnailPaths, thumbnailStamps } = mapsFromCoverPaths(
+    snap.cover_paths,
+  );
   return {
     itemIds: [...snap.item_ids],
     itemsById: new Map(snap.items.map((item) => [item.id, item])),
     streamEndOffset: snap.stream_end_offset,
     totalCount: snap.total_count,
-    thumbnailPaths: new Map(),
+    thumbnailPaths,
+    thumbnailStamps,
     updatedAt: Date.now(),
   };
 }
