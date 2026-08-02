@@ -3,20 +3,19 @@ import {
   buildCanonicalFrontmatter,
   contentTypeFromFrontmatter,
   isItemIdSortKey,
-  itemMediaManifestPath,
-  mediaFilePath,
   parseDocumentMarkdown,
   parseKnownFrontmatter,
   resolveItemThumbnailAbsolutePath,
   serializeDocumentMarkdown,
 } from "@collector/core";
-import { mediaManifestSchema, type ItemFile, type VaultMeta } from "@collector/shared";
+import type { ItemFile, VaultMeta } from "@collector/shared";
 import type { DashboardItemSort } from "@collector/api";
 import type { NavFilter } from "../types/ui";
 import { isFolderFilter, isTagFilter } from "../types/ui";
 import type { UpdateItemInput } from "../types/item";
 import {
   DEV_VAULT_FS_PREFIX,
+  DEV_VAULT_ITEM_MEDIA_PATH,
   DEV_VAULT_SNAPSHOT_PATH,
   type DevVaultSnapshot,
 } from "./dev-vault-types";
@@ -327,18 +326,15 @@ export async function listItemMedia(itemId: string): Promise<MediaWithPath[]> {
     return [];
   }
 
-  const raw = await fetchDevVaultText(
-    devVaultFsUrl(itemMediaManifestPath("", itemId)),
-  );
-  if (!raw) {
+  const url = `${DEV_VAULT_ITEM_MEDIA_PATH}?itemId=${encodeURIComponent(itemId)}`;
+  const response = await fetch(url);
+  if (response.status === 404) {
     return [];
   }
-
-  const manifest = mediaManifestSchema.parse(JSON.parse(raw));
-  return manifest.files.map((file) => ({
-    ...file,
-    absolute_path: devVaultFsUrl(mediaFilePath("", itemId, file.id, file.filename)),
-  }));
+  if (!response.ok) {
+    throw new Error(`Dev vault item media failed (${response.status}): ${url}`);
+  }
+  return (await response.json()) as MediaWithPath[];
 }
 
 export async function resolveItemThumbnailPath(

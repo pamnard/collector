@@ -11,12 +11,12 @@ import {
 import {
   dirname,
   itemCoverPath,
-  itemCoverRelativePath,
   itemMediaRoot,
   joinSegments,
   normalizeRelativePath,
 } from "./paths.js";
 
+/** Resolve a thumbnail string to an absolute path (legacy helper; preview uses cover on disk). */
 export function resolveItemThumbnailAbsolutePath(
   vaultPath: string,
   itemId: string,
@@ -54,10 +54,15 @@ export async function applyItemCover(
   await ctx.fs.mkdir(itemMediaRoot(vaultPath, itemId));
   await ctx.fs.writeBinary(coverPath, coverData);
 
+  // Cover SoT is the file on disk (#276); do not store vault image paths in FM.
   const item = await readItemFile(ctx.fs, vaultPath, itemId, vaultId);
+  if (!item.thumbnail) {
+    return item;
+  }
+
   const updated: ItemFile = {
     ...item,
-    thumbnail: itemCoverRelativePath(itemId),
+    thumbnail: null,
     updated_at: nowIso(),
   };
   await writeItemFile(ctx.fs, vaultPath, updated);
@@ -85,6 +90,7 @@ export async function clearItemCover(
     return item;
   }
 
+  // Drop leftover FM image paths from pre-#279 sidecars.
   const updated: ItemFile = {
     ...item,
     thumbnail: null,

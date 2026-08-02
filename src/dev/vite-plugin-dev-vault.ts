@@ -5,12 +5,13 @@ import type { Plugin } from "vite";
 import type { ItemFile } from "@collector/shared";
 import {
   buildFolderTreeFromSources,
-  dirname,
   ensureInboxLayout,
   remediateVaultLayout,
   joinSegments,
   listFolderRelativePaths,
   listItemRelativePaths,
+  itemCoverPath,
+  itemCoverRelativePath,
   listMediaFiles,
   mediaFilePath,
   readItemFile,
@@ -22,6 +23,7 @@ import { NodeFileSystemAdapter } from "../../packages/core/src/adapters/node-fs"
 import { readTagsFile } from "../../packages/core/src/vault/tag-io";
 import {
   DEV_VAULT_FS_PREFIX,
+  DEV_VAULT_ITEM_MEDIA_PATH,
   DEV_VAULT_SNAPSHOT_PATH,
   type DevVaultSnapshot,
 } from "./dev-vault-types";
@@ -29,6 +31,7 @@ import { sendFileWithByteRange } from "./http-byte-range";
 
 export {
   DEV_VAULT_FS_PREFIX,
+  DEV_VAULT_ITEM_MEDIA_PATH,
   DEV_VAULT_SNAPSHOT_PATH,
   type DevVaultSnapshot,
 } from "./dev-vault-types";
@@ -113,29 +116,15 @@ function vaultFsUrl(...parts: string[]): string {
   return `${DEV_VAULT_FS_PREFIX}/${joinSegments(...parts)}`;
 }
 
-/** Same rules as Tauri `resolve_one_thumbnail`: item.thumbnail file, else first image media. */
+/** Same rules as core/Tauri: cover.webp on disk, else first image; no FM vault paths. */
 async function resolveThumbnailUrl(
   fs: NodeFileSystemAdapter,
   vaultRoot: string,
   item: ItemFile,
 ): Promise<string | null> {
-  if (item.thumbnail) {
-    if (
-      item.thumbnail.startsWith("http://") ||
-      item.thumbnail.startsWith("https://")
-    ) {
-      return item.thumbnail;
-    }
-    if (item.thumbnail.startsWith("/")) {
-      return item.thumbnail;
-    }
-    const folder = dirname(item.id);
-    const relativePath = folder
-      ? joinSegments(folder, item.thumbnail)
-      : item.thumbnail;
-    if (await fs.exists(joinSegments(vaultRoot, relativePath))) {
-      return vaultFsUrl(relativePath);
-    }
+  const coverAbs = itemCoverPath(vaultRoot, item.id);
+  if (await fs.exists(coverAbs)) {
+    return vaultFsUrl(itemCoverRelativePath(item.id));
   }
 
   const mediaFiles = await listMediaFiles(fs, vaultRoot, item.id);
@@ -148,6 +137,14 @@ async function resolveThumbnailUrl(
       continue;
     }
     return vaultFsUrl(mediaFilePath("", item.id, file.id, file.filename));
+  }
+
+  if (
+    item.thumbnail &&
+    (item.thumbnail.startsWith("http://") ||
+      item.thumbnail.startsWith("https://"))
+  ) {
+    return item.thumbnail;
   }
 
   return null;
@@ -248,6 +245,44 @@ async function handleStaticFile(
   sendFileWithByteRange(req, res, filePath, fileStat.size, mime);
 }
 
+async function handleItemMedia(
+  req: IncomingMessage,
+  res: ServerResponse,
+  vaultRoot: string | null,
+): Promise<void> {
+  if (!vaultRoot) {
+    sendText(res, 404, "COLLECTOR_WEB_VAULT is not set");
+    return;
+  }
+
+  const itemId = new URL(req.url ?? "/", "http://dev.local").searchParams.get(
+    "itemId",
+  );
+  if (!itemId) {
+    sendText(res, 400, "itemId query parameter is required");
+    return;
+  }
+
+  try {
+    const fs = new NodeFileSystemAdapter();
+    const files = await listMediaFiles(fs, vaultRoot, itemId);
+    sendJson(
+      res,
+      200,
+      files.map((file) => ({
+        ...file,
+        absolute_path: vaultFsUrl(
+          mediaFilePath("", itemId, file.id, file.filename),
+        ),
+      })),
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[dev-vault] item media failed: ${message}`);
+    sendText(res, 500, message);
+  }
+}
+
 function requestPath(req: IncomingMessage): string {
   const url = req.url ?? "/";
   const q = url.indexOf("?");
@@ -281,6 +316,11 @@ export function collectorDevVaultPlugin(): Plugin {
 
         if (path === DEV_VAULT_SNAPSHOT_PATH) {
           void handleSnapshot(res, vaultRoot);
+          return;
+        }
+
+        if (path === DEV_VAULT_ITEM_MEDIA_PATH) {
+          void handleItemMedia(req, res, vaultRoot);
           return;
         }
 
