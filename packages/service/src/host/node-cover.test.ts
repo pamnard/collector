@@ -2,11 +2,13 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import sharp from "sharp";
 import {
   generateCoverFromMedia,
   resolveFfmpegBinary,
+  resolveServiceHostDir,
   seekTargetSeconds,
 } from "./node-cover.js";
 
@@ -61,6 +63,36 @@ describe("seekTargetSeconds", () => {
     expect(seekTargetSeconds(0)).toBe(0);
     expect(seekTargetSeconds(0.4)).toBe(0.2);
     expect(seekTargetSeconds(10)).toBe(0.5);
+  });
+});
+
+describe("resolveServiceHostDir (#441)", () => {
+  it("uses import.meta.url when present", () => {
+    const filePath = "/opt/collector-service-host/cli.js";
+    expect(
+      resolveServiceHostDir({
+        metaUrl: pathToFileURL(filePath).href,
+        argv1: "/ignored/cli.js",
+        execPath: "/ignored/node",
+      }),
+    ).toBe("/opt/collector-service-host");
+  });
+
+  it("falls back to dirname(argv1) when metaUrl is missing", () => {
+    expect(
+      resolveServiceHostDir({
+        argv1: "/opt/collector-service-host/cli.js",
+        execPath: "/ignored/node",
+      }),
+    ).toBe("/opt/collector-service-host");
+  });
+
+  it("falls back to dirname(execPath) when metaUrl and argv1 are missing", () => {
+    expect(
+      resolveServiceHostDir({
+        execPath: "/opt/collector-service-host/node",
+      }),
+    ).toBe("/opt/collector-service-host");
   });
 });
 
