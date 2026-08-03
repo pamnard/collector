@@ -54,6 +54,12 @@ run(
 );
 
 run(
+  "vault walk policy check (#390)",
+  "npm",
+  ["run", "check:vault-walk-policy"],
+);
+
+run(
   "assert no leaked test-run processes",
   "node",
   [join(root, "scripts/assert-no-test-orphans.mjs")],

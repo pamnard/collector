@@ -354,7 +354,11 @@ describe("CollectorIpcServiceClient", () => {
 
         const covered = await client.media.setItemCoverFromMedia(item.id, mediaId);
         expect(covered.id).toBe(item.id);
-        expect(covered.thumbnail).toBeTruthy();
+        // Cover SoT is cover.webp on disk (#276/#279); FM thumbnail stays null.
+        expect(covered.thumbnail ?? null).toBeNull();
+        const coverPath = await client.media.resolveItemThumbnailPath(covered);
+        expect(typeof coverPath).toBe("string");
+        expect(coverPath!.length).toBeGreaterThan(0);
       } finally {
         await client.close();
       }

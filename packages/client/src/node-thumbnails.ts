@@ -4,9 +4,14 @@ import type {
   ActiveVaultResult,
   UiSessionThumbnailPaths,
 } from "@collector/api";
+import { itemCoverPath } from "@collector/core";
 import type { ItemFile } from "@collector/shared";
 import type { ServiceIpcClient } from "@collector/service/ipc";
 
+/**
+ * Legacy FM thumbnail path helper. Cover SoT is on-disk `media/<uuid>/cover.webp`
+ * (#276/#279) — see {@link createNodeThumbnailPaths}.
+ */
 export function resolveThumbnailCandidate(
   vaultPath: string,
   itemId: string,
@@ -17,6 +22,9 @@ export function resolveThumbnailCandidate(
   }
   if (thumbnail.startsWith("/") || /^[A-Za-z]:/.test(thumbnail)) {
     return existsSync(thumbnail) ? thumbnail : null;
+  }
+  if (thumbnail.startsWith("http://") || thumbnail.startsWith("https://")) {
+    return thumbnail;
   }
   const folder = dirname(itemId);
   const candidate =
@@ -40,6 +48,11 @@ export function createNodeThumbnailPaths(
     )) as ActiveVaultResult;
     const resolved = new Map<string, string | null>();
     for (const item of items) {
+      const cover = itemCoverPath(active.path, item.id);
+      if (existsSync(cover)) {
+        resolved.set(item.id, cover);
+        continue;
+      }
       resolved.set(
         item.id,
         resolveThumbnailCandidate(
