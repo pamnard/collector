@@ -66,12 +66,18 @@ export const VAULT_FILES = {
   legacyFolders: "folders.json",
 } as const;
 
-/** Filenames / top-level names that are never markdown items or collections. */
-export const RESERVED_VAULT_ENTRIES = new Set<string>([
+/**
+ * Ordered reserved entry names (vault walk / layout policy SoT for #390).
+ * Generator + twin fixtures read this array; the Set below is for O(1) lookups.
+ */
+export const RESERVED_VAULT_ENTRY_NAMES = [
   VAULT_FILES.meta,
   VAULT_FILES.tags,
   VAULT_FILES.legacyFolders,
   LEGACY_VAULT_DIRS.items,
   VAULT_DIRS.media,
   ".collector-touch",
-]);
+] as const;
+
+/** Filenames / top-level names that are never markdown items or collections. */
+export const RESERVED_VAULT_ENTRIES = new Set<string>(RESERVED_VAULT_ENTRY_NAMES);

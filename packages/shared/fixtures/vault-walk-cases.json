@@ -1,0 +1,34 @@
+[
+  {
+    "name": "skips-loose-non-md-and-lists-md",
+    "files": {
+      "Work/note.md": "# note\n",
+      "Work/photo.png": "png",
+      "loose.pdf": "%PDF"
+    },
+    "dirs": ["Work"],
+    "expectedItems": ["Work/note.md"]
+  },
+  {
+    "name": "skips-vault-root-media-dir",
+    "files": {
+      "media/blob.bin": "x",
+      "media/hidden.md": "# no\n",
+      "Work/note.md": "# note\n"
+    },
+    "dirs": ["media", "Work"],
+    "expectedItems": ["Work/note.md"]
+  },
+  {
+    "name": "skips-media-sidecars-and-reserved-meta",
+    "files": {
+      "vault.meta.json": "{}",
+      "tags.json": "[]",
+      "root.md": "# root\n",
+      "Inbox/note.md": "# note\n",
+      "Inbox/note.media/manifest.json": "{}"
+    },
+    "dirs": ["Inbox", "Inbox/note.media", "media", "items"],
+    "expectedItems": ["Inbox/note.md", "root.md"]
+  }
+]

@@ -40,6 +40,7 @@ describe("vault scan (#278)", () => {
       "Work/note.md",
     ]);
     await expect(listFolderRelativePaths(fs, vaultPath)).resolves.toEqual([
+      "Inbox",
       "Work",
     ]);
   });
@@ -56,7 +57,7 @@ describe("vault scan (#278)", () => {
     const folders = await listFolderRelativePaths(fs, vaultPath);
 
     expect(items).toEqual(["Work/note.md"]);
-    expect(folders).toEqual(["Work"]);
+    expect(folders).toEqual(["Inbox", "Work"]);
     expect(folders).not.toContain("media");
     expect(items.every((id) => !id.startsWith("media/"))).toBe(true);
   });
@@ -77,6 +78,7 @@ describe("vault scan (#278)", () => {
       "Work/note.md",
     ]);
     await expect(listFolderRelativePaths(fs, vaultPath)).resolves.toEqual([
+      "Inbox",
       "Work",
     ]);
   });

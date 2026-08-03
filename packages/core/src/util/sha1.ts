@@ -16,7 +16,12 @@ export function sha1Bytes(parts: Uint8Array[]): Uint8Array {
   const bitLenHi = Math.floor(totalLen / 0x20000000);
   const bitLenLo = (totalLen << 3) >>> 0;
 
-  const withPadding = totalLen + 1 + ((55 - totalLen) % 64) + 8;
+  // Pad with 0x80, then zeros until length ≡ 56 (mod 64), then 8-byte bit length.
+  let withPadding = totalLen + 1;
+  while (withPadding % 64 !== 56) {
+    withPadding += 1;
+  }
+  withPadding += 8;
   const msg = new Uint8Array(withPadding);
   let offset = 0;
   for (const part of parts) {

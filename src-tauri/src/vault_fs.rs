@@ -4,23 +4,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-/// Sidecar dir next to `note.md` → `note.media/`. Mirrors
-/// `packages/shared/src/constants.ts` `ITEM_MEDIA_SUFFIX`.
-const ITEM_MEDIA_SUFFIX: &str = ".media";
+/// Generated from `@collector/shared` — do not hand-edit (#390).
+mod vault_walk_policy {
+    include!("generated/vault_walk_policy.rs");
+}
+use vault_walk_policy::{ITEM_MEDIA_SUFFIX, RESERVED_VAULT_ENTRIES};
+
 const MEDIA_MANIFEST_FILE: &str = "manifest.json";
 const SOURCE_REF_FILE: &str = ".source.json";
 const COVER_FILE: &str = "cover.webp";
-
-/// Top-level names that are never markdown items / real folders. Mirrors
-/// `packages/shared/src/constants.ts` `RESERVED_VAULT_ENTRIES`.
-const RESERVED_VAULT_ENTRIES: &[&str] = &[
-    "vault.meta.json",
-    "tags.json",
-    "folders.json",
-    "items",
-    "media",
-    ".collector-touch",
-];
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -74,8 +66,9 @@ fn join_relative(base: &str, name: &str) -> String {
     }
 }
 
-/// Recursively collect vault-relative `.md` item paths, mirroring the
-/// TS `walkVault` traversal in `packages/core/src/vault/scan.ts`.
+/// Recursively collect vault-relative `.md` item paths.
+/// Walk semantics match TS `walkVault` in `packages/core/src/vault/scan.ts`;
+/// reserved / `*.media` constants come from generated `vault_walk_policy` (#390).
 fn walk_items(root: &Path, rel_dir: &str, items: &mut Vec<String>) -> Result<(), String> {
     let abs_dir = if rel_dir.is_empty() {
         root.to_path_buf()
@@ -360,10 +353,20 @@ fn touch_path(path: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{item_media_dir_name, touch_path, walk_items, write_text_exclusive};
+    use serde::Deserialize;
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use std::thread;
     use std::time::Duration;
+
+    #[derive(Deserialize)]
+    struct VaultWalkCase {
+        name: String,
+        files: std::collections::HashMap<String, String>,
+        dirs: Vec<String>,
+        #[serde(rename = "expectedItems")]
+        expected_items: Vec<String>,
+    }
 
     #[test]
     fn write_text_exclusive_creates_once() {
@@ -421,6 +424,40 @@ mod tests {
         assert_eq!(items, vec!["Inbox/note.md".to_string(), "root.md".to_string()]);
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn walk_items_matches_shared_fixtures() {
+        let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../packages/shared/fixtures/vault-walk-cases.json");
+        let raw = fs::read_to_string(&fixture_path).unwrap_or_else(|error| {
+            panic!("read {}: {error}", fixture_path.display())
+        });
+        let cases: Vec<VaultWalkCase> = serde_json::from_str(&raw).unwrap();
+        assert!(!cases.is_empty());
+
+        for walk_case in cases {
+            let dir = tempfile_dir(&format!("walk-fx-{}", walk_case.name));
+            for rel in &walk_case.dirs {
+                fs::create_dir_all(dir.join(rel)).unwrap();
+            }
+            for (rel, content) in &walk_case.files {
+                let path = dir.join(rel);
+                if let Some(parent) = path.parent() {
+                    fs::create_dir_all(parent).unwrap();
+                }
+                fs::write(&path, content).unwrap();
+            }
+
+            let mut items = Vec::new();
+            walk_items(Path::new(&dir), "", &mut items).unwrap();
+            items.sort();
+            let mut expected = walk_case.expected_items.clone();
+            expected.sort();
+            assert_eq!(items, expected, "fixture {}", walk_case.name);
+
+            let _ = fs::remove_dir_all(&dir);
+        }
     }
 
     fn tempfile_dir(label: &str) -> std::path::PathBuf {
