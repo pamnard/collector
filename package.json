@@ -19,6 +19,7 @@
     "test:large-empty-index": "npm run build:packages && node scripts/large-vault-empty-index-smoke.mjs",
     "test:service-host": "npm run build:packages && node scripts/service-host-health-smoke.mjs",
     "test:service-ipc": "npm run build:packages && node scripts/service-ipc-health-smoke.mjs",
+    "test:web-console": "node scripts/web-console-smoke.mjs",
     "prepare:service-sidecar": "bash scripts/prepare-service-sidecar.sh",
     "verify:release": "bash scripts/verify-release.sh",
     "tauri": "tauri",
@@ -70,6 +71,7 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
+    "playwright": "^1.62.1",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"

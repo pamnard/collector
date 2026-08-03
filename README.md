@@ -165,6 +165,8 @@ npm run typecheck
 npm test
 npm run test:startup
 npm run test:large-empty-index
+# Browser console gate on :1420 (uses the stand if up; otherwise starts vite on 1420 and leaves it)
+npm run test:web-console
 ```
 
 ### Release (maintainers)
