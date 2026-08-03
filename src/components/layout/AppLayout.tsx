@@ -3,7 +3,9 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Menu } from "lucide-react";
@@ -25,19 +27,14 @@ import { useAppSettings } from "../../context/AppSettingsContext";
 import { useVaultIndexSyncStatus } from "../../hooks/useVaultIndexSyncStatus";
 import {
   SIDEBAR_RAIL_WIDTH_PX,
-  SIDEBAR_WIDTH_MAX,
-  SIDEBAR_WIDTH_MIN,
+  clampSidebarWidthPx,
 } from "../../lib/sidebar-width";
 import { formatIndexingBannerLabel } from "@collector/core";
 import type { NavFilter, ViewMode } from "../../types/ui";
 import { parseSettingsSection } from "../../types/sidebar-mode";
+import { cn } from "../../lib/utils";
 import { AlertBusProvider, useAlerts } from "../alerts/AlertBusProvider";
 import { AlertHost } from "../alerts/AlertHost";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "../ui/resizable";
 import { TooltipProvider } from "../ui/tooltip";
 import { SmokeUiReadyBeacon } from "../startup/SmokeUiReadyBeacon";
 import { Header } from "./Header";
@@ -80,7 +77,7 @@ export function AppLayout() {
 
 function AppLayoutInner() {
   const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const { pathname, key: locationKey } = useLocation();
   const [searchParams] = useSearchParams();
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const [vaultRevision, setVaultRevision] = useState(0);
@@ -92,14 +89,70 @@ function AppLayoutInner() {
     isSidebarOpen,
     setIsSidebarOpen,
     sidebarWidthPx,
+    setSidebarWidthPx,
     sidebarCollapsed,
-    sidebarPanelRef,
+    sidebarPinned,
     sidebarMode,
     setSidebarMode,
     persistSidebarWidth,
-    handleToggleSidebarCollapse,
+    handleToggleSidebarPin,
     handleExpandSidebar,
-  } = useSidebarShell(pathname);
+    handleCollapseAfterUse,
+    markSidebarModeNavigation,
+  } = useSidebarShell(pathname, locationKey);
+
+  const [isSidebarResizing, setIsSidebarResizing] = useState(false);
+  const sidebarResizeStartRef = useRef<{ x: number; width: number } | null>(
+    null,
+  );
+
+  const handleSidebarResizePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (sidebarCollapsed) {
+        return;
+      }
+      event.preventDefault();
+      sidebarResizeStartRef.current = {
+        x: event.clientX,
+        width: sidebarWidthPx,
+      };
+      setIsSidebarResizing(true);
+      const target = event.currentTarget;
+      target.setPointerCapture(event.pointerId);
+
+      const onMove = (moveEvent: PointerEvent) => {
+        const start = sidebarResizeStartRef.current;
+        if (!start) {
+          return;
+        }
+        setSidebarWidthPx(start.width + (moveEvent.clientX - start.x));
+      };
+
+      const onUp = (upEvent: PointerEvent) => {
+        const start = sidebarResizeStartRef.current;
+        sidebarResizeStartRef.current = null;
+        setIsSidebarResizing(false);
+        target.releasePointerCapture(upEvent.pointerId);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        if (!start) {
+          return;
+        }
+        persistSidebarWidth(
+          clampSidebarWidthPx(start.width + (upEvent.clientX - start.x)),
+        );
+      };
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [
+      persistSidebarWidth,
+      setSidebarWidthPx,
+      sidebarCollapsed,
+      sidebarWidthPx,
+    ],
+  );
 
   const {
     activeFilter,
@@ -254,8 +307,6 @@ function AppLayoutInner() {
               <Header
                 variant={headerVariant}
                 onOpenSidebar={() => setIsSidebarOpen(true)}
-                sidebarCollapsed={sidebarCollapsed}
-                onToggleSidebarCollapse={handleToggleSidebarCollapse}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
                 onAddClick={openCreate}
@@ -311,70 +362,46 @@ function AppLayoutInner() {
               className="h-screen overflow-hidden bg-neutral-200 font-sans text-neutral-900 transition-colors duration-200 dark:bg-neutral-900 dark:text-neutral-100"
             >
               <SmokeUiReadyBeacon />
-              {sidebarCollapsed ? (
-                <div className="flex h-full w-full">
-                  <div
-                    className="h-full shrink-0 overflow-hidden"
-                    style={{ width: SIDEBAR_RAIL_WIDTH_PX }}
-                  >
+              <div className="flex h-full w-full">
+                <div
+                  className={cn(
+                    "h-full shrink-0 overflow-hidden",
+                    !isSidebarResizing &&
+                      "transition-[width] duration-200 ease-linear",
+                  )}
+                  style={{
+                    width: sidebarCollapsed
+                      ? SIDEBAR_RAIL_WIDTH_PX
+                      : sidebarWidthPx,
+                  }}
+                >
+                  <div className="h-full" style={{ width: sidebarWidthPx }}>
                     <Sidebar
                       variant="docked"
                       isOpen
-                      collapsed
+                      collapsed={sidebarCollapsed}
+                      pinned={sidebarPinned}
+                      onTogglePin={handleToggleSidebarPin}
+                      onCollapseAfterUse={handleCollapseAfterUse}
+                      onSidebarModeNavigation={markSidebarModeNavigation}
                       onRequestExpand={handleExpandSidebar}
                       onClose={() => setIsSidebarOpen(false)}
                       {...sidebarProps}
                     />
                   </div>
-                  <div className="min-h-0 min-w-0 flex-1">{mainColumn}</div>
                 </div>
-              ) : (
-                <ResizablePanelGroup
-                  orientation="horizontal"
-                  className="h-full w-full"
-                  onLayoutChanged={(_layout, meta) => {
-                    if (!meta.isUserInteraction) {
-                      return;
-                    }
-                    const panel = sidebarPanelRef.current;
-                    if (!panel) {
-                      return;
-                    }
-                    // Persist only — do not setState(defaultSize). Updating
-                    // defaultSize mid-session re-registers the panel group and
-                    // the first drag after expand gets eaten (library #729).
-                    persistSidebarWidth(panel.getSize().inPixels);
-                  }}
-                >
-                  <ResizablePanel
-                    id="sidebar"
-                    panelRef={sidebarPanelRef}
-                    defaultSize={sidebarWidthPx}
-                    minSize={SIDEBAR_WIDTH_MIN}
-                    maxSize={SIDEBAR_WIDTH_MAX}
-                    groupResizeBehavior="preserve-pixel-size"
-                    className="min-h-0 overflow-hidden"
-                  >
-                    <Sidebar
-                      variant="docked"
-                      isOpen
-                      collapsed={false}
-                      onRequestExpand={handleExpandSidebar}
-                      onClose={() => setIsSidebarOpen(false)}
-                      {...sidebarProps}
-                    />
-                  </ResizablePanel>
-                  <ResizableHandle className="bg-transparent hover:bg-border data-[separator=active]:bg-border focus-visible:ring-0" />
-                  <ResizablePanel
-                    id="main"
-                    minSize="50%"
-                    groupResizeBehavior="preserve-relative-size"
-                    className="min-h-0"
-                  >
-                    {mainColumn}
-                  </ResizablePanel>
-                </ResizablePanelGroup>
-              )}
+                {!sidebarCollapsed ? (
+                  <div
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Изменить ширину сайдбара"
+                    className="relative z-10 w-px shrink-0 cursor-col-resize bg-transparent hover:bg-border data-[separator=active]:bg-border focus-visible:outline-hidden focus-visible:ring-0"
+                    data-separator={isSidebarResizing ? "active" : undefined}
+                    onPointerDown={handleSidebarResizePointerDown}
+                  />
+                ) : null}
+                <div className="min-h-0 min-w-0 flex-1">{mainColumn}</div>
+              </div>
             </div>
           ) : (
             <div

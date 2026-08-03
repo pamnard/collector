@@ -1,38 +1,58 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   SIDEBAR_WIDTH_MIN,
-  readSidebarCollapsed,
+  clampSidebarWidthPx,
+  readSidebarPinned,
   readSidebarWidthPx,
-  writeSidebarCollapsed,
+  writeSidebarPinned,
   writeSidebarWidthPx,
 } from "../lib/sidebar-width";
 import type { SidebarMode } from "../types/sidebar-mode";
-import { usePanelRef } from "../components/ui/resizable";
 
 export type UseSidebarShellResult = {
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
   sidebarWidthPx: number;
+  setSidebarWidthPx: (widthPx: number) => void;
   sidebarCollapsed: boolean;
-  sidebarPanelRef: ReturnType<typeof usePanelRef>;
+  sidebarPinned: boolean;
   sidebarMode: SidebarMode;
   setSidebarMode: (mode: SidebarMode) => void;
   persistSidebarWidth: (inPixels: number) => void;
-  handleToggleSidebarCollapse: () => void;
+  handleToggleSidebarPin: () => void;
   handleExpandSidebar: () => void;
+  handleCollapseAfterUse: () => void;
+  /**
+   * Before a rail-driven mode switch that also navigates (settings ↔ app).
+   * Keeps the panel open so the user can pick an entry; any other navigation collapses.
+   */
+  markSidebarModeNavigation: () => void;
 };
 
-export function useSidebarShell(pathname: string): UseSidebarShellResult {
+export function useSidebarShell(
+  pathname: string,
+  locationKey: string,
+): UseSidebarShellResult {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [sidebarWidthPx, setSidebarWidthPx] = useState(() => readSidebarWidthPx());
-  const sidebarWidthRef = useRef(sidebarWidthPx);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
-    readSidebarCollapsed(),
+  const [sidebarWidthPx, setSidebarWidthPxState] = useState(() =>
+    readSidebarWidthPx(),
   );
-  const sidebarPanelRef = usePanelRef();
+  const sidebarWidthRef = useRef(sidebarWidthPx);
+  const [sidebarPinned, setSidebarPinned] = useState(() => readSidebarPinned());
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => !readSidebarPinned(),
+  );
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(() =>
     pathname === "/settings" ? "settings" : "collections",
   );
+
+  const pinnedRef = useRef(sidebarPinned);
+  const collapsedRef = useRef(sidebarCollapsed);
+  pinnedRef.current = sidebarPinned;
+  collapsedRef.current = sidebarCollapsed;
+
+  const skipNavCollapseRef = useRef(false);
+  const isFirstLocationEffectRef = useRef(true);
 
   useEffect(() => {
     if (pathname === "/settings") {
@@ -40,52 +60,83 @@ export function useSidebarShell(pathname: string): UseSidebarShellResult {
     }
   }, [pathname]);
 
-  const setCollapsed = useCallback((collapsed: boolean) => {
-    setSidebarCollapsed(collapsed);
-    writeSidebarCollapsed(collapsed);
+  const setSidebarWidthPx = useCallback((widthPx: number) => {
+    const next = clampSidebarWidthPx(widthPx);
+    sidebarWidthRef.current = next;
+    setSidebarWidthPxState(next);
   }, []);
 
   const persistSidebarWidth = useCallback((inPixels: number) => {
     if (inPixels < SIDEBAR_WIDTH_MIN) {
       return;
     }
-    sidebarWidthRef.current = inPixels;
-    writeSidebarWidthPx(inPixels);
+    const next = clampSidebarWidthPx(inPixels);
+    sidebarWidthRef.current = next;
+    writeSidebarWidthPx(next);
+    setSidebarWidthPxState(next);
   }, []);
 
-  const handleToggleSidebarCollapse = useCallback(() => {
-    if (sidebarCollapsed) {
-      // Remount uses last persisted width; sync state so defaultSize matches.
-      setSidebarWidthPx(sidebarWidthRef.current);
-      setCollapsed(false);
-      return;
-    }
-    const panel = sidebarPanelRef.current;
-    if (panel) {
-      const { inPixels } = panel.getSize();
-      if (inPixels >= SIDEBAR_WIDTH_MIN) {
-        persistSidebarWidth(inPixels);
-        setSidebarWidthPx(inPixels);
-      }
-    }
-    setCollapsed(true);
-  }, [persistSidebarWidth, setCollapsed, sidebarCollapsed, sidebarPanelRef]);
+  const collapseToRail = useCallback(() => {
+    setSidebarCollapsed(true);
+  }, []);
 
   const handleExpandSidebar = useCallback(() => {
-    setSidebarWidthPx(sidebarWidthRef.current);
-    setCollapsed(false);
-  }, [setCollapsed]);
+    setSidebarWidthPxState(sidebarWidthRef.current);
+    setSidebarCollapsed(false);
+  }, []);
+
+  const handleToggleSidebarPin = useCallback(() => {
+    setSidebarPinned((prev) => {
+      const next = !prev;
+      writeSidebarPinned(next);
+      if (next) {
+        setSidebarWidthPxState(sidebarWidthRef.current);
+        setSidebarCollapsed(false);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleCollapseAfterUse = useCallback(() => {
+    if (sidebarPinned) {
+      return;
+    }
+    collapseToRail();
+  }, [collapseToRail, sidebarPinned]);
+
+  const markSidebarModeNavigation = useCallback(() => {
+    skipNavCollapseRef.current = true;
+  }, []);
+
+  // Unpinned + expanded: every router navigation collapses (any link / adjacent / search hit).
+  useEffect(() => {
+    if (isFirstLocationEffectRef.current) {
+      isFirstLocationEffectRef.current = false;
+      return;
+    }
+    if (skipNavCollapseRef.current) {
+      skipNavCollapseRef.current = false;
+      return;
+    }
+    if (pinnedRef.current || collapsedRef.current) {
+      return;
+    }
+    collapseToRail();
+  }, [locationKey, collapseToRail]);
 
   return {
     isSidebarOpen,
     setIsSidebarOpen,
     sidebarWidthPx,
+    setSidebarWidthPx,
     sidebarCollapsed,
-    sidebarPanelRef,
+    sidebarPinned,
     sidebarMode,
     setSidebarMode,
     persistSidebarWidth,
-    handleToggleSidebarCollapse,
+    handleToggleSidebarPin,
     handleExpandSidebar,
+    handleCollapseAfterUse,
+    markSidebarModeNavigation,
   };
 }

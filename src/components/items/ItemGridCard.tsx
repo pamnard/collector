@@ -96,7 +96,7 @@ export function ItemGridCard({
             <img
               src={coverSrc!}
               alt=""
-              className="h-auto w-full transition-transform duration-500 group-hover:scale-105"
+              className="h-auto w-full"
               loading="eager"
               decoding="async"
             />
