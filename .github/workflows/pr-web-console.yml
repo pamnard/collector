@@ -1,0 +1,27 @@
+name: pr-web-console
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  web-console:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Web console smoke (:1420)
+        run: npm run test:web-console
