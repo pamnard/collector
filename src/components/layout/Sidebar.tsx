@@ -1,4 +1,5 @@
 import { useEffect, useState, type CSSProperties } from "react";
+import { PanelLeft } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import type { TagWithCount } from "@collector/core";
 import type { Theme } from "../../hooks/useTheme";
@@ -6,6 +7,8 @@ import type { NavFilter } from "../../types/ui";
 import type { SidebarMode, SettingsSection } from "../../types/sidebar-mode";
 import { parseSettingsSection } from "../../types/sidebar-mode";
 import { getCollectorService } from "../../services/collector-client";
+import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 import {
   Sidebar as ShadcnSidebar,
   SidebarContent,
@@ -23,6 +26,10 @@ interface AppSidebarProps {
   onClose: () => void;
   collapsed?: boolean;
   onRequestExpand?: () => void;
+  pinned?: boolean;
+  onTogglePin?: () => void;
+  onCollapseAfterUse?: () => void;
+  onSidebarModeNavigation?: () => void;
   mode: SidebarMode;
   onModeChange: (mode: SidebarMode) => void;
   activeFilter: NavFilter;
@@ -54,6 +61,10 @@ export function Sidebar({
   onClose,
   collapsed = false,
   onRequestExpand,
+  pinned = false,
+  onTogglePin,
+  onCollapseAfterUse,
+  onSidebarModeNavigation,
   mode,
   onModeChange,
   activeFilter,
@@ -71,8 +82,14 @@ export function Sidebar({
   const isSettings = pathname === "/settings";
   const settingsSection = parseSettingsSection(searchParams.get("section"));
 
+  const finishSelection = () => {
+    onClose();
+    onCollapseAfterUse?.();
+  };
+
   const handleSettingsSection = (section: SettingsSection) => {
     setSearchParams({ section });
+    finishSelection();
   };
   const [tags, setTags] = useState<TagWithCount[]>([]);
 
@@ -87,7 +104,7 @@ export function Sidebar({
   const goToDashboard = (filter: NavFilter) => {
     onFilterSelect(filter);
     navigate("/");
-    onClose();
+    finishSelection();
   };
 
   const handleModeChange = (next: SidebarMode) => {
@@ -96,15 +113,17 @@ export function Sidebar({
       onRequestExpand?.();
     }
     if (next === "settings") {
+      onSidebarModeNavigation?.();
       navigate("/settings?section=general");
-      onClose();
       return;
     }
     if (pathname === "/settings") {
+      onSidebarModeNavigation?.();
       navigate("/");
     }
-    onClose();
   };
+
+  const pinLabel = pinned ? "Открепить сайдбар" : "Закрепить сайдбар";
 
   const nested = (
     <SidebarProvider
@@ -129,12 +148,34 @@ export function Sidebar({
           onToggleTheme={onToggleTheme}
         />
 
-        {!collapsed ? (
-          <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-neutral-200 dark:bg-neutral-900">
-            <div className="flex h-12 shrink-0 items-center px-4 box-border">
-              <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+        {variant === "docked" || !collapsed ? (
+          <div
+            className="flex min-w-0 flex-1 flex-col overflow-hidden bg-neutral-200 dark:bg-neutral-900"
+            inert={variant === "docked" && collapsed ? true : undefined}
+          >
+            <div className="flex shrink-0 items-center gap-2 px-4 pt-5 pb-3 box-border">
+              <div className="min-w-0 flex-1 text-sm font-medium text-neutral-900 dark:text-neutral-100">
                 {panelTitle(mode)}
               </div>
+              {variant === "docked" && onTogglePin ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    "size-8 shrink-0 border-transparent shadow-none",
+                    pinned
+                      ? "bg-black/10 text-neutral-900 hover:bg-black/10 dark:bg-black/40 dark:text-neutral-100 dark:hover:bg-black/40"
+                      : "bg-transparent text-neutral-500 hover:bg-transparent hover:text-neutral-500 dark:bg-transparent dark:text-neutral-400 dark:hover:bg-transparent dark:hover:text-neutral-400",
+                  )}
+                  aria-label={pinLabel}
+                  title={pinLabel}
+                  aria-pressed={pinned}
+                  onClick={onTogglePin}
+                >
+                  <PanelLeft size={16} />
+                </Button>
+              ) : null}
             </div>
             {mode === "search" ? (
               <SidebarSearchPanel

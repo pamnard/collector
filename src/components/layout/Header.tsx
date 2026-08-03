@@ -1,4 +1,4 @@
-import { LayoutDashboard, Menu, PanelLeft, Plus, Table } from "lucide-react";
+import { LayoutDashboard, Menu, Plus, Table } from "lucide-react";
 import type { SettingsSection } from "../../types/sidebar-mode";
 import type { ViewMode } from "../../types/ui";
 import { cn } from "../../lib/utils";
@@ -13,8 +13,6 @@ import { useItemChromeHeader } from "./item-chrome";
 interface HeaderProps {
   variant: "list" | "item" | "settings";
   onOpenSidebar: () => void;
-  sidebarCollapsed: boolean;
-  onToggleSidebarCollapse: () => void;
   viewMode?: ViewMode;
   onViewModeChange?: (mode: ViewMode) => void;
   onAddClick?: () => void;
@@ -25,8 +23,6 @@ interface HeaderProps {
 export function Header({
   variant,
   onOpenSidebar,
-  sidebarCollapsed,
-  onToggleSidebarCollapse,
   viewMode,
   onViewModeChange,
   onAddClick,
@@ -35,28 +31,10 @@ export function Header({
 }: HeaderProps) {
   const { breadcrumbs: itemHeader, actions: itemActions } =
     useItemChromeHeader();
-  const collapseLabel = sidebarCollapsed
-    ? "Развернуть сайдбар"
-    : "Свернуть сайдбар";
 
   return (
     <header className="relative shrink-0 border-b border-neutral-200 bg-white transition-colors duration-200 dark:border-neutral-700 dark:bg-neutral-800">
       <div className="flex items-center gap-2 px-4 py-3 md:px-8">
-        <Button
-          type="button"
-          variant="secondary"
-          size="icon"
-          className={cn(
-            headerChromeBtn,
-            "hidden size-8 shrink-0 border-transparent md:inline-flex",
-          )}
-          aria-label={collapseLabel}
-          title={collapseLabel}
-          aria-pressed={sidebarCollapsed}
-          onClick={onToggleSidebarCollapse}
-        >
-          <PanelLeft size={16} />
-        </Button>
         <button
           type="button"
           onClick={onOpenSidebar}
