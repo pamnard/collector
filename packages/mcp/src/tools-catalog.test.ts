@@ -65,10 +65,12 @@ describe("COLLECTOR_MCP_TOOLS catalog (#273 / #265)", () => {
     );
     expect(search).toBeDefined();
     expect(search!.description).toMatch(/full-text|FTS/i);
+    expect(search!.description).toMatch(/frontmatter/i);
     expect(search!.description).toMatch(/does not look up by item id/i);
     expect(search!.description).toMatch(/ItemFile/i);
     const query = search!.params.find((param) => param.name === "query");
     expect(query?.description).toMatch(/not an id or path lookup/i);
+    expect(query?.description).toMatch(/frontmatter/i);
   });
 
   it("documents tagId as UUID distinct from itemId (#265)", () => {

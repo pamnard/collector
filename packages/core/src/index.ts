@@ -82,6 +82,7 @@ export {
   buildCanonicalFrontmatter,
   contentTypeFromFrontmatter,
   extractUnknownFrontmatterKeys,
+  ftsFieldsFromDocumentMarkdown,
   parseDocumentMarkdown,
   parseKnownFrontmatter,
   resolveFrontmatterDates,

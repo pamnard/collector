@@ -459,7 +459,8 @@ describe("collector CLI IPC (#172)", () => {
       },
     );
     expect(coverCode).toBe(0);
-    expect(JSON.parse(coverOut.join("\n")).thumbnail).toBeTruthy();
+    // Cover SoT is cover.webp on disk (#276/#279); FM thumbnail stays null.
+    expect(JSON.parse(coverOut.join("\n")).thumbnail ?? null).toBeNull();
 
     const deleteOut: string[] = [];
     const deleteCode = await runCollectorCli(

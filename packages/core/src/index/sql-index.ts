@@ -76,6 +76,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
       title: record.item.title,
       description: record.item.description,
       content: record.content,
+      hasContentFile: record.hasContentFile,
       sourceRef: record.sourceRef,
     });
   }
@@ -140,7 +141,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
       item.updated_at,
     );
 
-    // FTS body is written only by upsertItemContent after the content read.
+    // FTS document is written only by upsertItemContent after the content read.
   }
 
   async upsertItemMetadataBatch(
@@ -271,11 +272,12 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
   }
 
   async upsertItemContent(input: ItemContentUpsert): Promise<void> {
-    const { itemId, title, description, content, sourceRef } = input;
+    const { itemId, title, description, content, hasContentFile, sourceRef } =
+      input;
 
     await this.db.execute(
       "UPDATE items SET has_content_file = ? WHERE id = ?",
-      [content ? 1 : 0, itemId],
+      [hasContentFile ? 1 : 0, itemId],
     );
 
     await this.db.execute("DELETE FROM items_fts WHERE item_id = ?", [itemId]);
@@ -318,7 +320,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
       const itemIds = chunk.map((input) => input.itemId);
       const hasContentBinds: unknown[] = [];
       for (const input of chunk) {
-        hasContentBinds.push(input.itemId, input.content ? 1 : 0);
+        hasContentBinds.push(input.itemId, input.hasContentFile ? 1 : 0);
       }
       await this.db.execute(
         `UPDATE items

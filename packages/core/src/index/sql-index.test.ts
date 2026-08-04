@@ -264,6 +264,7 @@ describe("dashboard item id pagination", () => {
         title,
         description: "",
         content: title,
+        hasContentFile: true,
         sourceRef: null,
       });
     }
@@ -489,6 +490,7 @@ describe("upsertItemMetadata / upsertItemContent", () => {
       title: item.title,
       description: item.description,
       content: "full body text",
+      hasContentFile: true,
       sourceRef: null,
     });
 
@@ -503,6 +505,96 @@ describe("upsertItemMetadata / upsertItemContent", () => {
       [itemId],
     );
     expect(ftsContent[0]?.content).toBe("full body text");
+  });
+
+  it("FTS finds a token present only in frontmatter (#534)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-fts-fm-only-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    const ctx = { fs, index };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const fmToken = "FmOnlySecretToken534";
+    const itemId = `${createId()}.md`;
+    const timestamp = new Date().toISOString();
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Body free title",
+        description: "plain desc",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: { foreign_key: fmToken },
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      content: "body without the secret token",
+    });
+
+    const ftsQuery = buildFtsMatchQuery(fmToken);
+    expect(ftsQuery).not.toBeNull();
+    expect(await index.searchItemIds(meta.id, ftsQuery!, "all")).toEqual([itemId]);
+
+    const ftsRows = await db.select<{ content: string }>(
+      "SELECT content FROM items_fts WHERE item_id = ?",
+      [itemId],
+    );
+    expect(ftsRows[0]?.content).toContain(fmToken);
+    expect(ftsRows[0]?.content).toContain("---");
+  });
+
+  it("does not set has_content_file from frontmatter-only FTS document", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-fts-fm-flag-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    const ctx = { fs, index };
+    const { meta } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemId = createId();
+    const timestamp = new Date().toISOString();
+    const item = {
+      id: itemId,
+      vault_id: meta.id,
+      title: "MetaTitle",
+      description: "MetaDesc",
+      content_type: "note" as const,
+      source_type: "manual" as const,
+      metadata: {},
+      properties: {},
+      tag_ids: [] as string[],
+      collection_ids: [] as string[],
+      folder_path: "",
+      content_revision: 1,
+      created_at: timestamp,
+      updated_at: timestamp,
+    };
+    await index.upsertItemMetadata({ item, fileMtimeMs: 42 }, meta.id);
+    const fmOnlyDoc = [
+      "---",
+      "title: MetaTitle",
+      "unique_fm_token: FmOnlySecretToken534",
+      "---",
+      "",
+    ].join("\n");
+    await index.upsertItemContent({
+      itemId,
+      title: item.title,
+      description: item.description,
+      content: fmOnlyDoc,
+      hasContentFile: false,
+      sourceRef: null,
+    });
+    const afterContent = await db.select<{ has_content_file: number }>(
+      "SELECT has_content_file FROM items WHERE id = ?",
+      [itemId],
+    );
+    expect(afterContent[0]?.has_content_file).toBe(0);
   });
 
   it("writes FTS tokens only after the content phase", async () => {
@@ -548,6 +640,7 @@ describe("upsertItemMetadata / upsertItemContent", () => {
       title: item.title,
       description: item.description,
       content: `note ${contentToken} text`,
+      hasContentFile: true,
       sourceRef: null,
     });
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCanonicalFrontmatter,
   extractUnknownFrontmatterKeys,
+  ftsFieldsFromDocumentMarkdown,
   parseDocumentMarkdown,
   parseKnownFrontmatter,
   resolveFrontmatterDates,
@@ -205,5 +206,27 @@ describe("resolveFrontmatterDates", () => {
     expect(() =>
       resolveFrontmatterDates(parseKnownFrontmatter({ created: "not-a-date" })),
     ).toThrow(/Invalid date/);
+  });
+});
+
+describe("ftsFieldsFromDocumentMarkdown", () => {
+  it("indexes the full raw document and flags empty body", () => {
+    const raw =
+      "---\ntitle: OnlyFm\nforeign_key: FmOnlySecretToken534\n---";
+    const fields = ftsFieldsFromDocumentMarkdown(raw);
+    expect(fields.content).toBe(raw);
+    expect(fields.hasContentFile).toBe(false);
+    expect(fields.content).toContain("FmOnlySecretToken534");
+  });
+
+  it("flags non-empty body as hasContentFile", () => {
+    const raw = `---
+title: WithBody
+---
+# Hello
+`;
+    const fields = ftsFieldsFromDocumentMarkdown(raw);
+    expect(fields.content).toBe(raw);
+    expect(fields.hasContentFile).toBe(true);
   });
 });

@@ -84,7 +84,10 @@ export interface ReconcileFingerprint {
 
 export interface IndexedItem {
   item: ItemFile;
+  /** Full on-disk markdown (frontmatter + body) for FTS (#534). */
   content: string | null;
+  /** Non-empty markdown body present — not derived from FTS content string. */
+  hasContentFile: boolean;
   sourceRef: SourceRef | null;
   fileMtimeMs?: number | null;
 }
@@ -95,12 +98,15 @@ export interface IndexedItemMetadata {
   fileMtimeMs?: number | null;
 }
 
-/** Content + source_ref + FTS body after metadata is already in the index (#71 Phase B). */
+/** Content + source_ref + FTS document after metadata is already in the index (#71 Phase B). */
 export interface ItemContentUpsert {
   itemId: string;
   title: string;
   description: string;
+  /** Full on-disk markdown (frontmatter + body) for FTS (#534). */
   content: string | null;
+  /** Non-empty markdown body present — not derived from FTS content string. */
+  hasContentFile: boolean;
   sourceRef: SourceRef | null;
 }
 

@@ -1,11 +1,10 @@
 import type { ItemFile } from "@collector/shared";
 import type { UpsertItemInput, VaultContext } from "../adapters/types.js";
 import { nowIso } from "../util/ids.js";
-import { parseDocumentMarkdown } from "./frontmatter.js";
+import { ftsFieldsFromDocumentMarkdown } from "./frontmatter.js";
 import {
   itemFileFromDocumentMarkdown,
   loadTagMaps,
-  readItemContent,
   readItemFile,
   readItemSourceRef,
   readVaultMeta,
@@ -52,15 +51,18 @@ export async function upsertItem(
     await writeItemSourceRef(ctx.fs, vaultPath, item.id, input.sourceRef);
   }
 
-  const content = input.content ?? (await readItemContent(ctx.fs, vaultPath, item.id));
+  const docPath = itemMarkdownPath(vaultPath, item.id);
+  const documentMarkdown = await ctx.fs.readText(docPath);
+  const fts = ftsFieldsFromDocumentMarkdown(documentMarkdown);
   const sourceRef =
     input.sourceRef ?? (await readItemSourceRef(ctx.fs, vaultPath, item.id));
-  const fileStat = await ctx.fs.stat(itemMarkdownPath(vaultPath, item.id));
+  const fileStat = await ctx.fs.stat(docPath);
 
   await ctx.index.upsertItem(
     {
       item,
-      content,
+      content: fts.content,
+      hasContentFile: fts.hasContentFile,
       sourceRef,
       fileMtimeMs: fileStat.mtimeMs,
     },
@@ -99,7 +101,7 @@ export async function writeItemRawMarkdown(
     raw,
     existingStat.mtimeMs,
   );
-  const body = parseDocumentMarkdown(raw).body;
+  const fts = ftsFieldsFromDocumentMarkdown(raw);
 
   await ctx.fs.writeText(docPath, raw);
   await ctx.fs.touch(vaultPath);
@@ -113,7 +115,8 @@ export async function writeItemRawMarkdown(
   await ctx.index.upsertItem(
     {
       item,
-      content: body,
+      content: fts.content,
+      hasContentFile: fts.hasContentFile,
       sourceRef,
       fileMtimeMs: fileStat.mtimeMs,
     },

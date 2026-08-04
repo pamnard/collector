@@ -6,7 +6,7 @@ import type {
   SyncReport,
   VaultContext,
 } from "../adapters/types.js";
-import { parseDocumentMarkdown } from "./frontmatter.js";
+import { ftsFieldsFromDocumentMarkdown } from "./frontmatter.js";
 import {
   itemFileFromDocumentMarkdown,
   loadTagMaps,
@@ -51,6 +51,7 @@ interface ReindexWork {
   diskMtimeMs: number;
   item?: ItemFile;
   content?: string | null;
+  hasContentFile?: boolean;
 }
 
 function toSyncProgress(
@@ -202,7 +203,7 @@ export async function syncIndexFromFilesystem(
           itemId,
           diskMtimeMs,
           item,
-          content: parseDocumentMarkdown(documentMarkdown).body,
+          ...ftsFieldsFromDocumentMarkdown(documentMarkdown),
         });
       } catch (error) {
         report.errors.push({
@@ -236,6 +237,7 @@ export async function syncIndexFromFilesystem(
       diskMtimeMs: number;
       item: ItemFile | null;
       content: string | null;
+      hasContentFile: boolean | null;
       error: unknown;
     }>;
 
@@ -261,6 +263,7 @@ export async function syncIndexFromFilesystem(
             diskMtimeMs,
             item: null,
             content: null,
+            hasContentFile: null,
             error: new Error(`Missing document for ${itemId}`),
           });
           continue;
@@ -275,11 +278,13 @@ export async function syncIndexFromFilesystem(
             diskMtimeMs,
             tagMaps,
           );
+          const fts = ftsFieldsFromDocumentMarkdown(documentMarkdown);
           metadataReads.push({
             itemId,
             diskMtimeMs,
             item,
-            content: parseDocumentMarkdown(documentMarkdown).body,
+            content: fts.content,
+            hasContentFile: fts.hasContentFile,
             error: null,
           });
         } catch (error) {
@@ -288,6 +293,7 @@ export async function syncIndexFromFilesystem(
             diskMtimeMs,
             item: null,
             content: null,
+            hasContentFile: null,
             error,
           });
         }
@@ -303,6 +309,7 @@ export async function syncIndexFromFilesystem(
           diskMtimeMs,
           item: null,
           content: null,
+          hasContentFile: null,
           error,
         };
       });
@@ -361,6 +368,7 @@ export async function syncIndexFromFilesystem(
         diskMtimeMs: read.diskMtimeMs,
         item: read.item,
         content: read.content,
+        hasContentFile: read.hasContentFile ?? undefined,
       });
     }
 
@@ -421,7 +429,9 @@ export async function syncIndexFromFilesystem(
         work.diskMtimeMs,
         tagMaps,
       );
-      work.content = parseDocumentMarkdown(documentMarkdown).body;
+      const fts = ftsFieldsFromDocumentMarkdown(documentMarkdown);
+      work.content = fts.content;
+      work.hasContentFile = fts.hasContentFile;
     }
   }
 
@@ -497,6 +507,9 @@ export async function syncIndexFromFilesystem(
         if (work.content === undefined) {
           throw new Error(`Missing content for ${work.itemId}`);
         }
+        if (work.hasContentFile === undefined) {
+          throw new Error(`Missing hasContentFile for ${work.itemId}`);
+        }
         const sourceRef = sourceRefs.get(work.itemId);
         if (sourceRef === undefined) {
           throw new Error(`Missing source reference for ${work.itemId}`);
@@ -506,6 +519,7 @@ export async function syncIndexFromFilesystem(
           title: work.item.title,
           description: work.item.description,
           content: work.content,
+          hasContentFile: work.hasContentFile,
           sourceRef,
         });
       } catch (error) {

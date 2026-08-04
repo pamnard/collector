@@ -2,8 +2,8 @@ import type { ItemFile } from "@collector/shared";
 import { VAULT_DIRS } from "@collector/shared";
 import type { VaultContext } from "../adapters/types.js";
 import { nowIso } from "../util/ids.js";
+import { ftsFieldsFromDocumentMarkdown } from "./frontmatter.js";
 import {
-  readItemContent,
   readItemFile,
   readItemSourceRef,
   writeItemFile,
@@ -11,6 +11,7 @@ import {
 import {
   dirname,
   itemCoverPath,
+  itemMarkdownPath,
   itemMediaRoot,
   joinSegments,
   normalizeRelativePath,
@@ -67,9 +68,20 @@ export async function applyItemCover(
   };
   await writeItemFile(ctx.fs, vaultPath, updated);
 
-  const content = await readItemContent(ctx.fs, vaultPath, itemId);
+  const documentMarkdown = await ctx.fs.readText(
+    itemMarkdownPath(vaultPath, itemId),
+  );
+  const fts = ftsFieldsFromDocumentMarkdown(documentMarkdown);
   const sourceRef = await readItemSourceRef(ctx.fs, vaultPath, itemId);
-  await ctx.index.upsertItem({ item: updated, content, sourceRef }, vaultId);
+  await ctx.index.upsertItem(
+    {
+      item: updated,
+      content: fts.content,
+      hasContentFile: fts.hasContentFile,
+      sourceRef,
+    },
+    vaultId,
+  );
   return updated;
 }
 
@@ -98,8 +110,19 @@ export async function clearItemCover(
   };
   await writeItemFile(ctx.fs, vaultPath, updated);
 
-  const content = await readItemContent(ctx.fs, vaultPath, itemId);
-  const sourceRef = await readItemSourceRef(ctx.fs, vaultPath, itemId);
-  await ctx.index.upsertItem({ item: updated, content, sourceRef }, vaultId);
+  const clearedDocument = await ctx.fs.readText(
+    itemMarkdownPath(vaultPath, itemId),
+  );
+  const clearedFts = ftsFieldsFromDocumentMarkdown(clearedDocument);
+  const clearedSourceRef = await readItemSourceRef(ctx.fs, vaultPath, itemId);
+  await ctx.index.upsertItem(
+    {
+      item: updated,
+      content: clearedFts.content,
+      hasContentFile: clearedFts.hasContentFile,
+      sourceRef: clearedSourceRef,
+    },
+    vaultId,
+  );
   return updated;
 }
