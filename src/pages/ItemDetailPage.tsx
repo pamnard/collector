@@ -116,7 +116,6 @@ export function ItemDetailPage() {
             />
           ) : (
             <>
-              {aside}
               {isFormMode && formValues ? (
                 <div className="min-w-0 @[1100px]:col-span-9">
                   <div className="mx-auto w-full max-w-[900px]">
@@ -136,6 +135,7 @@ export function ItemDetailPage() {
                   </div>
                 </div>
               ) : null}
+              {aside}
             </>
           )}
         </article>

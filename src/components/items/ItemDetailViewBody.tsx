@@ -11,7 +11,7 @@ type ItemDetailViewBodyProps = {
   playError?: string | null;
 };
 
-/** View-mode main column: hero, then aside slot, then title + markdown. */
+/** View mode: left column (hero + title + markdown), then aside (below on narrow). */
 export function ItemDetailViewBody({
   item,
   content,
@@ -21,25 +21,27 @@ export function ItemDetailViewBody({
 }: ItemDetailViewBodyProps) {
   return (
     <>
-      <ItemDetailHero
-        item={item}
-        onPlayLocalVideo={onPlayLocalVideo}
-        playError={playError}
-      />
-      {aside}
-      <header className="min-w-0 @[1100px]:col-span-9">
-        <div className="mx-auto w-full max-w-[900px]">
-          <h1 className="text-2xl font-semibold">{item.title}</h1>
-        </div>
-      </header>
-
-      {content && (
-        <section className="min-w-0 @[1100px]:col-span-9">
+      <div className="flex min-w-0 flex-col gap-6 @[1100px]:col-span-9">
+        <ItemDetailHero
+          item={item}
+          onPlayLocalVideo={onPlayLocalVideo}
+          playError={playError}
+        />
+        <header className="min-w-0">
           <div className="mx-auto w-full max-w-[900px]">
-            <MarkdownContent content={content} />
+            <h1 className="text-2xl font-semibold">{item.title}</h1>
           </div>
-        </section>
-      )}
+        </header>
+
+        {content && (
+          <section className="min-w-0">
+            <div className="mx-auto w-full max-w-[900px]">
+              <MarkdownContent content={content} />
+            </div>
+          </section>
+        )}
+      </div>
+      {aside}
     </>
   );
 }

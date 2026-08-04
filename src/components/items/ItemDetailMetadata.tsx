@@ -142,7 +142,7 @@ export function ItemDetailMetadata({ item }: ItemDetailMetadataProps) {
   }, [item.id, item.updated_at, alerts]);
 
   return (
-    <section className="space-y-3">
+    <section className="@container space-y-3">
       {entries === null && (
         <p className="text-sm text-neutral-500 dark:text-neutral-400">…</p>
       )}
@@ -154,7 +154,7 @@ export function ItemDetailMetadata({ item }: ItemDetailMetadataProps) {
       )}
 
       {entries !== null && entries.length > 0 && (
-        <dl className="grid grid-cols-[minmax(0,max-content)_minmax(0,1fr)] gap-x-8 gap-y-2.5 text-sm">
+        <dl className="grid grid-cols-1 gap-x-8 gap-y-2.5 text-sm @[280px]:grid-cols-[minmax(0,max-content)_minmax(0,1fr)]">
           {entries.map(([key, value]) => {
             const kind = inferPropertyKind(key, value);
             const Icon = KIND_ICON[kind];
@@ -164,7 +164,7 @@ export function ItemDetailMetadata({ item }: ItemDetailMetadataProps) {
                   <Icon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
                   <span title={key}>{key}</span>
                 </dt>
-                <dd className="min-w-0 break-words whitespace-pre-wrap">
+                <dd className="min-w-0 break-words whitespace-pre-wrap @[280px]:pt-0.5">
                   <PropertyValueContent propertyKey={key} value={value} />
                 </dd>
               </div>
