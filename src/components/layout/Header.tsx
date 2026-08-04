@@ -33,7 +33,7 @@ export function Header({
     useItemChromeHeader();
 
   return (
-    <header className="relative shrink-0 border-b border-neutral-200 bg-white transition-colors duration-200 dark:border-neutral-700 dark:bg-neutral-800">
+    <header className="relative shrink-0 border-b border-neutral-200 dark:border-neutral-700">
       <div className="flex items-center gap-2 px-4 py-3 md:px-8">
         <button
           type="button"

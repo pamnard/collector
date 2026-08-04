@@ -359,7 +359,7 @@ function AppLayoutInner() {
           {isDesktop ? (
             <div
               data-smoke-shell
-              className="h-screen overflow-hidden bg-neutral-200 font-sans text-neutral-900 transition-colors duration-200 dark:bg-neutral-900 dark:text-neutral-100"
+              className="h-screen overflow-hidden font-sans text-neutral-900 dark:text-neutral-100"
             >
               <SmokeUiReadyBeacon />
               <div className="flex h-full w-full">
@@ -406,7 +406,7 @@ function AppLayoutInner() {
           ) : (
             <div
               data-smoke-shell
-              className="flex h-screen overflow-hidden bg-neutral-200 font-sans text-neutral-900 transition-colors duration-200 dark:bg-neutral-900 dark:text-neutral-100"
+              className="flex h-screen overflow-hidden font-sans text-neutral-900 dark:text-neutral-100"
             >
               <SmokeUiReadyBeacon />
               <Sidebar
