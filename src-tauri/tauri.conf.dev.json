@@ -4,7 +4,8 @@
   "app": {
     "windows": [
       {
-        "title": "Collector Dev"
+        "title": "Collector Dev",
+        "dragDropEnabled": false
       }
     ]
   }
