@@ -11,7 +11,8 @@ export interface ParsedDocumentMarkdown {
   detectedFormat: FrontmatterFormat | null;
 }
 
-const KNOWN_FM_KEYS = new Set([
+/** Product keys projected into typed ItemFile fields / presentation. */
+const PRODUCT_FM_KEYS = new Set([
   "title",
   "description",
   "url",
@@ -27,10 +28,12 @@ const KNOWN_FM_KEYS = new Set([
   "updated",
   "updated_at",
   "metadata",
-  // Legacy keys stripped on rewrite (not part of the item model).
+]);
+
+/** Retired Collector-owned keys stripped on rewrite (deny-list, not allowlist). */
+const LEGACY_STRIP_KEYS = new Set([
   "is_archived",
   "is_favorite",
-  // Legacy keys stripped on rewrite (folder = dirname of path; collections = FS dirs).
   "folder_path",
   "collection_ids",
 ]);
@@ -226,7 +229,7 @@ type CanonicalFrontmatterInput = {
   created?: string;
   updated?: string;
   metadata?: Record<string, unknown>;
-  extra?: Record<string, unknown>;
+  properties?: Record<string, unknown>;
 };
 
 function isNonEmptyString(v: unknown): v is string {
@@ -252,7 +255,7 @@ type OptionalCanonicalField = {
   map?: (value: unknown) => unknown;
 };
 
-/** Optional fields in KNOWN_KEY_ORDER; title and `extra` handled separately. */
+/** Optional fields in KNOWN_KEY_ORDER; title and `properties` handled separately. */
 const OPTIONAL_CANONICAL_FIELDS: readonly OptionalCanonicalField[] = [
   { key: "description", read: (i) => i.description, include: isNonEmptyString },
   { key: "url", read: (i) => i.url, include: isPresentString },
@@ -278,7 +281,8 @@ const OPTIONAL_CANONICAL_FIELDS: readonly OptionalCanonicalField[] = [
 
 /**
  * Build canonical frontmatter object for writers (YAML only).
- * Drops empty optional fields; keeps unknown portable keys from `extra`.
+ * Drops empty optional fields; keeps unknown portable keys from `properties`.
+ * Strips legacy deny-list keys.
  */
 export function buildCanonicalFrontmatter(
   input: CanonicalFrontmatterInput,
@@ -293,9 +297,9 @@ export function buildCanonicalFrontmatter(
     }
     data[field.key] = field.map ? field.map(raw) : raw;
   }
-  if (input.extra) {
-    for (const [key, value] of Object.entries(input.extra)) {
-      if (KNOWN_FM_KEYS.has(key)) {
+  if (input.properties) {
+    for (const [key, value] of Object.entries(input.properties)) {
+      if (PRODUCT_FM_KEYS.has(key) || LEGACY_STRIP_KEYS.has(key)) {
         continue;
       }
       if (value !== undefined) {
@@ -327,14 +331,16 @@ export function serializeDocumentMarkdown(
   return `---\n${yamlBlock}\n---\n${normalizedBody.startsWith("\n") ? normalizedBody.slice(1) : normalizedBody}`;
 }
 
+/** Foreign frontmatter keys (neither product projection nor legacy deny-list). */
 export function extractUnknownFrontmatterKeys(
   frontmatter: Record<string, unknown>,
 ): Record<string, unknown> {
-  const extra: Record<string, unknown> = {};
+  const properties: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(frontmatter)) {
-    if (!KNOWN_FM_KEYS.has(key)) {
-      extra[key] = value;
+    if (PRODUCT_FM_KEYS.has(key) || LEGACY_STRIP_KEYS.has(key)) {
+      continue;
     }
+    properties[key] = value;
   }
-  return extra;
+  return properties;
 }

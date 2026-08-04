@@ -32,6 +32,8 @@ export const itemFileSchema = z.object({
   source_type: sourceTypeSchema.default("manual"),
   source_id: z.string().nullable().optional(),
   metadata: z.record(z.unknown()).default({}),
+  /** Unknown / foreign frontmatter keys (open map; not an allowlist). */
+  properties: z.record(z.unknown()).default({}),
   thumbnail: z.string().nullable().optional(),
   tag_ids: z.array(z.string().uuid()).default([]),
   collection_ids: z.array(z.string().uuid()).default([]),

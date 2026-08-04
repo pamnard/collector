@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS items (
   source_type TEXT NOT NULL,
   source_id TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
+  properties_json TEXT NOT NULL DEFAULT '{}',
   thumbnail_path TEXT,
   has_content_file INTEGER NOT NULL DEFAULT 0,
   sort_order INTEGER NOT NULL DEFAULT 0,

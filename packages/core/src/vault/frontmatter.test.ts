@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCanonicalFrontmatter,
+  extractUnknownFrontmatterKeys,
   parseDocumentMarkdown,
   parseKnownFrontmatter,
   resolveFrontmatterDates,
@@ -97,10 +98,10 @@ describe("buildCanonicalFrontmatter omission", () => {
     expect(fm.tags).not.toBe(tags);
   });
 
-  it("strips known legacy keys from extra and keeps portable keys", () => {
+  it("strips known legacy keys from properties and keeps portable keys", () => {
     const fm = buildCanonicalFrontmatter({
       title: "T",
-      extra: {
+      properties: {
         folder_path: "Inbox",
         is_favorite: true,
         custom_key: "kept",
@@ -132,10 +133,10 @@ describe("serializeDocumentMarkdown round-trip", () => {
     expect(serializeDocumentMarkdown(parsed.frontmatter, parsed.body)).toBe(serialized);
   });
 
-  it("strips legacy folder_path/collection_ids extra keys on rewrite", () => {
+  it("strips legacy folder_path/collection_ids property keys on rewrite", () => {
     const fm = buildCanonicalFrontmatter({
       title: "Legacy",
-      extra: {
+      properties: {
         folder_path: "Inbox/Work",
         collection_ids: ["11111111-1111-4111-8111-111111111111"],
         is_favorite: true,
@@ -148,6 +149,16 @@ describe("serializeDocumentMarkdown round-trip", () => {
     expect(fm.is_favorite).toBeUndefined();
     expect(fm.is_archived).toBeUndefined();
     expect(fm.custom_key).toBe("kept");
+  });
+
+  it("extractUnknownFrontmatterKeys keeps foreign keys and drops product and legacy", () => {
+    const properties = extractUnknownFrontmatterKeys({
+      title: "T",
+      custom_field: "keep-me",
+      is_favorite: true,
+      folder_path: "Inbox",
+    });
+    expect(properties).toEqual({ custom_field: "keep-me" });
   });
 
   it("normalizes JSON import to YAML on serialize", () => {

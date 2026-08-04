@@ -288,6 +288,7 @@ function buildItems(): ItemFile[] {
       content_type: seed.content_type,
       source_type: seed.url?.includes("youtube") ? "youtube" : "manual",
       metadata: {},
+      properties: {},
       thumbnail: seed.thumbnail ?? null,
       tag_ids: seed.tagIndexes.map((tagIndex) => TAG_DEFS[tagIndex].id),
       collection_ids: [],

@@ -21,6 +21,7 @@ function item(overrides: Partial<ItemFile> = {}): ItemFile {
     source_type: "manual",
     source_id: null,
     metadata: {},
+    properties: {},
     thumbnail: null,
     tag_ids: [],
     collection_ids: [],
@@ -53,6 +54,9 @@ describe("toFormValues", () => {
         content: "",
         tags: ["a"],
         folder_path: "inbox",
+        properties: {},
+        created_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-01T00:00:00.000Z",
       },
     );
   });

@@ -95,6 +95,7 @@ function defaultWelcomeItem(
       content_type: "note",
       source_type: "manual",
       metadata: {},
+      properties: {},
       tag_ids: [],
       collection_ids: [],
       folder_path: inboxFolder,
@@ -133,7 +134,6 @@ async function listVaultEntriesForDeps(
 }
 
 async function tryResolveExistingUnderBootstrap(
-  deps: VaultsServiceDeps,
   listVaultEntries: () => Promise<VaultEntry[]>,
   storedVaultId: string | null,
 ): Promise<{ meta: VaultMeta; path: string } | null> {
@@ -194,7 +194,6 @@ async function resolveActiveVaultOnce(
     const bootstrapped = await runEmptyVaultBootstrap(ctx.fs, root, {
       tryResolveExisting: () =>
         tryResolveExistingUnderBootstrap(
-          deps,
           listVaultEntries,
           storedVaultId,
         ),

@@ -137,7 +137,7 @@ async function parseDocumentWithTags(
   itemId: string,
   raw: string,
   fallbackMtimeMs: number | null,
-): Promise<{ item: ItemFile; body: string; extra: Record<string, unknown> }> {
+): Promise<{ item: ItemFile; body: string }> {
   const maps = await loadTagMaps(fs, vaultPath);
   const fallbackIso =
     fallbackMtimeMs !== null ? mtimeToIso(fallbackMtimeMs) : undefined;
@@ -193,7 +193,7 @@ export async function readItemDocument(
   vaultRootPath: string,
   itemRelativePath: string,
   vaultId: string,
-): Promise<{ item: ItemFile; body: string; extra: Record<string, unknown> }> {
+): Promise<{ item: ItemFile; body: string }> {
   const id = normalizeRelativePath(itemRelativePath);
   const docPath = itemMarkdownPath(vaultRootPath, id);
   if (!(await fs.exists(docPath))) {
@@ -239,7 +239,6 @@ export async function writeItemDocument(
   vaultRootPath: string,
   item: ItemFile,
   body: string,
-  extra?: Record<string, unknown>,
 ): Promise<void> {
   const parsed = itemFileSchema.parse({
     ...item,
@@ -248,7 +247,7 @@ export async function writeItemDocument(
   });
   await ensureParentDir(fs, vaultRootPath, parsed.id);
   const maps = await loadTagMaps(fs, vaultRootPath);
-  const markdown = serializeItemDocument(parsed, body, maps.byId, extra);
+  const markdown = serializeItemDocument(parsed, body, maps.byId);
   await fs.writeText(itemMarkdownPath(vaultRootPath, parsed.id), markdown);
   await fs.touch(vaultRootPath);
 }
@@ -271,14 +270,16 @@ export async function writeItemFile(
   const id = normalizeRelativePath(item.id);
   const docPath = itemMarkdownPath(vaultRootPath, id);
   let body = "";
-  let extra: Record<string, unknown> | undefined;
+  let properties = item.properties ?? {};
   if (await fs.exists(docPath)) {
     const raw = await fs.readText(docPath);
     const parsed = parseDocumentMarkdown(raw);
     body = parsed.body;
-    extra = extractUnknownFrontmatterKeys(parsed.frontmatter);
+    if (Object.keys(properties).length === 0) {
+      properties = extractUnknownFrontmatterKeys(parsed.frontmatter);
+    }
   }
-  await writeItemDocument(fs, vaultRootPath, { ...item, id }, body, extra);
+  await writeItemDocument(fs, vaultRootPath, { ...item, id, properties }, body);
 }
 
 export async function readItemContent(
@@ -307,13 +308,7 @@ export async function writeItemContent(
     itemRelativePath,
     vaultId,
   );
-  await writeItemDocument(
-    fs,
-    vaultRootPath,
-    existing.item,
-    content,
-    existing.extra,
-  );
+  await writeItemDocument(fs, vaultRootPath, existing.item, content);
 }
 
 export async function readItemSourceRef(

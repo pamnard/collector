@@ -260,6 +260,7 @@ export async function remediateVaultLayout(
       content_type: "note",
       source_type: "manual",
       metadata: {},
+      properties: {},
       tag_ids: [],
       collection_ids: [],
       folder_path: INBOX_FOLDER_NAME,

@@ -33,8 +33,6 @@ export interface ParsedItemDocument {
   body: string;
   /** Tag names in FM that were not in tagsByName (caller must create). */
   missingTagNames: string[];
-  /** Portable unknown FM keys to preserve on rewrite. */
-  extra: Record<string, unknown>;
 }
 
 function tagNameKey(name: string): string {
@@ -64,6 +62,7 @@ export function buildTagMaps(tags: Tag[]): {
  * Parse markdown document into ItemFile + body.
  * Does not create tags — reports missingTagNames for the caller.
  * `folder_path` is always derived from the item path (id).
+ * Foreign frontmatter keys land on `item.properties`.
  */
 export function parseItemDocument(
   raw: string,
@@ -72,7 +71,7 @@ export function parseItemDocument(
   const itemId = normalizeRelativePath(ctx.itemId);
   const parsed = parseDocumentMarkdown(raw);
   const known = parseKnownFrontmatter(parsed.frontmatter);
-  const extra = extractUnknownFrontmatterKeys(parsed.frontmatter);
+  const properties = extractUnknownFrontmatterKeys(parsed.frontmatter);
   const dates = resolveFrontmatterDates(known);
 
   const created_at = dates.created_at ?? ctx.fallbackCreatedAt;
@@ -112,6 +111,7 @@ export function parseItemDocument(
     source_type: known.source_type ?? "manual",
     source_id: known.source_id ?? null,
     metadata: known.metadata ?? {},
+    properties,
     thumbnail: known.thumbnail ?? null,
     tag_ids,
     collection_ids: [],
@@ -125,19 +125,18 @@ export function parseItemDocument(
     item,
     body: parsed.body,
     missingTagNames,
-    extra,
   };
 }
 
 /**
  * Serialize ItemFile + body to canonical YAML-frontmatter markdown.
  * Fails if a tag_id has no entry in tagsById.
+ * Foreign keys are written from `item.properties`.
  */
 export function serializeItemDocument(
   item: ItemFile,
   body: string,
   tagsById: Map<string, Tag>,
-  extra?: Record<string, unknown>,
 ): string {
   const tagNames: string[] = [];
   for (const tagId of item.tag_ids) {
@@ -161,7 +160,7 @@ export function serializeItemDocument(
     created: item.created_at,
     updated: item.updated_at,
     metadata: item.metadata,
-    extra,
+    properties: item.properties,
   });
 
   return serializeDocumentMarkdown(frontmatter, body);
@@ -171,12 +170,12 @@ export function serializeItemDocument(
 export function parseItemDocumentResolved(
   raw: string,
   ctx: ParseItemDocumentContext,
-): { item: ItemFile; body: string; extra: Record<string, unknown> } {
+): { item: ItemFile; body: string } {
   const result = parseItemDocument(raw, ctx);
   if (result.missingTagNames.length > 0) {
     throw new Error(
       `Item document ${ctx.itemId} has unresolved tags: ${result.missingTagNames.join(", ")}`,
     );
   }
-  return { item: result.item, body: result.body, extra: result.extra };
+  return { item: result.item, body: result.body };
 }

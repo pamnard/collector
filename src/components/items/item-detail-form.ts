@@ -1,6 +1,13 @@
 import type { ItemFile } from "@collector/shared";
 import type { ItemFormValues } from "../../types/item";
 
+function sameProperties(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 export function toFormValues(
   item: ItemFile,
   content: string | null,
@@ -14,6 +21,9 @@ export function toFormValues(
     content: content ?? "",
     tags: tagNames,
     folder_path: item.folder_path,
+    properties: { ...item.properties },
+    created_at: item.created_at,
+    updated_at: item.updated_at,
   };
 }
 
@@ -39,6 +49,7 @@ export function isFormDirty(
     form.content_type !== item.content_type ||
     form.content.trim() !== (content ?? "").trim() ||
     form.folder_path !== item.folder_path ||
-    !sameTagNames(form.tags, itemTagNames)
+    !sameTagNames(form.tags, itemTagNames) ||
+    !sameProperties(form.properties, item.properties)
   );
 }

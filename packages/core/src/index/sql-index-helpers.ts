@@ -16,6 +16,7 @@ export interface ItemRow {
   source_type: string;
   source_id: string | null;
   metadata_json: string;
+  properties_json: string;
   thumbnail_path: string | null;
   folder_path: string;
   content_revision: number;
@@ -35,6 +36,18 @@ export function parseMetadata(raw: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 
+export function serializeProperties(properties: Record<string, unknown>): string {
+  return JSON.stringify(properties);
+}
+
+export function parseProperties(raw: string): Record<string, unknown> {
+  const parsed: unknown = JSON.parse(raw);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`Invalid item properties_json: expected object, got ${typeof parsed}`);
+  }
+  return parsed as Record<string, unknown>;
+}
+
 export function itemRowToFile(
   row: ItemRow,
   tagIds: string[],
@@ -50,6 +63,7 @@ export function itemRowToFile(
     source_type: row.source_type as SourceType,
     source_id: row.source_id ?? undefined,
     metadata: parseMetadata(row.metadata_json),
+    properties: parseProperties(row.properties_json),
     thumbnail: row.thumbnail_path ?? undefined,
     tag_ids: tagIds,
     collection_ids: collectionIds,
