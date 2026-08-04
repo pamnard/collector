@@ -51,7 +51,7 @@ export function McpSettingsSection() {
 
   return (
     <div className="max-w-2xl pb-4 md:pb-8">
-      <section className="rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 divide-y divide-black/10 dark:divide-white/10">
+      <section className="rounded-lg border border-black/10 dark:border-white/10 divide-y divide-black/10 dark:divide-white/10">
         <div className="p-4 space-y-2">
           <p className="font-medium">Зачем это</p>
           <p className="text-neutral-500 dark:text-neutral-400">

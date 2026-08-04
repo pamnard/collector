@@ -150,7 +150,7 @@ export function Sidebar({
 
         {variant === "docked" || !collapsed ? (
           <div
-            className="flex min-w-0 flex-1 flex-col overflow-hidden bg-neutral-200 dark:bg-neutral-900"
+            className="flex min-w-0 flex-1 flex-col overflow-hidden"
             inert={variant === "docked" && collapsed ? true : undefined}
           >
             <div className="flex shrink-0 items-center gap-2 px-4 pt-5 pb-3 box-border">
@@ -236,7 +236,7 @@ export function Sidebar({
         className={
           variant === "docked"
             ? "flex h-full w-full flex-col"
-            : `fixed md:static inset-y-0 left-0 z-50 w-72 border-r border-black/10 dark:border-white/10 flex flex-col transition-all duration-300 ease-in-out shrink-0 ${
+            : `fixed md:static inset-y-0 left-0 z-50 w-72 border-r border-black/10 bg-neutral-200 dark:border-white/10 dark:bg-neutral-900 flex flex-col transition-transform duration-300 ease-in-out shrink-0 ${
                 isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
               }`
         }

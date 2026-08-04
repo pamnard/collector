@@ -19,7 +19,7 @@ export function SettingsPage() {
 
   return (
     <div className="max-w-2xl pb-4 md:pb-8">
-      <section className="rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 divide-y divide-black/10 dark:divide-white/10">
+      <section className="rounded-lg border border-black/10 dark:border-white/10 divide-y divide-black/10 dark:divide-white/10">
         <SettingsGeneralSection />
         <SettingsUpdatesSection />
       </section>

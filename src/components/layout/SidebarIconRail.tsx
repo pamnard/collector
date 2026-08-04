@@ -42,7 +42,7 @@ export function SidebarIconRail({
 
   return (
     <div className="flex h-full shrink-0">
-      <div className="flex h-full w-12 flex-col bg-neutral-200 text-neutral-500 dark:bg-neutral-900 dark:text-neutral-400">
+      <div className="flex h-full w-12 flex-col text-neutral-500 dark:text-neutral-400">
         <div className="flex h-12 shrink-0 items-center justify-center border-b border-black/10 dark:border-white/10">
           <FolderBookmark
             size={20}
