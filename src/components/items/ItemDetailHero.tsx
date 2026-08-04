@@ -44,7 +44,7 @@ export function ItemDetailHero({
   }
 
   return (
-    <div className="min-w-0 @[1100px]:col-span-9">
+    <div className="min-w-0">
       <div className="relative mx-auto w-full max-w-[900px]">
         <img
           src={src}
