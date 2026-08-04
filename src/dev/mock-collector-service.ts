@@ -72,6 +72,7 @@ function createDevMockSyncPluginsPort(): SyncPluginsPort {
         content_type: "note",
         source_type: "plugin",
         metadata: {},
+        properties: {},
         thumbnail: null,
         tag_ids: [],
         collection_ids: [],

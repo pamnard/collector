@@ -71,7 +71,7 @@ export async function listItemFilesByIds(
   const rows = await selector.select<ItemRow>(
     `SELECT
        id, vault_id, title, description, url, content_type, source_type,
-       source_id, metadata_json, thumbnail_path,
+       source_id, metadata_json, properties_json, thumbnail_path,
        folder_path, content_revision, created_at, updated_at
      FROM items
      WHERE vault_id = ? AND id IN (${placeholders})`,

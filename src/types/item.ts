@@ -10,6 +10,10 @@ export interface ItemFormValues {
   /** Tag names (same as document frontmatter). */
   tags: string[];
   folder_path: string;
+  /** Foreign frontmatter keys (open map). */
+  properties: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CreateItemInput {
@@ -30,6 +34,7 @@ export interface UpdateItemInput {
   content?: string | null;
   tags?: string[];
   folder_path?: string;
+  properties?: Record<string, unknown>;
 }
 
 export const EMPTY_ITEM_FORM: ItemFormValues = {
@@ -40,4 +45,7 @@ export const EMPTY_ITEM_FORM: ItemFormValues = {
   content: "",
   tags: [],
   folder_path: INBOX_FOLDER_NAME,
+  properties: {},
+  created_at: "",
+  updated_at: "",
 };

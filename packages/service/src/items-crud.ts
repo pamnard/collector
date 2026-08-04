@@ -131,6 +131,7 @@ export function createItemsCrud(
         content_type: input.content_type,
         source_type: input.source_type ?? "manual",
         metadata: {},
+        properties: {},
         tag_ids: [],
         collection_ids: [],
         folder_path: folderPath,
@@ -189,6 +190,7 @@ export function createItemsCrud(
       url: input.url !== undefined ? input.url : current.url,
       content_type: input.content_type ?? current.content_type,
       tag_ids: tagIds,
+      properties: input.properties !== undefined ? input.properties : current.properties,
     };
     const body =
       input.content !== undefined ? (input.content ?? "") : (currentContent ?? "");

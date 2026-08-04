@@ -60,6 +60,7 @@ describe("item-io", () => {
       source_type: "manual",
       source_id: null,
       metadata: {},
+      properties: {},
       thumbnail: null,
       tag_ids: [],
       collection_ids: [],

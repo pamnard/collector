@@ -20,6 +20,7 @@ interface ItemRewriteRow {
   source_type: string;
   source_id: string | null;
   metadata_json: string;
+  properties_json: string;
   thumbnail_path: string | null;
   has_content_file: number;
   sort_order: number;
@@ -42,7 +43,7 @@ export async function rewriteOneItemId(
   const rows = await selector.select<ItemRewriteRow>(
     `SELECT
        id, vault_id, title, description, url, content_type, source_type,
-       source_id, metadata_json, thumbnail_path, has_content_file, sort_order,
+       source_id, metadata_json, properties_json, thumbnail_path, has_content_file, sort_order,
        folder_path, created_at, updated_at, file_mtime_ms, content_revision
      FROM items
      WHERE id = ?`,
@@ -58,9 +59,9 @@ export async function rewriteOneItemId(
   await selector.execute(
     `INSERT INTO items (
       id, vault_id, title, description, url, content_type, source_type, source_id,
-      metadata_json, thumbnail_path, has_content_file, sort_order,
+      metadata_json, properties_json, thumbnail_path, has_content_file, sort_order,
       folder_path, created_at, updated_at, file_mtime_ms, content_revision
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       newId,
       row.vault_id,
@@ -71,6 +72,7 @@ export async function rewriteOneItemId(
       row.source_type,
       row.source_id,
       row.metadata_json,
+      row.properties_json,
       row.thumbnail_path,
       row.has_content_file,
       row.sort_order,

@@ -80,6 +80,8 @@ export interface UpdateItemInput {
   /** Tag names as in the vault .md frontmatter; missing names are created. */
   tags?: string[];
   folder_path?: string;
+  /** Foreign frontmatter keys (open map). */
+  properties?: Record<string, unknown>;
 }
 
 /** Transport-honest binary file payload (#364). */

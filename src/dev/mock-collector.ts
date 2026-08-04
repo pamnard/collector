@@ -290,6 +290,7 @@ export async function getItemSource(itemId: string): Promise<string> {
     created: item.created_at,
     updated: item.updated_at,
     metadata: item.metadata,
+    properties: item.properties,
   });
   return serializeDocumentMarkdown(frontmatter, "");
 }

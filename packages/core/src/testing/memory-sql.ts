@@ -340,6 +340,7 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
           source_type: row.source_type,
           source_id: row.source_id,
           metadata_json: row.metadata_json,
+          properties_json: row.properties_json ?? "{}",
           thumbnail_path: row.thumbnail_path,
           folder_path: row.folder_path,
           content_revision: row.content_revision,
@@ -520,7 +521,7 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
   private upsertItem(bindValues: unknown[]): number {
     const table = this.getTable("items");
     let upserted = 0;
-    for (let i = 0; i < bindValues.length; i += 16) {
+    for (let i = 0; i < bindValues.length; i += 17) {
       const id = String(bindValues[i]);
       const existing = table.get(id);
       table.set(id, {
@@ -533,13 +534,14 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
         source_type: bindValues[i + 6],
         source_id: bindValues[i + 7],
         metadata_json: bindValues[i + 8],
-        thumbnail_path: bindValues[i + 9],
-        has_content_file: existing?.has_content_file ?? bindValues[i + 10],
-        folder_path: bindValues[i + 11],
-        created_at: bindValues[i + 12],
-        updated_at: bindValues[i + 13],
-        file_mtime_ms: bindValues[i + 14],
-        content_revision: bindValues[i + 15],
+        properties_json: bindValues[i + 9],
+        thumbnail_path: bindValues[i + 10],
+        has_content_file: existing?.has_content_file ?? bindValues[i + 11],
+        folder_path: bindValues[i + 12],
+        created_at: bindValues[i + 13],
+        updated_at: bindValues[i + 14],
+        file_mtime_ms: bindValues[i + 15],
+        content_revision: bindValues[i + 16],
       });
       upserted += 1;
     }

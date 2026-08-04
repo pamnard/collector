@@ -139,12 +139,7 @@ export async function deleteTag(
       tag_ids: parsed.item.tag_ids.filter((id) => id !== tagId),
       updated_at: updatedAt,
     };
-    const markdown = serializeItemDocument(
-      updated,
-      parsed.body,
-      maps.byId,
-      parsed.extra,
-    );
+    const markdown = serializeItemDocument(updated, parsed.body, maps.byId);
     await ctx.fs.writeText(docPath, markdown);
 
     const writtenStat = await ctx.fs.stat(docPath);

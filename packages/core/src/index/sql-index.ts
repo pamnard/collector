@@ -25,6 +25,7 @@ import {
   replaceItemCollections,
   replaceItemTags,
   serializeMetadata,
+  serializeProperties,
   sqlCollectionStubPlaceholders,
   sqlInPlaceholders,
   SQL_INSERT_CHUNK,
@@ -89,9 +90,9 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     await this.db.execute(
       `INSERT INTO items (
         id, vault_id, title, description, url, content_type, source_type, source_id,
-        metadata_json, thumbnail_path, has_content_file,
+        metadata_json, properties_json, thumbnail_path, has_content_file,
         folder_path, created_at, updated_at, file_mtime_ms, content_revision
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         vault_id = excluded.vault_id,
         title = excluded.title,
@@ -101,6 +102,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
         source_type = excluded.source_type,
         source_id = excluded.source_id,
         metadata_json = excluded.metadata_json,
+        properties_json = excluded.properties_json,
         thumbnail_path = excluded.thumbnail_path,
         folder_path = excluded.folder_path,
         created_at = excluded.created_at,
@@ -117,6 +119,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
         item.source_type,
         item.source_id ?? null,
         serializeMetadata(item.metadata),
+        serializeProperties(item.properties),
         item.thumbnail ?? null,
         0,
         item.folder_path ?? "",
@@ -173,6 +176,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
           item.source_type,
           item.source_id ?? null,
           serializeMetadata(item.metadata),
+          serializeProperties(item.properties),
           item.thumbnail ?? null,
           0,
           item.folder_path ?? "",
@@ -197,9 +201,9 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
       await this.db.execute(
         `INSERT INTO items (
           id, vault_id, title, description, url, content_type, source_type, source_id,
-          metadata_json, thumbnail_path, has_content_file,
+          metadata_json, properties_json, thumbnail_path, has_content_file,
           folder_path, created_at, updated_at, file_mtime_ms, content_revision
-        ) VALUES ${sqlRowPlaceholders(chunk.length, 16)}
+        ) VALUES ${sqlRowPlaceholders(chunk.length, 17)}
         ON CONFLICT(id) DO UPDATE SET
           vault_id = excluded.vault_id,
           title = excluded.title,
@@ -209,6 +213,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
           source_type = excluded.source_type,
           source_id = excluded.source_id,
           metadata_json = excluded.metadata_json,
+          properties_json = excluded.properties_json,
           thumbnail_path = excluded.thumbnail_path,
           folder_path = excluded.folder_path,
           created_at = excluded.created_at,

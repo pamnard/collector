@@ -55,6 +55,7 @@ describe("drop import vault integration (#22)", () => {
           content_type: input.content_type,
           source_type: input.source_type ?? "manual",
           metadata: {},
+          properties: {},
           tag_ids: [],
           collection_ids: [],
           folder_path: folderPath,

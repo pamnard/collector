@@ -142,6 +142,7 @@ export function useItemDetail(): UseItemDetailResult {
         content: formValues.content.trim() || null,
         tags: formValues.tags,
         folder_path: formValues.folder_path,
+        properties: formValues.properties,
       });
       const updatedContent = formValues.content.trim() || null;
       const tagNames = await resolveTagNames(updated);

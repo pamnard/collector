@@ -33,6 +33,7 @@ function sampleItem(overrides: Partial<ItemFile> = {}): ItemFile {
     source_type: "manual",
     source_id: null,
     metadata: {},
+    properties: {},
     thumbnail: null,
     tag_ids: [TAG_A.id],
     collection_ids: [],
@@ -112,13 +113,15 @@ body
     ).toThrow(/missing created/);
   });
 
-  it("preserves unknown frontmatter keys on serialize", () => {
+  it("puts unknown frontmatter keys on item.properties and preserves on serialize", () => {
     const { byId, byName } = buildTagMaps([]);
     const md = `---
 title: Portable
 created: 2024-01-01T00:00:00.000Z
 updated: 2024-01-01T00:00:00.000Z
 custom_field: keep-me
+obsidian_cssclasses:
+  - wide
 ---
 `;
     const parsed = parseItemDocumentResolved(md, {
@@ -126,8 +129,40 @@ custom_field: keep-me
       vaultId: VAULT_ID,
       tagsByName: byName,
     });
-    const out = serializeItemDocument(parsed.item, parsed.body, byId, parsed.extra);
+    expect(parsed.item.properties).toEqual({
+      custom_field: "keep-me",
+      obsidian_cssclasses: ["wide"],
+    });
+    const out = serializeItemDocument(parsed.item, parsed.body, byId);
     expect(out).toContain("custom_field: keep-me");
+    expect(out).toContain("obsidian_cssclasses:");
+    expect(out).toContain("wide");
+  });
+
+  it("survives editing a known field without dropping foreign properties", () => {
+    const { byId, byName } = buildTagMaps([]);
+    const md = `---
+title: Before
+created: 2024-01-01T00:00:00.000Z
+updated: 2024-01-01T00:00:00.000Z
+custom_field: keep-me
+---
+body
+`;
+    const parsed = parseItemDocumentResolved(md, {
+      itemId: ITEM_ID,
+      vaultId: VAULT_ID,
+      tagsByName: byName,
+    });
+    const edited = { ...parsed.item, title: "After" };
+    const out = serializeItemDocument(edited, parsed.body, byId);
+    const again = parseItemDocumentResolved(out, {
+      itemId: ITEM_ID,
+      vaultId: VAULT_ID,
+      tagsByName: byName,
+    });
+    expect(again.item.title).toBe("After");
+    expect(again.item.properties).toEqual({ custom_field: "keep-me" });
   });
 
   it("fails serialize on unknown tag_id", () => {
