@@ -9,6 +9,7 @@ export const INDEX_TABLES = [
   "media",
   "source_refs",
   "items_fts",
+  "index_build",
 ] as const;
 
 export const ITEMS_COLUMNS = [
@@ -21,6 +22,7 @@ export const ITEMS_COLUMNS = [
   "source_type",
   "source_id",
   "metadata_json",
+  "properties_json",
   "thumbnail_path",
   "has_content_file",
   "sort_order",

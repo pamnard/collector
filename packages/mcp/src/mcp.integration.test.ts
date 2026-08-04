@@ -385,7 +385,8 @@ describe("MCP tools over service IPC (#174)", () => {
     const coverBody = JSON.parse(
       (cover.content as { text: string }[])[0]!.text,
     ) as { thumbnail: string | null };
-    expect(coverBody.thumbnail).toBeTruthy();
+    // Cover SoT is cover.webp on disk (#276/#279); FM thumbnail stays null.
+    expect(coverBody.thumbnail ?? null).toBeNull();
 
     const deleted = await mcpClient.callTool({
       name: "collector_delete_media",

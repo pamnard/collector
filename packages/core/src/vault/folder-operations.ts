@@ -12,11 +12,11 @@ import {
   resolveOrCreateInboxFolder,
 } from "./inbox-layout.js";
 import {
-  readItemContent,
   readItemFile,
   readItemSourceRef,
   writeItemFile,
 } from "./item-io.js";
+import { ftsFieldsFromDocumentMarkdown } from "./frontmatter.js";
 import {
   basename,
   itemMarkdownPath,
@@ -213,11 +213,18 @@ export async function moveItemToFolder(
   const updated: ItemFile = { ...moved, updated_at: nowIso() };
   await writeItemFile(ctx.fs, vaultPath, updated);
 
-  const content = await readItemContent(ctx.fs, vaultPath, newId);
+  const documentMarkdown = await ctx.fs.readText(toPath);
+  const fts = ftsFieldsFromDocumentMarkdown(documentMarkdown);
   const sourceRef = await readItemSourceRef(ctx.fs, vaultPath, newId);
   const fileStat = await ctx.fs.stat(toPath);
   await ctx.index.upsertItem(
-    { item: updated, content, sourceRef, fileMtimeMs: fileStat.mtimeMs },
+    {
+      item: updated,
+      content: fts.content,
+      hasContentFile: fts.hasContentFile,
+      sourceRef,
+      fileMtimeMs: fileStat.mtimeMs,
+    },
     vaultId,
   );
   return updated;

@@ -344,3 +344,17 @@ export function extractUnknownFrontmatterKeys(
   }
   return properties;
 }
+
+/**
+ * FTS fields from an on-disk note (#534): index the raw markdown file;
+ * hasContentFile reflects non-empty body, not truthiness of the full document.
+ */
+export function ftsFieldsFromDocumentMarkdown(documentMarkdown: string): {
+  content: string;
+  hasContentFile: boolean;
+} {
+  return {
+    content: documentMarkdown,
+    hasContentFile: Boolean(parseDocumentMarkdown(documentMarkdown).body),
+  };
+}

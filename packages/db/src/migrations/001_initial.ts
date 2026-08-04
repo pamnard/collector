@@ -104,4 +104,10 @@ CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
   content,
   tokenize = 'unicode61'
 );
+
+-- Marker: FTS content is full on-disk markdown (#534). Absent → recreate index.
+CREATE TABLE IF NOT EXISTS index_build (
+  id INTEGER PRIMARY KEY CHECK (id = 1)
+);
+INSERT OR IGNORE INTO index_build (id) VALUES (1);
 `;

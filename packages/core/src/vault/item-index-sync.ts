@@ -18,7 +18,7 @@ import {
   loadTagMaps,
   type TagMapsHolder,
 } from "./item-io.js";
-import { parseDocumentMarkdown } from "./frontmatter.js";
+import { ftsFieldsFromDocumentMarkdown } from "./frontmatter.js";
 import { listItemRelativePaths } from "./scan.js";
 import {
   readVaultItemMetaBatch,
@@ -85,6 +85,7 @@ export async function syncIndexItemsFromFilesystem(
     diskMtimeMs: number;
     item?: ItemFile;
     content?: string | null;
+    hasContentFile?: boolean;
   }> = [];
   const mtimeHealFromContentIds: string[] = [];
 
@@ -149,7 +150,7 @@ export async function syncIndexItemsFromFilesystem(
           itemId,
           diskMtimeMs,
           item,
-          content: parseDocumentMarkdown(documentMarkdown).body,
+          ...ftsFieldsFromDocumentMarkdown(documentMarkdown),
         });
       } catch (error) {
         report.errors.push({
@@ -244,7 +245,7 @@ export async function syncIndexItemsFromFilesystem(
         itemId,
         diskMtimeMs,
         item,
-        content: parseDocumentMarkdown(documentMarkdown).body,
+        ...ftsFieldsFromDocumentMarkdown(documentMarkdown),
       });
     }
 
@@ -301,7 +302,9 @@ export async function syncIndexItemsFromFilesystem(
         work.diskMtimeMs,
         tagMaps,
       );
-      work.content = parseDocumentMarkdown(documentMarkdown).body;
+      const fts = ftsFieldsFromDocumentMarkdown(documentMarkdown);
+      work.content = fts.content;
+      work.hasContentFile = fts.hasContentFile;
     }
   }
 
@@ -362,6 +365,9 @@ export async function syncIndexItemsFromFilesystem(
         if (work.content === undefined) {
           throw new Error(`Missing content for ${work.itemId}`);
         }
+        if (work.hasContentFile === undefined) {
+          throw new Error(`Missing hasContentFile for ${work.itemId}`);
+        }
         const sourceRef = sourceRefs.get(work.itemId);
         if (sourceRef === undefined) {
           throw new Error(`Missing source reference for ${work.itemId}`);
@@ -371,6 +377,7 @@ export async function syncIndexItemsFromFilesystem(
           title: work.item.title,
           description: work.item.description,
           content: work.content,
+          hasContentFile: work.hasContentFile,
           sourceRef,
         });
       } catch (error) {

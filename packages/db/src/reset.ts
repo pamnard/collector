@@ -2,6 +2,7 @@ import type { SqlMigrator } from "./migrate.js";
 
 /** Drop order: children before parents (reverse dependency order). */
 const DROP_ORDER = [
+  "index_build",
   "items_fts",
   "source_refs",
   "media",

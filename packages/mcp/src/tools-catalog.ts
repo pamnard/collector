@@ -51,7 +51,8 @@ export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] = [
   {
     name: "collector_search",
     description:
-      "Full-text search over item title, description, and content in the active vault. " +
+      "Full-text search over the full on-disk note markdown (YAML/TOML/JSON frontmatter + body), " +
+      "plus title and description columns, in the active vault. " +
       "Does not look up by item id or path (item_id is unindexed in FTS). " +
       "Returns full ItemFile[] (same fields as collector_get_item metadata); pass `id` unchanged as itemId to get/update/delete/move.",
     params: [
@@ -60,7 +61,8 @@ export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] = [
         required: true,
         typeLabel: "string",
         description:
-          "FTS query over title/description/content. Not an id or path lookup — searching a UUID or path will not find the item by id.",
+          "FTS query over the full note file text (frontmatter + body) and title/description. " +
+          "Not an id or path lookup — searching a UUID or path will not find the item by id.",
       },
     ],
   },
