@@ -14,6 +14,9 @@ import { isFolderFilter } from "../types/ui";
 const DASHBOARD_IMPORT_ID = "dashboard-import";
 const DASHBOARD_IMPORT_ERROR_ID = "dashboard-import-error";
 
+/** OS file drops use HTML5 DnD; Tauri windows must set `dragDropEnabled: false`
+ * or the shell swallows drops and these handlers never run. */
+
 export function DashboardPage() {
   const {
     viewMode,
