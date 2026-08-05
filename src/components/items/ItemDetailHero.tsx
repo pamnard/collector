@@ -1,9 +1,12 @@
-import { Play } from "lucide-react";
+import { FoldVertical, Play, UnfoldVertical } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ItemFile } from "@collector/shared";
+import { useDetailHeroExpanded } from "../../hooks/useDetailHeroExpanded";
 import { toDisplayAssetSrc } from "../../utils/asset-src";
 import { isLocalVideoItem } from "../../utils/local-media-playback";
 import { getUiSession } from "../../services/collector-client";
+import { AspectRatio } from "../ui/aspect-ratio";
+import { Button } from "../ui/button";
 
 interface ItemDetailHeroProps {
   item: ItemFile;
@@ -18,6 +21,7 @@ export function ItemDetailHero({
   playError,
 }: ItemDetailHeroProps) {
   const [src, setSrc] = useState<string | null>(null);
+  const { expanded, setExpanded } = useDetailHeroExpanded();
   const canPlayLocalVideo = Boolean(onPlayLocalVideo) && isLocalVideoItem(item);
 
   useEffect(() => {
@@ -45,12 +49,28 @@ export function ItemDetailHero({
 
   return (
     <div className="min-w-0">
-      <div className="relative mx-auto w-full max-w-[900px]">
-        <img
-          src={src}
-          alt=""
-          className="h-auto w-full rounded-lg"
-        />
+      <div className="group relative mx-auto w-full max-w-[900px]">
+        {expanded ? (
+          <img src={src} alt="" className="h-auto w-full rounded-lg" />
+        ) : (
+          <AspectRatio ratio={16 / 9}>
+            <img
+              src={src}
+              alt=""
+              className="absolute inset-0 h-full w-full rounded-lg object-cover"
+            />
+          </AspectRatio>
+        )}
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon-sm"
+          aria-label={expanded ? "Свернуть" : "Развернуть"}
+          onClick={() => setExpanded(!expanded)}
+          className="absolute top-2 right-2 z-10 bg-black/55 text-white opacity-100 shadow-sm hover:bg-black/70 hover:text-white [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
+        >
+          {expanded ? <FoldVertical /> : <UnfoldVertical />}
+        </Button>
         {canPlayLocalVideo && (
           <button
             type="button"

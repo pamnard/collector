@@ -16,7 +16,7 @@ export function ItemChromeAdjacentFooter() {
   }
 
   return (
-    <footer className="relative shrink-0 border-t border-neutral-200 dark:border-neutral-700">
+    <footer className="relative mt-auto shrink-0 border-t border-neutral-200 dark:border-neutral-700">
       <div className="px-4 py-5 md:px-8 md:py-6">
         <ItemAdjacentNav
           adjacent={itemAdjacent}
