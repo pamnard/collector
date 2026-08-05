@@ -1,10 +1,12 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface UseInfiniteScrollOptions {
   enabled: boolean;
   hasMore: boolean;
   isLoading: boolean;
   onLoadMore: () => void;
+  /** Scrollport that owns the sentinel; required when not the viewport. */
+  root?: Element | null;
   rootMargin?: string;
 }
 
@@ -13,32 +15,41 @@ export function useInfiniteScroll({
   hasMore,
   isLoading,
   onLoadMore,
+  root = null,
   rootMargin = "240px",
 }: UseInfiniteScrollOptions): (node: Element | null) => void {
-  const observerRef = useRef<IntersectionObserver | null>(null);
+  const [node, setNode] = useState<Element | null>(null);
   const onLoadMoreRef = useRef(onLoadMore);
+  const isLoadingRef = useRef(isLoading);
 
   useEffect(() => {
     onLoadMoreRef.current = onLoadMore;
   }, [onLoadMore]);
 
-  return (node) => {
-    observerRef.current?.disconnect();
-    observerRef.current = null;
+  useEffect(() => {
+    isLoadingRef.current = isLoading;
+  }, [isLoading]);
 
+  useEffect(() => {
     if (!node || !enabled || !hasMore) {
       return;
     }
 
-    observerRef.current = new IntersectionObserver(
+    const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting) && !isLoading) {
+        if (
+          entries.some((entry) => entry.isIntersecting) &&
+          !isLoadingRef.current
+        ) {
           onLoadMoreRef.current();
         }
       },
-      { rootMargin },
+      { root, rootMargin },
     );
 
-    observerRef.current.observe(node);
-  };
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [node, enabled, hasMore, root, rootMargin]);
+
+  return setNode;
 }

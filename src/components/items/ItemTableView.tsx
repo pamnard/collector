@@ -57,6 +57,7 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
     hasMore: dashboard.hasMore,
     isLoading: dashboard.isLoading || dashboard.isLoadingMore,
     onLoadMore: dashboard.loadMore,
+    root: scrollElement,
   });
 
   const loadedIds = useMemo(
