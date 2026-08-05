@@ -9,6 +9,13 @@ import type { AppSettings, ItemFile } from "@collector/shared";
 import type { DashboardSnapshotPort } from "./service-api.js";
 import { DASHBOARD_SNAPSHOT_PORT_KEYS } from "./service-compose.js";
 
+/** Options for streaming thumbnail path resolution (#544). */
+export interface UiSessionThumbnailResolveProgressiveOptions {
+  onResolved: (id: string, path: string | null) => void;
+  signal?: AbortSignal;
+  concurrency?: number;
+}
+
 export interface UiSessionThumbnailPaths {
   resolveItemThumbnailPath(item: ItemFile): Promise<string | null>;
   resolveItemThumbnailPaths(
@@ -17,11 +24,7 @@ export interface UiSessionThumbnailPaths {
   /** Emit each id as soon as resolved; bounded parallel FS work (#544). */
   resolveItemThumbnailPathsProgressive(
     items: ItemFile[],
-    options: {
-      onResolved: (id: string, path: string | null) => void;
-      signal?: AbortSignal;
-      concurrency?: number;
-    },
+    options: UiSessionThumbnailResolveProgressiveOptions,
   ): Promise<void>;
 }
 

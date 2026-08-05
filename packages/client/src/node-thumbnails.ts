@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import type {
   ActiveVaultResult,
   UiSessionThumbnailPaths,
+  UiSessionThumbnailResolveProgressiveOptions,
 } from "@collector/api";
 import { itemCoverPath } from "@collector/core";
 import type { ItemFile } from "@collector/shared";
@@ -37,23 +38,26 @@ export function resolveThumbnailCandidate(
 export function createNodeThumbnailPaths(
   transport: ServiceIpcClient,
 ): UiSessionThumbnailPaths {
-  const resolveItemThumbnailPaths = async (
+  const resolveItemThumbnailPathsProgressive = async (
     items: ItemFile[],
-  ): Promise<Map<string, string | null>> => {
+    options: UiSessionThumbnailResolveProgressiveOptions,
+  ): Promise<void> => {
     if (items.length === 0) {
-      return new Map();
+      return;
     }
     const active = (await transport.request(
       "ensureActiveVault",
     )) as ActiveVaultResult;
-    const resolved = new Map<string, string | null>();
     for (const item of items) {
+      if (options.signal?.aborted) {
+        return;
+      }
       const cover = itemCoverPath(active.path, item.id);
       if (existsSync(cover)) {
-        resolved.set(item.id, cover);
+        options.onResolved(item.id, cover);
         continue;
       }
-      resolved.set(
+      options.onResolved(
         item.id,
         resolveThumbnailCandidate(
           active.path,
@@ -62,44 +66,23 @@ export function createNodeThumbnailPaths(
         ),
       );
     }
+  };
+
+  const resolveItemThumbnailPaths = async (
+    items: ItemFile[],
+  ): Promise<Map<string, string | null>> => {
+    const resolved = new Map<string, string | null>();
+    await resolveItemThumbnailPathsProgressive(items, {
+      onResolved: (id, path) => {
+        resolved.set(id, path);
+      },
+    });
     return resolved;
   };
 
   return {
     resolveItemThumbnailPaths,
-    async resolveItemThumbnailPathsProgressive(
-      items: ItemFile[],
-      options: {
-        onResolved: (id: string, path: string | null) => void;
-        signal?: AbortSignal;
-        concurrency?: number;
-      },
-    ): Promise<void> {
-      if (items.length === 0) {
-        return;
-      }
-      const active = (await transport.request(
-        "ensureActiveVault",
-      )) as ActiveVaultResult;
-      for (const item of items) {
-        if (options.signal?.aborted) {
-          return;
-        }
-        const cover = itemCoverPath(active.path, item.id);
-        if (existsSync(cover)) {
-          options.onResolved(item.id, cover);
-          continue;
-        }
-        options.onResolved(
-          item.id,
-          resolveThumbnailCandidate(
-            active.path,
-            item.id,
-            item.thumbnail ?? null,
-          ),
-        );
-      }
-    },
+    resolveItemThumbnailPathsProgressive,
     async resolveItemThumbnailPath(item: ItemFile): Promise<string | null> {
       const paths = await resolveItemThumbnailPaths([item]);
       return paths.get(item.id) ?? null;
