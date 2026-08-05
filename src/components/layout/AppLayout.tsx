@@ -298,46 +298,49 @@ function AppLayoutInner() {
       ? "settings"
       : "item";
 
+  // Card chrome is viewport-sized; MainScrollArea scrolls inside it.
+  // Growing a shadowed/overflow-hidden card inside the scroller (#806d74c)
+  // made WebKitGTK jank on every wheel frame (Chrome stayed fine).
   const mainColumn = (
     <main className="relative flex min-h-0 h-full flex-1 flex-col overflow-hidden">
-      <MainScrollArea>
-        <div className="box-border flex min-h-full flex-col p-2">
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-white shadow-xs dark:bg-neutral-800">
-            {showCardHeader ? (
-              <Header
-                variant={headerVariant}
-                onOpenSidebar={() => setIsSidebarOpen(true)}
-                viewMode={viewMode}
-                onViewModeChange={setViewMode}
-                onAddClick={openCreate}
-                onFolderSelect={handleFolderSelectFromHeader}
-                settingsSection={settingsSection}
-              />
-            ) : (
-              !isDesktop && (
-                <div className="shrink-0 px-4 pt-4 md:px-8">
-                  <button
-                    type="button"
-                    onClick={() => setIsSidebarOpen(true)}
-                    className="text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
-                    aria-label="Открыть меню"
-                  >
-                    <Menu size={24} />
-                  </button>
-                </div>
-              )
-            )}
+      <div className="box-border flex min-h-0 flex-1 flex-col p-2">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-white shadow-xs dark:bg-neutral-800">
+          {showCardHeader ? (
+            <Header
+              variant={headerVariant}
+              onOpenSidebar={() => setIsSidebarOpen(true)}
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              onAddClick={openCreate}
+              onFolderSelect={handleFolderSelectFromHeader}
+              settingsSection={settingsSection}
+            />
+          ) : (
+            !isDesktop && (
+              <div className="shrink-0 px-4 pt-4 md:px-8">
+                <button
+                  type="button"
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+                  aria-label="Открыть меню"
+                >
+                  <Menu size={24} />
+                </button>
+              </div>
+            )
+          )}
+          <MainScrollArea>
             <div
-              className={`flex min-h-0 flex-1 flex-col overflow-hidden px-4 pt-4 md:px-8 ${
+              className={`px-4 pt-4 md:px-8 ${
                 showCardHeader ? "md:pt-6" : "md:pt-8"
               }`}
             >
               <Outlet />
             </div>
             <ItemChromeAdjacentFooter />
-          </div>
+          </MainScrollArea>
         </div>
-      </MainScrollArea>
+      </div>
     </main>
   );
 

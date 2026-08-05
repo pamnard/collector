@@ -7,6 +7,7 @@ import { ItemGridCard } from "./ItemGridCard";
 import { DashboardGridSkeleton } from "./DashboardListSkeleton";
 import { MASONRY_BREAKPOINTS } from "./masonry-breakpoints";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
+import { useMainScrollElement } from "../../hooks/useMainScrollElement";
 import { coverNeedsResolve } from "../../lib/dashboard-commit";
 import { useShell } from "../layout/AppLayout";
 import type { useDashboardItems } from "../../hooks/useDashboardItems";
@@ -28,6 +29,7 @@ function itemThumbnailBatchKey(items: ItemFile[]): string {
 export function ItemGridView({ dashboard }: ItemGridViewProps) {
   const navigate = useNavigate();
   const { vaultRevision } = useShell();
+  const scrollElement = useMainScrollElement();
   const [tags, setTags] = useState<TagWithCount[]>([]);
   const [thumbnailPaths, setThumbnailPaths] = useState<
     Map<string, string | null>
@@ -41,6 +43,7 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
     hasMore: dashboard.hasMore,
     isLoading: dashboard.isLoading || dashboard.isLoadingMore,
     onLoadMore: dashboard.loadMore,
+    root: scrollElement,
   });
 
   useEffect(() => {
