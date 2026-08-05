@@ -78,10 +78,12 @@ export function ItemGridCard({
           onOpen(item.id);
         }
       }}
+      // No content-visibility / contain-intrinsic-size: WebKitGTK (Tauri Linux)
+      // leaves those masonry cards as blank 280px boxes.
       className={
         overlayLayout
-          ? "group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 hover:border-indigo-500/50 dark:hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/10 [content-visibility:auto] [contain-intrinsic-size:280px]"
-          : "group flex h-full cursor-pointer flex-col rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 p-5 hover:border-indigo-500/50 dark:hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/10 [content-visibility:auto] [contain-intrinsic-size:280px]"
+          ? "group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 hover:border-indigo-500/50 dark:hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/10"
+          : "group flex h-full cursor-pointer flex-col rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 p-5 hover:border-indigo-500/50 dark:hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/10"
       }
     >
       {(showCover || coverPending) && (
