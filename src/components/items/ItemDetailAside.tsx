@@ -15,8 +15,8 @@ export function ItemDetailAside({
   onPlayMedia,
 }: ItemDetailAsideProps) {
   return (
-    <aside className="min-w-0 @[1100px]:col-span-3">
-      <div className="mx-auto w-full max-w-[900px] @[1100px]:max-w-none @[1100px]:sticky @[1100px]:top-4">
+    <aside className="min-w-0 @[1100px]:col-span-3 @[1100px]:h-full">
+      <div className="mx-auto w-full max-w-[900px] opacity-50 transition-opacity hover:opacity-100 @[1100px]:h-full @[1100px]:max-w-none">
         <ItemDetailMetadata item={item} />
         <MediaGallery
           itemId={item.id}

@@ -105,7 +105,7 @@ export function ItemDetailPage() {
       />
 
       {item && (
-        <article className="grid grid-cols-1 gap-6 @[1100px]:grid-cols-12 @[1100px]:items-start @[1100px]:gap-8">
+        <article className="grid grid-cols-1 gap-6 @[1100px]:grid-cols-12 @[1100px]:items-stretch @[1100px]:gap-8">
           {mode === "view" ? (
             <ItemDetailViewBody
               item={item}
