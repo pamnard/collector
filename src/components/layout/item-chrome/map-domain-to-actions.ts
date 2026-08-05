@@ -10,14 +10,21 @@ export function mapDomainToBreadcrumbs(
   if (domain.status === "loading") {
     return { status: "loading" };
   }
+  const copyFields = {
+    idCopyFeedback: domain.idCopyFeedback,
+    copyReady: domain.item !== null,
+    isSaving: domain.isSaving,
+    onCopyId: domain.onCopyId,
+  };
   if (domain.item !== null) {
     return {
       status: "ready",
       folderPath: domain.item.folder_path,
       title: domain.item.title,
+      ...copyFields,
     };
   }
-  return { status: "ready", folderPath: "", title: "" };
+  return { status: "ready", folderPath: "", title: "", ...copyFields };
 }
 
 export function mapDomainToActions(
@@ -28,11 +35,9 @@ export function mapDomainToActions(
   }
   return {
     mode: domain.mode,
-    idCopyFeedback: domain.idCopyFeedback,
     isSaving: domain.isSaving,
     isDeleting: domain.isDeleting,
     ready: domain.item !== null,
-    onCopyId: domain.onCopyId,
     onView: domain.onView,
     onForm: domain.onForm,
     onSource: domain.onSource,

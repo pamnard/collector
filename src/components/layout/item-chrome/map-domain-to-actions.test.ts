@@ -36,18 +36,54 @@ describe("mapDomainToBreadcrumbs", () => {
     });
   });
 
-  it("maps ready item to folder path and title", () => {
-    assert.deepEqual(mapDomainToBreadcrumbs(domain()), {
-      status: "ready",
-      folderPath: "inbox",
-      title: "Title",
-    });
+  it("maps ready item to folder path, title, and copy controls", () => {
+    const onCopyId = () => {};
+    const mapped = mapDomainToBreadcrumbs(
+      domain({ idCopyFeedback: "copied", isSaving: true, onCopyId }),
+    );
+    assert.deepEqual(
+      {
+        status: mapped?.status,
+        folderPath: mapped && mapped.status === "ready" ? mapped.folderPath : null,
+        title: mapped && mapped.status === "ready" ? mapped.title : null,
+        idCopyFeedback:
+          mapped && mapped.status === "ready" ? mapped.idCopyFeedback : null,
+        copyReady: mapped && mapped.status === "ready" ? mapped.copyReady : null,
+        isSaving: mapped && mapped.status === "ready" ? mapped.isSaving : null,
+        onCopyId: mapped && mapped.status === "ready" ? mapped.onCopyId : null,
+      },
+      {
+        status: "ready",
+        folderPath: "inbox",
+        title: "Title",
+        idCopyFeedback: "copied",
+        copyReady: true,
+        isSaving: true,
+        onCopyId,
+      },
+    );
   });
 
-  it("maps error without item to empty ready breadcrumbs", () => {
+  it("maps error without item to empty ready breadcrumbs with copy disabled", () => {
+    const onCopyId = () => {};
+    const mapped = mapDomainToBreadcrumbs(
+      domain({ status: "error", item: null, onCopyId }),
+    );
     assert.deepEqual(
-      mapDomainToBreadcrumbs(domain({ status: "error", item: null })),
-      { status: "ready", folderPath: "", title: "" },
+      {
+        status: mapped?.status,
+        folderPath: mapped && mapped.status === "ready" ? mapped.folderPath : null,
+        title: mapped && mapped.status === "ready" ? mapped.title : null,
+        copyReady: mapped && mapped.status === "ready" ? mapped.copyReady : null,
+        onCopyId: mapped && mapped.status === "ready" ? mapped.onCopyId : null,
+      },
+      {
+        status: "ready",
+        folderPath: "",
+        title: "",
+        copyReady: false,
+        onCopyId,
+      },
     );
   });
 });
@@ -57,8 +93,7 @@ describe("mapDomainToActions", () => {
     assert.equal(mapDomainToActions(null), null);
   });
 
-  it("maps domain fields into actions model with ready from item", () => {
-    const onCopyId = () => {};
+  it("maps domain fields into actions model without copy controls", () => {
     const onView = () => {};
     const onForm = () => {};
     const onSource = () => {};
@@ -66,10 +101,8 @@ describe("mapDomainToActions", () => {
     const actions = mapDomainToActions(
       domain({
         mode: "form",
-        idCopyFeedback: "copied",
         isSaving: true,
         isDeleting: false,
-        onCopyId,
         onView,
         onForm,
         onSource,
@@ -79,11 +112,9 @@ describe("mapDomainToActions", () => {
     assert.deepEqual(
       {
         mode: actions?.mode,
-        idCopyFeedback: actions?.idCopyFeedback,
         isSaving: actions?.isSaving,
         isDeleting: actions?.isDeleting,
         ready: actions?.ready,
-        onCopyId: actions?.onCopyId,
         onView: actions?.onView,
         onForm: actions?.onForm,
         onSource: actions?.onSource,
@@ -91,16 +122,18 @@ describe("mapDomainToActions", () => {
       },
       {
         mode: "form",
-        idCopyFeedback: "copied",
         isSaving: true,
         isDeleting: false,
         ready: true,
-        onCopyId,
         onView,
         onForm,
         onSource,
         onDelete,
       },
+    );
+    assert.equal(
+      actions !== null && !("onCopyId" in actions) && !("idCopyFeedback" in actions),
+      true,
     );
   });
 

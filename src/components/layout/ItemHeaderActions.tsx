@@ -1,4 +1,4 @@
-import { Check, Code, Copy, Eye, Form, Trash2 } from "lucide-react";
+import { Code, Eye, Form, Trash2 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { ButtonGroup } from "../ui/button-group";
@@ -9,11 +9,9 @@ export type { ItemDetailMode };
 
 export interface ItemHeaderActionsModel {
   mode: ItemDetailMode;
-  idCopyFeedback: "copied" | "failed" | null;
   isSaving: boolean;
   isDeleting: boolean;
   ready: boolean;
-  onCopyId: () => void;
   onView: () => void;
   onForm: () => void;
   onSource: () => void;
@@ -31,7 +29,7 @@ export function ItemHeaderActions({ actions }: ItemHeaderActionsProps) {
   if (!actions) {
     return (
       <div
-        className="h-8 w-[10rem] shrink-0 animate-pulse rounded-lg bg-secondary dark:bg-neutral-700"
+        className="h-8 w-32 shrink-0 animate-pulse rounded-lg bg-secondary dark:bg-neutral-700"
         aria-hidden
       />
     );
@@ -39,11 +37,9 @@ export function ItemHeaderActions({ actions }: ItemHeaderActionsProps) {
 
   const {
     mode,
-    idCopyFeedback,
     isSaving,
     isDeleting,
     ready,
-    onCopyId,
     onView,
     onForm,
     onSource,
@@ -52,35 +48,6 @@ export function ItemHeaderActions({ actions }: ItemHeaderActionsProps) {
 
   return (
     <ButtonGroup aria-label="Режим страницы">
-      <Button
-        type="button"
-        variant="secondary"
-        size="icon"
-        aria-label={
-          idCopyFeedback === "copied"
-            ? "Id скопирован"
-            : idCopyFeedback === "failed"
-              ? "Не удалось скопировать id"
-              : "Скопировать id элемента"
-        }
-        title={
-          idCopyFeedback === "copied"
-            ? "Id скопирован"
-            : idCopyFeedback === "failed"
-              ? "Не удалось скопировать id"
-              : "Скопировать id элемента"
-        }
-        className={cn(
-          iconBtn,
-          headerChromeBtn,
-          idCopyFeedback === "copied" && "text-neutral-900 dark:text-neutral-100",
-          idCopyFeedback === "failed" && "text-red-400 dark:text-red-400",
-        )}
-        onClick={onCopyId}
-        disabled={!ready || isSaving}
-      >
-        {idCopyFeedback === "copied" ? <Check size={16} /> : <Copy size={16} />}
-      </Button>
       <Button
         type="button"
         variant="secondary"
