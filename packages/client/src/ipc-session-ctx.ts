@@ -13,6 +13,21 @@ function createNullThumbnailPaths(): UiSessionThumbnailPaths {
       items: ItemFile[],
     ): Promise<Map<string, string | null>> =>
       new Map(items.map((item) => [item.id, null])),
+    resolveItemThumbnailPathsProgressive: async (
+      items: ItemFile[],
+      options: {
+        onResolved: (id: string, path: string | null) => void;
+        signal?: AbortSignal;
+        concurrency?: number;
+      },
+    ): Promise<void> => {
+      for (const item of items) {
+        if (options.signal?.aborted) {
+          return;
+        }
+        options.onResolved(item.id, null);
+      }
+    },
   };
 }
 

@@ -91,6 +91,9 @@ describe("CollectorService / DevMock (#332 / #365 / #369 / #370)", () => {
     expect(typeof session.thumbnails.resolveItemThumbnailPaths).toBe(
       "function",
     );
+    expect(typeof session.thumbnails.resolveItemThumbnailPathsProgressive).toBe(
+      "function",
+    );
   });
 
   it("getUiSession tracks setCollectorService (#368/#369)", () => {

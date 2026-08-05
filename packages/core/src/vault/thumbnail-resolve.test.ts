@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { FileSystemAdapter } from "../adapters/types.js";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
@@ -11,7 +12,10 @@ import { attachMediaFile } from "./media-operations.js";
 import { createVault } from "./vault-operations.js";
 import { upsertItem } from "./item-operations.js";
 import { itemCoverPath } from "./paths.js";
-import { resolveItemThumbnailPathsBatch } from "./thumbnail-resolve.js";
+import {
+  resolveItemThumbnailPathsBatch,
+  resolveItemThumbnailPathsProgressive,
+} from "./thumbnail-resolve.js";
 
 describe("resolveItemThumbnailPathsBatch", () => {
   let dataDir = "";
@@ -123,5 +127,148 @@ describe("resolveItemThumbnailPathsBatch", () => {
     ]);
 
     expect(rows).toEqual([{ id: itemId, path: remote }]);
+  });
+});
+
+describe("resolveItemThumbnailPathsProgressive", () => {
+  const slowId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.md";
+  const fastId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.md";
+  const afterAbortId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc.md";
+
+  function wrapWithLatches(
+    inner: FileSystemAdapter,
+    options: {
+      delayExistsFor: (path: string) => Promise<void> | void;
+      onExistsStart?: () => void;
+      onExistsEnd?: () => void;
+    },
+  ): FileSystemAdapter {
+    return {
+      ...inner,
+      async exists(path: string): Promise<boolean> {
+        options.onExistsStart?.();
+        try {
+          await options.delayExistsFor(path);
+          return inner.exists(path);
+        } finally {
+          options.onExistsEnd?.();
+        }
+      },
+    };
+  }
+
+  it("emits fast item before slow sibling finishes", async () => {
+    let releaseSlow: (() => void) | undefined;
+    const slowGate = new Promise<void>((resolve) => {
+      releaseSlow = resolve;
+    });
+    let slowStarted = false;
+
+    const base = new NodeFileSystemAdapter();
+    const fs = wrapWithLatches(base, {
+      delayExistsFor: async (path) => {
+        if (path.includes("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")) {
+          slowStarted = true;
+          await slowGate;
+        }
+      },
+    });
+
+    const order: string[] = [];
+    await resolveItemThumbnailPathsProgressive(
+      fs,
+      "/vault",
+      [
+        // Slow first so a concurrent worker is blocked before fast finishes.
+        { id: slowId, thumbnail: "https://example.com/slow.jpg" },
+        { id: fastId, thumbnail: "https://example.com/fast.jpg" },
+      ],
+      {
+        concurrency: 2,
+        onResolved: (result) => {
+          order.push(result.id);
+          if (result.id === fastId) {
+            expect(slowStarted).toBe(true);
+            releaseSlow?.();
+          }
+        },
+      },
+    );
+
+    expect(order[0]).toBe(fastId);
+    expect(order).toEqual([fastId, slowId]);
+  });
+
+  it("never runs more than concurrency exists probes at once", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+
+    const base = new NodeFileSystemAdapter();
+    const fs = wrapWithLatches(base, {
+      delayExistsFor: async () => {
+        await new Promise((r) => setTimeout(r, 5));
+      },
+      onExistsStart: () => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+      },
+      onExistsEnd: () => {
+        inFlight -= 1;
+      },
+    });
+
+    const items = Array.from({ length: 6 }, (_, i) => ({
+      id: `dddddddd-dddd-4ddd-8ddd-dddddddddd${String(i).padStart(2, "0")}.md`,
+      thumbnail: `https://example.com/${i}.jpg` as string | null,
+    }));
+
+    await resolveItemThumbnailPathsProgressive(fs, "/vault", items, {
+      concurrency: 2,
+      onResolved: () => {},
+    });
+
+    expect(maxInFlight).toBeGreaterThan(1);
+    expect(maxInFlight).toBeLessThanOrEqual(2);
+  });
+
+  it("does not emit after abort", async () => {
+    const controller = new AbortController();
+    let releaseSlow: (() => void) | undefined;
+    const slowGate = new Promise<void>((resolve) => {
+      releaseSlow = resolve;
+    });
+
+    const base = new NodeFileSystemAdapter();
+    const fs = wrapWithLatches(base, {
+      delayExistsFor: async (path) => {
+        if (path.includes("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")) {
+          await slowGate;
+        }
+      },
+    });
+
+    const emitted: string[] = [];
+    const run = resolveItemThumbnailPathsProgressive(
+      fs,
+      "/vault",
+      [
+        { id: slowId, thumbnail: "https://example.com/slow.jpg" },
+        { id: afterAbortId, thumbnail: "https://example.com/a.jpg" },
+      ],
+      {
+        concurrency: 1,
+        signal: controller.signal,
+        onResolved: (result) => {
+          emitted.push(result.id);
+        },
+      },
+    );
+
+    await new Promise((r) => setTimeout(r, 0));
+    controller.abort();
+    releaseSlow?.();
+    await run;
+
+    expect(emitted).toEqual([]);
   });
 });

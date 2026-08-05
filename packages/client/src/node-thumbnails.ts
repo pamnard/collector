@@ -67,6 +67,39 @@ export function createNodeThumbnailPaths(
 
   return {
     resolveItemThumbnailPaths,
+    async resolveItemThumbnailPathsProgressive(
+      items: ItemFile[],
+      options: {
+        onResolved: (id: string, path: string | null) => void;
+        signal?: AbortSignal;
+        concurrency?: number;
+      },
+    ): Promise<void> {
+      if (items.length === 0) {
+        return;
+      }
+      const active = (await transport.request(
+        "ensureActiveVault",
+      )) as ActiveVaultResult;
+      for (const item of items) {
+        if (options.signal?.aborted) {
+          return;
+        }
+        const cover = itemCoverPath(active.path, item.id);
+        if (existsSync(cover)) {
+          options.onResolved(item.id, cover);
+          continue;
+        }
+        options.onResolved(
+          item.id,
+          resolveThumbnailCandidate(
+            active.path,
+            item.id,
+            item.thumbnail ?? null,
+          ),
+        );
+      }
+    },
     async resolveItemThumbnailPath(item: ItemFile): Promise<string | null> {
       const paths = await resolveItemThumbnailPaths([item]);
       return paths.get(item.id) ?? null;

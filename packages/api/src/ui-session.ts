@@ -14,6 +14,15 @@ export interface UiSessionThumbnailPaths {
   resolveItemThumbnailPaths(
     items: ItemFile[],
   ): Promise<Map<string, string | null>>;
+  /** Emit each id as soon as resolved; bounded parallel FS work (#544). */
+  resolveItemThumbnailPathsProgressive(
+    items: ItemFile[],
+    options: {
+      onResolved: (id: string, path: string | null) => void;
+      signal?: AbortSignal;
+      concurrency?: number;
+    },
+  ): Promise<void>;
 }
 
 export interface UiSessionSettingsSync {
@@ -40,4 +49,5 @@ export const UI_SESSION_SETTINGS_SYNC_KEYS = [
 export const UI_SESSION_THUMBNAIL_KEYS = [
   "resolveItemThumbnailPath",
   "resolveItemThumbnailPaths",
+  "resolveItemThumbnailPathsProgressive",
 ] as const satisfies readonly (keyof UiSessionThumbnailPaths)[];
