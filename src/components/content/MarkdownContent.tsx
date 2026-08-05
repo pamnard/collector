@@ -20,7 +20,20 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
         rehypePlugins={[
           [rehypeHighlight, { detect: false, ignoreMissing: true }],
         ]}
-        components={{ a: ExternalAnchor, pre: MarkdownPre }}
+        components={{
+          a: (props) => (
+            <ExternalAnchor
+              {...props}
+              className={[
+                "border-b border-indigo-400/50 no-underline",
+                props.className,
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            />
+          ),
+          pre: MarkdownPre,
+        }}
       >
         {content}
       </ReactMarkdown>
