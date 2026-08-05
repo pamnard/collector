@@ -4,6 +4,7 @@ import type {
   MediaWithPath,
 } from "@collector/api";
 import type { ItemFile, MediaFileMeta } from "@collector/shared";
+import { bytesToBase64 } from "../bytes-to-base64.js";
 import type { IpcSessionCtx } from "../ipc-session-ctx.js";
 
 export function createIpcMediaPort(ctx: IpcSessionCtx): MediaPort {
@@ -35,7 +36,7 @@ export function createIpcMediaPort(ctx: IpcSessionCtx): MediaPort {
         itemId,
         files: files.map((file) => ({
           filename: file.name,
-          dataBase64: Buffer.from(file.bytes).toString("base64"),
+          dataBase64: bytesToBase64(file.bytes),
         })),
       }) as Promise<MediaFileMeta[]>,
     replaceItemMedia: async (
@@ -48,7 +49,7 @@ export function createIpcMediaPort(ctx: IpcSessionCtx): MediaPort {
         mediaId,
         file: {
           filename: file.name,
-          dataBase64: Buffer.from(file.bytes).toString("base64"),
+          dataBase64: bytesToBase64(file.bytes),
         },
       }) as Promise<MediaFileMeta>,
     deleteItemMedia: async (

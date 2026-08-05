@@ -20,6 +20,7 @@ import {
   subscriptionFromTeardown,
 } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
+import { bytesToBase64 } from "../bytes-to-base64.js";
 import type { IpcSessionCtx } from "../ipc-session-ctx.js";
 
 export function createIpcItemsPort(ctx: IpcSessionCtx): ItemsPort {
@@ -197,7 +198,7 @@ export function createIpcItemsPort(ctx: IpcSessionCtx): ItemsPort {
         files: input.files.map((file) => ({
           relativePath: file.relativePath,
           filename: file.name,
-          dataBase64: Buffer.from(file.bytes).toString("base64"),
+          dataBase64: bytesToBase64(file.bytes),
         })),
       }) as Promise<ImportDroppedFilesResult>,
   };
