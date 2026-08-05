@@ -191,8 +191,12 @@ export {
   clearItemCover,
   resolveItemThumbnailAbsolutePath,
 } from "./vault/cover-operations.js";
-export { resolveItemThumbnailPathsBatch } from "./vault/thumbnail-resolve.js";
+export {
+  resolveItemThumbnailPathsBatch,
+  resolveItemThumbnailPathsProgressive,
+} from "./vault/thumbnail-resolve.js";
 export type {
+  ResolveItemThumbnailPathsProgressiveOptions,
   ThumbnailResolveItem,
   ThumbnailResolveResult,
 } from "./vault/thumbnail-resolve.js";

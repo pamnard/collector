@@ -51,13 +51,9 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
   }, [vaultRevision]);
 
   useEffect(() => {
-    let cancelled = false;
-
     if (!dashboard.items.length) {
       setThumbnailPaths(new Map());
-      return () => {
-        cancelled = true;
-      };
+      return;
     }
 
     const missing = dashboard.items.filter((item) =>
@@ -68,26 +64,29 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
       ),
     );
     if (missing.length === 0) {
-      return () => {
-        cancelled = true;
-      };
+      return;
     }
 
-    void getUiSession().thumbnails.resolveItemThumbnailPaths(missing).then((paths) => {
-      if (cancelled) {
-        return;
-      }
-      setThumbnailPaths((current) => {
-        const next = new Map(current);
-        for (const [id, path] of paths) {
-          next.set(id, path);
-        }
-        return next;
-      });
-    });
+    const controller = new AbortController();
+    void getUiSession().thumbnails.resolveItemThumbnailPathsProgressive(
+      missing,
+      {
+        signal: controller.signal,
+        onResolved: (id, path) => {
+          if (controller.signal.aborted) {
+            return;
+          }
+          setThumbnailPaths((current) => {
+            const next = new Map(current);
+            next.set(id, path);
+            return next;
+          });
+        },
+      },
+    );
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [
     thumbnailBatchKey,

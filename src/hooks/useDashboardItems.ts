@@ -36,7 +36,7 @@ import {
   planApplyOffsetZeroPage,
   planLoadMore,
 } from "../lib/dashboard-query-window";
-import { resolveDashboardCoverPaths } from "../lib/preload-dashboard-covers";
+import { resolveDashboardCoverPathsProgressive } from "../lib/preload-dashboard-covers";
 import { navFilterKey, type NavFilter } from "../types/ui";
 import {
   DASHBOARD_PREFETCH_SIZE,
@@ -183,6 +183,7 @@ export function useDashboardItems(
     ),
   );
   const streamAbortRef = useRef<AbortController | null>(null);
+  const coverAbortRef = useRef<AbortController | null>(null);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryBusyRef = useRef(false);
   const filterRef = useRef(filter);
@@ -354,36 +355,56 @@ export function useDashboardItems(
         return;
       }
 
-      const paths = await resolveDashboardCoverPaths(needsResolve);
+      coverAbortRef.current?.abort();
+      const coverController = new AbortController();
+      coverAbortRef.current = coverController;
+
+      const stampById = new Map(
+        needsResolve.map((item) => [item.id, itemCoverStamp(item)]),
+      );
+
+      await resolveDashboardCoverPathsProgressive(needsResolve, {
+        signal: coverController.signal,
+        onResolved: (id, path) => {
+          if (requestVersionRef.current !== requestVersion) {
+            return;
+          }
+          if (coverController.signal.aborted) {
+            return;
+          }
+          const stamp = stampById.get(id);
+          if (stamp === undefined) {
+            return;
+          }
+          const paths = new Map<string, string | null>([[id, path]]);
+          const stamps = new Map<string, string>([[id, stamp]]);
+          const mergedPaths = mergeCommittedThumbnailPaths(
+            committedThumbnailPathsRef.current,
+            paths,
+            nextOrderedIds,
+          );
+          const mergedStamps = mergeCommittedThumbnailStamps(
+            committedThumbnailStampsRef.current,
+            stamps,
+            nextOrderedIds,
+          );
+          if (
+            !thumbnailPathsEqual(
+              committedThumbnailPathsRef.current,
+              mergedPaths,
+              nextOrderedIds,
+            )
+          ) {
+            setCommittedThumbnailPaths(mergedPaths);
+            setCommittedThumbnailStamps(mergedStamps);
+            committedThumbnailPathsRef.current = mergedPaths;
+            committedThumbnailStampsRef.current = mergedStamps;
+          }
+        },
+      });
+
       if (requestVersionRef.current !== requestVersion) {
         return;
-      }
-
-      const resolvedStamps = new Map<string, string>();
-      for (const item of needsResolve) {
-        resolvedStamps.set(item.id, itemCoverStamp(item));
-      }
-      const mergedPaths = mergeCommittedThumbnailPaths(
-        committedThumbnailPathsRef.current,
-        paths,
-        nextOrderedIds,
-      );
-      const mergedStamps = mergeCommittedThumbnailStamps(
-        committedThumbnailStampsRef.current,
-        resolvedStamps,
-        nextOrderedIds,
-      );
-      if (
-        !thumbnailPathsEqual(
-          committedThumbnailPathsRef.current,
-          mergedPaths,
-          nextOrderedIds,
-        )
-      ) {
-        setCommittedThumbnailPaths(mergedPaths);
-        setCommittedThumbnailStamps(mergedStamps);
-        committedThumbnailPathsRef.current = mergedPaths;
-        committedThumbnailStampsRef.current = mergedStamps;
       }
 
       writeQueryCache(ids, byId, end, nextTotal);
@@ -621,6 +642,7 @@ export function useDashboardItems(
     }
 
     streamAbortRef.current?.abort();
+    coverAbortRef.current?.abort();
 
     const controller = new AbortController();
 
@@ -686,6 +708,7 @@ export function useDashboardItems(
     return () => {
       controller.abort();
       streamAbortRef.current?.abort();
+      coverAbortRef.current?.abort();
       if (requestVersionRef.current === requestVersion) {
         queryBusyRef.current = false;
       }

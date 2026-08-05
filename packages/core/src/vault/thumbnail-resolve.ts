@@ -6,9 +6,11 @@
  * first image in the gallery folder. Frontmatter paths are not the SoT.
  *
  * Issue #255: domain host must not stub this to null.
+ * Issue #544: progressive emit + bounded parallel resolve.
  */
 
 import type { FileSystemAdapter } from "../adapters/types.js";
+import { DISK_ITEM_READ_CONCURRENCY } from "../util/concurrency.js";
 import { listMediaFiles, mediaFilePath } from "./media-io.js";
 import { itemCoverPath } from "./paths.js";
 
@@ -20,6 +22,13 @@ export interface ThumbnailResolveItem {
 export interface ThumbnailResolveResult {
   id: string;
   path: string | null;
+}
+
+export interface ResolveItemThumbnailPathsProgressiveOptions {
+  /** Default: {@link DISK_ITEM_READ_CONCURRENCY}. */
+  concurrency?: number;
+  onResolved: (result: ThumbnailResolveResult) => void;
+  signal?: AbortSignal;
 }
 
 async function resolveOneThumbnail(
@@ -60,6 +69,50 @@ async function resolveOneThumbnail(
   return null;
 }
 
+/**
+ * Resolve thumbnail paths with a bounded worker pool; emit each id as soon as
+ * it is ready (#544).
+ */
+export async function resolveItemThumbnailPathsProgressive(
+  fs: FileSystemAdapter,
+  vaultPath: string,
+  items: ThumbnailResolveItem[],
+  options: ResolveItemThumbnailPathsProgressiveOptions,
+): Promise<void> {
+  if (!items.length) {
+    return;
+  }
+
+  const { onResolved, signal } = options;
+  const concurrency = options.concurrency ?? DISK_ITEM_READ_CONCURRENCY;
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    while (true) {
+      if (signal?.aborted) {
+        return;
+      }
+
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= items.length) {
+        return;
+      }
+
+      const item = items[index]!;
+      const path = await resolveOneThumbnail(fs, vaultPath, item);
+      if (signal?.aborted) {
+        return;
+      }
+
+      onResolved({ id: item.id, path });
+    }
+  }
+
+  const workerCount = Math.min(concurrency, items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+}
+
 export async function resolveItemThumbnailPathsBatch(
   fs: FileSystemAdapter,
   vaultPath: string,
@@ -69,12 +122,15 @@ export async function resolveItemThumbnailPathsBatch(
     return [];
   }
 
-  const results: ThumbnailResolveResult[] = [];
-  for (const item of items) {
-    results.push({
-      id: item.id,
-      path: await resolveOneThumbnail(fs, vaultPath, item),
-    });
-  }
-  return results;
+  const byId = new Map<string, string | null>();
+  await resolveItemThumbnailPathsProgressive(fs, vaultPath, items, {
+    onResolved: (result) => {
+      byId.set(result.id, result.path);
+    },
+  });
+
+  return items.map((item) => ({
+    id: item.id,
+    path: byId.get(item.id) ?? null,
+  }));
 }
