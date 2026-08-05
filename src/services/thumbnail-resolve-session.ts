@@ -3,11 +3,12 @@
  * Progressive emit + bounded parallel resolve (#544).
  */
 
-import type { ActiveVaultResult, UiSessionThumbnailPaths } from "@collector/api";
-import {
-  resolveItemThumbnailPathsBatch,
-  resolveItemThumbnailPathsProgressive,
-} from "@collector/core";
+import type {
+  ActiveVaultResult,
+  UiSessionThumbnailPaths,
+  UiSessionThumbnailResolveProgressiveOptions,
+} from "@collector/api";
+import { resolveItemThumbnailPathsProgressive } from "@collector/core";
 import type { ItemFile } from "@collector/shared";
 import { TauriFileSystemAdapter } from "../adapters/tauri-fs";
 import { isDevMock } from "../dev/is-dev-mock";
@@ -24,11 +25,7 @@ export function createThumbnailResolveSession(
 ): UiSessionThumbnailPaths {
   const resolveItemThumbnailPathsProgressiveFn = async (
     items: ItemFile[],
-    options: {
-      onResolved: (id: string, path: string | null) => void;
-      signal?: AbortSignal;
-      concurrency?: number;
-    },
+    options: UiSessionThumbnailResolveProgressiveOptions,
   ): Promise<void> => {
     if (items.length === 0) {
       return;
@@ -69,33 +66,12 @@ export function createThumbnailResolveSession(
   const resolveItemThumbnailPaths = async (
     items: ItemFile[],
   ): Promise<Map<string, string | null>> => {
-    if (items.length === 0) {
-      return new Map();
-    }
-
-    if (isDevMock()) {
-      const resolved = new Map<string, string | null>();
-      await resolveItemThumbnailPathsProgressiveFn(items, {
-        onResolved: (id, path) => {
-          resolved.set(id, path);
-        },
-      });
-      return resolved;
-    }
-
-    const { path: vaultPath } = await deps.resolveActiveVault();
-    const rows = await resolveItemThumbnailPathsBatch(
-      fs,
-      vaultPath,
-      items.map((item) => ({
-        id: item.id,
-        thumbnail: item.thumbnail ?? null,
-      })),
-    );
     const resolved = new Map<string, string | null>();
-    for (const row of rows) {
-      resolved.set(row.id, row.path);
-    }
+    await resolveItemThumbnailPathsProgressiveFn(items, {
+      onResolved: (id, path) => {
+        resolved.set(id, path);
+      },
+    });
     return resolved;
   };
 

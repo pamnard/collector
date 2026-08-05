@@ -97,6 +97,7 @@ export {
   type UiSession,
   type UiSessionSettingsSync,
   type UiSessionThumbnailPaths,
+  type UiSessionThumbnailResolveProgressiveOptions,
 } from "./ui-session.js";
 
 export {

@@ -1,5 +1,6 @@
 import type {
   UiSessionThumbnailPaths,
+  UiSessionThumbnailResolveProgressiveOptions,
   VaultIndexSyncStatus,
 } from "@collector/api";
 import type { AppSettings, ItemFile } from "@collector/shared";
@@ -15,11 +16,7 @@ function createNullThumbnailPaths(): UiSessionThumbnailPaths {
       new Map(items.map((item) => [item.id, null])),
     resolveItemThumbnailPathsProgressive: async (
       items: ItemFile[],
-      options: {
-        onResolved: (id: string, path: string | null) => void;
-        signal?: AbortSignal;
-        concurrency?: number;
-      },
+      options: UiSessionThumbnailResolveProgressiveOptions,
     ): Promise<void> => {
       for (const item of items) {
         if (options.signal?.aborted) {
