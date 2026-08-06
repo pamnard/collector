@@ -66,6 +66,7 @@ export type {
 
 export {
   HostWireError,
+  formatHostConnectFailure,
   getCollectorApiError,
   isHostWireError,
   mapHandlerThrownToApiError,

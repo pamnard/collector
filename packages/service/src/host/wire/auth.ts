@@ -49,7 +49,7 @@ export async function readServiceHostTokenFile(
   const raw = await readFile(tokenPath, "utf8");
   const token = raw.trim();
   if (!token) {
-    throw new Error(`IPC token file is empty: ${tokenPath}`);
+    throw new Error(`Host token file is empty: ${tokenPath}`);
   }
   return token;
 }
@@ -90,7 +90,7 @@ export type ResolveServiceHostTokenOptions = {
 };
 
 /**
- * Resolve the IPC handshake token for a dialer.
+ * Resolve the host auth token for a dialer.
  * Order: explicit token → tokenFile → COLLECTOR_HOST_TOKEN → dataDir file →
  * sibling of collector-service.sock.
  */

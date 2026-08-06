@@ -28,3 +28,18 @@ export function isValidBearer(
   }
   return tokensEqual(expectedToken, provided);
 }
+
+/**
+ * Media auth: query `token` (img/video URLs) or Authorization Bearer.
+ */
+export function isValidHostToken(
+  req: IncomingMessage,
+  url: URL,
+  expectedToken: string,
+): boolean {
+  const queryToken = url.searchParams.get("token");
+  if (queryToken !== null && tokensEqual(expectedToken, queryToken)) {
+    return true;
+  }
+  return isValidBearer(req, expectedToken);
+}

@@ -30,14 +30,6 @@ function createHttpHostUiPorts(transport: CollectorHostTransport): {
   };
 }
 
-/** Domain ports over HTTP+WS host transport (#551). */
-export function createHttpCollectorServiceFromTransport(
-  transport: CollectorHostTransport,
-  ports = createHttpHostUiPorts(transport),
-): CollectorService {
-  return createCollectorHostService(transport, ports);
-}
-
 /** UiSession for HTTP host cutover — host snapshot + thumb resolve (#552). */
 export function createHttpUiSession(
   service: CollectorService,
@@ -61,14 +53,17 @@ export type HttpUiCutover = {
   transport: CollectorHostTransport;
 };
 
-/** Dial host and build UI service + session (#551). */
+/**
+ * Dial host and build UI service + session (#551).
+ * Uses shared createHttpHostTransport + createCollectorHostService (#550 C).
+ */
 export async function createHttpUiCutover(
   baseUrl: string,
   token: string,
 ): Promise<HttpUiCutover> {
   const transport = await createHttpHostTransport({ baseUrl, token });
   const ports = createHttpHostUiPorts(transport);
-  const service = createHttpCollectorServiceFromTransport(transport, ports);
+  const service = createCollectorHostService(transport, ports);
   const session = createHttpUiSession(service, ports);
   return { service, session, transport };
 }

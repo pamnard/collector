@@ -12,14 +12,14 @@
 import { spawn } from "node:child_process";
 import { createConnection } from "node:net";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { createInterface } from "node:readline";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { hostTokenPath } from "./lib/host-token.mjs";
+import { waitForServiceReady } from "./lib/wait-for-service-ready.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CLI = join(ROOT, "packages/service/dist/host/cli.js");
-const READY_PREFIX = "COLLECTOR_SERVICE_READY ";
 const READY_TIMEOUT_MS = 30_000;
 const PROTOCOL_VERSION = 1;
 
@@ -36,7 +36,7 @@ function encodeFrame(message) {
 }
 
 function readToken(dataDir) {
-  return readFileSync(join(dataDir, "collector-service.host-token"), "utf8").trim();
+  return readFileSync(hostTokenPath(dataDir), "utf8").trim();
 }
 
 function ipcRequest(path, method, params) {
@@ -138,38 +138,7 @@ function ipcAuthedRequests(path, token, methods) {
 }
 
 async function waitForReady(child) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`timed out waiting for ${READY_PREFIX.trim()}`));
-    }, READY_TIMEOUT_MS);
-
-    const rl = createInterface({ input: child.stdout });
-    rl.on("line", (line) => {
-      if (!line.startsWith(READY_PREFIX)) {
-        return;
-      }
-      clearTimeout(timer);
-      rl.close();
-      try {
-        resolve(JSON.parse(line.slice(READY_PREFIX.length)));
-      } catch (error) {
-        reject(error);
-      }
-    });
-
-    child.stderr.on("data", (chunk) => {
-      process.stderr.write(chunk);
-    });
-
-    child.on("exit", (code, signal) => {
-      clearTimeout(timer);
-      reject(
-        new Error(
-          `host exited before READY (code=${code}, signal=${signal})`,
-        ),
-      );
-    });
-  });
+  return waitForServiceReady(child, { timeoutMs: READY_TIMEOUT_MS });
 }
 
 function waitForExit(child) {

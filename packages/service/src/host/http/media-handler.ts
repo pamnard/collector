@@ -8,9 +8,9 @@ import { realpath, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname } from "node:path";
 import type { CollectorApiError } from "@collector/api";
-import { extractBearerToken } from "./bearer.js";
+import { isValidHostToken } from "./bearer.js";
 import { corsHeadersForRequest } from "./cors.js";
-import { tokensEqual } from "../wire/auth.js";
+import { writeJson } from "./write-json.js";
 
 const MEDIA_PATH = "/media/file";
 
@@ -35,23 +35,12 @@ export type MediaHandlerOptions = {
   expectedToken: string;
   /** Absolute path to `{dataDir}/vaults` — files must resolve under this root. */
   vaultsRootPath: string;
+  /**
+   * Optional pre-resolved vaults root (realpath). When set, skips realpath of
+   * vaultsRootPath on every request (#550 cleanup B).
+   */
+  vaultsRootResolved?: string;
 };
-
-function jsonError(
-  req: IncomingMessage,
-  res: ServerResponse,
-  code: number,
-  error: CollectorApiError,
-): void {
-  const body = { ok: false, error };
-  const payload = `${JSON.stringify(body)}\n`;
-  res.writeHead(code, {
-    "content-type": "application/json; charset=utf-8",
-    "content-length": String(Buffer.byteLength(payload)),
-    ...corsHeadersForRequest(req),
-  });
-  res.end(payload);
-}
 
 export function contentTypeForPath(filePath: string): string {
   const ext = extname(filePath).toLowerCase();
@@ -76,22 +65,6 @@ export function isMediaFileRequest(
   return (
     (method === "GET" || method === "HEAD") && pathname === MEDIA_PATH
   );
-}
-
-function mediaAuthOk(
-  req: IncomingMessage,
-  url: URL,
-  expectedToken: string,
-): boolean {
-  const queryToken = url.searchParams.get("token");
-  if (queryToken !== null && tokensEqual(expectedToken, queryToken)) {
-    return true;
-  }
-  const bearer = extractBearerToken(req);
-  if (bearer !== null && tokensEqual(expectedToken, bearer)) {
-    return true;
-  }
-  return false;
 }
 
 export type ParsedByteRange = {
@@ -153,39 +126,52 @@ export async function handleMediaFile(
   url: URL,
   options: MediaHandlerOptions,
 ): Promise<void> {
-  if (!mediaAuthOk(req, url, options.expectedToken)) {
-    jsonError(req, res, 401, {
-      layer: "auth",
-      code: "auth_failed",
-      message: "media authentication required",
+  if (!isValidHostToken(req, url, options.expectedToken)) {
+    writeJson(req, res, 401, {
+      ok: false,
+      error: {
+        layer: "auth",
+        code: "auth_failed",
+        message: "media authentication required",
+      } satisfies CollectorApiError,
     });
     return;
   }
 
   const rawPath = url.searchParams.get("path");
   if (rawPath === null || rawPath.length === 0) {
-    jsonError(req, res, 400, {
-      layer: "validation",
-      code: "bad_request",
-      message: "path query parameter required",
+    writeJson(req, res, 400, {
+      ok: false,
+      error: {
+        layer: "validation",
+        code: "bad_request",
+        message: "path query parameter required",
+      } satisfies CollectorApiError,
     });
     return;
   }
 
   let vaultsRootResolved: string;
-  try {
-    vaultsRootResolved = await realpath(options.vaultsRootPath);
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException;
-    if (err.code === "ENOENT") {
-      jsonError(req, res, 404, {
-        layer: "domain",
-        code: "not_found",
-        message: "vaults root not found",
-      });
-      return;
+  if (options.vaultsRootResolved !== undefined) {
+    vaultsRootResolved = options.vaultsRootResolved;
+  } else {
+    try {
+      vaultsRootResolved = await realpath(options.vaultsRootPath);
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code === "ENOENT") {
+        writeJson(req, res, 404, {
+          ok: false,
+          error: {
+            layer: "domain",
+            code: "not_found",
+            message: "vaults root not found",
+          } satisfies CollectorApiError,
+        });
+        return;
+      }
+      throw error;
     }
-    throw error;
   }
 
   let resolvedPath: string;
@@ -194,10 +180,13 @@ export async function handleMediaFile(
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
     if (err.code === "ENOENT") {
-      jsonError(req, res, 404, {
-        layer: "domain",
-        code: "not_found",
-        message: "media file not found",
+      writeJson(req, res, 404, {
+        ok: false,
+        error: {
+          layer: "domain",
+          code: "not_found",
+          message: "media file not found",
+        } satisfies CollectorApiError,
       });
       return;
     }
@@ -205,20 +194,26 @@ export async function handleMediaFile(
   }
 
   if (!isResolvedPathInsideVaults(vaultsRootResolved, resolvedPath)) {
-    jsonError(req, res, 403, {
-      layer: "auth",
-      code: "auth_failed",
-      message: "path outside vault",
+    writeJson(req, res, 403, {
+      ok: false,
+      error: {
+        layer: "auth",
+        code: "auth_failed",
+        message: "path outside vault",
+      } satisfies CollectorApiError,
     });
     return;
   }
 
   const fileStat = await stat(resolvedPath);
   if (!fileStat.isFile()) {
-    jsonError(req, res, 404, {
-      layer: "domain",
-      code: "not_found",
-      message: "media path is not a file",
+    writeJson(req, res, 404, {
+      ok: false,
+      error: {
+        layer: "domain",
+        code: "not_found",
+        message: "media path is not a file",
+      } satisfies CollectorApiError,
     });
     return;
   }

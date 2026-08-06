@@ -66,6 +66,27 @@ export function hostWireError(error: CollectorApiError): HostWireError {
   return new HostWireError(error);
 }
 
+/**
+ * Loud dial failure message for CLI/MCP (and similar first-party clients).
+ */
+export function formatHostConnectFailure(
+  error: unknown,
+  endpointLabel: string,
+): string {
+  if (
+    isHostWireError(error) &&
+    (error.code === "not_connected" ||
+      error.code === "token_missing" ||
+      error.code === "auth_failed")
+  ) {
+    return `Collector service is not running or auth failed (${endpointLabel}): ${error.message}`;
+  }
+  if (error instanceof Error) {
+    return `Failed to reach Collector service at ${endpointLabel}: ${error.message}`;
+  }
+  return `Failed to reach Collector service at ${endpointLabel}`;
+}
+
 /** Map a Node connect/socket errno into a stable transport error. */
 export function mapNodeConnectErrno(
   error: NodeJS.ErrnoException,
@@ -77,20 +98,20 @@ export function mapNodeConnectErrno(
       return hostWireError({
         layer: "transport",
         code: "not_connected",
-        message: `IPC connect failed: ${code ?? error.message}`,
+        message: `Host connect failed: ${code ?? error.message}`,
       });
     }
     if (code === "ETIMEDOUT") {
       return hostWireError({
         layer: "transport",
         code: "timeout",
-        message: `IPC connect timed out: ${error.message}`,
+        message: `Host connect timed out: ${error.message}`,
       });
     }
     return hostWireError({
       layer: "transport",
       code: "not_connected",
-      message: `IPC connect failed: ${error.message}`,
+      message: `Host connect failed: ${error.message}`,
     });
   }
 
@@ -98,14 +119,14 @@ export function mapNodeConnectErrno(
     return hostWireError({
       layer: "transport",
       code: "disconnected",
-      message: `IPC socket error: ${code ?? error.message}`,
+      message: `Host socket error: ${code ?? error.message}`,
     });
   }
 
   return hostWireError({
     layer: "transport",
     code: "disconnected",
-    message: `IPC socket error: ${error.message}`,
+    message: `Host socket error: ${error.message}`,
   });
 }
 

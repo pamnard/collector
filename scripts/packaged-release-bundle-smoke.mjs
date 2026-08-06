@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
-import { createInterface } from "node:readline";
+import { waitForServiceReady } from "./lib/wait-for-service-ready.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const RELEASE_ROOT = resolve(
@@ -22,7 +22,6 @@ const RELEASE_ROOT = resolve(
 );
 const HOST_DIR = join(RELEASE_ROOT, "collector-service-host");
 const UI_DIR = join(RELEASE_ROOT, "ui");
-const READY_PREFIX = "COLLECTOR_SERVICE_READY ";
 const READY_TIMEOUT_MS = 90_000;
 
 function fail(msg) {
@@ -75,31 +74,9 @@ function cleanup() {
 
 process.on("exit", cleanup);
 
-const ready = await new Promise((resolvePromise, rejectPromise) => {
-  const timer = setTimeout(() => {
-    rejectPromise(new Error("timed out waiting for READY"));
-  }, READY_TIMEOUT_MS);
-  const rl = createInterface({ input: child.stdout });
-  rl.on("line", (line) => {
-    console.log(line);
-    if (!line.startsWith(READY_PREFIX)) {
-      return;
-    }
-    clearTimeout(timer);
-    rl.close();
-    try {
-      resolvePromise(JSON.parse(line.slice(READY_PREFIX.length)));
-    } catch (error) {
-      rejectPromise(error);
-    }
-  });
-  child.stderr.on("data", (chunk) => process.stderr.write(chunk));
-  child.on("exit", (code, signal) => {
-    clearTimeout(timer);
-    rejectPromise(
-      new Error(`host exited before READY (code=${code}, signal=${signal})`),
-    );
-  });
+const ready = await waitForServiceReady(child, {
+  timeoutMs: READY_TIMEOUT_MS,
+  echoStdout: true,
 });
 
 const baseUrl = ready.baseUrl;

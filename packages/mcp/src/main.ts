@@ -8,7 +8,7 @@
  *   COLLECTOR_SERVICE_BASE_URL=… COLLECTOR_DATA_DIR=… collector-mcp
  *
  * Host must already be running (READY prints baseUrl). Token is read from
- * dataDir's host token file unless --token / COLLECTOR_SERVICE_TOKEN is set.
+ * dataDir's host token file unless --token / COLLECTOR_HOST_TOKEN is set.
  */
 
 import { runCollectorMcp } from "./run.js";

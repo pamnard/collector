@@ -12,15 +12,14 @@
  */
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { createInterface } from "node:readline";
 import { createConnection } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { hostTokenPath } from "./lib/host-token.mjs";
+import { waitForServiceReady } from "./lib/wait-for-service-ready.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CLI = join(ROOT, "packages/service/dist/host/cli.js");
-const READY_PREFIX = "COLLECTOR_SERVICE_READY ";
-const TOKEN_FILE = "collector-service.host-token";
 const READY_TIMEOUT_MS = 60_000;
 const DEFAULT_UI_PORT = 1420;
 
@@ -57,38 +56,9 @@ function portInUse(port, host = "127.0.0.1") {
 }
 
 async function waitForReady(child) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`timed out waiting for ${READY_PREFIX.trim()}`));
-    }, READY_TIMEOUT_MS);
-
-    const rl = createInterface({ input: child.stdout });
-    rl.on("line", (line) => {
-      console.log(line);
-      if (!line.startsWith(READY_PREFIX)) {
-        return;
-      }
-      clearTimeout(timer);
-      rl.close();
-      try {
-        resolve(JSON.parse(line.slice(READY_PREFIX.length)));
-      } catch (error) {
-        reject(error);
-      }
-    });
-
-    child.stderr.on("data", (chunk) => {
-      process.stderr.write(chunk);
-    });
-
-    child.on("exit", (code, signal) => {
-      clearTimeout(timer);
-      reject(
-        new Error(
-          `host exited before READY (code=${code}, signal=${signal})`,
-        ),
-      );
-    });
+  return waitForServiceReady(child, {
+    timeoutMs: READY_TIMEOUT_MS,
+    echoStdout: true,
   });
 }
 
@@ -206,7 +176,7 @@ async function main(argv) {
     throw new Error(`invalid READY: ${JSON.stringify(ready)}`);
   }
 
-  const tokenPath = join(dataDir, TOKEN_FILE);
+  const tokenPath = hostTokenPath(dataDir);
   if (!existsSync(tokenPath)) {
     throw new Error(`host token file missing: ${tokenPath}`);
   }
