@@ -1,50 +1,53 @@
 /**
- * Host cover thumbnail bridge (#553).
+ * DevMock thumbnail resolve session (#555).
  */
 
-import { describe, expect, it, vi } from "vitest";
-import { itemCoverPath } from "@collector/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ItemFile } from "@collector/shared";
-import {
-  createHostCoverThumbnailSession,
-  resolveHostCoverThumbnailPath,
-} from "./thumbnail-resolve-session";
+import { createThumbnailResolveSession } from "./thumbnail-resolve-session";
 
-function stubItem(
-  id: string,
-  patch: Partial<ItemFile> = {},
-): ItemFile {
-  return { id, thumbnail: null, ...patch } as ItemFile;
+vi.mock("../dev/is-dev-mock", () => ({
+  isDevMock: vi.fn(() => true),
+}));
+
+vi.mock("../dev/mock-collector", () => ({
+  resolveItemThumbnailPath: vi.fn(async (item: ItemFile) =>
+    item.id ? `/mock/${item.id}` : null,
+  ),
+}));
+
+import { isDevMock } from "../dev/is-dev-mock";
+import * as devMockCollector from "../dev/mock-collector";
+
+function stubItem(id: string): ItemFile {
+  return { id, thumbnail: null } as ItemFile;
 }
 
-describe("resolveHostCoverThumbnailPath (#553)", () => {
-  it("returns remote FM thumbnail URLs", () => {
-    expect(
-      resolveHostCoverThumbnailPath("/vault", {
-        id: "Inbox/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.md",
-        thumbnail: "https://cdn.example/a.jpg",
-      }),
-    ).toBe("https://cdn.example/a.jpg");
+describe("createThumbnailResolveSession (DevMock)", () => {
+  beforeEach(() => {
+    vi.mocked(isDevMock).mockReturnValue(true);
+    vi.mocked(devMockCollector.resolveItemThumbnailPath).mockClear();
   });
 
-  it("returns canonical cover.webp path without FS probe", () => {
-    const id = "Inbox/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.md";
-    expect(resolveHostCoverThumbnailPath("/vault", { id, thumbnail: null })).toBe(
-      itemCoverPath("/vault", id),
-    );
-  });
-});
-
-describe("createHostCoverThumbnailSession (#553)", () => {
-  it("resolves cover paths via ensureActiveVault", async () => {
-    const resolveActiveVault = vi.fn(async () => ({
-      vault: { id: "v1", name: "V", created_at: "", updated_at: "" },
-      path: "/vault",
-    }));
-    const session = createHostCoverThumbnailSession({ resolveActiveVault });
+  it("resolves via mock collector", async () => {
+    const session = createThumbnailResolveSession({
+      resolveActiveVault: vi.fn(),
+    });
     const item = stubItem("Inbox/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.md");
     const path = await session.resolveItemThumbnailPath(item);
-    expect(resolveActiveVault).toHaveBeenCalled();
-    expect(path).toBe(itemCoverPath("/vault", item.id));
+    expect(devMockCollector.resolveItemThumbnailPath).toHaveBeenCalledWith(item);
+    expect(path).toBe(`/mock/${item.id}`);
+  });
+
+  it("throws outside DevMock", async () => {
+    vi.mocked(isDevMock).mockReturnValue(false);
+    const session = createThumbnailResolveSession({
+      resolveActiveVault: vi.fn(),
+    });
+    await expect(
+      session.resolveItemThumbnailPath(
+        stubItem("Inbox/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.md"),
+      ),
+    ).rejects.toThrow(/DevMock-only/);
   });
 });
