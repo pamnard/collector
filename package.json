@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "dev": "vite",
+    "dev:host": "node scripts/dev-host-ui.mjs",
     "build:packages": "npm run build --workspace @collector/shared && npm run build --workspace @collector/api && npm run build --workspace @collector/db && npm run build --workspace @collector/core && npm run build --workspace @collector/service && npm run build --workspace @collector/client && npm run build --workspace @collector/cli && npm run build --workspace @collector/mcp",
     "build": "npm run build:packages && tsc && vite build",
     "preview": "vite preview",
@@ -18,6 +19,7 @@
     "test:vault-index": "npm run build:packages && node scripts/vault-index-rebuild-smoke.mjs",
     "test:large-empty-index": "npm run build:packages && node scripts/large-vault-empty-index-smoke.mjs",
     "test:service-host": "npm run build:packages && node scripts/service-host-health-smoke.mjs",
+    "test:service-host-lifecycle": "npm run build:packages && node scripts/service-host-lifecycle-smoke.mjs",
     "test:service-ipc": "npm run build:packages && node scripts/service-ipc-health-smoke.mjs",
     "test:web-console": "node scripts/web-console-smoke.mjs",
     "generate:vault-walk-policy": "npm run build --workspace @collector/shared && node scripts/generate-vault-walk-policy.mjs",

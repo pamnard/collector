@@ -107,11 +107,38 @@ Settings file: `…/collector/settings.json`. Index DB: `…/collector.db` (same
 
 **Uninstall** removes the app only; data dirs above are kept unless you delete them manually.
 
+### Local host + UI (without Tauri)
+
+Contributors can run the **domain host** and the browser UI against it without the desktop shell:
+
+```bash
+npm run build:packages
+# data-dir = vault data directory (Settings → «Каталог данных»)
+npm run dev:host -- --data-dir /path/to/vault-data
+# optional: --ui-port 1430 if :1420 is already taken (launcher never kills an occupied port)
+```
+
+The launcher starts `collector-service serve`, waits for `COLLECTOR_SERVICE_READY`, reads `{data-dir}/collector-service.host-token`, then starts Vite with `VITE_COLLECTOR_SERVICE_BASE_URL` + `VITE_COLLECTOR_SERVICE_TOKEN` so the UI uses the real host (not DevMock).
+
+**Sole-writer:** only one host may open the SQLite index for a given data-dir. A second `serve` on the same data-dir exits with code **3** and prints the holder pid. On stop (SIGINT/SIGTERM) the host releases `{data-dir}/collector-service.lock`; orphan holders are reclaimed on the next start.
+
+Manual split (same handoff):
+
+```bash
+npm run serve --workspace @collector/service -- --data-dir /path/to/vault-data
+# READY line → baseUrl; token file under data-dir
+VITE_COLLECTOR_SERVICE_BASE_URL=http://127.0.0.1:PORT \
+VITE_COLLECTOR_SERVICE_TOKEN="$(tr -d '\n' < /path/to/vault-data/collector-service.host-token)" \
+npm run dev -- --port 1430 --strictPort
+```
+
+Lifecycle smoke: `npm run test:service-host-lifecycle`.
+
 ### CLI and MCP (installed app)
 
-Release installers ship **`collector-cli`** and **`collector-mcp`** inside the same host tree as the internal domain host (bundled Node + JS entrypoints). They are **thin clients** of that host: start the domain host first (desktop app or out-of-band host), then point tools at it. They never open SQLite themselves.
+Release installers ship **`collector-cli`** and **`collector-mcp`** inside the same host tree as the internal domain host (bundled Node + JS entrypoints). They are **thin clients** of that host: start the domain host first (desktop app, `npm run dev:host`, or out-of-band `serve`), then point tools at it. They never open SQLite themselves.
 
-**MCP** (`collector-mcp`) is the market stdio entry: Cursor/Claude spawn it; the process dials the living host over **HTTP** (`POST /api/rpc` + Bearer) using the same host token as the UI. Pass `--base-url` from the host READY line (`COLLECTOR_SERVICE_READY` JSON includes `baseUrl`) and `--data-dir` so MCP can read the host token file under the vault data directory (or pass `--token` / `COLLECTOR_SERVICE_TOKEN`). Missing host or bad auth fails loudly — no silent empty backend.
+**MCP** (`collector-mcp`) is the market stdio entry: Cursor/Claude spawn it; the process dials the living host over **HTTP** (`POST /api/rpc` + Bearer) using the same host token as the UI. Pass `--base-url` from the host READY line (`COLLECTOR_SERVICE_READY` JSON includes `baseUrl`) and `--data-dir` so MCP can read the host token file under the vault data directory (or pass `--token` / `COLLECTOR_SERVICE_TOKEN`). Missing host or bad auth fails loudly — no silent empty backend. The launcher prints a ready-to-copy MCP command after READY.
 
 **Install location** (wrappers + `*.js` + bundled `node`):
 
@@ -150,9 +177,9 @@ Example MCP stdio config (any client that supports stdio MCP). Replace the port 
 }
 ```
 
-In-app Settings → MCP setup copy is tracked separately (#273). Full host+UI+MCP launcher handoff is #554.
+In-app Settings → MCP setup copy is tracked separately (#273).
 
-**Contributors** can run from a checkout: `npm run build:packages`, start the domain host (READY prints `baseUrl`), then `npx collector-mcp --base-url … --data-dir …` (or `COLLECTOR_SERVICE_BASE_URL` / `COLLECTOR_DATA_DIR`). End users should use the installer artifacts above.
+**Contributors** can run from a checkout: `npm run build:packages`, then either `npm run dev:host -- --data-dir …` or start the domain host alone (READY prints `baseUrl`) and run `npx collector-mcp --base-url … --data-dir …` (or `COLLECTOR_SERVICE_BASE_URL` / `COLLECTOR_DATA_DIR`). End users should use the installer artifacts above.
 
 ### Build
 

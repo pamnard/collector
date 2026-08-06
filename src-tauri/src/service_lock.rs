@@ -123,12 +123,19 @@ pub fn looks_like_collector_service(pid: u32) -> bool {
             return false;
         };
         let text = String::from_utf8_lossy(&bytes);
+        // Match legacy Rust sidecar *or* Node domain host (`…/host/cli.js serve`).
         text.split('\0').any(|part| {
             let base = Path::new(part)
                 .file_name()
                 .and_then(|s| s.to_str())
                 .unwrap_or(part);
-            base.starts_with("collector-service")
+            if base.starts_with("collector-service") {
+                return true;
+            }
+            if base == "cli.js" || part.contains("/host/cli.js") || part.ends_with("host/cli.js") {
+                return true;
+            }
+            false
         })
     }
     #[cfg(not(target_os = "linux"))]
@@ -363,18 +370,26 @@ mod tests {
             .spawn()
             .expect("spawn service");
 
+        // Lock is held by the Node domain host (#554), not the sidecar PID.
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let mut holder_pid = None;
         while std::time::Instant::now() < deadline {
             if let Some(info) = read_lock(&dir).expect("read") {
-                if info.service_pid == child.id() {
+                if info.supervisor_pid == supervisor
+                    && process_alive(info.service_pid)
+                    && looks_like_collector_service(info.service_pid)
+                {
+                    holder_pid = Some(info.service_pid);
                     break;
                 }
             }
             std::thread::sleep(Duration::from_millis(25));
         }
-        let info = read_lock(&dir).expect("read").expect("lock written by service");
-        assert_eq!(info.service_pid, child.id());
+        let holder_pid = holder_pid.expect("lock written by Node host");
+        let info = read_lock(&dir).expect("read").expect("lock present");
+        assert_eq!(info.service_pid, holder_pid);
         assert_eq!(info.supervisor_pid, supervisor);
+        assert_ne!(holder_pid, child.id(), "lock must be Node host pid, not sidecar");
 
         let err = acquire_service_lock(&dir).expect_err("second host must fail");
         assert!(matches!(err, LockError::AlreadyLocked { .. }));
@@ -382,7 +397,7 @@ mod tests {
         assert_eq!(
             cleanup_orphans(&dir).expect("cleanup"),
             CleanupOutcome::LiveHolder {
-                service_pid: child.id(),
+                service_pid: holder_pid,
                 supervisor_pid: supervisor,
             }
         );
