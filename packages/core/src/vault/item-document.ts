@@ -7,9 +7,8 @@ import {
 import {
   buildCanonicalFrontmatter,
   contentTypeFromFrontmatter,
-  extractUnknownFrontmatterKeys,
   parseDocumentMarkdown,
-  parseKnownFrontmatter,
+  partitionDocumentFrontmatter,
   resolveFrontmatterDates,
   serializeDocumentMarkdown,
 } from "./frontmatter.js";
@@ -70,8 +69,7 @@ export function parseItemDocument(
 ): ParsedItemDocument {
   const itemId = normalizeRelativePath(ctx.itemId);
   const parsed = parseDocumentMarkdown(raw);
-  const known = parseKnownFrontmatter(parsed.frontmatter);
-  const properties = extractUnknownFrontmatterKeys(parsed.frontmatter);
+  const { known, properties } = partitionDocumentFrontmatter(parsed.frontmatter);
   const dates = resolveFrontmatterDates(known);
 
   const created_at = dates.created_at ?? ctx.fallbackCreatedAt;

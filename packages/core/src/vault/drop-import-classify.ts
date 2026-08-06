@@ -1,10 +1,8 @@
 import {
-  documentFrontmatterSchema,
   inferMediaType,
   type ContentType,
   type MediaType,
 } from "@collector/shared";
-import { parseDocumentMarkdown } from "./frontmatter.js";
 import { basename } from "./paths.js";
 
 export type DropImportClass =
@@ -44,25 +42,4 @@ export function classifyDropFilename(filename: string): DropImportClass {
     return { kind: "media", contentType: mediaType, mediaType };
   }
   return { kind: "skip" };
-}
-
-/**
- * Title for a dropped file: markdown frontmatter `title` when present, else stem.
- */
-export function resolveDropTitle(
-  filename: string,
-  rawTextForMd?: string,
-): string {
-  const classified = classifyDropFilename(filename);
-  if (classified.kind === "note" && rawTextForMd !== undefined) {
-    const { frontmatter } = parseDocumentMarkdown(rawTextForMd);
-    const known = documentFrontmatterSchema.safeParse(frontmatter);
-    if (known.success) {
-      const title = known.data.title?.trim();
-      if (title) {
-        return title;
-      }
-    }
-  }
-  return titleStemFromFilename(filename);
 }

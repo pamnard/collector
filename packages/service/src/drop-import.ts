@@ -12,6 +12,7 @@ import type { ItemFile } from "@collector/shared";
 import {
   classifyDropFilename,
   parseDocumentMarkdown,
+  partitionDocumentFrontmatter,
   resolveDropTitle,
   serializeDocumentMarkdown,
   titleStemFromFilename,
@@ -66,14 +67,20 @@ function decodeUtf8(data: Uint8Array): string {
 /** Ensure dropped markdown keeps note/import types when FM omits them. */
 export function prepareDroppedNoteMarkdown(raw: string, title: string): string {
   const parsed = parseDocumentMarkdown(raw);
-  const frontmatter: Record<string, unknown> = { ...parsed.frontmatter };
+  const { known, properties } = partitionDocumentFrontmatter(parsed.frontmatter);
+  const frontmatter: Record<string, unknown> = { ...properties };
+  for (const [key, value] of Object.entries(known)) {
+    if (value !== undefined) {
+      frontmatter[key] = value;
+    }
+  }
   if (typeof frontmatter.title !== "string" || !String(frontmatter.title).trim()) {
     frontmatter.title = title;
   }
-  if (frontmatter.content_type === undefined && frontmatter.type === undefined) {
+  if (known.content_type === undefined) {
     frontmatter.content_type = "note";
   }
-  if (frontmatter.source_type === undefined) {
+  if (known.source_type === undefined) {
     frontmatter.source_type = "import";
   }
   return serializeDocumentMarkdown(frontmatter, parsed.body);

@@ -81,13 +81,16 @@ export {
 export {
   buildCanonicalFrontmatter,
   contentTypeFromFrontmatter,
+  demoteFrontmatterKey,
   extractUnknownFrontmatterKeys,
   ftsFieldsFromDocumentMarkdown,
   parseDocumentMarkdown,
   parseKnownFrontmatter,
+  partitionDocumentFrontmatter,
   resolveFrontmatterDates,
   serializeDocumentMarkdown,
 } from "./vault/frontmatter.js";
+export type { PartitionedFrontmatter } from "./vault/frontmatter.js";
 
 export { createVault } from "./vault/vault-operations.js";
 export {
@@ -160,9 +163,9 @@ export {
 } from "./vault/inbox-layout.js";
 export {
   classifyDropFilename,
-  resolveDropTitle,
   titleStemFromFilename,
 } from "./vault/drop-import-classify.js";
+export { resolveDropTitle } from "./vault/resolve-drop-title.js";
 export type { DropImportClass } from "./vault/drop-import-classify.js";
 
 export {

@@ -93,6 +93,53 @@ describe("createDropImportService", () => {
     expect(result.createdIds).toHaveLength(1);
   });
 
+  it("imports markdown with foreign type without failing", async () => {
+    const raw = "---\ntitle: Pattern\ntype: agentic-pattern\n---\n\nHi\n";
+    const bytes = new TextEncoder().encode(raw);
+
+    const result = await service().importDroppedFiles({
+      files: [
+        {
+          relativePath: "pattern.md",
+          name: "pattern.md",
+          bytes,
+        },
+      ],
+    });
+
+    expect(createItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Pattern",
+        content_type: "note",
+        source_type: "import",
+      }),
+    );
+    const written = updateItemSource.mock.calls[0]?.[1] as string;
+    expect(written).toContain("type: agentic-pattern");
+    expect(written).toContain("content_type: note");
+    expect(result.createdIds).toHaveLength(1);
+  });
+
+  it("demotes invalid content_type on import and still sets note", async () => {
+    const raw =
+      "---\ntitle: Weird\ncontent_type: agentic-pattern\n---\n\nHi\n";
+    const bytes = new TextEncoder().encode(raw);
+
+    await service().importDroppedFiles({
+      files: [
+        {
+          relativePath: "weird.md",
+          name: "weird.md",
+          bytes,
+        },
+      ],
+    });
+
+    const written = updateItemSource.mock.calls[0]?.[1] as string;
+    expect(written).toContain("_content_type: agentic-pattern");
+    expect(written).toContain("content_type: note");
+  });
+
   it("skips unsupported files silently", async () => {
     const result = await service().importDroppedFiles({
       files: [
