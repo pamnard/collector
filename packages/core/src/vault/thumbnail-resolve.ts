@@ -1,6 +1,6 @@
 /**
  * Resolve absolute thumbnail paths for dashboard/hero (mirrors Rust
- * `resolve_item_thumbnail_paths` in `src-tauri/src/vault_fs.rs`).
+ * host thumbnail resolve / cover paths).
  *
  * Cover membership is on disk (#276): `media/<noteUuid>/cover.webp`, then
  * first image in the gallery folder. Frontmatter paths are not the SoT.

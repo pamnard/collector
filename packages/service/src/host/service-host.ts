@@ -7,11 +7,14 @@
  * COLLECTOR_ENABLE_SERVICE_SUPERVISE with an isolated `--data-dir`
  * (self-contained layout) so it does not share SQLite with the UI writer.
  *
- * Browser surfaces (#551/#553): always-on POST /api/rpc + WS /api/events +
+ * Browser surfaces (#551/#553/#555): always-on POST /api/rpc + WS /api/events +
  * GET/HEAD /media/file with the same host token as the local dial.
+ * Optional static UI dir + GET /api/ui-bootstrap for packaged browser UI (#555).
  */
 
+import { existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { resolve } from "node:path";
 import type { Subscription } from "@collector/api";
 import type { CollectorProfileLayout } from "@collector/shared";
 import {
@@ -37,6 +40,7 @@ import {
   isMediaFileRequest,
 } from "./http/media-handler.js";
 import { handleHttpRpc, writeUnauthorized } from "./http/rpc-handler.js";
+import { tryServeStaticUi } from "./http/static-ui.js";
 
 export const SERVICE_HOST_READY_PREFIX = "COLLECTOR_SERVICE_READY ";
 
@@ -60,6 +64,11 @@ export interface ServiceHostOptions {
    * Pass `false` to disable IPC (HTTP-only).
    */
   ipcPath?: string | false;
+  /**
+   * Directory of built browser UI (vite dist). When set, host serves static
+   * files + SPA fallback and exposes GET /api/ui-bootstrap (#555).
+   */
+  uiDir?: string;
 }
 
 export interface ServiceHost {
@@ -70,11 +79,33 @@ export interface ServiceHost {
   wsEventsUrl: string;
   /** Local IPC endpoint (Unix socket or Windows named pipe), if enabled. */
   ipcPath: string | null;
+  /** Absolute UI static root when configured (#555). */
+  uiDir: string | null;
   /** Resolved profile layout used by this host. */
   layout: CollectorProfileLayout;
   /** Open + healthy index session. */
   isHealthy: () => boolean;
   close: () => Promise<void>;
+}
+
+function resolveUiDir(uiDir: string | undefined): string | null {
+  if (uiDir === undefined) {
+    return null;
+  }
+  const trimmed = uiDir.trim();
+  if (trimmed.length === 0) {
+    throw new Error("service host uiDir must be a non-empty path when set (#555)");
+  }
+  const absolute = resolve(trimmed);
+  if (!existsSync(absolute) || !statSync(absolute).isDirectory()) {
+    throw new Error(`service host uiDir is not a directory: ${absolute}`);
+  }
+  return absolute;
+}
+
+/** Loopback-only bind hosts may expose unauthenticated UI bootstrap (#555). */
+function isLoopbackBindHost(host: string): boolean {
+  return host === "127.0.0.1" || host === "localhost" || host === "::1";
 }
 
 function resolveHostLayout(options: ServiceHostOptions): CollectorProfileLayout {
@@ -108,6 +139,7 @@ export async function startServiceHost(
   const listenHost = options.host ?? "127.0.0.1";
   const listenPort = options.port ?? 0;
   const layout = resolveHostLayout(options);
+  const uiDir = resolveUiDir(options.uiDir);
 
   const runtime = createServiceDomainRuntime(layout);
   await runtime.open();
@@ -135,6 +167,9 @@ export async function startServiceHost(
 
   const eventsHub = createHostHttpEventsHub({ expectedToken: hostToken });
 
+  /** Filled after listen; request handlers close over this. */
+  let boundPort = 0;
+
   const server: Server = createServer((req, res) => {
     void (async () => {
       const url = new URL(req.url ?? "/", `http://${listenHost}`);
@@ -159,6 +194,29 @@ export async function startServiceHost(
         return;
       }
 
+      if (req.method === "GET" && url.pathname === "/api/ui-bootstrap") {
+        if (!isLoopbackBindHost(listenHost)) {
+          json(req, res, 403, { ok: false, error: "bootstrap_loopback_only" });
+          return;
+        }
+        if (uiDir === null) {
+          json(req, res, 404, { ok: false, error: "ui_not_configured" });
+          return;
+        }
+        if (boundPort === 0) {
+          json(req, res, 503, { ok: false, error: "not_listening" });
+          return;
+        }
+        const baseUrl = `http://${listenHost}:${boundPort}`;
+        const wsEventsUrl = `ws://${listenHost}:${boundPort}/api/events`;
+        json(req, res, 200, {
+          baseUrl,
+          token: hostToken,
+          wsEventsUrl,
+        });
+        return;
+      }
+
       if (req.method === "POST" && url.pathname === "/api/rpc") {
         if (!isValidBearer(req, hostToken)) {
           writeUnauthorized(req, res);
@@ -173,6 +231,10 @@ export async function startServiceHost(
           expectedToken: hostToken,
           vaultsRootPath: vaultsRoot(layout.dataDir),
         });
+        return;
+      }
+
+      if (uiDir !== null && tryServeStaticUi(req, res, uiDir, url.pathname)) {
         return;
       }
 
@@ -192,6 +254,7 @@ export async function startServiceHost(
     server.close();
     throw new Error("service host failed to bind a TCP port");
   }
+  boundPort = address.port;
 
   const baseUrl = `http://${listenHost}:${address.port}`;
   const wsEventsUrl = `ws://${listenHost}:${address.port}/api/events`;
@@ -255,6 +318,7 @@ export async function startServiceHost(
     baseUrl,
     wsEventsUrl,
     ipcPath: ipc?.path ?? null,
+    uiDir,
     layout,
     isHealthy: () => runtime.isHealthy(),
     close,
@@ -269,6 +333,7 @@ export function formatServiceHostReadyLine(host: ServiceHost): string {
     baseUrl: host.baseUrl,
     wsEventsUrl: host.wsEventsUrl,
     ipcPath: host.ipcPath,
+    uiDir: host.uiDir,
     dataDir: host.layout.dataDir,
     configDir: host.layout.configDir,
     indexDbPath: host.layout.indexDbPath,

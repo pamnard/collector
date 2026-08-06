@@ -2,6 +2,7 @@
 /**
  * Root `npm test` entry: stamp COLLECTOR_TEST_RUN_ID on the whole tree, run
  * workspace vitests, run scanner unit tests, then assert no leaked processes.
+ * Vault-walk Rust codegen check removed with src-tauri (#555).
  */
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -51,12 +52,6 @@ run(
   "alerts channel guard (#442)",
   "node",
   ["--test", join(root, "scripts/assert-alerts-channel.test.mjs")],
-);
-
-run(
-  "vault walk policy check (#390)",
-  "npm",
-  ["run", "check:vault-walk-policy"],
 );
 
 run(

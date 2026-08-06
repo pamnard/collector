@@ -7,33 +7,12 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-tauri:
+  build-release-bundle:
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      # Temporarily Linux-only until we have users on other OSes.
-      # To restore: re-add macos-latest (args: "") and windows-latest
-      # (args: "--bundles nsis"), and expand releaseBody installers below.
-      matrix:
-        include:
-          - platform: ubuntu-22.04
-            args: ""
-
-    runs-on: ${{ matrix.platform }}
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            xdg-utils
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -41,32 +20,38 @@ jobs:
           node-version: lts/*
           cache: npm
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: ./src-tauri -> target
-
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: npm ci
 
-      - uses: tauri-apps/tauri-action@v1
+      - name: Build release bundle (host + UI)
+        run: bash scripts/prepare-release-bundle.sh
+
+      - name: Packaged release smoke
+        run: node scripts/packaged-release-bundle-smoke.mjs
+
+      - name: Upload release archive
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          body: |
+            Collector host + browser UI (no Tauri).
+
+            **Install**
+            1. Download the `.tar.gz` for your platform.
+            2. Unpack.
+            3. Run `./collector --data-dir /path/to/vault-data` (or set `COLLECTOR_DATA_DIR`).
+            4. Open the `baseUrl` printed in `COLLECTOR_SERVICE_READY` (UI is served by the host).
+
+            **Update**
+            Download a newer archive from GitHub Releases, stop the host, replace files, start again.
+            There is no in-app auto-updater.
+
+            **MCP / CLI**
+            Use `collector-service-host/collector-mcp` and `collector-cli` against the living host
+            (same data-dir / token as documented in README).
+          files: |
+            dist/collector-*.tar.gz
+            dist/collector-*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        with:
-          tagName: v__VERSION__
-          releaseName: Collector v__VERSION__
-          releaseBody: |
-            Desktop release for Collector v__VERSION__.
-
-            **Installers**
-            - Linux: `.deb` / `.AppImage`
-
-            (macOS / Windows builds temporarily disabled.)
-          releaseDraft: true
-          prerelease: false
-          uploadWorkflowArtifacts: true
-          args: ${{ matrix.args }}

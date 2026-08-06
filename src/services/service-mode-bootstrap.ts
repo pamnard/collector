@@ -1,33 +1,22 @@
 /**
- * Service-mode cutover bootstrap (#170 / #332 / #369 / #551).
+ * Service-mode cutover bootstrap (#170 / #332 / #369 / #551 / #555).
  *
- * Tauri: spawn supervised domain host, dial via Tauri proxy, swap to host ports.
- * Opt out (COLLECTOR_SERVICE_MODE=0) throws — no zombie LocalAdapter.
- * Browser: both VITE_COLLECTOR_SERVICE_* → HTTP host; neither → "web" (DevMock);
- * exactly one → fail fast.
+ * 1. Both VITE_COLLECTOR_SERVICE_* → HTTP host (dev:host).
+ * 2. Else GET /api/ui-bootstrap on same origin → packaged host+UI (#555).
+ * 3. Else "web" (DevMock).
  */
 
-import { invoke } from "@tauri-apps/api/core";
-import {
-  createTauriDesktopCollectorService,
-  createTauriDesktopUiSession,
-} from "./tauri-desktop-adapter";
 import { createHttpUiCutover } from "./http-adapter";
 import { setCollectorService } from "./collector-client";
-import { getCollectorProfileLayout } from "./profile-layout";
-import { createTauriHostWireTransport } from "./tauri-host-transport";
+import { setHostMediaCredentials } from "../utils/asset-src";
 
-export type BootstrapCutoverResult = "tauri" | "web" | "host";
+export type BootstrapCutoverResult = "web" | "host";
 
-function isTauriRuntime(): boolean {
-  return (
-    typeof globalThis !== "undefined" &&
-    "window" in globalThis &&
-    typeof (globalThis as { window?: unknown }).window === "object" &&
-    (globalThis as { window?: object }).window !== null &&
-    "__TAURI_INTERNALS__" in ((globalThis as { window: object }).window)
-  );
-}
+export type UiBootstrapPayload = {
+  baseUrl: string;
+  token: string;
+  wsEventsUrl: string;
+};
 
 function readViteHostEnv(): { baseUrl: string; token: string } {
   const env = import.meta.env as Record<string, string | undefined>;
@@ -36,41 +25,59 @@ function readViteHostEnv(): { baseUrl: string; token: string } {
   return { baseUrl, token };
 }
 
-export async function bootstrapServiceModeCutover(): Promise<BootstrapCutoverResult> {
-  if (!isTauriRuntime()) {
-    const { baseUrl, token } = readViteHostEnv();
-    const hasBase = baseUrl.length > 0;
-    const hasToken = token.length > 0;
-    if (hasBase !== hasToken) {
-      throw new Error(
-        "VITE_COLLECTOR_SERVICE_BASE_URL and VITE_COLLECTOR_SERVICE_TOKEN must both be set or both empty (#551)",
-      );
-    }
-    if (hasBase && hasToken) {
-      const { service, session } = await createHttpUiCutover(baseUrl, token);
-      setCollectorService(service, session);
-      return "host";
-    }
-    return "web";
+/** Fetch packaged-host bootstrap; null when endpoint missing or not OK. */
+export async function fetchUiBootstrap(
+  fetchImpl: typeof fetch = fetch,
+): Promise<UiBootstrapPayload | null> {
+  const response = await fetchImpl("/api/ui-bootstrap", {
+    method: "GET",
+    headers: { accept: "application/json" },
+  });
+  if (response.status === 404) {
+    return null;
   }
-
-  const enabled = await invoke<boolean>("service_mode_is_enabled");
-  if (!enabled) {
+  if (!response.ok) {
     throw new Error(
-      "COLLECTOR_SERVICE_MODE=0 is unsupported (#332); desktop UI requires the domain host",
+      `ui-bootstrap failed: HTTP ${response.status} (#555)`,
     );
   }
+  const body = (await response.json()) as Partial<UiBootstrapPayload>;
+  const baseUrl = String(body.baseUrl ?? "").trim();
+  const token = String(body.token ?? "").trim();
+  const wsEventsUrl = String(body.wsEventsUrl ?? "").trim();
+  if (!baseUrl || !token || !wsEventsUrl) {
+    throw new Error("ui-bootstrap response missing baseUrl/token/wsEventsUrl (#555)");
+  }
+  return { baseUrl, token, wsEventsUrl };
+}
 
-  const layout = await getCollectorProfileLayout();
-  const socketPath = await invoke<string>("service_mode_bootstrap", {
-    dataDir: layout.dataDir,
-    configDir: layout.configDir,
-  });
-  const transport = await createTauriHostWireTransport(
-    socketPath,
-    layout.dataDir,
-  );
-  const service = createTauriDesktopCollectorService(transport);
-  setCollectorService(service, createTauriDesktopUiSession(transport, service));
-  return "tauri";
+async function installHttpHost(
+  baseUrl: string,
+  token: string,
+): Promise<"host"> {
+  const { service, session } = await createHttpUiCutover(baseUrl, token);
+  setHostMediaCredentials(baseUrl, token);
+  setCollectorService(service, session);
+  return "host";
+}
+
+export async function bootstrapServiceModeCutover(): Promise<BootstrapCutoverResult> {
+  const { baseUrl, token } = readViteHostEnv();
+  const hasBase = baseUrl.length > 0;
+  const hasToken = token.length > 0;
+  if (hasBase !== hasToken) {
+    throw new Error(
+      "VITE_COLLECTOR_SERVICE_BASE_URL and VITE_COLLECTOR_SERVICE_TOKEN must both be set or both empty (#551)",
+    );
+  }
+  if (hasBase && hasToken) {
+    return installHttpHost(baseUrl, token);
+  }
+
+  const bootstrap = await fetchUiBootstrap();
+  if (bootstrap) {
+    return installHttpHost(bootstrap.baseUrl, bootstrap.token);
+  }
+
+  return "web";
 }

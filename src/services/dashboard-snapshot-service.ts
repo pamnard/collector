@@ -3,7 +3,7 @@ import {
   type DashboardSnapshot,
 } from "@collector/shared";
 import { createDashboardSnapshotService } from "@collector/service";
-import { TauriFileSystemAdapter } from "../adapters/tauri-fs";
+import { UnsupportedBrowserFsAdapter } from "../adapters/unsupported-fs";
 import { isDevMock } from "../dev/is-dev-mock";
 import { snapshotToCacheEntry } from "../lib/dashboard-commit";
 import type { NavFilter } from "../types/ui";
@@ -12,18 +12,18 @@ import {
   getDashboardQueryCache,
   setDashboardQueryCache,
 } from "./dashboard-query-cache";
-import { getCollectorProfileLayout } from "./profile-layout";
 
 const DEV_MOCK_SNAPSHOT_KEY = "collector-dev-mock-dashboard-snapshot";
 
-let configDir = "";
-const fs = new TauriFileSystemAdapter();
+const fs = new UnsupportedBrowserFsAdapter();
 
 async function ensureConfigDir(): Promise<string> {
-  if (!configDir) {
-    configDir = (await getCollectorProfileLayout()).configDir;
+  if (isDevMock()) {
+    return "/dev-mock/config";
   }
-  return configDir;
+  throw new Error(
+    "UI-local dashboard snapshot requires DevMock or host CollectorService (#555)",
+  );
 }
 
 function readDevMockSnapshot(): DashboardSnapshot | null {

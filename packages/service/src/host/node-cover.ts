@@ -65,17 +65,17 @@ export function resolveFfmpegBinary(): string | null {
 
   const exe = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
   const bundledCandidates = [
-    // Packaged host: resources/collector-service-host/bin/ffmpeg (cli.js sibling)
+    // Packaged host: collector-service-host/bin/ffmpeg (cli.js sibling)
     join(moduleDir(), "bin", exe),
-    // Dev: monorepo packaged resources (after prepare:service-host-resources)
+    // Dev: release staging after prepare-service-host-resources (#555)
     join(
       moduleDir(),
       "..",
       "..",
       "..",
       "..",
-      "src-tauri",
-      "resources",
+      "dist",
+      "collector-release",
       "collector-service-host",
       "bin",
       exe,

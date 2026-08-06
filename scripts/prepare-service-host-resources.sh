@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Build a self-contained Node domain host tree for Tauri resources.
-# Output: src-tauri/resources/collector-service-host/
+# Build a self-contained Node domain host tree for release packaging (#555).
+# Output: dist/collector-release/collector-service-host/
 #   {cli.js, collector-cli.js, collector-mcp.js, wrappers, node, node_modules/…}
-# User-facing CLI/MCP (#258) reuse the same bundled Node; not separate sidecars.
+# User-facing CLI/MCP (#258) reuse the same bundled Node.
 #
 # ABI: better-sqlite3 is rebuilt against the *bundled* Node + matching headers
 # (not the system Node used for the rest of the monorepo).
@@ -19,35 +19,44 @@ NAPI_RS_KEYRING_VERSION="${COLLECTOR_NAPI_RS_KEYRING_VERSION:-1.3.0}"
 # Static ffmpeg for video cover.webp extract (#267). Override to pin / skip fetch.
 FFMPEG_STATIC_VERSION="${COLLECTOR_FFMPEG_STATIC_VERSION:-5.3.0}"
 
-HOST_OUT="$ROOT/src-tauri/resources/collector-service-host"
-CACHE_ROOT="${COLLECTOR_NODE_CACHE:-$ROOT/src-tauri/.cache/node-v${NODE_VERSION}}"
+HOST_OUT="${COLLECTOR_HOST_OUT:-$ROOT/dist/collector-release/collector-service-host}"
+CACHE_ROOT="${COLLECTOR_NODE_CACHE:-$ROOT/.cache/collector-node/node-v${NODE_VERSION}}"
 ESBUILD="$ROOT/node_modules/esbuild/bin/esbuild"
 
-TRIPLE="$(rustc --print host-tuple 2>/dev/null || true)"
-if [[ -z "$TRIPLE" ]]; then
-  TRIPLE="$(rustc -vV | sed -n 's/^host: //p')"
-fi
-if [[ -z "$TRIPLE" ]]; then
-  echo "FAIL: could not determine Rust host triple" >&2
-  exit 1
-fi
-
-node_platform_arch() {
-  case "$1" in
-    x86_64-unknown-linux-gnu) echo "linux-x64" ;;
-    aarch64-unknown-linux-gnu) echo "linux-arm64" ;;
-    x86_64-pc-windows-msvc | x86_64-pc-windows-gnu) echo "win-x64" ;;
-    aarch64-pc-windows-msvc) echo "win-arm64" ;;
-    x86_64-apple-darwin) echo "darwin-x64" ;;
-    aarch64-apple-darwin) echo "darwin-arm64" ;;
+detect_platform_arch() {
+  local os arch
+  os="$(uname -s)"
+  arch="$(uname -m)"
+  case "$os" in
+    Linux)
+      case "$arch" in
+        x86_64) echo "linux-x64" ;;
+        aarch64|arm64) echo "linux-arm64" ;;
+        *) echo "FAIL: unsupported Linux arch: $arch" >&2; exit 1 ;;
+      esac
+      ;;
+    Darwin)
+      case "$arch" in
+        x86_64) echo "darwin-x64" ;;
+        arm64) echo "darwin-arm64" ;;
+        *) echo "FAIL: unsupported Darwin arch: $arch" >&2; exit 1 ;;
+      esac
+      ;;
+    MINGW*|MSYS*|CYGWIN*)
+      case "$arch" in
+        x86_64|amd64) echo "win-x64" ;;
+        aarch64|arm64) echo "win-arm64" ;;
+        *) echo "FAIL: unsupported Windows arch: $arch" >&2; exit 1 ;;
+      esac
+      ;;
     *)
-      echo "FAIL: unsupported triple for bundled Node: $1" >&2
+      echo "FAIL: unsupported OS: $os" >&2
       exit 1
       ;;
   esac
 }
 
-PLATFORM_ARCH="$(node_platform_arch "$TRIPLE")"
+PLATFORM_ARCH="$(detect_platform_arch)"
 IS_WIN=0
 NODE_BIN_NAME="node"
 ARCHIVE_EXT="tar.xz"
@@ -391,7 +400,7 @@ echo "==> smoke: packaged CLI/MCP entrypoints (#258)"
     echo "FAIL: collector-mcp.js without endpoint should be non-zero" >&2
     exit 1
   fi
-  if ! grep -q 'Service endpoint required\|data-dir\|ipc-path' <<<"$out_mcp"; then
+  if ! grep -qE 'Host endpoint required|Service endpoint required|base-url|data-dir|COLLECTOR_SERVICE' <<<"$out_mcp"; then
     echo "FAIL: collector-mcp.js missing endpoint message" >&2
     echo "$out_mcp" >&2
     exit 1

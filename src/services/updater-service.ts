@@ -1,6 +1,7 @@
-import { isTauri } from "@tauri-apps/api/core";
-import { relaunch } from "@tauri-apps/plugin-process";
-import { check, type DownloadEvent, type Update } from "@tauri-apps/plugin-updater";
+/**
+ * Manual update channel via GitHub Releases (#555).
+ * In-app auto-updater (Tauri plugin) removed with the desktop shell.
+ */
 
 export type UpdateProgress =
   | { stage: "idle" }
@@ -11,48 +12,30 @@ export type UpdateProgress =
   | { stage: "uptodate" }
   | { stage: "error"; message: string };
 
+export const RELEASES_LATEST_URL =
+  "https://github.com/pamnard/collector/releases/latest";
+
+/** No in-app installer after Tauri removal (#555). */
 export function isUpdaterAvailable(): boolean {
-  return isTauri();
+  return false;
 }
 
-export async function fetchAvailableUpdate(): Promise<Update | null> {
-  if (!isTauri()) {
-    return null;
-  }
+export type ManualUpdateInfo = {
+  version: string;
+  body?: string;
+  htmlUrl: string;
+};
 
-  return check();
+/** Always null — updates are manual Downloads from GitHub Releases (#555). */
+export async function fetchAvailableUpdate(): Promise<ManualUpdateInfo | null> {
+  return null;
 }
 
 export async function downloadAndInstallUpdate(
-  update: Update,
-  onProgress?: (progress: UpdateProgress) => void,
+  _update: ManualUpdateInfo,
+  _onProgress?: (progress: UpdateProgress) => void,
 ): Promise<void> {
-  onProgress?.({ stage: "downloading", downloaded: 0 });
-
-  let downloaded = 0;
-  await update.downloadAndInstall((event: DownloadEvent) => {
-    switch (event.event) {
-      case "Started":
-        downloaded = 0;
-        onProgress?.({
-          stage: "downloading",
-          downloaded: 0,
-          total: event.data.contentLength ?? undefined,
-        });
-        break;
-      case "Progress":
-        downloaded += event.data.chunkLength;
-        onProgress?.({
-          stage: "downloading",
-          downloaded,
-          total: undefined,
-        });
-        break;
-      case "Finished":
-        onProgress?.({ stage: "installing" });
-        break;
-    }
-  });
-
-  await relaunch();
+  throw new Error(
+    "In-app install removed (#555). Download the latest archive from GitHub Releases.",
+  );
 }
