@@ -7,8 +7,8 @@
  * COLLECTOR_ENABLE_SERVICE_SUPERVISE with an isolated `--data-dir`
  * (self-contained layout) so it does not share SQLite with the UI writer.
  *
- * Browser surfaces (#551): always-on POST /api/rpc + WS /api/events with the
- * same host token as the local dial.
+ * Browser surfaces (#551/#553): always-on POST /api/rpc + WS /api/events +
+ * GET/HEAD /media/file with the same host token as the local dial.
  */
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -28,9 +28,14 @@ import {
   removeServiceIpcTokenFile,
   writeServiceIpcTokenFile,
 } from "./ipc/auth.js";
+import { vaultsRoot } from "@collector/core";
 import { isValidBearer } from "./http/bearer.js";
 import { corsHeadersForRequest, writeCorsPreflight } from "./http/cors.js";
 import { createHostHttpEventsHub } from "./http/events-hub.js";
+import {
+  handleMediaFile,
+  isMediaFileRequest,
+} from "./http/media-handler.js";
 import { handleHttpRpc, writeUnauthorized } from "./http/rpc-handler.js";
 
 export const SERVICE_HOST_READY_PREFIX = "COLLECTOR_SERVICE_READY ";
@@ -160,6 +165,14 @@ export async function startServiceHost(
           return;
         }
         await handleHttpRpc(req, res, domainDispatch);
+        return;
+      }
+
+      if (isMediaFileRequest(req.method, url.pathname)) {
+        await handleMediaFile(req, res, url, {
+          expectedToken: hostToken,
+          vaultsRootPath: vaultsRoot(layout.dataDir),
+        });
         return;
       }
 

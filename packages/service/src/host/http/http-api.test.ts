@@ -1,12 +1,20 @@
 /**
- * HTTP RPC / events / auth surfaces for the domain host (#551).
+ * HTTP RPC / events / auth / media surfaces for the domain host (#551 / #553).
  */
 
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
+import { vaultsRoot } from "@collector/core";
 import { defaultServiceIpcTokenPath } from "../ipc/auth.js";
 import {
   formatServiceHostReadyLine,
@@ -121,6 +129,7 @@ describe("host HTTP RPC + events (#551)", () => {
       expect(res.headers.get("access-control-allow-headers")).toMatch(
         /Authorization/i,
       );
+      expect(res.headers.get("access-control-allow-methods")).toMatch(/HEAD/i);
     } finally {
       await host.close();
     }
@@ -221,6 +230,116 @@ describe("host HTTP RPC + events (#551)", () => {
       ) as { wsEventsUrl?: string; baseUrl?: string };
       expect(payload.wsEventsUrl).toBe(host.wsEventsUrl);
       expect(payload.baseUrl).toBe(host.baseUrl);
+    } finally {
+      await host.close();
+    }
+  });
+});
+
+describe("host HTTP media (#553)", () => {
+  const dirs: string[] = [];
+
+  afterEach(async () => {
+    for (const dir of dirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  async function start() {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-host-media-"));
+    dirs.push(dataDir);
+    const host = await startServiceHost({ dataDir, port: 0 });
+    const token = readFileSync(
+      defaultServiceIpcTokenPath(dataDir),
+      "utf8",
+    ).trim();
+    return { host, token, dataDir };
+  }
+
+  function writeVaultMediaFile(dataDir: string, contents: string): string {
+    const root = vaultsRoot(dataDir);
+    const vaultIds = readdirSync(root).filter((name) => !name.startsWith("."));
+    expect(vaultIds.length).toBeGreaterThan(0);
+    const mediaDir = join(
+      root,
+      vaultIds[0]!,
+      "media",
+      "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    );
+    mkdirSync(mediaDir, { recursive: true });
+    const filePath = join(mediaDir, "cover.webp");
+    writeFileSync(filePath, contents);
+    return filePath;
+  }
+
+  it("rejects /media/file without auth", async () => {
+    const { host, dataDir } = await start();
+    try {
+      const filePath = writeVaultMediaFile(dataDir, "webp-bytes");
+      const res = await fetch(
+        `${host.baseUrl}/media/file?path=${encodeURIComponent(filePath)}`,
+      );
+      expect(res.status).toBe(401);
+    } finally {
+      await host.close();
+    }
+  });
+
+  it("serves vault file with query token and Bearer", async () => {
+    const { host, token, dataDir } = await start();
+    try {
+      const filePath = writeVaultMediaFile(dataDir, "hello-media");
+      const withQuery = await fetch(
+        `${host.baseUrl}/media/file?path=${encodeURIComponent(filePath)}&token=${encodeURIComponent(token)}`,
+      );
+      expect(withQuery.status).toBe(200);
+      expect(withQuery.headers.get("content-type")).toBe("image/webp");
+      expect(await withQuery.text()).toBe("hello-media");
+
+      const withBearer = await fetch(
+        `${host.baseUrl}/media/file?path=${encodeURIComponent(filePath)}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      expect(withBearer.status).toBe(200);
+      expect(await withBearer.text()).toBe("hello-media");
+    } finally {
+      await host.close();
+    }
+  });
+
+  it("rejects path outside vaults root", async () => {
+    const { host, token, dataDir } = await start();
+    try {
+      const outside = join(dataDir, "outside.bin");
+      writeFileSync(outside, "secret");
+      const res = await fetch(
+        `${host.baseUrl}/media/file?path=${encodeURIComponent(outside)}&token=${encodeURIComponent(token)}`,
+      );
+      expect(res.status).toBe(403);
+    } finally {
+      await host.close();
+    }
+  });
+
+  it("supports Range and HEAD", async () => {
+    const { host, token, dataDir } = await start();
+    try {
+      const filePath = writeVaultMediaFile(dataDir, "0123456789");
+      const ranged = await fetch(
+        `${host.baseUrl}/media/file?path=${encodeURIComponent(filePath)}&token=${encodeURIComponent(token)}`,
+        { headers: { Range: "bytes=0-3" } },
+      );
+      expect(ranged.status).toBe(206);
+      expect(ranged.headers.get("content-range")).toBe("bytes 0-3/10");
+      expect(await ranged.text()).toBe("0123");
+
+      const head = await fetch(
+        `${host.baseUrl}/media/file?path=${encodeURIComponent(filePath)}&token=${encodeURIComponent(token)}`,
+        { method: "HEAD" },
+      );
+      expect(head.status).toBe(200);
+      expect(head.headers.get("content-length")).toBe("10");
+      expect(await head.text()).toBe("");
     } finally {
       await host.close();
     }

@@ -9,13 +9,20 @@ vi.mock("@tauri-apps/api/core", () => ({
   isTauri: () => isTauri(),
 }));
 
-import { toDisplayAssetSrc } from "./asset-src";
+import { buildHostMediaFileUrl, toDisplayAssetSrc } from "./asset-src";
 
 describe("toDisplayAssetSrc", () => {
+  const env = import.meta.env as {
+    VITE_COLLECTOR_SERVICE_BASE_URL?: string;
+    VITE_COLLECTOR_SERVICE_TOKEN?: string;
+  };
+
   beforeEach(() => {
     convertFileSrc.mockClear();
     isTauri.mockReset();
     isTauri.mockReturnValue(true);
+    delete env.VITE_COLLECTOR_SERVICE_BASE_URL;
+    delete env.VITE_COLLECTOR_SERVICE_TOKEN;
   });
 
   it("passes through http and /__dev/ URLs", () => {
@@ -39,5 +46,36 @@ describe("toDisplayAssetSrc", () => {
       "/dev-mock/vault/cover.jpg",
     );
     expect(convertFileSrc).not.toHaveBeenCalled();
+  });
+
+  it("maps disk paths to host /media/file when Vite host env is set (#553)", () => {
+    isTauri.mockReturnValue(false);
+    env.VITE_COLLECTOR_SERVICE_BASE_URL = "http://127.0.0.1:9876";
+    env.VITE_COLLECTOR_SERVICE_TOKEN = "test-token";
+    const src = toDisplayAssetSrc("/data/vaults/v1/media/id/cover.webp");
+    expect(src).toBe(
+      buildHostMediaFileUrl(
+        "http://127.0.0.1:9876",
+        "test-token",
+        "/data/vaults/v1/media/id/cover.webp",
+      ),
+    );
+    expect(src).toContain("/media/file?");
+    expect(src).toContain("token=test-token");
+    expect(convertFileSrc).not.toHaveBeenCalled();
+  });
+});
+
+describe("buildHostMediaFileUrl", () => {
+  it("encodes path and token as query params", () => {
+    const url = buildHostMediaFileUrl(
+      "http://127.0.0.1:9",
+      "tok",
+      "/vault/a b.webp",
+    );
+    expect(url.startsWith("http://127.0.0.1:9/media/file?")).toBe(true);
+    const parsed = new URL(url);
+    expect(parsed.searchParams.get("path")).toBe("/vault/a b.webp");
+    expect(parsed.searchParams.get("token")).toBe("tok");
   });
 });
