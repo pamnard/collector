@@ -12,7 +12,7 @@
  * Optional static UI dir + GET /api/ui-bootstrap for packaged browser UI (#555).
  */
 
-import { existsSync, statSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import type { Subscription } from "@collector/api";
@@ -33,7 +33,7 @@ import {
 } from "./wire/auth.js";
 import { vaultsRoot } from "@collector/core";
 import { isValidBearer } from "./http/bearer.js";
-import { corsHeadersForRequest, writeCorsPreflight } from "./http/cors.js";
+import { writeCorsPreflight } from "./http/cors.js";
 import { createHostHttpEventsHub } from "./http/events-hub.js";
 import {
   handleMediaFile,
@@ -41,6 +41,7 @@ import {
 } from "./http/media-handler.js";
 import { handleHttpRpc, writeUnauthorized } from "./http/rpc-handler.js";
 import { tryServeStaticUi } from "./http/static-ui.js";
+import { writeJson } from "./http/write-json.js";
 
 export const SERVICE_HOST_READY_PREFIX = "COLLECTOR_SERVICE_READY ";
 
@@ -118,21 +119,6 @@ function resolveHostLayout(options: ServiceHostOptions): CollectorProfileLayout 
   return selfContainedCollectorProfileLayout(options.dataDir);
 }
 
-function json(
-  req: IncomingMessage,
-  res: ServerResponse,
-  code: number,
-  body: unknown,
-): void {
-  const payload = `${JSON.stringify(body)}\n`;
-  res.writeHead(code, {
-    "content-type": "application/json; charset=utf-8",
-    "content-length": String(Buffer.byteLength(payload)),
-    ...corsHeadersForRequest(req),
-  });
-  res.end(payload);
-}
-
 export async function startServiceHost(
   options: ServiceHostOptions,
 ): Promise<ServiceHost> {
@@ -167,6 +153,15 @@ export async function startServiceHost(
 
   const eventsHub = createHostHttpEventsHub({ expectedToken: hostToken });
 
+  const vaultsRootPath = vaultsRoot(layout.dataDir);
+  let vaultsRootResolved: string | undefined;
+  try {
+    vaultsRootResolved = realpathSync(vaultsRootPath);
+  } catch {
+    // Vaults dir may appear after first ensure; media handler falls back to realpath.
+    vaultsRootResolved = undefined;
+  }
+
   /** Filled after listen; request handlers close over this. */
   let boundPort = 0;
 
@@ -180,7 +175,7 @@ export async function startServiceHost(
       }
 
       if (req.method === "GET" && url.pathname === "/ping") {
-        json(req, res, 200, { ok: true, pong: true });
+        writeJson(req, res, 200, { ok: true, pong: true });
         return;
       }
 
@@ -190,26 +185,26 @@ export async function startServiceHost(
           return;
         }
         const body = healthPayload();
-        json(req, res, body.healthy ? 200 : 503, body);
+        writeJson(req, res, body.healthy ? 200 : 503, body);
         return;
       }
 
       if (req.method === "GET" && url.pathname === "/api/ui-bootstrap") {
         if (!isLoopbackBindHost(listenHost)) {
-          json(req, res, 403, { ok: false, error: "bootstrap_loopback_only" });
+          writeJson(req, res, 403, { ok: false, error: "bootstrap_loopback_only" });
           return;
         }
         if (uiDir === null) {
-          json(req, res, 404, { ok: false, error: "ui_not_configured" });
+          writeJson(req, res, 404, { ok: false, error: "ui_not_configured" });
           return;
         }
         if (boundPort === 0) {
-          json(req, res, 503, { ok: false, error: "not_listening" });
+          writeJson(req, res, 503, { ok: false, error: "not_listening" });
           return;
         }
         const baseUrl = `http://${listenHost}:${boundPort}`;
         const wsEventsUrl = `ws://${listenHost}:${boundPort}/api/events`;
-        json(req, res, 200, {
+        writeJson(req, res, 200, {
           baseUrl,
           token: hostToken,
           wsEventsUrl,
@@ -229,7 +224,10 @@ export async function startServiceHost(
       if (isMediaFileRequest(req.method, url.pathname)) {
         await handleMediaFile(req, res, url, {
           expectedToken: hostToken,
-          vaultsRootPath: vaultsRoot(layout.dataDir),
+          vaultsRootPath,
+          ...(vaultsRootResolved === undefined
+            ? {}
+            : { vaultsRootResolved }),
         });
         return;
       }
@@ -238,7 +236,7 @@ export async function startServiceHost(
         return;
       }
 
-      json(req, res, 404, { ok: false, error: "not_found" });
+      writeJson(req, res, 404, { ok: false, error: "not_found" });
     })();
   });
 

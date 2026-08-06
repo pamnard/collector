@@ -5,7 +5,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { CollectorApiError } from "@collector/api";
 import { mapHandlerThrownToApiError } from "../wire/errors.js";
-import { corsHeadersForRequest } from "./cors.js";
+import { writeJson } from "./write-json.js";
 
 export type DomainDispatch = (
   method: string,
@@ -29,21 +29,6 @@ function readRequestBody(req: IncomingMessage): Promise<string> {
     });
     req.on("error", reject);
   });
-}
-
-function jsonResponse(
-  req: IncomingMessage,
-  res: ServerResponse,
-  code: number,
-  body: unknown,
-): void {
-  const payload = `${JSON.stringify(body)}\n`;
-  res.writeHead(code, {
-    "content-type": "application/json; charset=utf-8",
-    "content-length": String(Buffer.byteLength(payload)),
-    ...corsHeadersForRequest(req),
-  });
-  res.end(payload);
 }
 
 function resolveRpcId(raw: unknown): string | number | null {
@@ -73,7 +58,7 @@ export async function handleHttpRpc(
       code: "bad_request",
       message: "RPC body must be JSON",
     };
-    jsonResponse(req, res, 200, { id: null, error });
+    writeJson(req, res, 200, { id: null, error });
     return;
   }
 
@@ -83,7 +68,7 @@ export async function handleHttpRpc(
       code: "bad_request",
       message: "RPC body must be a JSON object",
     };
-    jsonResponse(req, res, 200, { id: null, error });
+    writeJson(req, res, 200, { id: null, error });
     return;
   }
 
@@ -95,7 +80,7 @@ export async function handleHttpRpc(
       code: "bad_request",
       message: "RPC method string required",
     };
-    jsonResponse(req, res, 200, { id, error });
+    writeJson(req, res, 200, { id, error });
     return;
   }
 
@@ -107,12 +92,12 @@ export async function handleHttpRpc(
         code: "unknown_method",
         message: `unknown method: ${body.method}`,
       };
-      jsonResponse(req, res, 200, { id, error });
+      writeJson(req, res, 200, { id, error });
       return;
     }
-    jsonResponse(req, res, 200, { id, result });
+    writeJson(req, res, 200, { id, result });
   } catch (error) {
-    jsonResponse(req, res, 200, {
+    writeJson(req, res, 200, {
       id,
       error: mapHandlerThrownToApiError(error),
     });
@@ -128,5 +113,5 @@ export function writeUnauthorized(
     code: "auth_failed",
     message: "Bearer authentication required",
   };
-  jsonResponse(req, res, 401, { ok: false, error });
+  writeJson(req, res, 401, { ok: false, error });
 }

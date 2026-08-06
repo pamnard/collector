@@ -9,6 +9,7 @@
 import { createHttpUiCutover } from "./http-adapter";
 import { setCollectorService } from "./collector-client";
 import { setHostMediaCredentials } from "../utils/asset-src";
+import { readViteCollectorServiceEnv } from "./vite-collector-service-env";
 
 export type BootstrapCutoverResult = "web" | "host";
 
@@ -17,13 +18,6 @@ export type UiBootstrapPayload = {
   token: string;
   wsEventsUrl: string;
 };
-
-function readViteHostEnv(): { baseUrl: string; token: string } {
-  const env = import.meta.env as Record<string, string | undefined>;
-  const baseUrl = String(env.VITE_COLLECTOR_SERVICE_BASE_URL ?? "").trim();
-  const token = String(env.VITE_COLLECTOR_SERVICE_TOKEN ?? "").trim();
-  return { baseUrl, token };
-}
 
 /** Fetch packaged-host bootstrap; null when endpoint missing or not OK. */
 export async function fetchUiBootstrap(
@@ -62,7 +56,7 @@ async function installHttpHost(
 }
 
 export async function bootstrapServiceModeCutover(): Promise<BootstrapCutoverResult> {
-  const { baseUrl, token } = readViteHostEnv();
+  const { baseUrl, token } = readViteCollectorServiceEnv();
   const hasBase = baseUrl.length > 0;
   const hasToken = token.length > 0;
   if (hasBase !== hasToken) {
