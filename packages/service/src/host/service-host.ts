@@ -32,6 +32,7 @@ import {
   writeServiceHostTokenFile,
 } from "./wire/auth.js";
 import { vaultsRoot } from "@collector/core";
+import { deriveWsEventsUrl } from "@collector/shared";
 import { isValidBearer } from "./http/bearer.js";
 import { writeCorsPreflight } from "./http/cors.js";
 import { createHostHttpEventsHub } from "./http/events-hub.js";
@@ -203,7 +204,7 @@ export async function startServiceHost(
           return;
         }
         const baseUrl = `http://${listenHost}:${boundPort}`;
-        const wsEventsUrl = `ws://${listenHost}:${boundPort}/api/events`;
+        const wsEventsUrl = deriveWsEventsUrl(baseUrl);
         writeJson(req, res, 200, {
           baseUrl,
           token: hostToken,
@@ -255,7 +256,7 @@ export async function startServiceHost(
   boundPort = address.port;
 
   const baseUrl = `http://${listenHost}:${address.port}`;
-  const wsEventsUrl = `ws://${listenHost}:${address.port}/api/events`;
+  const wsEventsUrl = deriveWsEventsUrl(baseUrl);
 
   let ipc: HostWireServer | null = null;
   let stopSyncStatusBroadcast: Subscription | null = null;

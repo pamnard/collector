@@ -4,6 +4,7 @@
  */
 
 import type { CollectorApiError } from "@collector/api";
+import { deriveWsEventsUrl as deriveWsEventsUrlShared } from "@collector/shared";
 import type {
   HostWireClient,
   ServiceHostHealthResult,
@@ -26,23 +27,20 @@ export type HttpHostTransportOptions = {
   requestTimeoutMs?: number;
 };
 
-function trimTrailingSlash(url: string): string {
-  return url.replace(/\/+$/, "");
+export function deriveWsEventsUrl(baseUrl: string): string {
+  try {
+    return deriveWsEventsUrlShared(baseUrl);
+  } catch (error) {
+    throw hostWireError({
+      layer: "transport",
+      code: "not_connected",
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
-export function deriveWsEventsUrl(baseUrl: string): string {
-  const base = trimTrailingSlash(baseUrl);
-  if (base.startsWith("https://")) {
-    return `${base.replace(/^https:/, "wss:")}/api/events`;
-  }
-  if (base.startsWith("http://")) {
-    return `${base.replace(/^http:/, "ws:")}/api/events`;
-  }
-  throw hostWireError({
-    layer: "transport",
-    code: "not_connected",
-    message: `baseUrl must be http(s): ${baseUrl}`,
-  });
+function trimTrailingSlash(url: string): string {
+  return url.replace(/\/+$/, "");
 }
 
 function nextId(): string {

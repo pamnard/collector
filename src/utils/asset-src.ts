@@ -7,6 +7,9 @@
  */
 
 import { readViteCollectorServiceEnv } from "../services/vite-collector-service-env";
+import { buildHostMediaFileUrl } from "@collector/shared";
+
+export { buildHostMediaFileUrl } from "@collector/shared";
 
 let runtimeHostMedia: { baseUrl: string; token: string } | null = null;
 
@@ -33,18 +36,6 @@ function readHostMediaEnv(): { baseUrl: string; token: string } | null {
     return null;
   }
   return { baseUrl, token };
-}
-
-/** Build authenticated host media URL for an absolute vault file path (#553). */
-export function buildHostMediaFileUrl(
-  baseUrl: string,
-  token: string,
-  absolutePath: string,
-): string {
-  const url = new URL("/media/file", `${baseUrl.replace(/\/+$/, "")}/`);
-  url.searchParams.set("path", absolutePath);
-  url.searchParams.set("token", token);
-  return url.toString();
 }
 
 export function toDisplayAssetSrc(pathOrUrl: string): string {
