@@ -45,15 +45,32 @@ vi.mock("./ipc-adapter", () => ({
   createIpcUiSession: (...args: unknown[]) => createIpcUiSession(...args),
 }));
 
+const createHttpUiCutover = vi.fn(async () => ({
+  service: { kind: "http-service" },
+  session: { kind: "http-session" },
+  transport: { kind: "http-transport" },
+}));
+vi.mock("./http-adapter", () => ({
+  createHttpUiCutover: (...args: unknown[]) => createHttpUiCutover(...args),
+}));
+
 import { bootstrapServiceModeCutover } from "./service-mode-bootstrap";
 
-describe("bootstrapServiceModeCutover (#170 / #332 / #369)", () => {
+describe("bootstrapServiceModeCutover (#170 / #332 / #369 / #551)", () => {
+  const env = import.meta.env as {
+    VITE_COLLECTOR_SERVICE_BASE_URL?: string;
+    VITE_COLLECTOR_SERVICE_TOKEN?: string;
+  };
+
   beforeEach(() => {
     invoke.mockReset();
     setCollectorService.mockReset();
     createIpcCollectorService.mockClear();
     createIpcUiSession.mockClear();
     createTauriServiceIpcTransport.mockClear();
+    createHttpUiCutover.mockClear();
+    delete env.VITE_COLLECTOR_SERVICE_BASE_URL;
+    delete env.VITE_COLLECTOR_SERVICE_TOKEN;
     (globalThis as { window?: { __TAURI_INTERNALS__?: object } }).window = {
       __TAURI_INTERNALS__: {},
     };
@@ -85,9 +102,29 @@ describe("bootstrapServiceModeCutover (#170 / #332 / #369)", () => {
     expect(setCollectorService).not.toHaveBeenCalled();
   });
 
-  it("returns web when not running under Tauri", async () => {
+  it("returns web when not running under Tauri and Vite host env empty", async () => {
     delete (globalThis as { window?: unknown }).window;
     await expect(bootstrapServiceModeCutover()).resolves.toBe("web");
+    expect(setCollectorService).not.toHaveBeenCalled();
+    expect(createHttpUiCutover).not.toHaveBeenCalled();
+  });
+
+  it("installs HTTP host when both Vite env vars are set (#551)", async () => {
+    delete (globalThis as { window?: unknown }).window;
+    env.VITE_COLLECTOR_SERVICE_BASE_URL = "http://127.0.0.1:9876";
+    env.VITE_COLLECTOR_SERVICE_TOKEN = "test-token";
+    await expect(bootstrapServiceModeCutover()).resolves.toBe("host");
+    expect(createHttpUiCutover).toHaveBeenCalledWith(
+      "http://127.0.0.1:9876",
+      "test-token",
+    );
+    expect(setCollectorService).toHaveBeenCalled();
+  });
+
+  it("fails fast when exactly one Vite host env is set (#551)", async () => {
+    delete (globalThis as { window?: unknown }).window;
+    env.VITE_COLLECTOR_SERVICE_BASE_URL = "http://127.0.0.1:9876";
+    await expect(bootstrapServiceModeCutover()).rejects.toThrow(/#551/);
     expect(setCollectorService).not.toHaveBeenCalled();
   });
 });
