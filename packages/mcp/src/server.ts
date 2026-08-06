@@ -1,9 +1,9 @@
 /**
- * MCP tool registration over Collector IPC client (#174).
+ * MCP tool registration over a living domain-host client (#174/#556).
  * Thin adapter only — never opens SQLite.
  */
 
-import type { CollectorIpcServiceClient } from "@collector/client/node";
+import type { CollectorIpcServiceClient } from "@collector/client";
 import { CONTENT_TYPES } from "@collector/shared";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { readFile } from "node:fs/promises";
@@ -70,7 +70,7 @@ async function resolveMediaFileInput(args: {
 }
 
 /**
- * Build an MCP server whose tools dial the Collector service API via IPC.
+ * Build an MCP server whose tools call the living domain host (HTTP client).
  */
 export function createCollectorMcpServer(
   client: CollectorIpcServiceClient,

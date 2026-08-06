@@ -1,45 +1,83 @@
-import { mkdtempSync, rmSync } from "node:fs";
+/**
+ * MCP over living domain host HTTP (#556).
+ * Adapter never opens SQLite — dials startServiceHost only.
+ */
+
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { connectCollectorIpcService } from "@collector/client/node";
-import { startServiceHost } from "@collector/service/host";
+import {
+  createCollectorIpcServiceClient,
+  createHttpHostTransport,
+} from "@collector/client";
+import {
+  defaultServiceIpcTokenPath,
+  startServiceHost,
+} from "@collector/service/host";
 import {
   McpEndpointError,
   parseMcpEndpointArgs,
-  resolveMcpIpcPath,
+  resolveMcpHostEndpoint,
 } from "./endpoint.js";
 import { createCollectorMcpServer } from "./server.js";
+import { runCollectorMcp } from "./run.js";
 
-describe("MCP endpoint parsing (#174)", () => {
-  it("resolves --data-dir / --ipc-path", () => {
-    expect(resolveMcpIpcPath({ dataDir: "/data" })).toMatch(
-      /collector-service\.sock$/,
-    );
-    expect(resolveMcpIpcPath({ ipcPath: "/tmp/x.sock" })).toBe("/tmp/x.sock");
-    expect(() =>
-      resolveMcpIpcPath({ dataDir: "/d", ipcPath: "/s" }),
-    ).toThrow(McpEndpointError);
-  });
-
-  it("reads argv and env", () => {
-    expect(parseMcpEndpointArgs(["--data-dir", "/data"])).toEqual({
+describe("MCP endpoint parsing (#556)", () => {
+  it("parses --base-url / --data-dir / --token", () => {
+    expect(
+      parseMcpEndpointArgs([
+        "--base-url",
+        "http://127.0.0.1:1",
+        "--data-dir",
+        "/data",
+      ]),
+    ).toEqual({
+      baseUrl: "http://127.0.0.1:1",
       dataDir: "/data",
     });
-    const prev = process.env.COLLECTOR_IPC_PATH;
-    process.env.COLLECTOR_IPC_PATH = "/env.sock";
-    expect(parseMcpEndpointArgs([])).toEqual({ ipcPath: "/env.sock" });
+  });
+
+  it("reads argv and env for baseUrl", () => {
+    const prev = process.env.COLLECTOR_SERVICE_BASE_URL;
+    process.env.COLLECTOR_SERVICE_BASE_URL = "http://127.0.0.1:99";
+    expect(parseMcpEndpointArgs(["--token", "t"])).toEqual({
+      baseUrl: "http://127.0.0.1:99",
+      token: "t",
+    });
     if (prev === undefined) {
-      delete process.env.COLLECTOR_IPC_PATH;
+      delete process.env.COLLECTOR_SERVICE_BASE_URL;
     } else {
-      process.env.COLLECTOR_IPC_PATH = prev;
+      process.env.COLLECTOR_SERVICE_BASE_URL = prev;
     }
+  });
+
+  it("resolve requires baseUrl", async () => {
+    await expect(resolveMcpHostEndpoint({ token: "t" })).rejects.toBeInstanceOf(
+      McpEndpointError,
+    );
+  });
+
+  it("resolve requires token or dataDir", async () => {
+    await expect(
+      resolveMcpHostEndpoint({ baseUrl: "http://127.0.0.1:1" }),
+    ).rejects.toThrow(/token/i);
   });
 });
 
-describe("MCP tools over service IPC (#174)", () => {
+async function dialHttpClient(baseUrl: string, dataDir: string) {
+  const token = readFileSync(defaultServiceIpcTokenPath(dataDir), "utf8").trim();
+  const transport = await createHttpHostTransport({
+    baseUrl,
+    token,
+    connectTimeoutMs: 2_000,
+  });
+  return createCollectorIpcServiceClient(transport);
+}
+
+describe("MCP tools over host HTTP (#556)", () => {
   const dirs: string[] = [];
 
   afterEach(async () => {
@@ -53,11 +91,7 @@ describe("MCP tools over service IPC (#174)", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "collector-mcp-"));
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
-    const ipc = connectCollectorIpcService(resolveMcpIpcPath({ dataDir }), {
-      connectTimeoutMs: 2_000,
-      dataDir,
-    });
-    const client = await ipc;
+    const client = await dialHttpClient(host.baseUrl, dataDir);
     const mcp = createCollectorMcpServer(client);
 
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -148,10 +182,7 @@ describe("MCP tools over service IPC (#174)", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "collector-mcp-351-"));
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
-    const client = await connectCollectorIpcService(
-      resolveMcpIpcPath({ dataDir }),
-      { connectTimeoutMs: 2_000, dataDir },
-    );
+    const client = await dialHttpClient(host.baseUrl, dataDir);
     const mcp = createCollectorMcpServer(client);
 
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -234,10 +265,7 @@ describe("MCP tools over service IPC (#174)", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "collector-mcp-352-"));
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
-    const client = await connectCollectorIpcService(
-      resolveMcpIpcPath({ dataDir }),
-      { connectTimeoutMs: 2_000, dataDir },
-    );
+    const client = await dialHttpClient(host.baseUrl, dataDir);
     const mcp = createCollectorMcpServer(client);
 
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -312,10 +340,7 @@ describe("MCP tools over service IPC (#174)", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "collector-mcp-353-"));
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
-    const client = await connectCollectorIpcService(
-      resolveMcpIpcPath({ dataDir }),
-      { connectTimeoutMs: 2_000, dataDir },
-    );
+    const client = await dialHttpClient(host.baseUrl, dataDir);
     const mcp = createCollectorMcpServer(client);
 
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -398,5 +423,43 @@ describe("MCP tools over service IPC (#174)", () => {
     await mcp.close();
     await client.close();
     await host.close();
+  });
+
+  it("runCollectorMcp fails loud when host is down (#556)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-mcp-down-"));
+    dirs.push(dataDir);
+    // Token file present (as if host had run) but nothing listening.
+    const tokenPath = defaultServiceIpcTokenPath(dataDir);
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(tokenPath, "dead-token\n", { mode: 0o600 });
+
+    const stderr: string[] = [];
+    const code = await runCollectorMcp(
+      [
+        "--base-url",
+        "http://127.0.0.1:1",
+        "--data-dir",
+        dataDir,
+      ],
+      {
+        stdout: () => {},
+        stderr: (line) => stderr.push(line),
+      },
+    );
+    expect(code).toBe(1);
+    expect(stderr.join("\n").length).toBeGreaterThan(0);
+    expect(stderr.join("\n")).toMatch(
+      /not running|auth failed|Failed to reach Collector service/i,
+    );
+  });
+
+  it("production MCP sources do not open the index themselves", async () => {
+    const { readFileSync: read } = await import("node:fs");
+    for (const name of ["main.ts", "run.ts", "server.ts", "endpoint.ts"] as const) {
+      const src = read(join(import.meta.dirname, name), "utf8");
+      expect(src).not.toMatch(/createServiceDomainRuntime/);
+      expect(src).not.toMatch(/startServiceHost/);
+      expect(src).not.toMatch(/connectCollectorIpcService/);
+    }
   });
 });

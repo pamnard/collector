@@ -109,9 +109,9 @@ Settings file: `…/collector/settings.json`. Index DB: `…/collector.db` (same
 
 ### CLI and MCP (installed app)
 
-Release installers ship **`collector-cli`** and **`collector-mcp`** inside the same host tree as the internal domain host (bundled Node + JS entrypoints). They are thin IPC clients: the desktop app must be **running** so the local service is up. They never open SQLite themselves.
+Release installers ship **`collector-cli`** and **`collector-mcp`** inside the same host tree as the internal domain host (bundled Node + JS entrypoints). They are **thin clients** of that host: start the domain host first (desktop app or out-of-band host), then point tools at it. They never open SQLite themselves.
 
-The service IPC socket is a **private bus** for first-party clients (UI, CLI, MCP, tests). Peers must authenticate with a per-start token the host writes as `collector-service.ipc-token` under the data directory. Anonymous dials are rejected. External programs should use published surfaces only — today that is **MCP** (tool catalog), not raw IPC.
+**MCP** (`collector-mcp`) is the market stdio entry: Cursor/Claude spawn it; the process dials the living host over **HTTP** (`POST /api/rpc` + Bearer) using the same host token as the UI. Pass `--base-url` from the host READY line (`COLLECTOR_SERVICE_READY` JSON includes `baseUrl`) and `--data-dir` so MCP can read the host token file under the vault data directory (or pass `--token` / `COLLECTOR_SERVICE_TOKEN`). Missing host or bad auth fails loudly — no silent empty backend.
 
 **Install location** (wrappers + `*.js` + bundled `node`):
 
@@ -123,16 +123,16 @@ The service IPC socket is a **private bus** for first-party clients (UI, CLI, MC
 
 Point MCP clients and shells at the **wrapper** in that folder (`collector-mcp` / `collector-cli` on Unix; `collector-mcp.cmd` / `collector-cli.cmd` on Windows). Use an absolute path — the installer does not put them on the system `PATH`.
 
-`--data-dir` is the **vault data** directory from the table above (release column), e.g. Linux `~/.local/share/com.collector.app/collector/`. Settings → «Каталог данных» shows the active path. With `--data-dir`, CLI/MCP read the token file automatically. Or pass `--ipc-path` / `COLLECTOR_IPC_PATH` (Unix sock still finds the sibling token file) / optional `--token` / `COLLECTOR_IPC_TOKEN`.
+`--data-dir` is the **vault data** directory from the table above (release column), e.g. Linux `~/.local/share/com.collector.app/collector/`. Settings → «Каталог данных» shows the active path.
 
 ```bash
-# CLI health check (app must be running)
+# CLI health check (domain host must be running)
 /usr/lib/Collector/resources/collector-service-host/collector-cli \
   --data-dir "$HOME/.local/share/com.collector.app/collector" \
   health
 ```
 
-Example MCP stdio config (any client that supports stdio MCP):
+Example MCP stdio config (any client that supports stdio MCP). Replace the port with the host READY `baseUrl` (and paths for your OS/user):
 
 ```json
 {
@@ -140,6 +140,8 @@ Example MCP stdio config (any client that supports stdio MCP):
     "collector": {
       "command": "/usr/lib/Collector/resources/collector-service-host/collector-mcp",
       "args": [
+        "--base-url",
+        "http://127.0.0.1:PORT",
         "--data-dir",
         "/home/YOU/.local/share/com.collector.app/collector"
       ]
@@ -148,9 +150,9 @@ Example MCP stdio config (any client that supports stdio MCP):
 }
 ```
 
-Replace the command path and data-dir for your OS/user. In-app Settings → MCP setup copy is tracked separately (#273).
+In-app Settings → MCP setup copy is tracked separately (#273). Full host+UI+MCP launcher handoff is #554.
 
-**Contributors** can still run from a checkout: `npm run build:packages`, then `npx collector-cli` / `npx collector-mcp` against a running app or out-of-band host. That path is optional; end users should use the installer artifacts above.
+**Contributors** can run from a checkout: `npm run build:packages`, start the domain host (READY prints `baseUrl`), then `npx collector-mcp --base-url … --data-dir …` (or `COLLECTOR_SERVICE_BASE_URL` / `COLLECTOR_DATA_DIR`). End users should use the installer artifacts above.
 
 ### Build
 
