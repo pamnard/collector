@@ -1,13 +1,14 @@
 /**
- * Resolve domain-host HTTP endpoint for MCP (#556).
+ * Resolve domain-host HTTP endpoint for MCP (#556 / #550 F).
  *
- * Requires baseUrl (flag/env). Token from --token / COLLECTOR_SERVICE_TOKEN
+ * Requires baseUrl (flag/env). Token from --token / COLLECTOR_HOST_TOKEN
  * or the host token file under --data-dir.
  */
 
 import {
   defaultServiceHostTokenPath,
-  readServiceHostTokenFile,
+  resolveServiceHostToken,
+  SERVICE_HOST_TOKEN_ENV,
 } from "@collector/service/host";
 
 export class McpEndpointError extends Error {
@@ -48,7 +49,7 @@ export function parseMcpEndpointArgs(argv: string[]): ParsedMcpEndpointArgs {
   };
   const baseUrl = read("--base-url") ?? envPath("COLLECTOR_SERVICE_BASE_URL");
   const dataDir = read("--data-dir") ?? envPath("COLLECTOR_DATA_DIR");
-  const token = read("--token") ?? envPath("COLLECTOR_SERVICE_TOKEN");
+  const token = read("--token") ?? envPath(SERVICE_HOST_TOKEN_ENV);
   return {
     ...(baseUrl === undefined ? {} : { baseUrl }),
     ...(dataDir === undefined ? {} : { dataDir }),
@@ -79,16 +80,19 @@ export async function resolveMcpHostEndpoint(
 
   if (options.dataDir === undefined || options.dataDir.trim() === "") {
     throw new McpEndpointError(
-      "Host token required: --token / COLLECTOR_SERVICE_TOKEN or --data-dir / COLLECTOR_DATA_DIR (token file)",
+      `Host token required: --token / ${SERVICE_HOST_TOKEN_ENV} or --data-dir / COLLECTOR_DATA_DIR (token file)`,
     );
   }
 
   const dataDir = options.dataDir.trim();
-  const tokenPath = defaultServiceHostTokenPath(dataDir);
   try {
-    const token = await readServiceHostTokenFile(tokenPath);
+    const token = await resolveServiceHostToken("", {
+      dataDir,
+      ...(options.token === undefined ? {} : { token: options.token }),
+    });
     return { baseUrl, token, dataDir };
   } catch (error) {
+    const tokenPath = defaultServiceHostTokenPath(dataDir);
     const message = error instanceof Error ? error.message : String(error);
     throw new McpEndpointError(
       `Host token file missing or unreadable (${tokenPath}): ${message}`,
