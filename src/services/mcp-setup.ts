@@ -1,20 +1,16 @@
 /**
- * Settings → MCP setup helpers (#273).
+ * Settings → MCP setup helpers (#273 / #555).
  *
- * Packaged `collector-mcp` path comes from Tauri; data-dir from the service.
- * Missing values become placeholders so JSON is always copyable (incl. webdev).
+ * Packaged `collector-mcp` path is documented in README; UI uses placeholders
+ * when the install path is unknown (browser / DevMock).
  */
-
-import { invoke, isTauri } from "@tauri-apps/api/core";
 
 export const MCP_COMMAND_PLACEHOLDER = "__COLLECTOR_MCP_COMMAND__";
 export const MCP_DATA_DIR_PLACEHOLDER = "__COLLECTOR_DATA_DIR__";
 
+/** Browser UI cannot resolve the packaged MCP binary path (#555). */
 export async function getMcpStdioCommand(): Promise<string | null> {
-  if (!isTauri()) {
-    return null;
-  }
-  return invoke<string | null>("get_mcp_stdio_command");
+  return null;
 }
 
 export function buildMcpClientConfigJson(options: {

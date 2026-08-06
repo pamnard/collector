@@ -2,7 +2,15 @@ export type ItemDetailMode = "view" | "form" | "source";
 
 export type ItemChromeBreadcrumbState =
   | { status: "loading" }
-  | { status: "ready"; folderPath: string; title: string };
+  | {
+      status: "ready";
+      folderPath: string;
+      title: string;
+      idCopyFeedback: "copied" | "failed" | null;
+      copyReady: boolean;
+      isSaving: boolean;
+      onCopyId: () => void;
+    };
 
 export type ItemChromeDomain = {
   status: "loading" | "ready" | "error";

@@ -71,6 +71,7 @@ describe("startServiceHost", () => {
         baseUrl: host.baseUrl,
         wsEventsUrl: host.wsEventsUrl,
         ipcPath: host.ipcPath,
+        uiDir: null,
         dataDir: host.layout.dataDir,
         configDir: host.layout.configDir,
         indexDbPath: host.layout.indexDbPath,

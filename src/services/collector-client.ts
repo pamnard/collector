@@ -1,8 +1,8 @@
 /**
- * UI CollectorService singleton (#169 / epic #142 / #332 / #369 / #370).
+ * UI CollectorService singleton (#169 / epic #142 / #332 / #369 / #370 / #555).
  *
  * No default adapter at module load. {@link main} installs DevMock (web) or
- * IPC (Tauri service mode) via bootstrap before React mounts.
+ * HTTP host via bootstrap before React mounts.
  * Call sites use {@link getCollectorService} (+ {@link getUiSession}).
  */
 
@@ -25,7 +25,7 @@ export function getCollectorService(): CollectorService {
   return activeService;
 }
 
-/** Replace active ports + UiSession (tests / #170 IPC cutover). */
+/** Replace active ports + UiSession (tests / HTTP host cutover). */
 export function setCollectorService(
   service: CollectorService,
   session: UiSession,
@@ -45,10 +45,5 @@ export {
   createDevMockUiSession,
 } from "../dev/mock-collector-service";
 export { createUiDashboardSnapshotPort } from "./ui-dashboard-snapshot-port";
-export {
-  createTauriDesktopCollectorService,
-  createTauriDesktopDashboardSnapshotPort,
-  createTauriDesktopUiSession,
-} from "./tauri-desktop-adapter";
 export { getUiSession, setUiSession } from "./ui-session";
 export { DASHBOARD_PREFETCH_SIZE } from "@collector/api";

@@ -22,12 +22,8 @@
     "test:service-host-lifecycle": "npm run build:packages && node scripts/service-host-lifecycle-smoke.mjs",
     "test:service-ipc": "npm run build:packages && node scripts/service-ipc-health-smoke.mjs",
     "test:web-console": "node scripts/web-console-smoke.mjs",
-    "generate:vault-walk-policy": "npm run build --workspace @collector/shared && node scripts/generate-vault-walk-policy.mjs",
-    "check:vault-walk-policy": "npm run build --workspace @collector/shared && node scripts/generate-vault-walk-policy.mjs --check",
-    "prepare:service-sidecar": "bash scripts/prepare-service-sidecar.sh",
     "verify:release": "bash scripts/verify-release.sh",
-    "tauri": "tauri",
-    "tauri:dev": "bash scripts/tauri-dev.sh"
+    "prepare:release-bundle": "bash scripts/prepare-release-bundle.sh"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -47,11 +43,6 @@
     "@lezer/highlight": "^1.2.3",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.14.6",
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-fs": "^2",
-    "@tauri-apps/plugin-opener": "^2",
-    "@tauri-apps/plugin-process": "^2.3.1",
-    "@tauri-apps/plugin-updater": "^2.10.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.24.0",
@@ -71,7 +62,6 @@
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.3.3",
-    "@tauri-apps/cli": "^2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",

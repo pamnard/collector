@@ -17,7 +17,7 @@ export default defineConfig(async ({ mode }) => {
   }
 
   // @ts-expect-error process is a nodejs global
-  const host = process.env.TAURI_DEV_HOST;
+  const host = process.env.VITE_DEV_HOST;
 
   return {
     plugins: [tailwindcss(), react(), collectorDevVaultPlugin()],
@@ -44,7 +44,7 @@ export default defineConfig(async ({ mode }) => {
           }
         : undefined,
       watch: {
-        ignored: ["**/src-tauri/**", "**/packages/**/dist/**"],
+        ignored: ["**/packages/**/dist/**"],
       },
     },
   };

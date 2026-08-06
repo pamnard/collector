@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getName } from "@tauri-apps/api/app";
-import { isTauri } from "@tauri-apps/api/core";
 import type { VaultMeta } from "@collector/shared";
 import {
   useAlerts,
@@ -31,21 +29,18 @@ export function SettingsGeneralSection() {
   const [isSavingVault, setIsSavingVault] = useState(false);
 
   const loadSettings = useCallback(async () => {
-    const [directory, loadedVaults, activeVault, name, preferencesDir] =
+    const [directory, loadedVaults, activeVault, preferencesDir] =
       await Promise.all([
         getCollectorService().boot.getDataDirectory(),
         getCollectorService().vaults.listVaults(),
         getCollectorService().vaults.getActiveVaultMeta(),
-        isTauri()
-          ? getName().catch(() => "Collector")
-          : Promise.resolve("Collector"),
         getCollectorService().settings.getAppConfigDirectory(),
       ]);
     setDataDir(directory);
     setConfigDir(preferencesDir);
     setVaults(loadedVaults);
     setActiveVaultId(activeVault.id);
-    setAppName(name);
+    setAppName("Collector");
   }, []);
 
   useEffect(() => {

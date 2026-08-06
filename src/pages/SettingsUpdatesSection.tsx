@@ -1,11 +1,12 @@
-import { RefreshCw } from "lucide-react";
+import { ExternalLink, RefreshCw } from "lucide-react";
 import { useAppUpdater } from "../hooks/useAppUpdater";
 import { useCheckUpdatesOnStart } from "../hooks/useUpdaterSettings";
 
 export function SettingsUpdatesSection() {
   const { enabled: checkUpdatesOnStart, setEnabled: setCheckUpdatesOnStart } =
     useCheckUpdatesOnStart();
-  const { progress, checkForUpdates, installUpdate } = useAppUpdater();
+  const { progress, checkForUpdates, openReleasesPage, releasesUrl } =
+    useAppUpdater();
 
   return (
     <div className="p-4 space-y-3">
@@ -13,35 +14,33 @@ export function SettingsUpdatesSection() {
         <div>
           <p className="font-medium">Обновления</p>
           <p className="text-neutral-500 dark:text-neutral-400 mt-1">
-            Канал: GitHub Releases (`latest.json`)
+            Канал: GitHub Releases (ручная установка архива)
           </p>
         </div>
         <button
           type="button"
-          onClick={checkForUpdates}
-          disabled={
-            progress.stage === "checking" ||
-            progress.stage === "downloading" ||
-            progress.stage === "installing"
-          }
-          className="px-3 py-1.5 rounded-lg border border-black/10 dark:border-white/10 hover:bg-neutral-100/65 dark:hover:bg-neutral-700/65 transition-colors text-sm disabled:opacity-50"
+          onClick={openReleasesPage}
+          className="px-3 py-1.5 rounded-lg border border-black/10 dark:border-white/10 hover:bg-neutral-100/65 dark:hover:bg-neutral-700/65 transition-colors text-sm inline-flex items-center gap-1.5"
         >
-          {progress.stage === "checking" ? "Проверка…" : "Проверить"}
+          <ExternalLink size={14} />
+          Releases
         </button>
       </div>
 
       <div className="flex items-center justify-between gap-4">
         <div>
-          <p className="font-medium">Проверять при запуске</p>
+          <p className="font-medium">Напоминание при запуске</p>
           <p className="text-neutral-500 dark:text-neutral-400 mt-0.5">
-            {checkUpdatesOnStart ? "Включено" : "Выключено"}
+            {checkUpdatesOnStart
+              ? "Показывать ссылку на Releases"
+              : "Выключено"}
           </p>
         </div>
         <button
           type="button"
           onClick={() => setCheckUpdatesOnStart(!checkUpdatesOnStart)}
           aria-pressed={checkUpdatesOnStart}
-          aria-label="Проверять обновления при запуске"
+          aria-label="Напоминать об обновлениях при запуске"
           className={`inline-flex items-center justify-center rounded-lg border p-2 transition-colors ${
             checkUpdatesOnStart
               ? "border-indigo-500/40 bg-indigo-500/10 text-indigo-400"
@@ -52,47 +51,30 @@ export function SettingsUpdatesSection() {
         </button>
       </div>
 
-      {progress.stage === "available" && (
-        <div className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 p-3 space-y-2">
-          <p>Доступна версия {progress.version}</p>
-          {progress.notes && (
-            <p className="text-neutral-500 dark:text-neutral-400 whitespace-pre-wrap">
-              {progress.notes}
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={installUpdate}
-            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors text-sm"
-          >
-            Установить и перезапустить
-          </button>
-        </div>
-      )}
+      <p className="text-neutral-500 dark:text-neutral-400 text-sm">
+        Скачайте архив с{" "}
+        <a
+          href={releasesUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline underline-offset-2"
+        >
+          GitHub Releases
+        </a>
+        , остановите хост и замените файлы. Автоустановка в приложении не
+        поддерживается.
+      </p>
 
-      {progress.stage === "uptodate" && (
-        <p className="text-neutral-500 dark:text-neutral-400">
-          Установлена последняя версия.
-        </p>
-      )}
-
-      {progress.stage === "downloading" && (
-        <p className="text-neutral-500 dark:text-neutral-400">
-          Загрузка…
-          {progress.total
-            ? ` ${Math.round((progress.downloaded / progress.total) * 100)}%`
-            : ""}
-        </p>
-      )}
-
-      {progress.stage === "installing" && (
-        <p className="text-neutral-500 dark:text-neutral-400">
-          Установка…
-        </p>
-      )}
+      <button
+        type="button"
+        onClick={checkForUpdates}
+        className="px-3 py-1.5 rounded-lg border border-black/10 dark:border-white/10 hover:bg-neutral-100/65 dark:hover:bg-neutral-700/65 transition-colors text-sm"
+      >
+        Как обновиться
+      </button>
 
       {progress.stage === "error" && (
-        <p className="text-red-400 whitespace-pre-wrap">
+        <p className="text-neutral-500 dark:text-neutral-400 whitespace-pre-wrap text-sm">
           {progress.message}
         </p>
       )}

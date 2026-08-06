@@ -1,5 +1,5 @@
 /**
- * UiSession thumbnail path resolution (#368) — desktop FS / dev-mock / legacy cover bridge.
+ * UiSession thumbnail path resolution (#368) — DevMock / host cover paths.
  * Progressive emit + bounded parallel resolve (#544).
  * Browser+host cutover uses createHostThumbnailsPort (#552), not this module.
  */
@@ -9,16 +9,10 @@ import type {
   UiSessionThumbnailPaths,
   UiSessionThumbnailResolveProgressiveOptions,
 } from "@collector/api";
-import {
-  itemCoverPath,
-  resolveItemThumbnailPathsProgressive,
-} from "@collector/core";
+import { itemCoverPath } from "@collector/core";
 import type { ItemFile } from "@collector/shared";
-import { TauriFileSystemAdapter } from "../adapters/tauri-fs";
 import { isDevMock } from "../dev/is-dev-mock";
 import * as devMockCollector from "../dev/mock-collector";
-
-const fs = new TauriFileSystemAdapter();
 
 export interface ThumbnailResolveSessionDeps {
   resolveActiveVault: () => Promise<ActiveVaultResult>;
@@ -43,8 +37,8 @@ export function resolveHostCoverThumbnailPath(
 }
 
 /**
- * Host cutover thumbnails: build `media/<uuid>/cover.webp` without Tauri FS.
- * Missing file → UI img onerror after /media 404. Gallery-first fallback → #552.
+ * Host cutover thumbnails: build `media/<uuid>/cover.webp` without local FS.
+ * Missing file → UI img onerror after /media 404.
  */
 export function createHostCoverThumbnailSession(
   deps: ThumbnailResolveSessionDeps,
@@ -91,8 +85,9 @@ export function createHostCoverThumbnailSession(
   };
 }
 
+/** DevMock (and tests): resolve via mock collector only (#555). */
 export function createThumbnailResolveSession(
-  deps: ThumbnailResolveSessionDeps,
+  _deps: ThumbnailResolveSessionDeps,
 ): UiSessionThumbnailPaths {
   const resolveItemThumbnailPathsProgressiveFn = async (
     items: ItemFile[],
@@ -102,36 +97,22 @@ export function createThumbnailResolveSession(
       return;
     }
 
-    if (isDevMock()) {
-      for (const item of items) {
-        if (options.signal?.aborted) {
-          return;
-        }
-        const path = await devMockCollector.resolveItemThumbnailPath(item);
-        if (options.signal?.aborted) {
-          return;
-        }
-        options.onResolved(item.id, path);
-      }
-      return;
+    if (!isDevMock()) {
+      throw new Error(
+        "createThumbnailResolveSession is DevMock-only; use host thumbnails port (#555)",
+      );
     }
 
-    const { path: vaultPath } = await deps.resolveActiveVault();
-    await resolveItemThumbnailPathsProgressive(
-      fs,
-      vaultPath,
-      items.map((item) => ({
-        id: item.id,
-        thumbnail: item.thumbnail ?? null,
-      })),
-      {
-        concurrency: options.concurrency,
-        signal: options.signal,
-        onResolved: (result) => {
-          options.onResolved(result.id, result.path);
-        },
-      },
-    );
+    for (const item of items) {
+      if (options.signal?.aborted) {
+        return;
+      }
+      const path = await devMockCollector.resolveItemThumbnailPath(item);
+      if (options.signal?.aborted) {
+        return;
+      }
+      options.onResolved(item.id, path);
+    }
   };
 
   const resolveItemThumbnailPaths = async (

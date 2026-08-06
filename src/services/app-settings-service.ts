@@ -4,9 +4,8 @@ import {
 } from "@collector/shared";
 import { mergeAppSettings } from "@collector/core";
 import { createAppSettingsService } from "@collector/service";
-import { TauriFileSystemAdapter } from "../adapters/tauri-fs";
+import { UnsupportedBrowserFsAdapter } from "../adapters/unsupported-fs";
 import { isDevMock } from "../dev/is-dev-mock";
-import { getCollectorProfileLayout } from "./profile-layout";
 
 const LEGACY_KEYS = {
   theme: "theme",
@@ -17,18 +16,16 @@ const LEGACY_KEYS = {
   checkUpdatesOnStart: "settings_check_updates_on_start",
 } as const;
 
-let configDir = "";
-const fs = new TauriFileSystemAdapter();
+const fs = new UnsupportedBrowserFsAdapter();
 const DEV_MOCK_SETTINGS_KEY = "collector-dev-mock-settings";
 
 async function ensureConfigDir(): Promise<string> {
   if (isDevMock()) {
     return "/dev-mock/config";
   }
-  if (!configDir) {
-    configDir = (await getCollectorProfileLayout()).configDir;
-  }
-  return configDir;
+  throw new Error(
+    "UI-local app settings require DevMock or host CollectorService (#555)",
+  );
 }
 
 function readLegacySettings(): Partial<AppSettings> {

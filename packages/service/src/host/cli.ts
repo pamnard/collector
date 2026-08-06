@@ -3,17 +3,18 @@
  * CLI entry for Collector service domain host (#151/#152/#237/#554).
  *
  * Usage:
- *   node packages/service/dist/host/cli.js serve --data-dir <dir> [--config-dir <dir>] [--port 0] [--host 127.0.0.1] [--ipc-path <path>|--no-ipc]
+ *   node packages/service/dist/host/cli.js serve --data-dir <dir> [--config-dir <dir>] [--port 0] [--host 127.0.0.1] [--ui-dir <path>] [--ipc-path <path>|--no-ipc]
  *
- * Layout (#238): production passes --config-dir (Tauri appConfig …/collector).
+ * Layout (#238): production passes --config-dir when profile dirs are split.
  * Omitting --config-dir uses self-contained `{dataDir}/config` + `{dataDir}/collector.db`.
  *
  * Sole-writer (#554): acquires `{data-dir}/collector-service.lock` before opening
  * SQLite. Second live host on the same data-dir exits loudly (code 3).
  *
+ * `--ui-dir` (#555): serve packaged browser UI + GET /api/ui-bootstrap.
+ *
  * Prints `COLLECTOR_SERVICE_READY {...}` when listening, then waits for SIGINT/SIGTERM.
- * Out-of-band smokes and `npm run dev:host` call this directly. The Tauri sidecar
- * launches this Node entry when supervise is enabled (#166/#237).
+ * Out-of-band smokes and `npm run dev:host` call this directly.
  */
 
 import {
@@ -24,7 +25,7 @@ import { startServiceHost, formatServiceHostReadyLine } from "./service-host.js"
 
 function usage(): never {
   console.error(
-    "Usage: collector-service serve --data-dir <path> [--config-dir <path>] [--port 0] [--host 127.0.0.1] [--ipc-path <path>|--no-ipc]",
+    "Usage: collector-service serve --data-dir <path> [--config-dir <path>] [--port 0] [--host 127.0.0.1] [--ui-dir <path>] [--ipc-path <path>|--no-ipc]",
   );
   process.exit(2);
 }
@@ -52,6 +53,7 @@ async function main(argv: string[]): Promise<void> {
     usage();
   }
   const configDir = readArg(rest, "--config-dir");
+  const uiDir = readArg(rest, "--ui-dir");
 
   const portRaw = readArg(rest, "--port");
   const host = readArg(rest, "--host") ?? "127.0.0.1";
@@ -94,6 +96,7 @@ async function main(argv: string[]): Promise<void> {
   const service = await startServiceHost({
     dataDir,
     ...(configDir === undefined ? {} : { configDir }),
+    ...(uiDir === undefined ? {} : { uiDir }),
     host,
     port,
     ipcPath,
