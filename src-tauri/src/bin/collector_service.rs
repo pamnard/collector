@@ -1,17 +1,15 @@
-//! Packaged Collector service sidecar entry (#165–#168 / #237 / epic #142).
+//! Packaged Collector service sidecar entry (#165–#168 / #237 / epic #142 / #554).
 //!
 //! Bundled into the desktop installer via Tauri `externalBin`.
 //! The app does **not** spawn this on the default path (#166 flag is OFF).
 //!
-//! `serve` acquires the sole-writer lock, then launches the real Node domain
-//! host (`packages/service` CLI): that child opens SQLite and serves HTTP +
+//! `serve` launches the real Node domain host (`packages/service` CLI): that
+//! child acquires the sole-writer lock (#554), opens SQLite, and serves HTTP +
 //! local IPC. READY is forwarded from the host (includes `ipcPath` / `baseUrl`).
 //!
-//! Sole-writer lock (#167): `serve` acquires `{data-dir}/collector-service.lock`.
 //! Logs (#168): `{data-dir}/logs/collector-service.log` (also via supervise stdio redirect).
 
 use collector_lib::service_domain_host::run_domain_host_serve;
-use collector_lib::service_lock::{acquire_service_lock, LockError};
 use collector_lib::service_logs::{
     append_service_log_line, service_log_path, verbose_enabled,
 };
@@ -25,7 +23,8 @@ fn usage() -> ! {
          App supervise spawn is behind COLLECTOR_ENABLE_SERVICE_SUPERVISE=1 (#166).\n\
          Supervised logs: {{data-dir}}/logs/collector-service.log (#168).\n\
          Domain host CLI: set COLLECTOR_SERVICE_NODE_CLI if auto-resolve fails (#237).
-         Optional --config-dir: production settings root (#238); omit for self-contained profile."
+         Optional --config-dir: production settings root (#238); omit for self-contained profile.\n\
+         Sole-writer lock is acquired by the Node host (#554), not this sidecar."
     );
     std::process::exit(2);
 }
@@ -39,18 +38,6 @@ fn serve(args: &[String]) -> ! {
     let Some(data_dir) = read_arg(args, "--data-dir") else {
         eprintln!("missing --data-dir");
         usage();
-    };
-
-    let _lock = match acquire_service_lock(Path::new(data_dir)) {
-        Ok(guard) => guard,
-        Err(LockError::AlreadyLocked { service_pid }) => {
-            eprintln!("collector-service: lock held by pid {service_pid}");
-            std::process::exit(3);
-        }
-        Err(LockError::Io(err)) => {
-            eprintln!("collector-service: lock I/O: {err}");
-            std::process::exit(1);
-        }
     };
 
     let log_path = service_log_path(Path::new(data_dir));

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * CLI entry for Collector service domain host (#151/#152/#237).
+ * CLI entry for Collector service domain host (#151/#152/#237/#554).
  *
  * Usage:
  *   node packages/service/dist/host/cli.js serve --data-dir <dir> [--config-dir <dir>] [--port 0] [--host 127.0.0.1] [--ipc-path <path>|--no-ipc]
@@ -8,12 +8,18 @@
  * Layout (#238): production passes --config-dir (Tauri appConfig …/collector).
  * Omitting --config-dir uses self-contained `{dataDir}/config` + `{dataDir}/collector.db`.
  *
+ * Sole-writer (#554): acquires `{data-dir}/collector-service.lock` before opening
+ * SQLite. Second live host on the same data-dir exits loudly (code 3).
+ *
  * Prints `COLLECTOR_SERVICE_READY {...}` when listening, then waits for SIGINT/SIGTERM.
- * Out-of-band smokes call this directly. The Tauri sidecar `collector-service serve`
- * also launches this Node entry when supervise is enabled (#166/#237). Default app
- * path still does not spawn it until cutover (#170).
+ * Out-of-band smokes and `npm run dev:host` call this directly. The Tauri sidecar
+ * launches this Node entry when supervise is enabled (#166/#237).
  */
 
+import {
+  AlreadyLockedError,
+  acquireServiceLock,
+} from "./service-lock.js";
 import { startServiceHost, formatServiceHostReadyLine } from "./service-host.js";
 
 function usage(): never {
@@ -67,6 +73,24 @@ async function main(argv: string[]): Promise<void> {
     ipcPath = value;
   }
 
+  let lock;
+  try {
+    lock = acquireServiceLock(dataDir);
+  } catch (error) {
+    if (error instanceof AlreadyLockedError) {
+      console.error(
+        `collector-service: lock held by pid ${error.servicePid}`,
+      );
+      process.exit(3);
+    }
+    throw error;
+  }
+
+  const releaseLock = () => {
+    lock.release();
+  };
+  process.on("exit", releaseLock);
+
   const service = await startServiceHost({
     dataDir,
     ...(configDir === undefined ? {} : { configDir }),
@@ -78,7 +102,9 @@ async function main(argv: string[]): Promise<void> {
 
   const shutdown = async (signal: string) => {
     console.error(`[collector-service] shutting down (${signal})`);
+    process.off("exit", releaseLock);
     await service.close();
+    lock.release();
     process.exit(0);
   };
 

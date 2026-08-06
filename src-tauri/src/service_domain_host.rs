@@ -1,8 +1,8 @@
-//! Launch the real Node domain host under the Rust sidecar (#237 / epic #142).
+//! Launch the real Node domain host under the Rust sidecar (#237 / epic #142 / #554).
 //!
-//! The packaged `collector-service` binary keeps the sole-writer lock and
-//! supervises `node …/host/cli.js serve --data-dir …`. The Node child opens
-//! SQLite and serves HTTP + local IPC.
+//! The packaged `collector-service` binary supervises
+//! `node …/host/cli.js serve --data-dir …`. The Node child acquires the
+//! sole-writer lock (#554), opens SQLite, and serves HTTP + local IPC.
 //!
 //! Packaged layout: Tauri injects `COLLECTOR_SERVICE_NODE_CLI` +
 //! `COLLECTOR_SERVICE_NODE` pointing at `resources/collector-service-host/`.
