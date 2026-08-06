@@ -1,5 +1,5 @@
 /**
- * Browser-safe Service IPC transport types (#240).
+ * Browser-safe domain host transport types (#240 / #551).
  * No Node runtime imports — usable from Vite/Tauri UI bundles.
  */
 
@@ -20,7 +20,7 @@ export interface ServiceIpcClientOptions {
   /** Default per-request timeout when `request` options omit `timeoutMs`. */
   requestTimeoutMs?: number;
   /**
-   * Explicit IPC handshake token (#336). When omitted, resolved from
+   * Explicit host handshake token (#336). When omitted, resolved from
    * `tokenFile` / `COLLECTOR_IPC_TOKEN` / `dataDir` token file / sock sibling.
    */
   token?: string;
@@ -31,9 +31,10 @@ export interface ServiceIpcClientOptions {
 }
 
 /**
- * Low-level framed IPC transport. Node dialer and Tauri proxy both implement this.
+ * Low-level transport to the domain host (#551).
+ * HTTP+WS browser dial and legacy socket dial both implement this shape.
  */
-export interface ServiceIpcClient {
+export interface CollectorHostTransport {
   request(
     method: string,
     params?: unknown,
@@ -41,7 +42,10 @@ export interface ServiceIpcClient {
   ): Promise<unknown>;
   ping(options?: ServiceIpcRequestOptions): Promise<{ ok: true; pong: true }>;
   health(options?: ServiceIpcRequestOptions): Promise<ServiceIpcHealthResult>;
-  /** Subscribe to host→client event frames (#163). Returns unsubscribe. */
+  /** Subscribe to host→client push events. Returns unsubscribe. */
   onEvent(event: string, handler: (payload: unknown) => void): () => void;
   close(): Promise<void>;
 }
+
+/** Legacy dial alias — same shape as {@link CollectorHostTransport}. */
+export type ServiceIpcClient = CollectorHostTransport;

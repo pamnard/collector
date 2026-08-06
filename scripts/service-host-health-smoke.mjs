@@ -1,8 +1,8 @@
 /**
- * Out-of-band service host health smoke (#151).
+ * Out-of-band service host health smoke (#151 / #551).
  *
  * Spawns `collector-service serve` against a temp data dir, waits for READY,
- * checks /ping + /health, then SIGTERM for a clean exit.
+ * checks /ping + Bearer /health, then SIGTERM for a clean exit.
  *
  * Local / CI:
  *   npm run test:service-host
@@ -11,7 +11,7 @@
  * Must never be started by the Tauri app (sole SQLite writer stays in-process).
  */
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -87,6 +87,9 @@ try {
   if (!ready?.baseUrl || !ready?.port) {
     throw new Error(`invalid READY payload: ${JSON.stringify(ready)}`);
   }
+  if (!ready?.wsEventsUrl) {
+    throw new Error(`READY missing wsEventsUrl: ${JSON.stringify(ready)}`);
+  }
 
   const ping = await fetch(`${ready.baseUrl}/ping`);
   if (!ping.ok) {
@@ -97,7 +100,24 @@ try {
     throw new Error(`/ping body ${JSON.stringify(pingBody)}`);
   }
 
-  const health = await fetch(`${ready.baseUrl}/health`);
+  const token = readFileSync(
+    join(dataDir, "collector-service.ipc-token"),
+    "utf8",
+  ).trim();
+  if (!token) {
+    throw new Error("host token file empty");
+  }
+
+  const healthBare = await fetch(`${ready.baseUrl}/health`);
+  if (healthBare.status !== 401) {
+    throw new Error(
+      `/health without Bearer expected 401, got ${healthBare.status}`,
+    );
+  }
+
+  const health = await fetch(`${ready.baseUrl}/health`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (!health.ok) {
     throw new Error(`/health status ${health.status}`);
   }
@@ -115,7 +135,7 @@ try {
   }
 
   console.log(
-    "OK: service host READY → /ping + /health healthy → clean SIGTERM exit",
+    "OK: service host READY → /ping + /health (Bearer) healthy → clean SIGTERM exit",
   );
 } catch (error) {
   try {

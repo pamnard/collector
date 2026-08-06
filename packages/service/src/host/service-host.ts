@@ -1,14 +1,17 @@
 /**
- * Collector service domain host (#151/#152/#155+/#237/#238):
- * open index DB + HTTP health/ping + local IPC with domain handlers.
+ * Collector service domain host (#151/#152/#155+/#237/#238/#551):
+ * open index DB + HTTP ping/health/RPC/events + local dial with domain handlers.
  *
  * Uses the canonical profile layout (#238). Default desktop path stays
  * in-process until cutover (#170). Supervise may start this host behind
  * COLLECTOR_ENABLE_SERVICE_SUPERVISE with an isolated `--data-dir`
  * (self-contained layout) so it does not share SQLite with the UI writer.
+ *
+ * Browser surfaces (#551): always-on POST /api/rpc + WS /api/events with the
+ * same host token as the local dial.
  */
 
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Subscription } from "@collector/api";
 import type { CollectorProfileLayout } from "@collector/shared";
 import {
@@ -25,6 +28,10 @@ import {
   removeServiceIpcTokenFile,
   writeServiceIpcTokenFile,
 } from "./ipc/auth.js";
+import { isValidBearer } from "./http/bearer.js";
+import { corsHeadersForRequest, writeCorsPreflight } from "./http/cors.js";
+import { createHostHttpEventsHub } from "./http/events-hub.js";
+import { handleHttpRpc, writeUnauthorized } from "./http/rpc-handler.js";
 
 export const SERVICE_HOST_READY_PREFIX = "COLLECTOR_SERVICE_READY ";
 
@@ -54,6 +61,8 @@ export interface ServiceHost {
   host: string;
   port: number;
   baseUrl: string;
+  /** Browser WebSocket URL for push events (#551). */
+  wsEventsUrl: string;
   /** Local IPC endpoint (Unix socket or Windows named pipe), if enabled. */
   ipcPath: string | null;
   /** Resolved profile layout used by this host. */
@@ -74,10 +83,8 @@ function resolveHostLayout(options: ServiceHostOptions): CollectorProfileLayout 
 }
 
 function json(
-  res: {
-    writeHead: (code: number, headers: Record<string, string>) => void;
-    end: (body: string) => void;
-  },
+  req: IncomingMessage,
+  res: ServerResponse,
   code: number,
   body: unknown,
 ): void {
@@ -85,6 +92,7 @@ function json(
   res.writeHead(code, {
     "content-type": "application/json; charset=utf-8",
     "content-length": String(Buffer.byteLength(payload)),
+    ...corsHeadersForRequest(req),
   });
   res.end(payload);
 }
@@ -115,19 +123,51 @@ export async function startServiceHost(
 
   const domainDispatch = createDomainIpcRequestHandler(runtime);
 
+  // Host token always minted for HTTP Bearer / WS auth (#551).
+  const hostToken = generateServiceIpcToken();
+  const hostTokenPath = defaultServiceIpcTokenPath(layout.dataDir);
+  await writeServiceIpcTokenFile(hostTokenPath, hostToken);
+
+  const eventsHub = createHostHttpEventsHub({ expectedToken: hostToken });
+
   const server: Server = createServer((req, res) => {
-    const url = new URL(req.url ?? "/", `http://${listenHost}`);
-    if (req.method === "GET" && url.pathname === "/ping") {
-      json(res, 200, { ok: true, pong: true });
-      return;
-    }
-    if (req.method === "GET" && url.pathname === "/health") {
-      const body = healthPayload();
-      json(res, body.healthy ? 200 : 503, body);
-      return;
-    }
-    json(res, 404, { ok: false, error: "not_found" });
+    void (async () => {
+      const url = new URL(req.url ?? "/", `http://${listenHost}`);
+
+      if (req.method === "OPTIONS") {
+        writeCorsPreflight(req, res);
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/ping") {
+        json(req, res, 200, { ok: true, pong: true });
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/health") {
+        if (!isValidBearer(req, hostToken)) {
+          writeUnauthorized(req, res);
+          return;
+        }
+        const body = healthPayload();
+        json(req, res, body.healthy ? 200 : 503, body);
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/rpc") {
+        if (!isValidBearer(req, hostToken)) {
+          writeUnauthorized(req, res);
+          return;
+        }
+        await handleHttpRpc(req, res, domainDispatch);
+        return;
+      }
+
+      json(req, res, 404, { ok: false, error: "not_found" });
+    })();
   });
+
+  eventsHub.attach(server);
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -140,35 +180,39 @@ export async function startServiceHost(
     throw new Error("service host failed to bind a TCP port");
   }
 
+  const baseUrl = `http://${listenHost}:${address.port}`;
+  const wsEventsUrl = `ws://${listenHost}:${address.port}/api/events`;
+
   let ipc: ServiceIpcServer | null = null;
-  let ipcTokenPath: string | null = null;
   let stopSyncStatusBroadcast: Subscription | null = null;
   let stopAppSettingsBroadcast: Subscription | null = null;
+
+  const broadcastBoth = (event: string, payload: unknown): void => {
+    ipc?.broadcastEvent(event, payload);
+    eventsHub.broadcastEvent(event, payload);
+  };
+
   if (options.ipcPath !== false) {
-    const token = generateServiceIpcToken();
-    ipcTokenPath = defaultServiceIpcTokenPath(layout.dataDir);
-    await writeServiceIpcTokenFile(ipcTokenPath, token);
     ipc = await startServiceIpcServer({
       dataDir: layout.dataDir,
       path: typeof options.ipcPath === "string" ? options.ipcPath : undefined,
-      token,
+      token: hostToken,
       handler: {
         ping: () => ({ ok: true, pong: true }),
         health: healthPayload,
         request: domainDispatch,
       },
     });
-    stopSyncStatusBroadcast = runtime.vaultIndexSyncStatus.subscribe(
-      (status) => {
-        ipc?.broadcastEvent(SERVICE_IPC_EVENTS.vaultIndexSyncStatus, status);
-      },
-    );
-    stopAppSettingsBroadcast = runtime.appSettings.subscribeAppSettings(
-      (settings) => {
-        ipc?.broadcastEvent(SERVICE_IPC_EVENTS.appSettings, settings);
-      },
-    );
   }
+
+  stopSyncStatusBroadcast = runtime.vaultIndexSyncStatus.subscribe((status) => {
+    broadcastBoth(SERVICE_IPC_EVENTS.vaultIndexSyncStatus, status);
+  });
+  stopAppSettingsBroadcast = runtime.appSettings.subscribeAppSettings(
+    (settings) => {
+      broadcastBoth(SERVICE_IPC_EVENTS.appSettings, settings);
+    },
+  );
 
   let closed = false;
   const close = async (): Promise<void> => {
@@ -180,14 +224,12 @@ export async function startServiceHost(
     stopSyncStatusBroadcast = null;
     stopAppSettingsBroadcast?.unsubscribe();
     stopAppSettingsBroadcast = null;
+    await eventsHub.close();
     if (ipc) {
       await ipc.close();
       ipc = null;
     }
-    if (ipcTokenPath) {
-      await removeServiceIpcTokenFile(ipcTokenPath);
-      ipcTokenPath = null;
-    }
+    await removeServiceIpcTokenFile(hostTokenPath);
     await new Promise<void>((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
     });
@@ -197,7 +239,8 @@ export async function startServiceHost(
   return {
     host: listenHost,
     port: address.port,
-    baseUrl: `http://${listenHost}:${address.port}`,
+    baseUrl,
+    wsEventsUrl,
     ipcPath: ipc?.path ?? null,
     layout,
     isHealthy: () => runtime.isHealthy(),
@@ -211,6 +254,7 @@ export function formatServiceHostReadyLine(host: ServiceHost): string {
     host: host.host,
     port: host.port,
     baseUrl: host.baseUrl,
+    wsEventsUrl: host.wsEventsUrl,
     ipcPath: host.ipcPath,
     dataDir: host.layout.dataDir,
     configDir: host.layout.configDir,
