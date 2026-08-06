@@ -1,5 +1,5 @@
 /**
- * @collector/mcp — MCP adapter over Collector service IPC (#174).
+ * @collector/mcp — MCP adapter over the living domain host (#174/#556).
  */
 
 export {
@@ -8,5 +8,8 @@ export {
 export {
   McpEndpointError,
   parseMcpEndpointArgs,
-  resolveMcpIpcPath,
+  resolveMcpHostEndpoint,
+  type McpHostEndpoint,
+  type ParsedMcpEndpointArgs,
 } from "./endpoint.js";
+export { runCollectorMcp, type RunCollectorMcpIo } from "./run.js";
