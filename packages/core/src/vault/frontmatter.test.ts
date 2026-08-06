@@ -5,6 +5,7 @@ import {
   ftsFieldsFromDocumentMarkdown,
   parseDocumentMarkdown,
   parseKnownFrontmatter,
+  partitionDocumentFrontmatter,
   resolveFrontmatterDates,
   serializeDocumentMarkdown,
 } from "./frontmatter.js";
@@ -180,6 +181,57 @@ x
   });
 });
 
+describe("partitionDocumentFrontmatter", () => {
+  it("keeps foreign type as a property and does not map it to content_type", () => {
+    const { known, properties } = partitionDocumentFrontmatter({
+      title: "Pattern",
+      type: "agentic-pattern",
+    });
+    expect(known.content_type).toBeUndefined();
+    expect(properties.type).toBe("agentic-pattern");
+  });
+
+  it("demotes invalid content_type to _content_type", () => {
+    const { known, properties } = partitionDocumentFrontmatter({
+      title: "X",
+      content_type: "agentic-pattern",
+    });
+    expect(known.content_type).toBeUndefined();
+    expect(properties._content_type).toBe("agentic-pattern");
+  });
+
+  it("demotes unparseable created date to _created", () => {
+    const { known, properties } = partitionDocumentFrontmatter({
+      title: "X",
+      created: "not-a-date",
+    });
+    expect(known.created).toBeUndefined();
+    expect(properties._created).toBe("not-a-date");
+  });
+
+  it("uses _content_type_2 when _content_type is already occupied", () => {
+    const { properties } = partitionDocumentFrontmatter({
+      title: "X",
+      content_type: "agentic-pattern",
+      _content_type: "already",
+    });
+    expect(properties._content_type).toBe("already");
+    expect(properties._content_type_2).toBe("agentic-pattern");
+  });
+
+  it("accepts valid content_type and date aliases", () => {
+    const { known, properties } = partitionDocumentFrontmatter({
+      title: "Ok",
+      content_type: "note",
+      created: "2021-06-15T12:00:00.000Z",
+      custom: "kept",
+    });
+    expect(known.content_type).toBe("note");
+    expect(known.created).toBe("2021-06-15T12:00:00.000Z");
+    expect(properties.custom).toBe("kept");
+  });
+});
+
 describe("resolveFrontmatterDates", () => {
   it("prefers created_at / updated_at", () => {
     const dates = resolveFrontmatterDates(
@@ -202,10 +254,11 @@ describe("resolveFrontmatterDates", () => {
     expect(dates.created_at).toBe("2021-06-15T12:00:00.000Z");
   });
 
-  it("fails on invalid date", () => {
-    expect(() =>
-      resolveFrontmatterDates(parseKnownFrontmatter({ created: "not-a-date" })),
-    ).toThrow(/Invalid date/);
+  it("omits invalid dates instead of throwing", () => {
+    const dates = resolveFrontmatterDates(
+      parseKnownFrontmatter({ created: "not-a-date" }),
+    );
+    expect(dates.created_at).toBeUndefined();
   });
 });
 

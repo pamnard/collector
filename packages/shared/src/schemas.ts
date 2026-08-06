@@ -49,7 +49,6 @@ export const documentFrontmatterSchema = z.object({
   description: z.string().optional(),
   url: z.string().url().nullable().optional(),
   content_type: contentTypeSchema.optional(),
-  type: contentTypeSchema.optional(),
   source_type: sourceTypeSchema.optional(),
   source_id: z.string().nullable().optional(),
   thumbnail: z.string().nullable().optional(),

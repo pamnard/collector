@@ -17,7 +17,6 @@ const PRODUCT_FM_KEYS = new Set([
   "description",
   "url",
   "content_type",
-  "type",
   "source_type",
   "source_id",
   "thumbnail",
@@ -28,6 +27,13 @@ const PRODUCT_FM_KEYS = new Set([
   "updated",
   "updated_at",
   "metadata",
+]);
+
+const DATE_FM_KEYS = new Set([
+  "created",
+  "created_at",
+  "updated",
+  "updated_at",
 ]);
 
 /** Retired Collector-owned keys stripped on rewrite (deny-list, not allowlist). */
@@ -155,32 +161,122 @@ export function parseDocumentMarkdown(raw: string): ParsedDocumentMarkdown {
   return { frontmatter: data, body: afterClose, detectedFormat: format };
 }
 
+export type PartitionedFrontmatter = {
+  known: DocumentFrontmatter;
+  properties: Record<string, unknown>;
+};
+
+/**
+ * Choose a demotion key for an invalid product value: `_key`, then `_key_2`, …
+ * `occupied` is the set of keys already present in the output bag / raw map.
+ */
+export function demoteFrontmatterKey(
+  key: string,
+  occupied: Record<string, unknown>,
+): string {
+  const base = `_${key}`;
+  if (!(base in occupied)) {
+    return base;
+  }
+  let i = 2;
+  while (`_${key}_${i}` in occupied) {
+    i += 1;
+  }
+  return `_${key}_${i}`;
+}
+
+function tryDateToIso(value: string | Date): string | undefined {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      return undefined;
+    }
+    return value.toISOString();
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined;
+  }
+  return parsed.toISOString();
+}
+
+function acceptProductField(
+  key: string,
+  value: unknown,
+): { ok: true; value: unknown } | { ok: false } {
+  const fieldSchema =
+    documentFrontmatterSchema.shape[
+      key as keyof typeof documentFrontmatterSchema.shape
+    ];
+  if (!fieldSchema) {
+    return { ok: false };
+  }
+  const parsed = fieldSchema.safeParse(value);
+  if (!parsed.success) {
+    return { ok: false };
+  }
+  if (DATE_FM_KEYS.has(key)) {
+    const dateValue = parsed.data as string | Date;
+    if (tryDateToIso(dateValue) === undefined) {
+      return { ok: false };
+    }
+  }
+  return { ok: true, value: parsed.data };
+}
+
+/**
+ * Soft-split raw frontmatter: valid product keys → known; everything else →
+ * properties. Invalid values under product key names demote to `_key` (etc.).
+ * Never throws on field values.
+ */
+export function partitionDocumentFrontmatter(
+  frontmatter: Record<string, unknown>,
+): PartitionedFrontmatter {
+  const properties: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(frontmatter)) {
+    if (LEGACY_STRIP_KEYS.has(key)) {
+      continue;
+    }
+    if (!PRODUCT_FM_KEYS.has(key)) {
+      properties[key] = value;
+    }
+  }
+
+  const knownRaw: Record<string, unknown> = {};
+  for (const key of PRODUCT_FM_KEYS) {
+    if (!(key in frontmatter)) {
+      continue;
+    }
+    const value = frontmatter[key];
+    const accepted = acceptProductField(key, value);
+    if (accepted.ok) {
+      knownRaw[key] = accepted.value;
+      continue;
+    }
+    const occupied = { ...frontmatter, ...properties };
+    const demoted = demoteFrontmatterKey(key, occupied);
+    properties[demoted] = value;
+  }
+
+  const knownResult = documentFrontmatterSchema.safeParse(knownRaw);
+  return {
+    known: knownResult.success ? knownResult.data : {},
+    properties,
+  };
+}
+
+/** Valid product projection only; invalid values are demoted (never throws). */
 export function parseKnownFrontmatter(
   frontmatter: Record<string, unknown>,
 ): DocumentFrontmatter {
-  const result = documentFrontmatterSchema.safeParse(frontmatter);
-  if (!result.success) {
-    throw new Error(`Invalid frontmatter fields: ${result.error.message}`);
-  }
-  return result.data;
+  return partitionDocumentFrontmatter(frontmatter).known;
 }
 
 function dateToIso(value: string | Date | undefined): string | undefined {
   if (value === undefined) {
     return undefined;
   }
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    throw new Error(`Invalid date in frontmatter: ${value}`);
-  }
-  // Prefer original if already ISO-like
-  if (/^\d{4}-\d{2}-\d{2}T/.test(value)) {
-    return parsed.toISOString();
-  }
-  return parsed.toISOString();
+  return tryDateToIso(value);
 }
 
 /** Resolve created/updated from FM aliases; missing → undefined (caller uses FS). */
@@ -196,8 +292,10 @@ export function resolveFrontmatterDates(fm: DocumentFrontmatter): {
   };
 }
 
-export function contentTypeFromFrontmatter(fm: DocumentFrontmatter): DocumentFrontmatter["content_type"] {
-  return fm.content_type ?? fm.type;
+export function contentTypeFromFrontmatter(
+  fm: DocumentFrontmatter,
+): DocumentFrontmatter["content_type"] {
+  return fm.content_type;
 }
 
 function orderFrontmatterKeys(data: Record<string, unknown>): Record<string, unknown> {

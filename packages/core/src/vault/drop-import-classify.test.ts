@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyDropFilename,
-  resolveDropTitle,
   titleStemFromFilename,
 } from "./drop-import-classify.js";
+import { resolveDropTitle } from "./resolve-drop-title.js";
 
 describe("drop-import-classify", () => {
   it("classifies media and notes; skips unsupported", () => {
@@ -40,6 +40,17 @@ describe("drop-import-classify", () => {
 
   it("resolveDropTitle prefers frontmatter title for markdown", () => {
     const raw = "---\ntitle: From FM\n---\n\nBody\n";
+    expect(resolveDropTitle("ignored.md", raw)).toBe("From FM");
+  });
+
+  it("resolveDropTitle keeps FM title when sibling fields are foreign/invalid", () => {
+    const raw = `---
+title: From FM
+type: agentic-pattern
+content_type: not-a-real-type
+---
+Body
+`;
     expect(resolveDropTitle("ignored.md", raw)).toBe("From FM");
   });
 
