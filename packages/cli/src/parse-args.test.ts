@@ -1,28 +1,40 @@
 import { describe, expect, it } from "vitest";
 import { CliUsageError, parseCliArgs } from "./parse-args.js";
 
-describe("parseCliArgs (#172/#173)", () => {
-  it("parses health with --data-dir", () => {
-    expect(parseCliArgs(["--data-dir", "/data", "health"])).toEqual({
+const BASE = ["--base-url", "http://127.0.0.1:9"] as const;
+
+describe("parseCliArgs (#172/#173 / #550 G)", () => {
+  it("parses health with --base-url and --data-dir", () => {
+    expect(parseCliArgs([...BASE, "--data-dir", "/data", "health"])).toEqual({
       command: { name: "health" },
+      baseUrl: "http://127.0.0.1:9",
       dataDir: "/data",
     });
   });
 
-  it("parses search with --ipc-path", () => {
+  it("parses search with --base-url and --token", () => {
     expect(
-      parseCliArgs(["--ipc-path", "/tmp/x.sock", "search", "hello", "world"]),
+      parseCliArgs([
+        ...BASE,
+        "--token",
+        "secret",
+        "search",
+        "hello",
+        "world",
+      ]),
     ).toEqual({
       command: { name: "search", query: "hello world" },
-      ipcPath: "/tmp/x.sock",
+      baseUrl: "http://127.0.0.1:9",
+      token: "secret",
     });
   });
 
   it("parses get-item", () => {
     expect(
-      parseCliArgs(["--data-dir", "/data", "get-item", "abc"]),
+      parseCliArgs([...BASE, "--data-dir", "/data", "get-item", "abc"]),
     ).toEqual({
       command: { name: "get-item", itemId: "abc" },
+      baseUrl: "http://127.0.0.1:9",
       dataDir: "/data",
     });
   });
@@ -30,6 +42,7 @@ describe("parseCliArgs (#172/#173)", () => {
   it("parses create-item / update-item / delete-item", () => {
     expect(
       parseCliArgs([
+        ...BASE,
         "--data-dir",
         "/data",
         "create-item",
@@ -47,11 +60,13 @@ describe("parseCliArgs (#172/#173)", () => {
         content_type: "note",
         content: "body",
       },
+      baseUrl: "http://127.0.0.1:9",
       dataDir: "/data",
     });
 
     expect(
       parseCliArgs([
+        ...BASE,
         "--data-dir",
         "/data",
         "update-item",
@@ -71,26 +86,30 @@ describe("parseCliArgs (#172/#173)", () => {
         content_type: "article",
         tags: ["tag-a", "tag-b"],
       },
+      baseUrl: "http://127.0.0.1:9",
       dataDir: "/data",
     });
 
     expect(
-      parseCliArgs(["--data-dir", "/data", "delete-item", "id1"]),
+      parseCliArgs([...BASE, "--data-dir", "/data", "delete-item", "id1"]),
     ).toEqual({
       command: { name: "delete-item", itemId: "id1" },
+      baseUrl: "http://127.0.0.1:9",
       dataDir: "/data",
     });
   });
 
   it("parses get/update item source (#351)", () => {
     expect(
-      parseCliArgs(["--data-dir", "/data", "get-item-source", "id1"]),
+      parseCliArgs([...BASE, "--data-dir", "/data", "get-item-source", "id1"]),
     ).toEqual({
       command: { name: "get-item-source", itemId: "id1" },
+      baseUrl: "http://127.0.0.1:9",
       dataDir: "/data",
     });
     expect(
       parseCliArgs([
+        ...BASE,
         "--data-dir",
         "/data",
         "update-item-source",
@@ -104,6 +123,7 @@ describe("parseCliArgs (#172/#173)", () => {
         itemId: "id1",
         rawMarkdown: "---\ntitle: X\n---\n\nbody\n",
       },
+      baseUrl: "http://127.0.0.1:9",
       dataDir: "/data",
     });
   });
@@ -111,6 +131,7 @@ describe("parseCliArgs (#172/#173)", () => {
   it("parses tag and folder writes", () => {
     expect(
       parseCliArgs([
+        ...BASE,
         "--data-dir",
         "/data",
         "create-tag",
@@ -121,20 +142,24 @@ describe("parseCliArgs (#172/#173)", () => {
       ]),
     ).toEqual({
       command: { name: "create-tag", tagName: "work", color: "#fff" },
+      baseUrl: "http://127.0.0.1:9",
       dataDir: "/data",
     });
     expect(
-      parseCliArgs(["--data-dir", "/data", "create-folder", "Inbox/A"]),
+      parseCliArgs([...BASE, "--data-dir", "/data", "create-folder", "Inbox/A"]),
     ).toEqual({
       command: { name: "create-folder", folderPath: "Inbox/A" },
+      baseUrl: "http://127.0.0.1:9",
       dataDir: "/data",
     });
-    expect(parseCliArgs(["--data-dir", "/data", "list-folders"])).toEqual({
+    expect(parseCliArgs([...BASE, "--data-dir", "/data", "list-folders"])).toEqual({
       command: { name: "list-folders" },
+      baseUrl: "http://127.0.0.1:9",
       dataDir: "/data",
     });
     expect(
       parseCliArgs([
+        ...BASE,
         "--data-dir",
         "/data",
         "rename-folder",
@@ -143,10 +168,12 @@ describe("parseCliArgs (#172/#173)", () => {
       ]),
     ).toEqual({
       command: { name: "rename-folder", oldPath: "Work/A", newPath: "Work/B" },
+      baseUrl: "http://127.0.0.1:9",
       dataDir: "/data",
     });
     expect(
       parseCliArgs([
+        ...BASE,
         "--data-dir",
         "/data",
         "move-folder",
@@ -155,16 +182,19 @@ describe("parseCliArgs (#172/#173)", () => {
       ]),
     ).toEqual({
       command: { name: "move-folder", oldPath: "Work/B", newPath: "Archive/B" },
+      baseUrl: "http://127.0.0.1:9",
       dataDir: "/data",
     });
     expect(
-      parseCliArgs(["--data-dir", "/data", "delete-folder", "Archive/B"]),
+      parseCliArgs([...BASE, "--data-dir", "/data", "delete-folder", "Archive/B"]),
     ).toEqual({
       command: { name: "delete-folder", folderPath: "Archive/B" },
+      baseUrl: "http://127.0.0.1:9",
       dataDir: "/data",
     });
     expect(
       parseCliArgs([
+        ...BASE,
         "--data-dir",
         "/data",
         "move-item",
@@ -174,20 +204,23 @@ describe("parseCliArgs (#172/#173)", () => {
       ]),
     ).toEqual({
       command: { name: "move-item", itemId: "id1", folderPath: "Inbox" },
+      baseUrl: "http://127.0.0.1:9",
       dataDir: "/data",
     });
   });
 
   it("parses media CRUD commands (#353)", () => {
     expect(
-      parseCliArgs(["--data-dir", "/data", "list-item-media", "Inbox/a.md"]),
+      parseCliArgs([...BASE, "--data-dir", "/data", "list-item-media", "Inbox/a.md"]),
     ).toEqual({
       command: { name: "list-item-media", itemId: "Inbox/a.md" },
+      baseUrl: "http://127.0.0.1:9",
       dataDir: "/data",
     });
 
     expect(
       parseCliArgs([
+        ...BASE,
         "--data-dir",
         "/data",
         "attach-media",
@@ -204,11 +237,13 @@ describe("parseCliArgs (#172/#173)", () => {
         filePath: "/tmp/shot.png",
         filename: "cover.png",
       },
+      baseUrl: "http://127.0.0.1:9",
       dataDir: "/data",
     });
 
     expect(
       parseCliArgs([
+        ...BASE,
         "--data-dir",
         "/data",
         "replace-media",
@@ -224,11 +259,13 @@ describe("parseCliArgs (#172/#173)", () => {
         mediaId: "media-1",
         filePath: "/tmp/new.jpg",
       },
+      baseUrl: "http://127.0.0.1:9",
       dataDir: "/data",
     });
 
     expect(
       parseCliArgs([
+        ...BASE,
         "--data-dir",
         "/data",
         "delete-media",
@@ -241,11 +278,13 @@ describe("parseCliArgs (#172/#173)", () => {
         itemId: "Inbox/a.md",
         mediaId: "media-1",
       },
+      baseUrl: "http://127.0.0.1:9",
       dataDir: "/data",
     });
 
     expect(
       parseCliArgs([
+        ...BASE,
         "--data-dir",
         "/data",
         "set-item-cover",
@@ -258,6 +297,7 @@ describe("parseCliArgs (#172/#173)", () => {
         itemId: "Inbox/a.md",
         mediaId: "media-1",
       },
+      baseUrl: "http://127.0.0.1:9",
       dataDir: "/data",
     });
   });
@@ -266,21 +306,21 @@ describe("parseCliArgs (#172/#173)", () => {
     expect(() => parseCliArgs(["health"])).toThrow(CliUsageError);
   });
 
-  it("rejects both endpoint flags", () => {
-    expect(() =>
-      parseCliArgs(["--data-dir", "/d", "--ipc-path", "/s", "health"]),
-    ).toThrow(/only one/);
+  it("rejects removed --ipc-path", () => {
+    expect(() => parseCliArgs(["--ipc-path", "/s", "health"])).toThrow(
+      /--ipc-path is removed/,
+    );
   });
 
   it("rejects unknown command", () => {
     expect(() =>
-      parseCliArgs(["--data-dir", "/data", "no-such-command"]),
+      parseCliArgs([...BASE, "--data-dir", "/data", "no-such-command"]),
     ).toThrow(/Unknown command: no-such-command/);
   });
 
   it("rejects update-item without field flags", () => {
     expect(() =>
-      parseCliArgs(["--data-dir", "/data", "update-item", "id1"]),
+      parseCliArgs([...BASE, "--data-dir", "/data", "update-item", "id1"]),
     ).toThrow(/at least one field flag/);
   });
 });

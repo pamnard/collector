@@ -58,8 +58,8 @@ export type CliCommand =
 
 export interface ParsedCliArgs {
   command: CliCommand;
+  baseUrl: string;
   dataDir?: string;
-  ipcPath?: string;
   token?: string;
 }
 

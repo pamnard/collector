@@ -1,29 +1,22 @@
 /**
- * Collector CLI over service IPC (#172/#173 / #369).
- * Never opens SQLite — dials the running local service only.
+ * Collector CLI over domain-host HTTP (#172/#173 / #550 G).
+ * Never opens SQLite — dials the running local host only.
  */
 
-import { connectCollectorHostService } from "@collector/client/node";
 import {
-  defaultHostWirePath,
+  createCollectorHostServiceClient,
+  createHttpHostTransport,
+} from "@collector/client";
+import {
   formatHostConnectFailure,
   isHostWireError,
 } from "@collector/service/host";
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
+import { resolveCliHostEndpoint } from "./parse-args/endpoint.js";
 import { CliUsageError, parseCliArgs, type ParsedCliArgs } from "./parse-args.js";
 
 export { parseCliArgs, CliUsageError };
-
-function resolveIpcPath(args: ParsedCliArgs): string {
-  if (args.ipcPath !== undefined) {
-    return args.ipcPath;
-  }
-  if (args.dataDir === undefined) {
-    throw new CliUsageError("missing endpoint");
-  }
-  return defaultHostWirePath(args.dataDir);
-}
 
 export async function runCollectorCli(
   argv: string[],
@@ -42,16 +35,26 @@ export async function runCollectorCli(
     return 2;
   }
 
-  const ipcPath = resolveIpcPath(args);
+  let endpoint: Awaited<ReturnType<typeof resolveCliHostEndpoint>>;
+  try {
+    endpoint = await resolveCliHostEndpoint(args);
+  } catch (error) {
+    const message =
+      error instanceof CliUsageError ? error.message : String(error);
+    io.stderr(message);
+    return 2;
+  }
+
   let client;
   try {
-    client = await connectCollectorHostService(ipcPath, {
+    const transport = await createHttpHostTransport({
+      baseUrl: endpoint.baseUrl,
+      token: endpoint.token,
       connectTimeoutMs: 2_000,
-      ...(args.dataDir === undefined ? {} : { dataDir: args.dataDir }),
-      ...(args.token === undefined ? {} : { token: args.token }),
     });
+    client = createCollectorHostServiceClient(transport);
   } catch (error) {
-    io.stderr(formatHostConnectFailure(error, ipcPath));
+    io.stderr(formatHostConnectFailure(error, endpoint.baseUrl));
     return 1;
   }
 

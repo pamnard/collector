@@ -2,7 +2,11 @@ import type { ContentType } from "@collector/shared";
 import { CONTENT_TYPES } from "@collector/shared";
 import { CliUsageError, type CliCommand, type ParsedCliArgs } from "./types.js";
 
-export const ENDPOINT_FLAGS = new Set(["--data-dir", "--ipc-path", "--token"]);
+export const ENDPOINT_FLAGS = new Set([
+  "--base-url",
+  "--data-dir",
+  "--token",
+]);
 
 export function readOpt(argv: string[], name: string): string | undefined {
   const idx = argv.indexOf(name);
@@ -75,14 +79,14 @@ export function parseTagNames(raw: string): string[] {
 
 export function withEndpoint(
   command: CliCommand,
+  baseUrl: string,
   dataDir: string | undefined,
-  ipcPath: string | undefined,
   token: string | undefined,
 ): ParsedCliArgs {
   return {
     command,
+    baseUrl,
     ...(dataDir === undefined ? {} : { dataDir }),
-    ...(ipcPath === undefined ? {} : { ipcPath }),
     ...(token === undefined ? {} : { token }),
   };
 }

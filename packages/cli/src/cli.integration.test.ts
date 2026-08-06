@@ -2,13 +2,18 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  startServiceHost,
-  defaultHostWirePath,
-} from "@collector/service/host";
+import { startServiceHost } from "@collector/service/host";
 import { runCollectorCli } from "./run.js";
 
-describe("collector CLI IPC (#172)", () => {
+function cliArgs(
+  host: { baseUrl: string },
+  dataDir: string,
+  ...rest: string[]
+): string[] {
+  return ["--base-url", host.baseUrl, "--data-dir", dataDir, ...rest];
+}
+
+describe("collector CLI HTTP (#172 / #550 G)", () => {
   const dirs: string[] = [];
 
   afterEach(async () => {
@@ -23,17 +28,18 @@ describe("collector CLI IPC (#172)", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
     const lines: string[] = [];
-    const code = await runCollectorCli(["--data-dir", dataDir, "health"], {
+    const code = await runCollectorCli(cliArgs(host, dataDir, "health"), {
       stdout: (line) => lines.push(line),
       stderr: (line) => lines.push(`ERR:${line}`),
     });
     expect(code).toBe(0);
     expect(lines.join("\n")).toMatch(/"ok"\s*:\s*true/);
+    const deadBaseUrl = host.baseUrl;
     await host.close();
 
     const err: string[] = [];
     const missing = await runCollectorCli(
-      ["--ipc-path", defaultHostWirePath(dataDir), "health"],
+      ["--base-url", deadBaseUrl, "--token", "unused", "health"],
       {
         stdout: () => {},
         stderr: (line) => err.push(line),
@@ -41,17 +47,17 @@ describe("collector CLI IPC (#172)", () => {
     );
     expect(missing).toBe(1);
     expect(err.join("\n")).toMatch(
-      /not running|not_connected|IPC connect failed|token file missing/i,
+      /not running|not_connected|Failed to reach|token file missing/i,
     );
   });
 
-  it("search and get-item round-trip via IPC (empty vault)", async () => {
+  it("search and get-item round-trip via HTTP (empty vault)", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "collector-cli-rw-"));
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
     const out: string[] = [];
     const searchCode = await runCollectorCli(
-      ["--data-dir", dataDir, "search", "nothing-matches"],
+      cliArgs(host, dataDir, "search", "nothing-matches"),
       {
         stdout: (line) => out.push(line),
         stderr: (line) => out.push(`ERR:${line}`),
@@ -62,7 +68,7 @@ describe("collector CLI IPC (#172)", () => {
 
     const missing: string[] = [];
     const getCode = await runCollectorCli(
-      ["--data-dir", dataDir, "get-item", "missing-id"],
+      cliArgs(host, dataDir, "get-item", "missing-id"),
       {
         stdout: () => {},
         stderr: (line) => missing.push(line),
@@ -73,15 +79,15 @@ describe("collector CLI IPC (#172)", () => {
     await host.close();
   });
 
-  it("create/update/delete item via IPC (#173)", async () => {
+  it("create/update/delete item via HTTP (#173)", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "collector-cli-write-"));
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
 
     const createdOut: string[] = [];
     const createCode = await runCollectorCli(
-      [
-        "--data-dir",
+      cliArgs(
+        host,
         dataDir,
         "create-item",
         "--title",
@@ -90,7 +96,7 @@ describe("collector CLI IPC (#172)", () => {
         "note",
         "--content",
         "hello from cli",
-      ],
+      ),
       {
         stdout: (line) => createdOut.push(line),
         stderr: (line) => createdOut.push(`ERR:${line}`),
@@ -103,14 +109,14 @@ describe("collector CLI IPC (#172)", () => {
 
     const updatedOut: string[] = [];
     const updateCode = await runCollectorCli(
-      [
-        "--data-dir",
+      cliArgs(
+        host,
         dataDir,
         "update-item",
         created.id,
         "--title",
         "CLI note edited",
-      ],
+      ),
       {
         stdout: (line) => updatedOut.push(line),
         stderr: (line) => updatedOut.push(`ERR:${line}`),
@@ -121,14 +127,14 @@ describe("collector CLI IPC (#172)", () => {
 
     const typedOut: string[] = [];
     const typedCode = await runCollectorCli(
-      [
-        "--data-dir",
+      cliArgs(
+        host,
         dataDir,
         "update-item",
         created.id,
         "--type",
         "article",
-      ],
+      ),
       {
         stdout: (line) => typedOut.push(line),
         stderr: (line) => typedOut.push(`ERR:${line}`),
@@ -139,7 +145,7 @@ describe("collector CLI IPC (#172)", () => {
 
     const tagOut: string[] = [];
     const tagCode = await runCollectorCli(
-      ["--data-dir", dataDir, "create-tag", "--name", "cli-351"],
+      cliArgs(host, dataDir, "create-tag", "--name", "cli-351"),
       {
         stdout: (line) => tagOut.push(line),
         stderr: (line) => tagOut.push(`ERR:${line}`),
@@ -149,14 +155,14 @@ describe("collector CLI IPC (#172)", () => {
 
     const taggedOut: string[] = [];
     const taggedCode = await runCollectorCli(
-      [
-        "--data-dir",
+      cliArgs(
+        host,
         dataDir,
         "update-item",
         created.id,
         "--tags",
         "cli-351,brand-new-cli-tag",
-      ],
+      ),
       {
         stdout: (line) => taggedOut.push(line),
         stderr: (line) => taggedOut.push(`ERR:${line}`),
@@ -167,7 +173,7 @@ describe("collector CLI IPC (#172)", () => {
 
     const sourcePeek: string[] = [];
     const sourcePeekCode = await runCollectorCli(
-      ["--data-dir", dataDir, "get-item-source", created.id],
+      cliArgs(host, dataDir, "get-item-source", created.id),
       {
         stdout: (line) => sourcePeek.push(line),
         stderr: (line) => sourcePeek.push(`ERR:${line}`),
@@ -179,7 +185,7 @@ describe("collector CLI IPC (#172)", () => {
 
     const sourceOut: string[] = [];
     const sourceCode = await runCollectorCli(
-      ["--data-dir", dataDir, "get-item-source", created.id],
+      cliArgs(host, dataDir, "get-item-source", created.id),
       {
         stdout: (line) => sourceOut.push(line),
         stderr: (line) => sourceOut.push(`ERR:${line}`),
@@ -191,14 +197,14 @@ describe("collector CLI IPC (#172)", () => {
 
     const sourceUpdatedOut: string[] = [];
     const sourceUpdatedCode = await runCollectorCli(
-      [
-        "--data-dir",
+      cliArgs(
+        host,
         dataDir,
         "update-item-source",
         created.id,
         "--content",
         raw.replace(/CLI note edited/g, "CLI via source"),
-      ],
+      ),
       {
         stdout: (line) => sourceUpdatedOut.push(line),
         stderr: (line) => sourceUpdatedOut.push(`ERR:${line}`),
@@ -209,7 +215,7 @@ describe("collector CLI IPC (#172)", () => {
 
     const folderOut: string[] = [];
     const folderCode = await runCollectorCli(
-      ["--data-dir", dataDir, "create-folder", "Shelf"],
+      cliArgs(host, dataDir, "create-folder", "Shelf"),
       {
         stdout: (line) => folderOut.push(line),
         stderr: (line) => folderOut.push(`ERR:${line}`),
@@ -219,7 +225,7 @@ describe("collector CLI IPC (#172)", () => {
 
     const moveOut: string[] = [];
     const moveCode = await runCollectorCli(
-      ["--data-dir", dataDir, "move-item", created.id, "--folder", "Shelf"],
+      cliArgs(host, dataDir, "move-item", created.id, "--folder", "Shelf"),
       {
         stdout: (line) => moveOut.push(line),
         stderr: (line) => {
@@ -240,7 +246,7 @@ describe("collector CLI IPC (#172)", () => {
 
     const folderCrudOut: string[] = [];
     const createNested = await runCollectorCli(
-      ["--data-dir", dataDir, "create-folder", "Work/Drafts"],
+      cliArgs(host, dataDir, "create-folder", "Work/Drafts"),
       {
         stdout: (line) => folderCrudOut.push(line),
         stderr: (line) => {
@@ -252,7 +258,7 @@ describe("collector CLI IPC (#172)", () => {
 
     const listOut: string[] = [];
     const listCode = await runCollectorCli(
-      ["--data-dir", dataDir, "list-folders"],
+      cliArgs(host, dataDir, "list-folders"),
       {
         stdout: (line) => listOut.push(line),
         stderr: (line) => {
@@ -265,7 +271,7 @@ describe("collector CLI IPC (#172)", () => {
 
     const renameOut: string[] = [];
     const renameCode = await runCollectorCli(
-      ["--data-dir", dataDir, "rename-folder", "Work/Drafts", "Work/Ready"],
+      cliArgs(host, dataDir, "rename-folder", "Work/Drafts", "Work/Ready"),
       {
         stdout: (line) => renameOut.push(line),
         stderr: (line) => {
@@ -277,7 +283,7 @@ describe("collector CLI IPC (#172)", () => {
     expect(JSON.parse(renameOut.join("\n")).path).toBe("Work/Ready");
 
     const archiveCode = await runCollectorCli(
-      ["--data-dir", dataDir, "create-folder", "Archive"],
+      cliArgs(host, dataDir, "create-folder", "Archive"),
       {
         stdout: () => {},
         stderr: (line) => {
@@ -289,7 +295,7 @@ describe("collector CLI IPC (#172)", () => {
 
     const moveFolderOut: string[] = [];
     const moveFolderCode = await runCollectorCli(
-      ["--data-dir", dataDir, "move-folder", "Work/Ready", "Archive/Ready"],
+      cliArgs(host, dataDir, "move-folder", "Work/Ready", "Archive/Ready"),
       {
         stdout: (line) => moveFolderOut.push(line),
         stderr: (line) => {
@@ -302,7 +308,7 @@ describe("collector CLI IPC (#172)", () => {
 
     const deleteFolderOut: string[] = [];
     const deleteFolderCode = await runCollectorCli(
-      ["--data-dir", dataDir, "delete-folder", "Archive/Ready"],
+      cliArgs(host, dataDir, "delete-folder", "Archive/Ready"),
       {
         stdout: (line) => deleteFolderOut.push(line),
         stderr: (line) => {
@@ -317,7 +323,7 @@ describe("collector CLI IPC (#172)", () => {
     });
 
     const deleteCode = await runCollectorCli(
-      ["--data-dir", dataDir, "delete-item", created.id],
+      cliArgs(host, dataDir, "delete-item", created.id),
       {
         stdout: () => {},
         stderr: (line) => {
@@ -330,8 +336,8 @@ describe("collector CLI IPC (#172)", () => {
     const refuse: string[] = [];
     const refuseCode = await runCollectorCli(
       [
-        "--ipc-path",
-        defaultHostWirePath(dataDir) + ".missing",
+        "--base-url",
+        "http://127.0.0.1:1",
         "--token",
         "unused",
         "create-item",
@@ -345,7 +351,7 @@ describe("collector CLI IPC (#172)", () => {
     );
     expect(refuseCode).toBe(1);
     expect(refuse.join("\n")).toMatch(
-      /not running|not_connected|IPC connect failed|token file missing/i,
+      /not running|not_connected|Failed to reach|token file missing/i,
     );
 
     await host.close();
@@ -358,15 +364,15 @@ describe("collector CLI IPC (#172)", () => {
 
     const createOut: string[] = [];
     const createCode = await runCollectorCli(
-      [
-        "--data-dir",
+      cliArgs(
+        host,
         dataDir,
         "create-item",
         "--title",
         "CLI media",
         "--content",
         "body",
-      ],
+      ),
       {
         stdout: (line) => createOut.push(line),
         stderr: (line) => {
@@ -390,7 +396,7 @@ describe("collector CLI IPC (#172)", () => {
 
     const attachOut: string[] = [];
     const attachCode = await runCollectorCli(
-      ["--data-dir", dataDir, "attach-media", created.id, "--file", pngPath],
+      cliArgs(host, dataDir, "attach-media", created.id, "--file", pngPath),
       {
         stdout: (line) => attachOut.push(line),
         stderr: (line) => {
@@ -407,7 +413,7 @@ describe("collector CLI IPC (#172)", () => {
 
     const listOut: string[] = [];
     const listCode = await runCollectorCli(
-      ["--data-dir", dataDir, "list-item-media", created.id],
+      cliArgs(host, dataDir, "list-item-media", created.id),
       {
         stdout: (line) => listOut.push(line),
         stderr: (line) => {
@@ -424,15 +430,15 @@ describe("collector CLI IPC (#172)", () => {
 
     const replaceOut: string[] = [];
     const replaceCode = await runCollectorCli(
-      [
-        "--data-dir",
+      cliArgs(
+        host,
         dataDir,
         "replace-media",
         created.id,
         attached.id,
         "--file",
         png2Path,
-      ],
+      ),
       {
         stdout: (line) => replaceOut.push(line),
         stderr: (line) => {
@@ -450,7 +456,7 @@ describe("collector CLI IPC (#172)", () => {
 
     const coverOut: string[] = [];
     const coverCode = await runCollectorCli(
-      ["--data-dir", dataDir, "set-item-cover", created.id, attached.id],
+      cliArgs(host, dataDir, "set-item-cover", created.id, attached.id),
       {
         stdout: (line) => coverOut.push(line),
         stderr: (line) => {
@@ -464,7 +470,7 @@ describe("collector CLI IPC (#172)", () => {
 
     const deleteOut: string[] = [];
     const deleteCode = await runCollectorCli(
-      ["--data-dir", dataDir, "delete-media", created.id, attached.id],
+      cliArgs(host, dataDir, "delete-media", created.id, attached.id),
       {
         stdout: (line) => deleteOut.push(line),
         stderr: (line) => {

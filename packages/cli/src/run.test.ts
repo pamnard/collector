@@ -1,21 +1,51 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HostWireError } from "@collector/service/host";
 
-const connectCollectorHostService = vi.fn();
+const createHttpHostTransport = vi.fn();
+const createCollectorHostServiceClient = vi.fn();
 
-vi.mock("@collector/client/node", () => ({
-  connectCollectorHostService: (...args: unknown[]) =>
-    connectCollectorHostService(...args),
+vi.mock("@collector/client", () => ({
+  createHttpHostTransport: (...args: unknown[]) =>
+    createHttpHostTransport(...args),
+  createCollectorHostServiceClient: (...args: unknown[]) =>
+    createCollectorHostServiceClient(...args),
+}));
+
+vi.mock("./parse-args/endpoint.js", () => ({
+  resolveCliHostEndpoint: async (args: {
+    baseUrl: string;
+    dataDir?: string;
+    token?: string;
+  }) => {
+    if (args.token !== undefined && args.token.trim() !== "") {
+      return {
+        baseUrl: args.baseUrl,
+        token: args.token.trim(),
+        ...(args.dataDir === undefined ? {} : { dataDir: args.dataDir }),
+      };
+    }
+    if (args.dataDir === undefined) {
+      throw new Error("token required");
+    }
+    return {
+      baseUrl: args.baseUrl,
+      token: "test-token",
+      dataDir: args.dataDir,
+    };
+  },
 }));
 
 import { runCollectorCli } from "./run.js";
 
+const BASE = ["--base-url", "http://127.0.0.1:9"] as const;
+
 describe("runCollectorCli unit smoke", () => {
   beforeEach(() => {
-    connectCollectorHostService.mockReset();
+    createHttpHostTransport.mockReset();
+    createCollectorHostServiceClient.mockReset();
   });
 
-  it("returns exit 2 on usage errors without dialing IPC", async () => {
+  it("returns exit 2 on usage errors without dialing host", async () => {
     const stderr: string[] = [];
     const code = await runCollectorCli(["health"], {
       stdout: () => {},
@@ -23,20 +53,20 @@ describe("runCollectorCli unit smoke", () => {
     });
     expect(code).toBe(2);
     expect(stderr.join("\n").length).toBeGreaterThan(0);
-    expect(connectCollectorHostService).not.toHaveBeenCalled();
+    expect(createHttpHostTransport).not.toHaveBeenCalled();
   });
 
   it("returns exit 1 with service-not-running message on not_connected", async () => {
-    connectCollectorHostService.mockRejectedValue(
+    createHttpHostTransport.mockRejectedValue(
       new HostWireError({
         layer: "transport",
         code: "not_connected",
-        message: "IPC connect failed: ENOENT",
+        message: "WebSocket connect failed: ws://127.0.0.1:9/api/events",
       }),
     );
     const stderr: string[] = [];
     const code = await runCollectorCli(
-      ["--ipc-path", "/tmp/collector-missing.sock", "health"],
+      [...BASE, "--token", "secret", "health"],
       {
         stdout: () => {},
         stderr: (line) => stderr.push(line),
@@ -47,10 +77,10 @@ describe("runCollectorCli unit smoke", () => {
   });
 
   it("returns exit 1 on generic connect failure", async () => {
-    connectCollectorHostService.mockRejectedValue(new Error("boom"));
+    createHttpHostTransport.mockRejectedValue(new Error("boom"));
     const stderr: string[] = [];
     const code = await runCollectorCli(
-      ["--ipc-path", "/tmp/collector-x.sock", "health"],
+      [...BASE, "--token", "secret", "health"],
       {
         stdout: () => {},
         stderr: (line) => stderr.push(line),
@@ -63,14 +93,15 @@ describe("runCollectorCli unit smoke", () => {
   it("health succeeds and closes the client", async () => {
     const close = vi.fn(async () => undefined);
     const health = vi.fn(async () => ({ ok: true, status: "healthy" }));
-    connectCollectorHostService.mockResolvedValue({
+    createHttpHostTransport.mockResolvedValue({});
+    createCollectorHostServiceClient.mockReturnValue({
       health,
       close,
       items: {},
     });
     const stdout: string[] = [];
     const code = await runCollectorCli(
-      ["--data-dir", "/tmp/collector-data", "health"],
+      [...BASE, "--data-dir", "/tmp/collector-data", "health"],
       {
         stdout: (line) => stdout.push(line),
         stderr: () => {},
@@ -90,7 +121,8 @@ describe("runCollectorCli unit smoke", () => {
       id: "Inbox/note.md",
       ...(input as object),
     }));
-    connectCollectorHostService.mockResolvedValue({
+    createHttpHostTransport.mockResolvedValue({});
+    createCollectorHostServiceClient.mockReturnValue({
       health: vi.fn(),
       close,
       items: { createItem },
@@ -101,6 +133,7 @@ describe("runCollectorCli unit smoke", () => {
     const stdout: string[] = [];
     const code = await runCollectorCli(
       [
+        ...BASE,
         "--data-dir",
         "/tmp/collector-data",
         "create-item",
