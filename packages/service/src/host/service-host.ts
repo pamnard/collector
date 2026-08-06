@@ -13,7 +13,7 @@
  */
 
 import { existsSync, realpathSync, statSync } from "node:fs";
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createServer, type Server } from "node:http";
 import { resolve } from "node:path";
 import type { Subscription } from "@collector/api";
 import type { CollectorProfileLayout } from "@collector/shared";

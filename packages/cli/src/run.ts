@@ -6,6 +6,7 @@
 import { connectCollectorHostService } from "@collector/client/node";
 import {
   defaultHostWirePath,
+  formatHostConnectFailure,
   isHostWireError,
 } from "@collector/service/host";
 import { readFile } from "node:fs/promises";
@@ -22,19 +23,6 @@ function resolveIpcPath(args: ParsedCliArgs): string {
     throw new CliUsageError("missing endpoint");
   }
   return defaultHostWirePath(args.dataDir);
-}
-
-function formatConnectFailure(error: unknown, ipcPath: string): string {
-  if (
-    isHostWireError(error) &&
-    (error.code === "not_connected" || error.code === "token_missing")
-  ) {
-    return `Collector service is not running (IPC ${ipcPath}): ${error.message}`;
-  }
-  if (error instanceof Error) {
-    return `Failed to reach Collector service at ${ipcPath}: ${error.message}`;
-  }
-  return `Failed to reach Collector service at ${ipcPath}`;
 }
 
 export async function runCollectorCli(
@@ -63,7 +51,7 @@ export async function runCollectorCli(
       ...(args.token === undefined ? {} : { token: args.token }),
     });
   } catch (error) {
-    io.stderr(formatConnectFailure(error, ipcPath));
+    io.stderr(formatHostConnectFailure(error, ipcPath));
     return 1;
   }
 
