@@ -30,7 +30,7 @@ export function corsHeadersForRequest(
   return {
     "access-control-allow-origin": origin,
     "access-control-allow-headers": "Authorization, Content-Type",
-    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-methods": "GET, HEAD, POST, OPTIONS",
     vary: "Origin",
   };
 }

@@ -1,6 +1,6 @@
 /**
- * HTTP-backed CollectorService factory for the browser UI (#551).
- * Snapshot + thumbnail abs paths stay local until host cutover (#552).
+ * HTTP-backed CollectorService factory for the browser UI (#551 / #553).
+ * Snapshot still local until #552; covers use host cover-path bridge (#553).
  */
 
 import type {
@@ -13,11 +13,11 @@ import {
   createHttpHostTransport,
   type CollectorHostTransport,
 } from "@collector/client";
-import { createThumbnailResolveSession } from "./thumbnail-resolve-session";
+import { createHostCoverThumbnailSession } from "./thumbnail-resolve-session";
 import { createUiDashboardSnapshotPort } from "./ui-dashboard-snapshot-port";
 
 function httpUiSessionOptions(transport: CollectorHostTransport) {
-  const thumbnails = createThumbnailResolveSession({
+  const thumbnails = createHostCoverThumbnailSession({
     resolveActiveVault: () =>
       transport.request("ensureActiveVault") as Promise<ActiveVaultResult>,
   });
@@ -34,7 +34,7 @@ export function createHttpCollectorServiceFromTransport(
   return createCollectorIpcService(transport, httpUiSessionOptions(transport));
 }
 
-/** UiSession for HTTP host cutover — local FS snapshot/thumbnails (#551 / #552). */
+/** UiSession for HTTP host cutover — host cover paths (#553); snapshot still local (#552). */
 export function createHttpUiSession(
   transport: CollectorHostTransport,
   service: CollectorService,
@@ -44,7 +44,7 @@ export function createHttpUiSession(
     settingsSync: {
       getAppSettingsSync: () => service.settings.getAppSettingsSync(),
     },
-    thumbnails: createThumbnailResolveSession({
+    thumbnails: createHostCoverThumbnailSession({
       resolveActiveVault: () =>
         transport.request("ensureActiveVault") as Promise<ActiveVaultResult>,
     }),
