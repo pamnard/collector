@@ -4,10 +4,10 @@ import type {
   TelegramSyncSettings,
   TelegramSyncSettingsPatch,
 } from "@collector/api";
-import type { IpcSessionCtx } from "../ipc-session-ctx.js";
+import type { HostSessionCtx } from "../host-session-ctx.js";
 
-export function createIpcTelegramSyncPort(
-  ctx: IpcSessionCtx,
+export function createHostTelegramSyncPort(
+  ctx: HostSessionCtx,
 ): TelegramSyncPort {
   const { transport } = ctx;
   return {

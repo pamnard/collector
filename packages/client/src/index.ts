@@ -4,14 +4,14 @@
  */
 
 export {
-  createCollectorIpcDashboardSnapshotPort,
-  createCollectorIpcService,
-  createCollectorIpcServiceClient,
-  type CollectorIpcClientOptions,
-  type CollectorIpcServiceClient,
-  type CollectorIpcTransportExtras,
-  type ServiceIpcHealthResult,
-} from "./ipc-collector-client.js";
+  createCollectorHostDashboardSnapshotPort,
+  createCollectorHostService,
+  createCollectorHostServiceClient,
+  type CollectorHostClientOptions,
+  type CollectorHostServiceClient,
+  type CollectorHostTransportExtras,
+  type ServiceHostHealthResult,
+} from "./host-collector-client.js";
 
 export {
   createHttpCollectorService,
@@ -23,7 +23,13 @@ export {
 
 export type { CollectorHostTransport } from "./http-host-transport.js";
 
+export {
+  createHostDashboardSnapshotPort,
+  type HostDashboardSnapshotPortOptions,
+} from "./host-ports/dashboard-snapshot.js";
+export { createHostThumbnailsPort } from "./host-ports/thumbnails.js";
+
 export type {
-  ServiceIpcClient,
-  ServiceIpcRequestOptions,
-} from "@collector/service/ipc";
+  HostWireClient,
+  HostWireRequestOptions,
+} from "@collector/service/wire";

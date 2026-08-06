@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isServiceIpcError } from "../errors.js";
+import { isHostWireError } from "../errors.js";
 import {
   asObject,
   badRequest,
@@ -51,13 +51,13 @@ describe("IPC handler params helpers", () => {
     expect(() => parseDashboardItemSort("title", "m")).toThrow();
   });
 
-  it("badRequest throws ServiceIpcError validation/bad_request", () => {
+  it("badRequest throws HostWireError validation/bad_request", () => {
     try {
       badRequest("nope");
       expect.unreachable("expected throw");
     } catch (error) {
-      expect(isServiceIpcError(error)).toBe(true);
-      if (isServiceIpcError(error)) {
+      expect(isHostWireError(error)).toBe(true);
+      if (isHostWireError(error)) {
         expect(error.layer).toBe("validation");
         expect(error.code).toBe("bad_request");
         expect(error.message).toBe("nope");

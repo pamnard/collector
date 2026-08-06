@@ -6,12 +6,12 @@
  * 1. Start host: `npm run serve --workspace @collector/service -- --data-dir /tmp/collector-webview-ipc`
  * 2. Read READY ipcPath from stdout
  * 3. In Tauri WebView console (after app load): 
- *    const { tauriServiceIpcConnect, tauriServiceIpcPing, tauriServiceIpcRequest, tauriServiceIpcDisconnect } =
+ *    const { tauriHostWireConnect, tauriHostWirePing, tauriHostWireRequest, tauriHostWireDisconnect } =
  *      await import('/src/services/tauri-service-ipc-transport.ts')
- *    await tauriServiceIpcConnect('<ipcPath>', '<dataDir>')
- *    await tauriServiceIpcPing()
- *    await tauriServiceIpcRequest('getDataDirectory')
- *    await tauriServiceIpcDisconnect()
+ *    await tauriHostWireConnect('<ipcPath>', '<dataDir>')
+ *    await tauriHostWirePing()
+ *    await tauriHostWireRequest('getDataDirectory')
+ *    await tauriHostWireDisconnect()
  *
  * Production UI path is IPC after service-mode bootstrap (#170 / #332).
  * Web/:1420 uses explicit DevMock CollectorService (#332).

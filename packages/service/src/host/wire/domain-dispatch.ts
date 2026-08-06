@@ -14,12 +14,13 @@ import type {
   ImportDroppedFilesInput,
   UpdateItemInput,
 } from "@collector/api";
-import type { AppSettings } from "@collector/shared";
+import type { AppSettings, ItemFile } from "@collector/shared";
+import { dashboardSnapshotSchema } from "@collector/shared";
 import type { ServiceDomainRuntime } from "../domain-runtime.js";
 import {
-  DOMAIN_IPC_METHODS,
-  type DomainIpcHandlerMap,
-  type DomainIpcMethod,
+  DOMAIN_WIRE_METHODS,
+  type DomainWireHandlerMap,
+  type DomainWireMethod,
 } from "./domain-methods.js";
 import { assertHostPortWireCoverage } from "./domain-port-wire.js";
 import {
@@ -30,7 +31,7 @@ import {
   requireString,
 } from "./handlers/params.js";
 
-const M = DOMAIN_IPC_METHODS;
+const M = DOMAIN_WIRE_METHODS;
 
 type DomainDispatchEntry = {
   handle: (
@@ -103,9 +104,9 @@ function decodeMediaFiles(
   });
 }
 
-/** Full host registry: every {@link DomainIpcMethod} has exactly one entry. */
+/** Full host registry: every {@link DomainWireMethod} has exactly one entry. */
 export const DOMAIN_DISPATCH_REGISTRY: Record<
-  DomainIpcMethod,
+  DomainWireMethod,
   DomainDispatchEntry
 > = {
   // #162 index boot
@@ -631,6 +632,86 @@ export const DOMAIN_DISPATCH_REGISTRY: Record<
     },
   },
 
+
+  // #552 dashboard snapshot I/O (peek/build stay client-orchestrated)
+  [M.ensureDashboardSnapshot]: {
+    handle: async (runtime) => {
+      await runtime.ensureInitialized();
+      return runtime.dashboardSnapshot.ensureDashboardSnapshot();
+    },
+  },
+  [M.persistDashboardSnapshot]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.persistDashboardSnapshot);
+      if (!p.snapshot || typeof p.snapshot !== "object" || Array.isArray(p.snapshot)) {
+        badRequest(`${M.persistDashboardSnapshot}: snapshot object required`);
+      }
+      const snapshot = dashboardSnapshotSchema.parse(p.snapshot);
+      await runtime.ensureInitialized();
+      await runtime.dashboardSnapshot.persistDashboardSnapshot(snapshot);
+      return { ok: true };
+    },
+  },
+  [M.clearDashboardSnapshot]: {
+    handle: async (runtime) => {
+      await runtime.ensureInitialized();
+      await runtime.dashboardSnapshot.clearDashboardSnapshot();
+      return { ok: true };
+    },
+  },
+
+  // #552 thumbnail resolve (absolute vault paths; UI maps via /media)
+  [M.resolveItemThumbnailPath]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.resolveItemThumbnailPath);
+      if (!p.item || typeof p.item !== "object" || Array.isArray(p.item)) {
+        badRequest(`${M.resolveItemThumbnailPath}: item object required`);
+      }
+      const item = p.item as Record<string, unknown>;
+      const id = requireString(item.id, "item.id", M.resolveItemThumbnailPath);
+      const thumbnail =
+        item.thumbnail === null || item.thumbnail === undefined
+          ? null
+          : requireString(item.thumbnail, "item.thumbnail", M.resolveItemThumbnailPath);
+      await runtime.ensureInitialized();
+      return runtime.mediaCover.resolveItemThumbnailPath({
+        id,
+        thumbnail,
+      } as ItemFile);
+    },
+  },
+  [M.resolveItemThumbnailPaths]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.resolveItemThumbnailPaths);
+      if (!Array.isArray(p.items)) {
+        badRequest(`${M.resolveItemThumbnailPaths}: items array required`);
+      }
+      const items: ItemFile[] = p.items.map((row, index) => {
+        if (!row || typeof row !== "object" || Array.isArray(row)) {
+          badRequest(`${M.resolveItemThumbnailPaths}: items[${index}] object required`);
+        }
+        const r = row as Record<string, unknown>;
+        const id = requireString(
+          r.id,
+          `items[${index}].id`,
+          M.resolveItemThumbnailPaths,
+        );
+        const thumbnail =
+          r.thumbnail === null || r.thumbnail === undefined
+            ? null
+            : typeof r.thumbnail === "string"
+              ? r.thumbnail
+              : badRequest(
+                  `${M.resolveItemThumbnailPaths}: items[${index}].thumbnail must be string or null`,
+                );
+        return { id, thumbnail } as ItemFile;
+      });
+      await runtime.ensureInitialized();
+      const resolved = await runtime.mediaCover.resolveItemThumbnailPaths(items);
+      return Array.from(resolved, ([id, path]) => ({ id, path }));
+    },
+  },
+
   // #164 watcher
   [M.startVaultFilesystemWatcher]: {
     handle: async (runtime, params) => {
@@ -664,7 +745,7 @@ export const DOMAIN_DISPATCH_REGISTRY: Record<
 };
 
 function assertDomainRegistryCoverage(): void {
-  const catalog = new Set<string>(Object.values(DOMAIN_IPC_METHODS));
+  const catalog = new Set<string>(Object.values(DOMAIN_WIRE_METHODS));
   const registryKeys = Object.keys(DOMAIN_DISPATCH_REGISTRY);
   const missingFromRegistry: string[] = [];
   const extraInRegistry: string[] = [];
@@ -688,7 +769,7 @@ function assertDomainRegistryCoverage(): void {
     if (extraInRegistry.length > 0) {
       parts.push(`extra in registry: ${extraInRegistry.join(", ")}`);
     }
-    throw new Error(`IPC domain registry coverage (#330): ${parts.join("; ")}`);
+    throw new Error(`host wire domain registry coverage (#330): ${parts.join("; ")}`);
   }
 }
 
@@ -696,11 +777,11 @@ assertDomainRegistryCoverage();
 
 function handlersFromRegistry(
   runtime: ServiceDomainRuntime,
-): DomainIpcHandlerMap {
-  const handlers: DomainIpcHandlerMap = {};
+): DomainWireHandlerMap {
+  const handlers: DomainWireHandlerMap = {};
   for (const method of Object.keys(
     DOMAIN_DISPATCH_REGISTRY,
-  ) as DomainIpcMethod[]) {
+  ) as DomainWireMethod[]) {
     const entry = DOMAIN_DISPATCH_REGISTRY[method];
     handlers[method] = async (params?: unknown) =>
       entry.handle(runtime, params);
@@ -712,13 +793,13 @@ function handlersFromRegistry(
  * Host request entry: DomainRuntime in → framed dispatch out (#330).
  * Unknown methods return `undefined` (server maps to unknown_method).
  */
-export function createDomainIpcRequestHandler(
+export function createDomainWireRequestHandler(
   runtime: ServiceDomainRuntime,
 ): (method: string, params?: unknown) => Promise<unknown | undefined> {
   assertHostPortWireCoverage(handlersFromRegistry(runtime));
 
   return async (method, params) => {
-    const entry = DOMAIN_DISPATCH_REGISTRY[method as DomainIpcMethod];
+    const entry = DOMAIN_DISPATCH_REGISTRY[method as DomainWireMethod];
     if (!entry) {
       return undefined;
     }
@@ -728,10 +809,10 @@ export function createDomainIpcRequestHandler(
 
 /**
  * Thin map lookup for tests that inject a custom handler map.
- * Production host uses {@link createDomainIpcRequestHandler}.
+ * Production host uses {@link createDomainWireRequestHandler}.
  */
-export function createDomainIpcDispatcher(
-  handlers: DomainIpcHandlerMap,
+export function createDomainWireDispatcher(
+  handlers: DomainWireHandlerMap,
 ): (method: string, params?: unknown) => Promise<unknown | undefined> {
   return async (method, params) => {
     const handler = handlers[method];

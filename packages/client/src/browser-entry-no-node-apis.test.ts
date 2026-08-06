@@ -7,7 +7,7 @@ const SRC_ROOT = join(dirname(fileURLToPath(import.meta.url)));
 
 const NODE_ONLY_BASENAMES = new Set([
   "node.ts",
-  "ipc-collector-client-node.ts",
+  "host-collector-client-node.ts",
 ]);
 
 function isExcluded(basename: string): boolean {

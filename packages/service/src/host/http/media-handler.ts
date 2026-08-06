@@ -10,7 +10,7 @@ import { extname } from "node:path";
 import type { CollectorApiError } from "@collector/api";
 import { extractBearerToken } from "./bearer.js";
 import { corsHeadersForRequest } from "./cors.js";
-import { tokensEqual } from "../ipc/auth.js";
+import { tokensEqual } from "../wire/auth.js";
 
 const MEDIA_PATH = "/media/file";
 

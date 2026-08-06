@@ -17,34 +17,34 @@
  * | Handler throws `CollectorApiError`   | (as thrown) | (as thrown)        |
  * | Handler throws other Error           | domain      | failed             |
  *
- * Clients always reject with {@link ServiceIpcError} so callers can read
+ * Clients always reject with {@link HostWireError} so callers can read
  * `.collectorError` without scraping message strings.
  */
 
 import type { CollectorApiError } from "@collector/api";
 
-export class ServiceIpcError extends Error {
+export class HostWireError extends Error {
   readonly collectorError: CollectorApiError;
   readonly layer: CollectorApiError["layer"];
   readonly code: CollectorApiError["code"];
 
   constructor(error: CollectorApiError) {
     super(error.message);
-    this.name = "ServiceIpcError";
+    this.name = "HostWireError";
     this.collectorError = error;
     this.layer = error.layer;
     this.code = error.code;
   }
 }
 
-export function isServiceIpcError(error: unknown): error is ServiceIpcError {
-  return error instanceof ServiceIpcError;
+export function isHostWireError(error: unknown): error is HostWireError {
+  return error instanceof HostWireError;
 }
 
 export function getCollectorApiError(
   error: unknown,
 ): CollectorApiError | null {
-  if (isServiceIpcError(error)) {
+  if (isHostWireError(error)) {
     return error.collectorError;
   }
   if (
@@ -62,32 +62,32 @@ export function getCollectorApiError(
   return null;
 }
 
-export function serviceIpcError(error: CollectorApiError): ServiceIpcError {
-  return new ServiceIpcError(error);
+export function hostWireError(error: CollectorApiError): HostWireError {
+  return new HostWireError(error);
 }
 
 /** Map a Node connect/socket errno into a stable transport error. */
-export function mapNodeIpcErrno(
+export function mapNodeConnectErrno(
   error: NodeJS.ErrnoException,
   phase: "connect" | "socket",
-): ServiceIpcError {
+): HostWireError {
   const code = error.code;
   if (phase === "connect") {
     if (code === "ENOENT" || code === "ECONNREFUSED" || code === "EADDRNOTAVAIL") {
-      return serviceIpcError({
+      return hostWireError({
         layer: "transport",
         code: "not_connected",
         message: `IPC connect failed: ${code ?? error.message}`,
       });
     }
     if (code === "ETIMEDOUT") {
-      return serviceIpcError({
+      return hostWireError({
         layer: "transport",
         code: "timeout",
         message: `IPC connect timed out: ${error.message}`,
       });
     }
-    return serviceIpcError({
+    return hostWireError({
       layer: "transport",
       code: "not_connected",
       message: `IPC connect failed: ${error.message}`,
@@ -95,14 +95,14 @@ export function mapNodeIpcErrno(
   }
 
   if (code === "ECONNRESET" || code === "EPIPE" || code === "ERR_STREAM_DESTROYED") {
-    return serviceIpcError({
+    return hostWireError({
       layer: "transport",
       code: "disconnected",
       message: `IPC socket error: ${code ?? error.message}`,
     });
   }
 
-  return serviceIpcError({
+  return hostWireError({
     layer: "transport",
     code: "disconnected",
     message: `IPC socket error: ${error.message}`,

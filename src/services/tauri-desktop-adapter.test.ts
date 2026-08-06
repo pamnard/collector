@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ServiceIpcClient } from "@collector/client";
+import type { HostWireClient } from "@collector/client";
 import {
-  createIpcCollectorService,
-  createIpcDashboardSnapshotPort,
-  createIpcUiSession,
-} from "./ipc-adapter";
+  createTauriDesktopCollectorService,
+  createTauriDesktopDashboardSnapshotPort,
+  createTauriDesktopUiSession,
+} from "./tauri-desktop-adapter";
 
 function mockTransport(
   requestImpl?: (method: string) => Promise<unknown>,
-): ServiceIpcClient {
+): HostWireClient {
   return {
     request: vi.fn(async (method) => {
       if (requestImpl) {
@@ -28,7 +28,7 @@ function mockTransport(
   };
 }
 
-describe("createIpcCollectorService (#366 / #370)", () => {
+describe("createTauriDesktopCollectorService (#366 / #370)", () => {
   it("exposes domain ports over the injected transport", async () => {
     const transport = mockTransport(async (method) => {
       if (method === "getDataDirectory") return "/tmp/ports";
@@ -36,32 +36,35 @@ describe("createIpcCollectorService (#366 / #370)", () => {
       throw new Error(`unexpected ${method}`);
     });
 
-    const service = createIpcCollectorService(transport);
+    const service = createTauriDesktopCollectorService(transport);
     expect(Object.keys(service).sort()).toEqual([
       "boot",
+      "credentials",
       "folders",
       "index",
       "items",
       "media",
       "settings",
+      "syncPlugins",
       "tags",
+      "telegramSync",
       "vaults",
     ]);
     await expect(service.boot.getDataDirectory()).resolves.toBe("/tmp/ports");
     await expect(service.tags.listTags()).resolves.toEqual([]);
   });
 
-  it("createIpcDashboardSnapshotPort uses local FS port (#368)", () => {
-    const snapshot = createIpcDashboardSnapshotPort(mockTransport());
+  it("createTauriDesktopDashboardSnapshotPort uses local FS port (#368)", () => {
+    const snapshot = createTauriDesktopDashboardSnapshotPort(mockTransport());
     expect(typeof snapshot.ensureDashboardSnapshot).toBe("function");
     expect(typeof snapshot.buildDashboardSnapshot).toBe("function");
     expect(typeof snapshot.persistDashboardSnapshot).toBe("function");
   });
 
-  it("createIpcUiSession wires local snapshot/thumbnails (#369)", () => {
+  it("createTauriDesktopUiSession wires local snapshot/thumbnails (#369)", () => {
     const transport = mockTransport();
-    const service = createIpcCollectorService(transport);
-    const session = createIpcUiSession(transport, service);
+    const service = createTauriDesktopCollectorService(transport);
+    const session = createTauriDesktopUiSession(transport, service);
     expect(typeof session.snapshot.ensureDashboardSnapshot).toBe("function");
     expect(typeof session.thumbnails.resolveItemThumbnailPaths).toBe(
       "function",
@@ -76,8 +79,8 @@ describe("createIpcCollectorService (#366 / #370)", () => {
     const transport = mockTransport(async (method) => {
       throw new Error(`unexpected ${method}`);
     });
-    const service = createIpcCollectorService(transport);
-    const session = createIpcUiSession(transport, service);
+    const service = createTauriDesktopCollectorService(transport);
+    const session = createTauriDesktopUiSession(transport, service);
     const snap = session.snapshot.buildDashboardSnapshot({
       vaultId: "00000000-0000-4000-8000-000000000001",
       filter: "all",

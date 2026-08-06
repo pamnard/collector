@@ -1,53 +1,57 @@
 /**
- * HTTP-backed CollectorService factory for the browser UI (#551 / #553).
- * Snapshot still local until #552; covers use host cover-path bridge (#553).
+ * HTTP-backed CollectorService factory for the browser UI (#551 / #552 / #553).
+ * Snapshot + full thumbnail resolve via host RPC (#552); media display via /media (#553).
  */
 
 import type {
-  ActiveVaultResult,
   CollectorService,
+  DashboardSnapshotPort,
   UiSession,
+  UiSessionThumbnailPaths,
 } from "@collector/api";
 import {
-  createCollectorIpcService,
+  createCollectorHostService,
+  createHostDashboardSnapshotPort,
+  createHostThumbnailsPort,
   createHttpHostTransport,
   type CollectorHostTransport,
 } from "@collector/client";
-import { createHostCoverThumbnailSession } from "./thumbnail-resolve-session";
-import { createUiDashboardSnapshotPort } from "./ui-dashboard-snapshot-port";
+import { seedQueryCacheFromSnapshot } from "./dashboard-snapshot-service";
 
-function httpUiSessionOptions(transport: CollectorHostTransport) {
-  const thumbnails = createHostCoverThumbnailSession({
-    resolveActiveVault: () =>
-      transport.request("ensureActiveVault") as Promise<ActiveVaultResult>,
-  });
+function createHttpHostUiPorts(transport: CollectorHostTransport): {
+  snapshot: DashboardSnapshotPort;
+  thumbnails: UiSessionThumbnailPaths;
+} {
   return {
-    snapshot: createUiDashboardSnapshotPort(),
-    thumbnails,
+    snapshot: createHostDashboardSnapshotPort(transport, {
+      onSnapshotLoaded: seedQueryCacheFromSnapshot,
+    }),
+    thumbnails: createHostThumbnailsPort(transport),
   };
 }
 
 /** Domain ports over HTTP+WS host transport (#551). */
 export function createHttpCollectorServiceFromTransport(
   transport: CollectorHostTransport,
+  ports = createHttpHostUiPorts(transport),
 ): CollectorService {
-  return createCollectorIpcService(transport, httpUiSessionOptions(transport));
+  return createCollectorHostService(transport, ports);
 }
 
-/** UiSession for HTTP host cutover — host cover paths (#553); snapshot still local (#552). */
+/** UiSession for HTTP host cutover — host snapshot + thumb resolve (#552). */
 export function createHttpUiSession(
-  transport: CollectorHostTransport,
   service: CollectorService,
+  ports: {
+    snapshot: DashboardSnapshotPort;
+    thumbnails: UiSessionThumbnailPaths;
+  },
 ): UiSession {
   return {
-    snapshot: createUiDashboardSnapshotPort(),
+    snapshot: ports.snapshot,
     settingsSync: {
       getAppSettingsSync: () => service.settings.getAppSettingsSync(),
     },
-    thumbnails: createHostCoverThumbnailSession({
-      resolveActiveVault: () =>
-        transport.request("ensureActiveVault") as Promise<ActiveVaultResult>,
-    }),
+    thumbnails: ports.thumbnails,
   };
 }
 
@@ -63,7 +67,8 @@ export async function createHttpUiCutover(
   token: string,
 ): Promise<HttpUiCutover> {
   const transport = await createHttpHostTransport({ baseUrl, token });
-  const service = createHttpCollectorServiceFromTransport(transport);
-  const session = createHttpUiSession(transport, service);
+  const ports = createHttpHostUiPorts(transport);
+  const service = createHttpCollectorServiceFromTransport(transport, ports);
+  const session = createHttpUiSession(service, ports);
   return { service, session, transport };
 }

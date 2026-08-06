@@ -1,38 +1,38 @@
 /**
- * WebView-safe Collector service IPC transport (#239/#240/#329).
+ * WebView-safe Collector service host wire transport via Tauri (#239/#240/#329).
  *
  * Uses Tauri `invoke` → Rust Unix-socket proxy → local host framing.
- * Implements {@link ServiceIpcClient} for {@link createIpcCollectorService}.
+ * Implements {@link HostWireClient} for {@link createTauriDesktopCollectorService}.
  * Host→client push: Rust demux emits `service-ipc-event`; this transport
- * listens and fans out via {@link ServiceIpcClient.onEvent}.
+ * listens and fans out via {@link HostWireClient.onEvent}.
  * Does **not** import Node `net`.
  */
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
-  ServiceIpcClient,
-  ServiceIpcHealthResult,
-  ServiceIpcRequestOptions,
-} from "@collector/service/ipc";
-import { serviceIpcError } from "@collector/service/ipc";
+  HostWireClient,
+  ServiceHostHealthResult,
+  HostWireRequestOptions,
+} from "@collector/service/wire";
+import { hostWireError } from "@collector/service/wire";
 
 /** Must match `SERVICE_IPC_EVENT` in `src-tauri/src/service_ipc.rs`. */
-export const TAURI_SERVICE_IPC_EVENT = "service-ipc-event";
+export const TAURI_HOST_WIRE_EVENT = "service-ipc-event";
 
-export type TauriServiceIpcEventPayload = {
+export type TauriHostWireEventPayload = {
   event: string;
   payload: unknown;
 };
 
-export async function tauriServiceIpcConnect(
-  ipcPath: string,
+export async function tauriHostWireConnect(
+  socketPath: string,
   dataDir: string,
 ): Promise<string> {
-  return invoke<string>("service_ipc_connect", { ipcPath, dataDir });
+  return invoke<string>("service_ipc_connect", { ipcPath: socketPath, dataDir });
 }
 
-export async function tauriServiceIpcRequest(
+export async function tauriHostWireRequest(
   method: string,
   params?: unknown,
 ): Promise<unknown> {
@@ -42,32 +42,32 @@ export async function tauriServiceIpcRequest(
   });
 }
 
-export async function tauriServiceIpcDisconnect(): Promise<void> {
+export async function tauriHostWireDisconnect(): Promise<void> {
   await invoke("service_ipc_disconnect");
 }
 
-export async function tauriServiceIpcPing(): Promise<{ ok: true; pong: true }> {
-  return (await tauriServiceIpcRequest("ping")) as { ok: true; pong: true };
+export async function tauriHostWirePing(): Promise<{ ok: true; pong: true }> {
+  return (await tauriHostWireRequest("ping")) as { ok: true; pong: true };
 }
 
-export async function tauriServiceIpcHealth(): Promise<ServiceIpcHealthResult> {
-  return (await tauriServiceIpcRequest("health")) as ServiceIpcHealthResult;
+export async function tauriHostWireHealth(): Promise<ServiceHostHealthResult> {
+  return (await tauriHostWireRequest("health")) as ServiceHostHealthResult;
 }
 
 async function requestWithOptions(
   method: string,
   params: unknown | undefined,
-  options?: ServiceIpcRequestOptions,
+  options?: HostWireRequestOptions,
 ): Promise<unknown> {
   if (options?.signal?.aborted) {
-    throw serviceIpcError({
+    throw hostWireError({
       layer: "transport",
       code: "cancelled",
-      message: `IPC request cancelled (${method})`,
+      message: `host wire request cancelled (${method})`,
     });
   }
 
-  const run = tauriServiceIpcRequest(method, params);
+  const run = tauriHostWireRequest(method, params);
   if (options?.timeoutMs === undefined && !options?.signal) {
     return run;
   }
@@ -81,7 +81,7 @@ async function requestWithOptions(
             if (settled) return;
             settled = true;
             reject(
-              serviceIpcError({
+              hostWireError({
                 layer: "transport",
                 code: "timeout",
                 message: `IPC request timed out after ${options.timeoutMs}ms (${method})`,
@@ -94,10 +94,10 @@ async function requestWithOptions(
       settled = true;
       if (timer) clearTimeout(timer);
       reject(
-        serviceIpcError({
+        hostWireError({
           layer: "transport",
           code: "cancelled",
-          message: `IPC request cancelled (${method})`,
+          message: `host wire request cancelled (${method})`,
         }),
       );
     };
@@ -130,14 +130,14 @@ async function requestWithOptions(
 }
 
 /**
- * Connect via Tauri proxy and return a {@link ServiceIpcClient} for the UI.
- * Host push events are forwarded through {@link TAURI_SERVICE_IPC_EVENT} (#329).
+ * Connect via Tauri proxy and return a {@link HostWireClient} for the UI.
+ * Host push events are forwarded through {@link TAURI_HOST_WIRE_EVENT} (#329).
  */
-export async function createTauriServiceIpcTransport(
-  ipcPath: string,
+export async function createTauriHostWireTransport(
+  socketPath: string,
   dataDir: string,
-): Promise<ServiceIpcClient> {
-  await tauriServiceIpcConnect(ipcPath, dataDir);
+): Promise<HostWireClient> {
+  await tauriHostWireConnect(socketPath, dataDir);
 
   const handlers = new Map<string, Set<(payload: unknown) => void>>();
   let unlisten: UnlistenFn | null = null;
@@ -148,8 +148,8 @@ export async function createTauriServiceIpcTransport(
       return;
     }
     try {
-      unlisten = await listen<TauriServiceIpcEventPayload>(
-        TAURI_SERVICE_IPC_EVENT,
+      unlisten = await listen<TauriHostWireEventPayload>(
+        TAURI_HOST_WIRE_EVENT,
         (event) => {
           const body = event.payload;
           if (!body || typeof body.event !== "string") {
@@ -178,7 +178,7 @@ export async function createTauriServiceIpcTransport(
         pong: true;
       },
     health: async (options) =>
-      (await requestWithOptions("health", undefined, options)) as ServiceIpcHealthResult,
+      (await requestWithOptions("health", undefined, options)) as ServiceHostHealthResult,
     onEvent(event, handler) {
       let set = handlers.get(event);
       if (!set) {
@@ -200,7 +200,7 @@ export async function createTauriServiceIpcTransport(
         unlisten = null;
       }
       handlers.clear();
-      await tauriServiceIpcDisconnect();
+      await tauriHostWireDisconnect();
     },
   };
 }

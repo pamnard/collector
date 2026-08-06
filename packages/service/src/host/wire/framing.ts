@@ -1,81 +1,81 @@
 /**
- * Local IPC message framing + versioned envelopes (#152).
+ * Local host wire message framing + versioned envelopes (#152).
  * Wire format: 4-byte big-endian length + UTF-8 JSON body (no NDJSON).
  */
 
 import type { CollectorApiError } from "@collector/api";
-import { serviceIpcError } from "./errors.js";
+import { hostWireError } from "./errors.js";
 
-export type { ServiceIpcMethod } from "./domain-methods.js";
+export type { HostWireMethod } from "./domain-methods.js";
 
 /** Bump only with a coordinated client/host change. */
-export const SERVICE_IPC_PROTOCOL_VERSION = 1;
+export const SERVICE_HOST_PROTOCOL_VERSION = 1;
 
-export interface ServiceIpcHealthResult {
+export interface ServiceHostHealthResult {
   ok: boolean;
   status: "healthy" | "unhealthy";
   open: boolean;
   healthy: boolean;
 }
 
-export interface ServiceIpcRequest {
-  v: typeof SERVICE_IPC_PROTOCOL_VERSION;
+export interface HostWireRequest {
+  v: typeof SERVICE_HOST_PROTOCOL_VERSION;
   id: string;
   type: "req";
   method: string;
   params?: unknown;
 }
 
-export interface ServiceIpcResponse {
-  v: typeof SERVICE_IPC_PROTOCOL_VERSION;
+export interface HostWireResponse {
+  v: typeof SERVICE_HOST_PROTOCOL_VERSION;
   id: string;
   type: "res";
   result: unknown;
 }
 
-export interface ServiceIpcErrorResponse {
-  v: typeof SERVICE_IPC_PROTOCOL_VERSION;
+export interface HostWireErrorResponse {
+  v: typeof SERVICE_HOST_PROTOCOL_VERSION;
   id: string;
   type: "err";
   error: CollectorApiError;
 }
 
 /** Host→client push (e.g. vault index sync status) (#163). */
-export interface ServiceIpcEvent {
-  v: typeof SERVICE_IPC_PROTOCOL_VERSION;
+export interface HostWireEvent {
+  v: typeof SERVICE_HOST_PROTOCOL_VERSION;
   id: string;
   type: "evt";
   event: string;
   payload: unknown;
 }
 
-export type ServiceIpcMessage =
-  | ServiceIpcRequest
-  | ServiceIpcResponse
-  | ServiceIpcErrorResponse
-  | ServiceIpcEvent;
+export type HostWireMessage =
+  | HostWireRequest
+  | HostWireResponse
+  | HostWireErrorResponse
+  | HostWireEvent;
 
 /** Well-known host→client event names. */
-export const SERVICE_IPC_EVENTS = {
+export const SERVICE_HOST_EVENTS = {
   vaultIndexSyncStatus: "vaultIndexSyncStatus",
   appSettings: "appSettings",
 } as const;
 
 const MAX_FRAME_BYTES = 1024 * 1024;
 
-export class ServiceIpcFramingError extends Error {
+export class HostWireFramingError extends Error {
   readonly code = "framing" as const;
 
   constructor(message: string) {
     super(message);
-    this.name = "ServiceIpcFramingError";
+    this.name = "HostWireFramingError";
   }
 }
 
-export function encodeServiceIpcFrame(message: ServiceIpcMessage): Buffer {
+export function encodeHostWireFrame(message: HostWireMessage): Buffer {
   const body = Buffer.from(JSON.stringify(message), "utf8");
   if (body.length > MAX_FRAME_BYTES) {
-    throw new ServiceIpcFramingError(
+    throw new HostWireFramingError(
       `frame body too large: ${body.length} > ${MAX_FRAME_BYTES}`,
     );
   }
@@ -88,19 +88,19 @@ export function encodeServiceIpcFrame(message: ServiceIpcMessage): Buffer {
  * Incremental length-prefixed frame reader.
  * Call `push` with socket chunks; yields complete decoded messages.
  */
-export class ServiceIpcFrameReader {
+export class HostWireFrameReader {
   private buffer = Buffer.alloc(0);
 
-  push(chunk: Buffer): ServiceIpcMessage[] {
+  push(chunk: Buffer): HostWireMessage[] {
     this.buffer = this.buffer.length
       ? Buffer.concat([this.buffer, chunk])
       : chunk;
-    const messages: ServiceIpcMessage[] = [];
+    const messages: HostWireMessage[] = [];
 
     while (this.buffer.length >= 4) {
       const length = this.buffer.readUInt32BE(0);
       if (length > MAX_FRAME_BYTES) {
-        throw new ServiceIpcFramingError(
+        throw new HostWireFramingError(
           `frame length ${length} exceeds max ${MAX_FRAME_BYTES}`,
         );
       }
@@ -109,31 +109,31 @@ export class ServiceIpcFrameReader {
       }
       const body = this.buffer.subarray(4, 4 + length);
       this.buffer = this.buffer.subarray(4 + length);
-      messages.push(decodeServiceIpcBody(body));
+      messages.push(decodeHostWireBody(body));
     }
 
     return messages;
   }
 }
 
-function decodeServiceIpcBody(body: Buffer): ServiceIpcMessage {
+function decodeHostWireBody(body: Buffer): HostWireMessage {
   let parsed: unknown;
   try {
     parsed = JSON.parse(body.toString("utf8"));
   } catch {
-    throw new ServiceIpcFramingError("frame body is not valid JSON");
+    throw new HostWireFramingError("frame body is not valid JSON");
   }
 
   if (!parsed || typeof parsed !== "object") {
-    throw new ServiceIpcFramingError("frame body must be a JSON object");
+    throw new HostWireFramingError("frame body must be a JSON object");
   }
 
   const msg = parsed as Record<string, unknown>;
   if (typeof msg.v !== "number") {
-    throw new ServiceIpcFramingError("missing protocol version `v`");
+    throw new HostWireFramingError("missing protocol version `v`");
   }
   if (typeof msg.id !== "string" || msg.id.length === 0) {
-    throw new ServiceIpcFramingError("missing message `id`");
+    throw new HostWireFramingError("missing message `id`");
   }
   if (
     msg.type !== "req" &&
@@ -141,23 +141,23 @@ function decodeServiceIpcBody(body: Buffer): ServiceIpcMessage {
     msg.type !== "err" &&
     msg.type !== "evt"
   ) {
-    throw new ServiceIpcFramingError(`invalid message type: ${String(msg.type)}`);
+    throw new HostWireFramingError(`invalid message type: ${String(msg.type)}`);
   }
   if (msg.type === "evt") {
     if (typeof msg.event !== "string" || msg.event.length === 0) {
-      throw new ServiceIpcFramingError("evt frame missing event name");
+      throw new HostWireFramingError("evt frame missing event name");
     }
   }
 
-  return parsed as ServiceIpcMessage;
+  return parsed as HostWireMessage;
 }
 
-export function assertProtocolVersion(v: number): void {
-  if (v !== SERVICE_IPC_PROTOCOL_VERSION) {
-    throw serviceIpcError({
+export function assertHostWireProtocolVersion(v: number): void {
+  if (v !== SERVICE_HOST_PROTOCOL_VERSION) {
+    throw hostWireError({
       layer: "transport",
       code: "protocol_mismatch",
-      message: `unsupported IPC protocol version ${v}; expected ${SERVICE_IPC_PROTOCOL_VERSION}`,
+      message: `unsupported host wire protocol version ${v}; expected ${SERVICE_HOST_PROTOCOL_VERSION}`,
     });
   }
 }

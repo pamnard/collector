@@ -11,38 +11,38 @@ import type {
   DashboardSnapshotPort,
 } from "@collector/api";
 import type {
-  ServiceIpcClient,
-  ServiceIpcHealthResult,
-} from "@collector/service/ipc";
-import { createIpcBacking } from "./create-ipc-backing.js";
+  HostWireClient,
+  ServiceHostHealthResult,
+} from "@collector/service/wire";
+import { createHostBacking } from "./create-host-backing.js";
 import { createMemoryDashboardSnapshotPort } from "./memory-dashboard-snapshot-port.js";
 import type {
-  CollectorIpcClientOptions,
-  CollectorIpcServiceClient,
-  CollectorIpcTransportExtras,
-} from "./ipc-client-types.js";
+  CollectorHostClientOptions,
+  CollectorHostServiceClient,
+  CollectorHostTransportExtras,
+} from "./host-client-types.js";
 
-export type { ServiceIpcHealthResult };
+export type { ServiceHostHealthResult };
 export type {
-  CollectorIpcClientOptions,
-  CollectorIpcServiceClient,
-  CollectorIpcTransportExtras,
+  CollectorHostClientOptions,
+  CollectorHostServiceClient,
+  CollectorHostTransportExtras,
 };
 
 /** Domain ports over IPC transport (#366 / #368). */
-export function createCollectorIpcService(
-  transport: ServiceIpcClient,
-  options: CollectorIpcClientOptions = {},
+export function createCollectorHostService(
+  transport: HostWireClient,
+  options: CollectorHostClientOptions = {},
 ): CollectorService {
-  return createIpcBacking(transport, options).service;
+  return createHostBacking(transport, options).service;
 }
 
 /** Domain ports + transport extras for CLI/MCP (#369). */
-export function createCollectorIpcServiceClient(
-  transport: ServiceIpcClient,
-  options: CollectorIpcClientOptions = {},
-): CollectorIpcServiceClient {
-  const { service, extras } = createIpcBacking(transport, options);
+export function createCollectorHostServiceClient(
+  transport: HostWireClient,
+  options: CollectorHostClientOptions = {},
+): CollectorHostServiceClient {
+  const { service, extras } = createHostBacking(transport, options);
   return { ...service, ...extras };
 }
 
@@ -50,9 +50,9 @@ export function createCollectorIpcServiceClient(
  * Dashboard snapshot slice for UiSession (#363 / #368).
  * Default is in-memory; app/Node inject disk-backed ports.
  */
-export function createCollectorIpcDashboardSnapshotPort(
-  _transport?: ServiceIpcClient,
-  options: CollectorIpcClientOptions = {},
+export function createCollectorHostDashboardSnapshotPort(
+  _transport?: HostWireClient,
+  options: CollectorHostClientOptions = {},
 ): DashboardSnapshotPort {
   return options.snapshot ?? createMemoryDashboardSnapshotPort();
 }

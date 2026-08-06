@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ServiceIpcError } from "@collector/service/host";
+import { HostWireError } from "@collector/service/host";
 
 const createHttpHostTransport = vi.fn();
-const createCollectorIpcServiceClient = vi.fn();
+const createCollectorHostServiceClient = vi.fn();
 
 vi.mock("@collector/client", () => ({
   createHttpHostTransport: (...args: unknown[]) =>
     createHttpHostTransport(...args),
-  createCollectorIpcServiceClient: (...args: unknown[]) =>
-    createCollectorIpcServiceClient(...args),
+  createCollectorHostServiceClient: (...args: unknown[]) =>
+    createCollectorHostServiceClient(...args),
 }));
 
 vi.mock("./server.js", () => ({
@@ -28,7 +28,7 @@ import { runCollectorMcp } from "./run.js";
 describe("runCollectorMcp (#556)", () => {
   beforeEach(() => {
     createHttpHostTransport.mockReset();
-    createCollectorIpcServiceClient.mockReset();
+    createCollectorHostServiceClient.mockReset();
   });
 
   it("returns exit 2 on usage errors without dialing", async () => {
@@ -58,7 +58,7 @@ describe("runCollectorMcp (#556)", () => {
 
   it("returns exit 1 with loud message on not_connected", async () => {
     createHttpHostTransport.mockRejectedValue(
-      new ServiceIpcError({
+      new HostWireError({
         layer: "transport",
         code: "not_connected",
         message: "WebSocket connect failed",
@@ -78,7 +78,7 @@ describe("runCollectorMcp (#556)", () => {
 
   it("returns exit 1 on auth_failed", async () => {
     createHttpHostTransport.mockRejectedValue(
-      new ServiceIpcError({
+      new HostWireError({
         layer: "auth",
         code: "auth_failed",
         message: "unauthorized",
@@ -98,7 +98,7 @@ describe("runCollectorMcp (#556)", () => {
 
   it("returns exit 1 on token_missing", async () => {
     createHttpHostTransport.mockRejectedValue(
-      new ServiceIpcError({
+      new HostWireError({
         layer: "auth",
         code: "token_missing",
         message: "token required",
@@ -133,7 +133,7 @@ describe("runCollectorMcp (#556)", () => {
   it("connects over HTTP and returns 0", async () => {
     const transport = { close: vi.fn() };
     createHttpHostTransport.mockResolvedValue(transport);
-    createCollectorIpcServiceClient.mockReturnValue({
+    createCollectorHostServiceClient.mockReturnValue({
       health: vi.fn(),
       close: vi.fn(),
       items: {},

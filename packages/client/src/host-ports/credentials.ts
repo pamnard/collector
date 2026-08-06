@@ -1,7 +1,7 @@
 import type { CredentialsPort } from "@collector/api";
-import type { IpcSessionCtx } from "../ipc-session-ctx.js";
+import type { HostSessionCtx } from "../host-session-ctx.js";
 
-export function createIpcCredentialsPort(ctx: IpcSessionCtx): CredentialsPort {
+export function createHostCredentialsPort(ctx: HostSessionCtx): CredentialsPort {
   const { transport } = ctx;
   return {
     setCredential: async (input) => {

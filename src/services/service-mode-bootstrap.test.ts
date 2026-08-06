@@ -19,30 +19,30 @@ vi.mock("./profile-layout", () => ({
   getCollectorProfileLayout: () => getCollectorProfileLayout(),
 }));
 
-const createTauriServiceIpcTransport = vi.fn(async () => ({
+const createTauriHostWireTransport = vi.fn(async () => ({
   request: vi.fn(),
   ping: vi.fn(),
   health: vi.fn(),
   onEvent: vi.fn(() => () => {}),
   close: vi.fn(),
 }));
-vi.mock("./tauri-service-ipc-transport", () => ({
-  createTauriServiceIpcTransport: (...args: unknown[]) =>
-    createTauriServiceIpcTransport(...args),
+vi.mock("./tauri-host-transport", () => ({
+  createTauriHostWireTransport: (...args: unknown[]) =>
+    createTauriHostWireTransport(...args),
 }));
 
-const createIpcCollectorService = vi.fn((transport) => ({
+const createTauriDesktopCollectorService = vi.fn((transport) => ({
   transport,
-  kind: "ipc-service",
+  kind: "tauri-desktop-service",
 }));
-const createIpcUiSession = vi.fn((_transport, service) => ({
+const createTauriDesktopUiSession = vi.fn((_transport, service) => ({
   service,
-  kind: "ipc-session",
+  kind: "tauri-desktop-session",
 }));
-vi.mock("./ipc-adapter", () => ({
-  createIpcCollectorService: (...args: unknown[]) =>
-    createIpcCollectorService(...args),
-  createIpcUiSession: (...args: unknown[]) => createIpcUiSession(...args),
+vi.mock("./tauri-desktop-adapter", () => ({
+  createTauriDesktopCollectorService: (...args: unknown[]) =>
+    createTauriDesktopCollectorService(...args),
+  createTauriDesktopUiSession: (...args: unknown[]) => createTauriDesktopUiSession(...args),
 }));
 
 const createHttpUiCutover = vi.fn(async () => ({
@@ -65,9 +65,9 @@ describe("bootstrapServiceModeCutover (#170 / #332 / #369 / #551)", () => {
   beforeEach(() => {
     invoke.mockReset();
     setCollectorService.mockReset();
-    createIpcCollectorService.mockClear();
-    createIpcUiSession.mockClear();
-    createTauriServiceIpcTransport.mockClear();
+    createTauriDesktopCollectorService.mockClear();
+    createTauriDesktopUiSession.mockClear();
+    createTauriHostWireTransport.mockClear();
     createHttpUiCutover.mockClear();
     delete env.VITE_COLLECTOR_SERVICE_BASE_URL;
     delete env.VITE_COLLECTOR_SERVICE_TOKEN;
@@ -82,17 +82,17 @@ describe("bootstrapServiceModeCutover (#170 / #332 / #369 / #551)", () => {
       if (cmd === "service_mode_bootstrap") return "/tmp/sock";
       throw new Error(cmd);
     });
-    await expect(bootstrapServiceModeCutover()).resolves.toBe("ipc");
+    await expect(bootstrapServiceModeCutover()).resolves.toBe("tauri");
     expect(invoke).toHaveBeenCalledWith("service_mode_bootstrap", {
       dataDir: "/data",
       configDir: "/config",
     });
-    expect(createTauriServiceIpcTransport).toHaveBeenCalledWith(
+    expect(createTauriHostWireTransport).toHaveBeenCalledWith(
       "/tmp/sock",
       "/data",
     );
-    expect(createIpcCollectorService).toHaveBeenCalled();
-    expect(createIpcUiSession).toHaveBeenCalled();
+    expect(createTauriDesktopCollectorService).toHaveBeenCalled();
+    expect(createTauriDesktopUiSession).toHaveBeenCalled();
     expect(setCollectorService).toHaveBeenCalled();
   });
 

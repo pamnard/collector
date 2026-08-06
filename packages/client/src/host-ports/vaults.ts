@@ -1,8 +1,8 @@
 import type { VaultsPort } from "@collector/api";
 import type { VaultMeta } from "@collector/shared";
-import type { IpcSessionCtx } from "../ipc-session-ctx.js";
+import type { HostSessionCtx } from "../host-session-ctx.js";
 
-export function createIpcVaultsPort(ctx: IpcSessionCtx): VaultsPort {
+export function createHostVaultsPort(ctx: HostSessionCtx): VaultsPort {
   const { transport } = ctx;
   return {
     listVaults: async (): Promise<VaultMeta[]> =>

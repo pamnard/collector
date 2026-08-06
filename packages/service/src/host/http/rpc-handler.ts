@@ -4,7 +4,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { CollectorApiError } from "@collector/api";
-import { mapHandlerThrownToApiError } from "../ipc/errors.js";
+import { mapHandlerThrownToApiError } from "../wire/errors.js";
 import { corsHeadersForRequest } from "./cors.js";
 
 export type DomainDispatch = (

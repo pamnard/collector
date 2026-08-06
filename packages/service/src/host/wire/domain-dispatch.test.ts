@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { isServiceIpcError } from "./errors.js";
-import { DOMAIN_IPC_METHODS as M } from "./domain-methods.js";
+import { isHostWireError } from "./errors.js";
+import { DOMAIN_WIRE_METHODS as M } from "./domain-methods.js";
 import type { ServiceDomainRuntime } from "../domain-runtime.js";
 import {
-  createDomainIpcDispatcher,
-  createDomainIpcRequestHandler,
+  createDomainWireDispatcher,
+  createDomainWireRequestHandler,
 } from "./domain-dispatch.js";
 
 function stubRuntime(overrides: {
@@ -111,22 +111,22 @@ async function expectBadRequest(run: () => Promise<unknown>): Promise<void> {
     await run();
     expect.unreachable("expected bad_request");
   } catch (error) {
-    expect(isServiceIpcError(error)).toBe(true);
-    if (isServiceIpcError(error)) {
+    expect(isHostWireError(error)).toBe(true);
+    if (isHostWireError(error)) {
       expect(error.code).toBe("bad_request");
     }
   }
 }
 
-describe("createDomainIpcDispatcher", () => {
+describe("createDomainWireDispatcher", () => {
   it("returns undefined for unknown methods", async () => {
-    const dispatch = createDomainIpcDispatcher({});
+    const dispatch = createDomainWireDispatcher({});
     expect(await dispatch("noSuchMethod", { a: 1 })).toBeUndefined();
   });
 
   it("forwards params to the registered handler", async () => {
     const handler = vi.fn(async (params?: unknown) => ({ ok: true, params }));
-    const dispatch = createDomainIpcDispatcher({
+    const dispatch = createDomainWireDispatcher({
       ping: handler,
     });
     await expect(dispatch("ping", { n: 2 })).resolves.toEqual({
@@ -137,16 +137,16 @@ describe("createDomainIpcDispatcher", () => {
   });
 });
 
-describe("createDomainIpcRequestHandler (#330)", () => {
+describe("createDomainWireRequestHandler (#330)", () => {
   it("returns undefined for unknown methods", async () => {
     const { runtime } = stubRuntime({});
-    const dispatch = createDomainIpcRequestHandler(runtime);
+    const dispatch = createDomainWireRequestHandler(runtime);
     expect(await dispatch("noSuchMethod", { a: 1 })).toBeUndefined();
   });
 
   it("rejects bad searchItems params before ensureInitialized", async () => {
     const { runtime, ensureInitialized } = stubRuntime({});
-    const dispatch = createDomainIpcRequestHandler(runtime);
+    const dispatch = createDomainWireRequestHandler(runtime);
     await expectBadRequest(() => dispatch(M.searchItems, {}));
     expect(ensureInitialized).not.toHaveBeenCalled();
   });
@@ -157,7 +157,7 @@ describe("createDomainIpcRequestHandler (#330)", () => {
     const { runtime, ensureInitialized } = stubRuntime({
       itemsSearch: { searchItems, getItemById },
     });
-    const dispatch = createDomainIpcRequestHandler(runtime);
+    const dispatch = createDomainWireRequestHandler(runtime);
 
     await expect(
       dispatch(M.searchItems, { query: "hello", filter: "all" }),
@@ -173,7 +173,7 @@ describe("createDomainIpcRequestHandler (#330)", () => {
 
   it("rejects bad createItem / updateItem before ensureInitialized", async () => {
     const { runtime, ensureInitialized } = stubRuntime({});
-    const dispatch = createDomainIpcRequestHandler(runtime);
+    const dispatch = createDomainWireRequestHandler(runtime);
 
     await expectBadRequest(() => dispatch(M.createItem, { title: "x" }));
     await expectBadRequest(() => dispatch(M.updateItem, { itemId: "a.md" }));
@@ -189,7 +189,7 @@ describe("createDomainIpcRequestHandler (#330)", () => {
     const { runtime, ensureInitialized } = stubRuntime({
       itemsSearch: { createItem, updateItem },
     });
-    const dispatch = createDomainIpcRequestHandler(runtime);
+    const dispatch = createDomainWireRequestHandler(runtime);
 
     await expect(
       dispatch(M.createItem, {
@@ -221,7 +221,7 @@ describe("createDomainIpcRequestHandler (#330)", () => {
     const { runtime, ensureInitialized } = stubRuntime({
       dropImport: { importDroppedFiles },
     });
-    const dispatch = createDomainIpcRequestHandler(runtime);
+    const dispatch = createDomainWireRequestHandler(runtime);
     const dataBase64 = Buffer.from("hello").toString("base64");
 
     await expect(
@@ -257,7 +257,7 @@ describe("createDomainIpcRequestHandler (#330)", () => {
     }));
     const { runtime, ensureInitialized } = stubRuntime({});
     (runtime as { syncPlugins: unknown }).syncPlugins = { syncNow };
-    const dispatch = createDomainIpcRequestHandler(runtime);
+    const dispatch = createDomainWireRequestHandler(runtime);
 
     await expect(dispatch(M.syncNow, { pluginId: "mock" })).resolves.toEqual({
       importedCount: 1,
@@ -286,7 +286,7 @@ describe("createDomainIpcRequestHandler (#330)", () => {
         notifyVaultReady,
         dispose: vi.fn(),
       };
-    const dispatch = createDomainIpcRequestHandler(runtime);
+    const dispatch = createDomainWireRequestHandler(runtime);
     await expect(dispatch(M.ensureActiveVault)).resolves.toMatchObject({
       vault: { id: "v1" },
     });
@@ -311,7 +311,7 @@ describe("createDomainIpcRequestHandler (#330)", () => {
         notifyVaultReady,
         dispose: vi.fn(),
       };
-    const dispatch = createDomainIpcRequestHandler(runtime);
+    const dispatch = createDomainWireRequestHandler(runtime);
     await expect(
       dispatch(M.switchVault, { vaultId: "v2" }),
     ).resolves.toMatchObject({ vault: { id: "v2" } });

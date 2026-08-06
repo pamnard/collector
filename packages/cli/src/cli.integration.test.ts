@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   startServiceHost,
-  defaultServiceIpcPath,
+  defaultHostWirePath,
 } from "@collector/service/host";
 import { runCollectorCli } from "./run.js";
 
@@ -33,7 +33,7 @@ describe("collector CLI IPC (#172)", () => {
 
     const err: string[] = [];
     const missing = await runCollectorCli(
-      ["--ipc-path", defaultServiceIpcPath(dataDir), "health"],
+      ["--ipc-path", defaultHostWirePath(dataDir), "health"],
       {
         stdout: () => {},
         stderr: (line) => err.push(line),
@@ -331,7 +331,7 @@ describe("collector CLI IPC (#172)", () => {
     const refuseCode = await runCollectorCli(
       [
         "--ipc-path",
-        defaultServiceIpcPath(dataDir) + ".missing",
+        defaultHostWirePath(dataDir) + ".missing",
         "--token",
         "unused",
         "create-item",

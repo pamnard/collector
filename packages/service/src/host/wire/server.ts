@@ -11,33 +11,33 @@ import { unlink } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
 import type { CollectorApiError } from "@collector/api";
 import {
-  SERVICE_IPC_AUTH_METHOD,
+  SERVICE_HOST_AUTH_METHOD,
   extractAuthToken,
   tokensEqual,
 } from "./auth.js";
 import {
-  SERVICE_IPC_PROTOCOL_VERSION,
-  ServiceIpcFrameReader,
-  ServiceIpcFramingError,
-  assertProtocolVersion,
-  encodeServiceIpcFrame,
-  type ServiceIpcErrorResponse,
-  type ServiceIpcEvent,
-  type ServiceIpcHealthResult,
-  type ServiceIpcMessage,
-  type ServiceIpcRequest,
-  type ServiceIpcResponse,
+  SERVICE_HOST_PROTOCOL_VERSION,
+  HostWireFrameReader,
+  HostWireFramingError,
+  assertHostWireProtocolVersion,
+  encodeHostWireFrame,
+  type HostWireErrorResponse,
+  type HostWireEvent,
+  type ServiceHostHealthResult,
+  type HostWireMessage,
+  type HostWireRequest,
+  type HostWireResponse,
 } from "./framing.js";
-import { mapHandlerThrownToApiError, serviceIpcError } from "./errors.js";
-import { defaultServiceIpcPath, isWindowsNamedPipePath } from "./paths.js";
+import { mapHandlerThrownToApiError, hostWireError } from "./errors.js";
+import { defaultHostWirePath, isWindowsNamedPipePath } from "./paths.js";
 
-export type { ServiceIpcHealthResult } from "./framing.js";
+export type { ServiceHostHealthResult } from "./framing.js";
 
-export interface ServiceIpcHandler {
+export interface HostWireHandler {
   ping: () =>
     | { ok: true; pong: true }
     | Promise<{ ok: true; pong: true }>;
-  health: () => ServiceIpcHealthResult | Promise<ServiceIpcHealthResult>;
+  health: () => ServiceHostHealthResult | Promise<ServiceHostHealthResult>;
   /**
    * Domain dispatch. Return `undefined` to fall through to unknown_method.
    */
@@ -47,7 +47,7 @@ export interface ServiceIpcHandler {
   ) => Promise<unknown | undefined>;
 }
 
-export interface ServiceIpcServer {
+export interface HostWireServer {
   path: string;
   /** Push an event frame to every authenticated connected client (#163/#336). */
   broadcastEvent: (event: string, payload: unknown) => void;
@@ -62,9 +62,9 @@ type SocketState = {
 function errorResponse(
   id: string,
   error: CollectorApiError,
-): ServiceIpcErrorResponse {
+): HostWireErrorResponse {
   return {
-    v: SERVICE_IPC_PROTOCOL_VERSION,
+    v: SERVICE_HOST_PROTOCOL_VERSION,
     id,
     type: "err",
     error,
@@ -72,15 +72,15 @@ function errorResponse(
 }
 
 async function handleRequest(
-  message: ServiceIpcRequest,
-  handler: ServiceIpcHandler,
-): Promise<ServiceIpcResponse | ServiceIpcErrorResponse> {
-  assertProtocolVersion(message.v);
+  message: HostWireRequest,
+  handler: HostWireHandler,
+): Promise<HostWireResponse | HostWireErrorResponse> {
+  assertHostWireProtocolVersion(message.v);
 
   const method = String(message.method);
   if (method === "ping") {
     return {
-      v: SERVICE_IPC_PROTOCOL_VERSION,
+      v: SERVICE_HOST_PROTOCOL_VERSION,
       id: message.id,
       type: "res",
       result: await handler.ping(),
@@ -88,7 +88,7 @@ async function handleRequest(
   }
   if (method === "health") {
     return {
-      v: SERVICE_IPC_PROTOCOL_VERSION,
+      v: SERVICE_HOST_PROTOCOL_VERSION,
       id: message.id,
       type: "res",
       result: await handler.health(),
@@ -99,7 +99,7 @@ async function handleRequest(
     const result = await handler.request(method, message.params);
     if (result !== undefined) {
       return {
-        v: SERVICE_IPC_PROTOCOL_VERSION,
+        v: SERVICE_HOST_PROTOCOL_VERSION,
         id: message.id,
         type: "res",
         result,
@@ -114,11 +114,11 @@ async function handleRequest(
   });
 }
 
-function writeMessage(socket: Socket, message: ServiceIpcMessage): void {
+function writeMessage(socket: Socket, message: HostWireMessage): void {
   if (socket.destroyed) {
     return;
   }
-  socket.write(encodeServiceIpcFrame(message));
+  socket.write(encodeHostWireFrame(message));
 }
 
 async function removeStaleUnixSocket(path: string): Promise<void> {
@@ -133,11 +133,11 @@ async function removeStaleUnixSocket(path: string): Promise<void> {
 }
 
 function handleAuthRequest(
-  message: ServiceIpcRequest,
+  message: HostWireRequest,
   expectedToken: string,
   state: SocketState,
-): ServiceIpcResponse | ServiceIpcErrorResponse {
-  assertProtocolVersion(message.v);
+): HostWireResponse | HostWireErrorResponse {
+  assertHostWireProtocolVersion(message.v);
   const provided = extractAuthToken(message.params);
   if (provided === null || !tokensEqual(expectedToken, provided)) {
     return errorResponse(message.id, {
@@ -148,35 +148,35 @@ function handleAuthRequest(
   }
   state.authenticated = true;
   return {
-    v: SERVICE_IPC_PROTOCOL_VERSION,
+    v: SERVICE_HOST_PROTOCOL_VERSION,
     id: message.id,
     type: "res",
     result: { ok: true },
   };
 }
 
-export async function startServiceIpcServer(
+export async function startHostWireServer(
   options: {
     path?: string;
     dataDir: string;
     /** Shared secret; peers must `auth` with this token before other methods. */
     token: string;
-    handler: ServiceIpcHandler;
+    handler: HostWireHandler;
   },
-): Promise<ServiceIpcServer> {
-  const path = options.path ?? defaultServiceIpcPath(options.dataDir);
+): Promise<HostWireServer> {
+  const path = options.path ?? defaultHostWirePath(options.dataDir);
   await removeStaleUnixSocket(path);
 
   const sockets = new Set<SocketState>();
   const server: Server = createServer((socket) => {
     const state: SocketState = { socket, authenticated: false };
     sockets.add(state);
-    const reader = new ServiceIpcFrameReader();
+    const reader = new HostWireFrameReader();
     let queue: Promise<void> = Promise.resolve();
 
     socket.on("data", (chunk) => {
       queue = queue.then(async () => {
-        let messages: ServiceIpcMessage[];
+        let messages: HostWireMessage[];
         try {
           messages = reader.push(chunk);
         } catch (error) {
@@ -184,7 +184,7 @@ export async function startServiceIpcServer(
             layer: "transport",
             code: "framing",
             message:
-              error instanceof ServiceIpcFramingError
+              error instanceof HostWireFramingError
                 ? error.message
                 : "framing error",
           };
@@ -213,7 +213,7 @@ export async function startServiceIpcServer(
 
           try {
             if (!state.authenticated) {
-              if (String(message.method) === SERVICE_IPC_AUTH_METHOD) {
+              if (String(message.method) === SERVICE_HOST_AUTH_METHOD) {
                 const response = handleAuthRequest(
                   message,
                   options.token,
@@ -237,7 +237,7 @@ export async function startServiceIpcServer(
               continue;
             }
 
-            if (String(message.method) === SERVICE_IPC_AUTH_METHOD) {
+            if (String(message.method) === SERVICE_HOST_AUTH_METHOD) {
               writeMessage(
                 socket,
                 handleAuthRequest(message, options.token, state),
@@ -276,8 +276,8 @@ export async function startServiceIpcServer(
   return {
     path,
     broadcastEvent(event: string, payload: unknown) {
-      const message: ServiceIpcEvent = {
-        v: SERVICE_IPC_PROTOCOL_VERSION,
+      const message: HostWireEvent = {
+        v: SERVICE_HOST_PROTOCOL_VERSION,
         id: "evt",
         type: "evt",
         event,
@@ -307,4 +307,4 @@ export async function startServiceIpcServer(
   };
 }
 
-export { serviceIpcError };
+export { hostWireError };

@@ -1,7 +1,7 @@
 import type { ActiveVaultResult, BootPort } from "@collector/api";
-import type { IpcSessionCtx } from "../ipc-session-ctx.js";
+import type { HostSessionCtx } from "../host-session-ctx.js";
 
-export function createIpcBootPort(ctx: IpcSessionCtx): BootPort {
+export function createHostBootPort(ctx: HostSessionCtx): BootPort {
   const { transport } = ctx;
   return {
     openCollectorDatabase: async (): Promise<void> => {

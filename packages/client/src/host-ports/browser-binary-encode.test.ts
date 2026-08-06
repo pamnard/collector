@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { ServiceIpcClient } from "@collector/service/ipc";
-import { createIpcSessionCtx } from "../ipc-session-ctx.js";
-import { createIpcItemsPort } from "./items.js";
-import { createIpcMediaPort } from "./media.js";
+import type { HostWireClient } from "@collector/service/wire";
+import { createHostSessionCtx } from "../host-session-ctx.js";
+import { createHostItemsPort } from "./items.js";
+import { createHostMediaPort } from "./media.js";
 
 type RequestCall = { method: string; params: unknown };
 
-function mockTransport(calls: RequestCall[]): ServiceIpcClient {
+function mockTransport(calls: RequestCall[]): HostWireClient {
   return {
     request: async (method, params) => {
       calls.push({ method, params });
@@ -63,8 +63,8 @@ describe("IPC binary encode without global Buffer (webview)", () => {
 
   it("attachMediaFiles encodes dataBase64 without Buffer", async () => {
     const calls: RequestCall[] = [];
-    const media = createIpcMediaPort(
-      createIpcSessionCtx(mockTransport(calls)),
+    const media = createHostMediaPort(
+      createHostSessionCtx(mockTransport(calls)),
     );
     removeGlobalBuffer();
 
@@ -80,8 +80,8 @@ describe("IPC binary encode without global Buffer (webview)", () => {
 
   it("replaceItemMedia encodes dataBase64 without Buffer", async () => {
     const calls: RequestCall[] = [];
-    const media = createIpcMediaPort(
-      createIpcSessionCtx(mockTransport(calls)),
+    const media = createHostMediaPort(
+      createHostSessionCtx(mockTransport(calls)),
     );
     removeGlobalBuffer();
 
@@ -100,8 +100,8 @@ describe("IPC binary encode without global Buffer (webview)", () => {
 
   it("importDroppedFiles encodes dataBase64 without Buffer", async () => {
     const calls: RequestCall[] = [];
-    const items = createIpcItemsPort(
-      createIpcSessionCtx(mockTransport(calls)),
+    const items = createHostItemsPort(
+      createHostSessionCtx(mockTransport(calls)),
     );
     removeGlobalBuffer();
 

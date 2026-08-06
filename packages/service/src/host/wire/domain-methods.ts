@@ -2,7 +2,7 @@
  * Domain IPC method names (#155+ / #330). Transport ping/health stay separate.
  *
  * Catalog is derived from host-wire port keys + watcher extras — not a hand
- * list. Handlers live in {@link createDomainIpcRequestHandler}.
+ * list. Handlers live in {@link createDomainWireRequestHandler}.
  */
 
 import {
@@ -11,28 +11,28 @@ import {
 } from "./domain-port-wire.js";
 
 /** Watcher RPC is host IPC but not part of `@collector/api` port keys (#164). */
-export const WATCHER_IPC_METHODS = [
+export const WATCHER_WIRE_METHODS = [
   "startVaultFilesystemWatcher",
   "stopVaultFilesystemWatcher",
   "isVaultFilesystemWatcherActive",
 ] as const;
 
-export type WatcherIpcMethod = (typeof WATCHER_IPC_METHODS)[number];
+export type WatcherWireMethod = (typeof WATCHER_WIRE_METHODS)[number];
 
-export type DomainIpcMethod = HostWirePortMethod | WatcherIpcMethod;
+export type DomainWireMethod = HostWirePortMethod | WatcherWireMethod;
 
-const DOMAIN_IPC_METHOD_LIST: readonly DomainIpcMethod[] = [
+const DOMAIN_WIRE_METHOD_LIST: readonly DomainWireMethod[] = [
   ...HOST_WIRE_PORT_METHODS,
-  ...WATCHER_IPC_METHODS,
+  ...WATCHER_WIRE_METHODS,
 ];
 
 /** Identity map for wire method string literals (stable keys for call sites). */
-export const DOMAIN_IPC_METHODS = Object.fromEntries(
-  DOMAIN_IPC_METHOD_LIST.map((method) => [method, method]),
-) as { [K in DomainIpcMethod]: K };
+export const DOMAIN_WIRE_METHODS = Object.fromEntries(
+  DOMAIN_WIRE_METHOD_LIST.map((method) => [method, method]),
+) as { [K in DomainWireMethod]: K };
 
-export type ServiceIpcCoreMethod = "ping" | "health";
-export type ServiceIpcMethod = ServiceIpcCoreMethod | DomainIpcMethod | string;
+export type HostWireCoreMethod = "ping" | "health";
+export type HostWireMethod = HostWireCoreMethod | DomainWireMethod | string;
 
-export type DomainIpcHandler = (params?: unknown) => Promise<unknown>;
-export type DomainIpcHandlerMap = Record<string, DomainIpcHandler>;
+export type DomainWireHandler = (params?: unknown) => Promise<unknown>;
+export type DomainWireHandlerMap = Record<string, DomainWireHandler>;

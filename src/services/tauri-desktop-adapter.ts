@@ -1,10 +1,10 @@
 /**
- * IPC-backed CollectorService factory for the UI (#240 / #366 / #368 / #369 / #370).
+ * Tauri-desktop CollectorService factory for the UI (#240 / #366 / #368 / #369 / #370).
  * Transport is injected (Tauri proxy, mock, etc.) — no Node dialer.
  *
- * Ports are primary ({@link createIpcCollectorService}).
+ * Ports are primary ({@link createTauriDesktopCollectorService}).
  * Snapshot + thumbnail abs paths are wired from the app UiSession layer
- * (local FS), not host IPC.
+ * (local FS), not host wire.
  */
 
 import type {
@@ -14,16 +14,16 @@ import type {
   UiSession,
 } from "@collector/api";
 import {
-  createCollectorIpcService,
-  type CollectorIpcClientOptions,
-  type ServiceIpcClient,
+  createCollectorHostService,
+  type CollectorHostClientOptions,
+  type HostWireClient,
 } from "@collector/client";
 import { createThumbnailResolveSession } from "./thumbnail-resolve-session";
 import { createUiDashboardSnapshotPort } from "./ui-dashboard-snapshot-port";
 
-function ipcUiSessionOptions(
-  transport: ServiceIpcClient,
-): CollectorIpcClientOptions {
+function tauriDesktopUiSessionOptions(
+  transport: HostWireClient,
+): CollectorHostClientOptions {
   const thumbnails = createThumbnailResolveSession({
     resolveActiveVault: () =>
       transport.request("ensureActiveVault") as Promise<ActiveVaultResult>,
@@ -34,23 +34,23 @@ function ipcUiSessionOptions(
   };
 }
 
-/** Domain ports over an injected IPC transport (#366). */
-export function createIpcCollectorService(
-  transport: ServiceIpcClient,
+/** Domain ports over an injected host wire transport (#366). */
+export function createTauriDesktopCollectorService(
+  transport: HostWireClient,
 ): CollectorService {
-  return createCollectorIpcService(transport, ipcUiSessionOptions(transport));
+  return createCollectorHostService(transport, tauriDesktopUiSessionOptions(transport));
 }
 
 /** Dashboard snapshot slice for UiSession (#363 / #368) — local FS. */
-export function createIpcDashboardSnapshotPort(
-  _transport?: ServiceIpcClient,
+export function createTauriDesktopDashboardSnapshotPort(
+  _transport?: HostWireClient,
 ): DashboardSnapshotPort {
   return createUiDashboardSnapshotPort();
 }
 
-/** UiSession for IPC cutover (#368 / #369) — local FS snapshot/thumbnails. */
-export function createIpcUiSession(
-  transport: ServiceIpcClient,
+/** UiSession for Tauri desktop cutover (#368 / #369) — local FS snapshot/thumbnails. */
+export function createTauriDesktopUiSession(
+  transport: HostWireClient,
   service: CollectorService,
 ): UiSession {
   return {

@@ -4,10 +4,10 @@
 
 import type { DashboardItemSort, NavFilter } from "@collector/api";
 import { isItemIdSortDir, isItemIdSortKey } from "@collector/core";
-import { serviceIpcError } from "../errors.js";
+import { hostWireError } from "../errors.js";
 
 export function badRequest(message: string): never {
-  throw serviceIpcError({
+  throw hostWireError({
     layer: "validation",
     code: "bad_request",
     message,

@@ -21,9 +21,9 @@ import {
 } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
 import { bytesToBase64 } from "../bytes-to-base64.js";
-import type { IpcSessionCtx } from "../ipc-session-ctx.js";
+import type { HostSessionCtx } from "../host-session-ctx.js";
 
-export function createIpcItemsPort(ctx: IpcSessionCtx): ItemsPort {
+export function createHostItemsPort(ctx: HostSessionCtx): ItemsPort {
   const { transport } = ctx;
   return {
     searchItems: async (

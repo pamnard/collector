@@ -3,7 +3,7 @@
  * Re-exports kept so relative imports during cutover still resolve.
  */
 export {
-  createDomainIpcDispatcher,
-  createDomainIpcRequestHandler,
+  createDomainWireDispatcher,
+  createDomainWireRequestHandler,
   DOMAIN_DISPATCH_REGISTRY,
 } from "./domain-dispatch.js";

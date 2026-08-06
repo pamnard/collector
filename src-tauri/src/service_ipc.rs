@@ -306,7 +306,7 @@ pub fn default_ipc_path(data_dir: &Path) -> PathBuf {
 
 /// Token file written by the Node host under `dataDir` (#336).
 pub fn default_ipc_token_path(data_dir: &Path) -> PathBuf {
-    data_dir.join("collector-service.ipc-token")
+    data_dir.join("collector-service.host-token")
 }
 
 pub fn read_ipc_token(data_dir: &Path) -> Result<String, ServiceIpcError> {
@@ -615,7 +615,7 @@ mod tests {
             );
             assert_eq!(
                 default_ipc_token_path(Path::new("/data")),
-                PathBuf::from("/data/collector-service.ipc-token")
+                PathBuf::from("/data/collector-service.host-token")
             );
         }
     }

@@ -1,7 +1,7 @@
 /**
- * Port → flat wire method map for the IPC host (#366 / #330).
+ * Port → flat wire method map for the host wire (#366 / #330).
  *
- * Flat camelCase names in {@link DOMAIN_IPC_METHODS} are transitional aliases
+ * Flat camelCase names in {@link DOMAIN_WIRE_METHODS} are transitional aliases
  * for domain port methods. Source of truth for method names is `*_PORT_KEYS`
  * from `@collector/api` — not a hand-maintained mega-checklist.
  */
@@ -20,12 +20,13 @@ import {
   TELEGRAM_SYNC_PORT_KEYS,
   VAULTS_PORT_KEYS,
 } from "@collector/api";
-import type { DomainIpcHandlerMap } from "./domain-methods.js";
+import type { DomainWireHandlerMap } from "./domain-methods.js";
 
 /**
- * Port methods implemented only on the IPC client (orchestration / sync cache).
+ * Port methods implemented only on the client (orchestration / sync cache).
  * They must not be required as host handlers.
- * Snapshot + abs thumbnail paths are UiSession / client FS (#368).
+ * Snapshot peek/build stay client-side; ensure/persist/clear + thumb resolve
+ * are host wire (#552).
  */
 export const CLIENT_ORCHESTRATED_PORT_METHODS = [
   "hydrate",
@@ -36,9 +37,8 @@ export const CLIENT_ORCHESTRATED_PORT_METHODS = [
   "subscribeAppSettings",
   "subscribeVaultIndexSyncStatus",
   "getAppSettingsSync",
-  ...DASHBOARD_SNAPSHOT_PORT_KEYS,
-  "resolveItemThumbnailPath",
-  "resolveItemThumbnailPaths",
+  "peekMatchingDashboardSnapshot",
+  "buildDashboardSnapshot",
 ] as const;
 
 export type ClientOrchestratedPortMethod =
@@ -78,10 +78,10 @@ export const HOST_WIRE_PORT_METHODS = ALL_PORT_METHOD_KEYS.filter(
 /**
  * Assert every host-wire port method is registered in the handler map.
  * Catalog membership of host-wire keys is guaranteed by derivation in
- * {@link DOMAIN_IPC_METHODS} (#330).
+ * {@link DOMAIN_WIRE_METHODS} (#330).
  */
 export function assertHostPortWireCoverage(
-  handlers?: DomainIpcHandlerMap,
+  handlers?: DomainWireHandlerMap,
 ): void {
   if (!handlers) {
     return;
@@ -96,7 +96,7 @@ export function assertHostPortWireCoverage(
 
   if (missingFromHandlers.length > 0) {
     throw new Error(
-      `IPC host port→wire coverage (#366): missing host handlers: ${missingFromHandlers.join(", ")}`,
+      `host port→wire coverage (#366): missing host handlers: ${missingFromHandlers.join(", ")}`,
     );
   }
 }

@@ -9,9 +9,9 @@ import {
   subscriptionFromTeardown,
 } from "@collector/api";
 import type { Tag } from "@collector/shared";
-import type { IpcSessionCtx } from "../ipc-session-ctx.js";
+import type { HostSessionCtx } from "../host-session-ctx.js";
 
-export function createIpcTagsPort(ctx: IpcSessionCtx): TagsPort {
+export function createHostTagsPort(ctx: HostSessionCtx): TagsPort {
   const { transport } = ctx;
   return {
     subscribeTags(

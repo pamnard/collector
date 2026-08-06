@@ -46,9 +46,9 @@ export {
 } from "../dev/mock-collector-service";
 export { createUiDashboardSnapshotPort } from "./ui-dashboard-snapshot-port";
 export {
-  createIpcCollectorService,
-  createIpcDashboardSnapshotPort,
-  createIpcUiSession,
-} from "./ipc-adapter";
+  createTauriDesktopCollectorService,
+  createTauriDesktopDashboardSnapshotPort,
+  createTauriDesktopUiSession,
+} from "./tauri-desktop-adapter";
 export { getUiSession, setUiSession } from "./ui-session";
 export { DASHBOARD_PREFETCH_SIZE } from "@collector/api";

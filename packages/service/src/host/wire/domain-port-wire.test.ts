@@ -16,7 +16,7 @@ import {
   TELEGRAM_SYNC_PORT_KEYS,
   VAULTS_PORT_KEYS,
 } from "@collector/api";
-import { DOMAIN_IPC_METHODS } from "./domain-methods.js";
+import { DOMAIN_WIRE_METHODS } from "./domain-methods.js";
 import {
   ALL_PORT_METHOD_KEYS,
   assertHostPortWireCoverage,
@@ -49,8 +49,8 @@ describe("domain port→wire map (#366)", () => {
     }
   });
 
-  it("DOMAIN_IPC_METHODS is derived from HOST_WIRE + watcher extras (#330)", () => {
-    const catalog = new Set(Object.values(DOMAIN_IPC_METHODS));
+  it("DOMAIN_WIRE_METHODS is derived from HOST_WIRE + watcher extras (#330)", () => {
+    const catalog = new Set(Object.values(DOMAIN_WIRE_METHODS));
     for (const method of HOST_WIRE_PORT_METHODS) {
       expect(catalog.has(method), method).toBe(true);
     }
@@ -61,25 +61,27 @@ describe("domain port→wire map (#366)", () => {
     expect(() => assertHostPortWireCoverage()).not.toThrow();
   });
 
-  it("client-orchestrated methods are absent from DOMAIN_IPC_METHODS", () => {
-    const catalog = new Set(Object.values(DOMAIN_IPC_METHODS));
+  it("client-orchestrated methods are absent from DOMAIN_WIRE_METHODS", () => {
+    const catalog = new Set(Object.values(DOMAIN_WIRE_METHODS));
     for (const method of CLIENT_ORCHESTRATED_PORT_METHODS) {
       expect(catalog.has(method), method).toBe(false);
     }
   });
 
-  it("snapshot and thumbnail abs paths are client-orchestrated (#368)", () => {
-    for (const method of DASHBOARD_SNAPSHOT_PORT_KEYS) {
-      expect(CLIENT_ORCHESTRATED_PORT_METHODS).toContain(method);
-      expect(HOST_WIRE_PORT_METHODS).not.toContain(method);
-    }
+  it("snapshot peek/build stay client-orchestrated; I/O + thumbs are host wire (#552)", () => {
     expect(CLIENT_ORCHESTRATED_PORT_METHODS).toContain(
+      "peekMatchingDashboardSnapshot",
+    );
+    expect(CLIENT_ORCHESTRATED_PORT_METHODS).toContain("buildDashboardSnapshot");
+    for (const method of [
+      "ensureDashboardSnapshot",
+      "persistDashboardSnapshot",
+      "clearDashboardSnapshot",
       "resolveItemThumbnailPath",
-    );
-    expect(CLIENT_ORCHESTRATED_PORT_METHODS).toContain(
       "resolveItemThumbnailPaths",
-    );
-    expect(HOST_WIRE_PORT_METHODS).not.toContain("resolveItemThumbnailPath");
-    expect(HOST_WIRE_PORT_METHODS).not.toContain("resolveItemThumbnailPaths");
+    ] as const) {
+      expect(CLIENT_ORCHESTRATED_PORT_METHODS).not.toContain(method);
+      expect(HOST_WIRE_PORT_METHODS).toContain(method);
+    }
   });
 });

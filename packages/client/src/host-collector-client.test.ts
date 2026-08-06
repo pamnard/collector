@@ -5,13 +5,13 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   NodeSqliteExecutor,
-  SERVICE_IPC_EVENTS,
-  connectServiceIpc,
-  createDomainIpcRequestHandler,
+  SERVICE_HOST_EVENTS,
+  connectHostWire,
+  createDomainWireRequestHandler,
   createServiceDomainRuntime,
   startServiceHost,
-  startServiceIpcServer,
-  type ServiceIpcClient,
+  startHostWireServer,
+  type HostWireClient,
 } from "@collector/service/host";
 import type { DashboardIndexPage, VaultIndexSyncStatus } from "@collector/api";
 import {
@@ -30,12 +30,12 @@ import {
 } from "@collector/api";
 import type { AppSettings } from "@collector/shared";
 import {
-  createCollectorIpcDashboardSnapshotPort,
-  createCollectorIpcService,
-  createCollectorIpcServiceClient,
-  type CollectorIpcServiceClient,
-} from "./ipc-collector-client.js";
-import { connectCollectorIpcService } from "./ipc-collector-client-node.js";
+  createCollectorHostDashboardSnapshotPort,
+  createCollectorHostService,
+  createCollectorHostServiceClient,
+  type CollectorHostServiceClient,
+} from "./host-collector-client.js";
+import { connectCollectorHostService } from "./host-collector-client-node.js";
 
 /** Legacy incomplete schema — migrate leaves it unhealthy until rebuild. */
 async function writeLegacyBrokenIndexDb(dbPath: string): Promise<void> {
@@ -75,7 +75,7 @@ async function writeLegacyBrokenIndexDb(dbPath: string): Promise<void> {
 }
 
 async function waitForVaultIndexSyncDone(
-  client: CollectorIpcServiceClient,
+  client: CollectorHostServiceClient,
   timeoutMs = 5_000,
 ): Promise<VaultIndexSyncStatus> {
   if (client.index.getVaultIndexSyncStatus().status === "done") {
@@ -100,7 +100,7 @@ async function waitForVaultIndexSyncDone(
   });
 }
 
-describe("CollectorIpcServiceClient", () => {
+describe("CollectorHostServiceClient", () => {
   const dirs: string[] = [];
 
   afterEach(async () => {
@@ -115,7 +115,7 @@ describe("CollectorIpcServiceClient", () => {
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
       expect(host.ipcPath).toBeTruthy();
-      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
+      const client = await connectCollectorHostService(host.ipcPath!, { dataDir });
       try {
         expect(await client.ping()).toEqual({ ok: true, pong: true });
         expect(await client.health()).toMatchObject({
@@ -136,7 +136,7 @@ describe("CollectorIpcServiceClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
+      const client = await connectCollectorHostService(host.ipcPath!, { dataDir });
       try {
         const page = await client.items.fetchDashboardIndexPage("all", "", {
           limit: 60,
@@ -175,7 +175,7 @@ describe("CollectorIpcServiceClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
+      const client = await connectCollectorHostService(host.ipcPath!, { dataDir });
       try {
         const created = await client.items.createItem({
           title: "IPC Note",
@@ -210,7 +210,7 @@ describe("CollectorIpcServiceClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
+      const client = await connectCollectorHostService(host.ipcPath!, { dataDir });
       try {
         const created = await client.tags.createTag({ name: "ipc-tag" });
         expect(created.name).toBe("ipc-tag");
@@ -239,7 +239,7 @@ describe("CollectorIpcServiceClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
+      const client = await connectCollectorHostService(host.ipcPath!, { dataDir });
       try {
         const createdPath = await client.folders.createFolder("ipc-folder");
         expect(createdPath).toBe("ipc-folder");
@@ -273,7 +273,7 @@ describe("CollectorIpcServiceClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
+      const client = await connectCollectorHostService(host.ipcPath!, { dataDir });
       try {
         const item = await client.items.createItem({
           title: "Media note",
@@ -320,7 +320,7 @@ describe("CollectorIpcServiceClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
+      const client = await connectCollectorHostService(host.ipcPath!, { dataDir });
       try {
         const item = await client.items.createItem({
           title: "Replace media note",
@@ -372,7 +372,7 @@ describe("CollectorIpcServiceClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
+      const client = await connectCollectorHostService(host.ipcPath!, { dataDir });
       try {
         expect(await client.boot.getDataDirectory()).toBe(dataDir);
 
@@ -402,7 +402,7 @@ describe("CollectorIpcServiceClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
+      const client = await connectCollectorHostService(host.ipcPath!, { dataDir });
       try {
         // Host already opened + healed on start; methods are idempotent.
         await client.boot.openCollectorDatabase();
@@ -429,9 +429,9 @@ describe("CollectorIpcServiceClient", () => {
 
     // IPC-only host: do not auto-heal so the client path exercises rebuild.
     const runtime = createServiceDomainRuntime(selfContainedCollectorProfileLayout(dataDir));
-    const ipc = await startServiceIpcServer({
+    const ipc = await startHostWireServer({
       dataDir,
-      token: "rebuild-test-ipc-token",
+      token: "rebuild-test-host-token",
       handler: {
         ping: () => ({ ok: true, pong: true }),
         health: () => {
@@ -443,18 +443,18 @@ describe("CollectorIpcServiceClient", () => {
             healthy,
           };
         },
-        request: createDomainIpcRequestHandler(runtime),
+        request: createDomainWireRequestHandler(runtime),
       },
     });
     const stopSyncStatusBroadcast = runtime.vaultIndexSyncStatus.subscribe(
       (status) => {
-        ipc.broadcastEvent(SERVICE_IPC_EVENTS.vaultIndexSyncStatus, status);
+        ipc.broadcastEvent(SERVICE_HOST_EVENTS.vaultIndexSyncStatus, status);
       },
     );
 
     try {
-      const client = await connectCollectorIpcService(ipc.path, {
-        token: "rebuild-test-ipc-token",
+      const client = await connectCollectorHostService(ipc.path, {
+        token: "rebuild-test-host-token",
       });
       try {
         await client.boot.openCollectorDatabase();
@@ -495,9 +495,9 @@ describe("CollectorIpcServiceClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
+      const client = await connectCollectorHostService(host.ipcPath!, { dataDir });
       try {
-        const snapshotPort = createCollectorIpcDashboardSnapshotPort();
+        const snapshotPort = createCollectorHostDashboardSnapshotPort();
         const settings = await client.settings.ensureAppSettings();
         expect(settings).toBeTruthy();
 
@@ -541,7 +541,7 @@ describe("CollectorIpcServiceClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
+      const client = await connectCollectorHostService(host.ipcPath!, { dataDir });
       try {
         const seen: VaultIndexSyncStatus[] = [];
         const unsub = client.index.subscribeVaultIndexSyncStatus((status) => {
@@ -571,7 +571,7 @@ describe("CollectorIpcServiceClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
+      const client = await connectCollectorHostService(host.ipcPath!, { dataDir });
       try {
         const active = await client.boot.ensureActiveVault();
         await client.items.listDashboardItemIds("all");
@@ -619,7 +619,7 @@ describe("CollectorIpcServiceClient", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const client = await connectCollectorIpcService(host.ipcPath!, { dataDir });
+      const client = await connectCollectorHostService(host.ipcPath!, { dataDir });
       try {
         const settings = await client.settings.ensureAppSettings();
         expect(client.settings.getAppSettingsSync()).toEqual(settings);
@@ -634,7 +634,7 @@ describe("CollectorIpcServiceClient", () => {
         }
         expect(subscribed).toEqual(settings);
 
-        const peer = await connectCollectorIpcService(host.ipcPath!, { dataDir });
+        const peer = await connectCollectorHostService(host.ipcPath!, { dataDir });
         try {
           const patched = await peer.settings.updateAppSettings({
             ...settings,
@@ -672,7 +672,7 @@ describe("CollectorIpcServiceClient", () => {
         expect(page).toBeTruthy();
         expect(page!.totalCount).toBeGreaterThanOrEqual(0);
 
-        const snapshotPort = createCollectorIpcDashboardSnapshotPort();
+        const snapshotPort = createCollectorHostDashboardSnapshotPort();
         const snap = snapshotPort.buildDashboardSnapshot({
           vaultId: active.vault.id,
           filter: "all",
@@ -731,7 +731,7 @@ const PORT_KEYS = [
 
 function mockTransport(
   requestImpl?: (method: string, params?: unknown) => Promise<unknown>,
-): ServiceIpcClient {
+): HostWireClient {
   return {
     request: async (method, params) => {
       if (requestImpl) {
@@ -751,7 +751,7 @@ function mockTransport(
   };
 }
 
-describe("CollectorIpcService ports (#366)", () => {
+describe("CollectorHostService ports (#366)", () => {
   const dirs: string[] = [];
 
   afterEach(async () => {
@@ -760,8 +760,8 @@ describe("CollectorIpcService ports (#366)", () => {
     }
   });
 
-  it("createCollectorIpcService exposes domain ports with PORT_KEYS methods", () => {
-    const service = createCollectorIpcService(mockTransport());
+  it("createCollectorHostService exposes domain ports with PORT_KEYS methods", () => {
+    const service = createCollectorHostService(mockTransport());
     expect(Object.keys(service).sort()).toEqual([...PORT_KEYS].sort());
 
     for (const key of BOOT_PORT_KEYS) {
@@ -805,29 +805,29 @@ describe("CollectorIpcService ports (#366)", () => {
     }
   });
 
-  it("createCollectorIpcDashboardSnapshotPort exposes snapshot methods", () => {
-    const snapshot = createCollectorIpcDashboardSnapshotPort(mockTransport());
+  it("createCollectorHostDashboardSnapshotPort exposes snapshot methods", () => {
+    const snapshot = createCollectorHostDashboardSnapshotPort(mockTransport());
     for (const key of DASHBOARD_SNAPSHOT_PORT_KEYS) {
       expect(typeof snapshot[key], key).toBe("function");
     }
   });
 
-  it("createCollectorIpcServiceClient exposes ports + transport extras", () => {
-    const client = createCollectorIpcServiceClient(mockTransport());
+  it("createCollectorHostServiceClient exposes ports + transport extras", () => {
+    const client = createCollectorHostServiceClient(mockTransport());
     expect(typeof client.items.searchItems).toBe("function");
     expect(typeof client.boot.getDataDirectory).toBe("function");
     expect(typeof client.ping).toBe("function");
     expect(typeof client.startVaultFilesystemWatcher).toBe("function");
   });
 
-  it("one RPC method per domain port over createCollectorIpcService", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "collector-ipc-ports-"));
+  it("one RPC method per domain port over createCollectorHostService", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-host-ports-"));
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const transport = await connectServiceIpc(host.ipcPath!, { dataDir });
+      const transport = await connectHostWire(host.ipcPath!, { dataDir });
       try {
-        const service = createCollectorIpcService(transport);
+        const service = createCollectorHostService(transport);
         expect(Object.keys(service).sort()).toEqual([...PORT_KEYS].sort());
 
         const dataDirectory = await service.boot.getDataDirectory();

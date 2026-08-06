@@ -3,47 +3,47 @@
  * Not used by the Tauri in-process production path (Rust proxy).
  *
  * After dial, performs mandatory `auth` handshake with the host token.
- * Rejections are always {@link ServiceIpcError} (see `./errors.ts` mapping table).
+ * Rejections are always {@link HostWireError} (see `./errors.ts` mapping table).
  */
 
 import { createConnection, type Socket } from "node:net";
 import {
-  SERVICE_IPC_AUTH_METHOD,
-  resolveServiceIpcToken,
+  SERVICE_HOST_AUTH_METHOD,
+  resolveServiceHostToken,
 } from "./auth.js";
 import {
-  SERVICE_IPC_PROTOCOL_VERSION,
-  ServiceIpcFrameReader,
-  ServiceIpcFramingError,
-  encodeServiceIpcFrame,
-  type ServiceIpcErrorResponse,
-  type ServiceIpcEvent,
-  type ServiceIpcHealthResult,
-  type ServiceIpcRequest,
-  type ServiceIpcResponse,
+  SERVICE_HOST_PROTOCOL_VERSION,
+  HostWireFrameReader,
+  HostWireFramingError,
+  encodeHostWireFrame,
+  type HostWireErrorResponse,
+  type HostWireEvent,
+  type ServiceHostHealthResult,
+  type HostWireRequest,
+  type HostWireResponse,
 } from "./framing.js";
 import {
-  ServiceIpcError,
-  mapNodeIpcErrno,
-  serviceIpcError,
+  HostWireError,
+  mapNodeConnectErrno,
+  hostWireError,
 } from "./errors.js";
 
-export type { ServiceIpcHealthResult } from "./framing.js";
+export type { ServiceHostHealthResult } from "./framing.js";
 export type {
-  ServiceIpcClient,
-  ServiceIpcClientOptions,
-  ServiceIpcRequestOptions,
+  HostWireClient,
+  HostWireClientOptions,
+  HostWireRequestOptions,
 } from "./transport-types.js";
 
 import type {
-  ServiceIpcClient,
-  ServiceIpcClientOptions,
-  ServiceIpcRequestOptions,
+  HostWireClient,
+  HostWireClientOptions,
+  HostWireRequestOptions,
 } from "./transport-types.js";
 
 type Pending = {
   resolve: (value: unknown) => void;
-  reject: (error: ServiceIpcError) => void;
+  reject: (error: HostWireError) => void;
   timer: ReturnType<typeof setTimeout> | null;
   onAbort: (() => void) | null;
   signal: AbortSignal | null;
@@ -61,16 +61,16 @@ function clearPending(entry: Pending): void {
   entry.signal = null;
 }
 
-export async function connectServiceIpc(
+export async function connectHostWire(
   path: string,
-  options: ServiceIpcClientOptions = {},
-): Promise<ServiceIpcClient> {
+  options: HostWireClientOptions = {},
+): Promise<HostWireClient> {
   const connectTimeoutMs = options.connectTimeoutMs ?? 5_000;
   const defaultRequestTimeoutMs = options.requestTimeoutMs;
 
   let token: string;
   try {
-    token = await resolveServiceIpcToken(path, {
+    token = await resolveServiceHostToken(path, {
       token: options.token,
       tokenFile: options.tokenFile,
       dataDir: options.dataDir,
@@ -78,7 +78,7 @@ export async function connectServiceIpc(
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
     if (err && err.code === "ENOENT") {
-      throw serviceIpcError({
+      throw hostWireError({
         layer: "transport",
         code: "not_connected",
         message:
@@ -87,7 +87,7 @@ export async function connectServiceIpc(
             : "IPC token file missing (service not running)",
       });
     }
-    throw serviceIpcError({
+    throw hostWireError({
       layer: "auth",
       code: "token_missing",
       message: error instanceof Error ? error.message : String(error),
@@ -98,7 +98,7 @@ export async function connectServiceIpc(
     const timer = setTimeout(() => {
       conn.destroy();
       reject(
-        serviceIpcError({
+        hostWireError({
           layer: "transport",
           code: "timeout",
           message: `IPC connect timed out after ${connectTimeoutMs}ms`,
@@ -112,18 +112,18 @@ export async function connectServiceIpc(
     });
     conn.once("error", (error) => {
       clearTimeout(timer);
-      reject(mapNodeIpcErrno(error as NodeJS.ErrnoException, "connect"));
+      reject(mapNodeConnectErrno(error as NodeJS.ErrnoException, "connect"));
     });
   });
 
-  const reader = new ServiceIpcFrameReader();
+  const reader = new HostWireFrameReader();
   const pending = new Map<string, Pending>();
   const eventHandlers = new Map<string, Set<(payload: unknown) => void>>();
   let nextId = 1;
   let closed = false;
   let closing = false;
 
-  const failAll = (error: ServiceIpcError) => {
+  const failAll = (error: HostWireError) => {
     for (const [id, entry] of pending) {
       clearPending(entry);
       pending.delete(id);
@@ -137,13 +137,13 @@ export async function connectServiceIpc(
       messages = reader.push(chunk);
     } catch (error) {
       failAll(
-        error instanceof ServiceIpcFramingError
-          ? serviceIpcError({
+        error instanceof HostWireFramingError
+          ? hostWireError({
               layer: "transport",
               code: "framing",
               message: error.message,
             })
-          : serviceIpcError({
+          : hostWireError({
               layer: "transport",
               code: "framing",
               message: error instanceof Error ? error.message : String(error),
@@ -158,7 +158,7 @@ export async function connectServiceIpc(
         continue;
       }
       if (message.type === "evt") {
-        const evt = message as ServiceIpcEvent;
+        const evt = message as HostWireEvent;
         const handlers = eventHandlers.get(evt.event);
         if (handlers) {
           for (const handler of handlers) {
@@ -174,10 +174,10 @@ export async function connectServiceIpc(
       clearPending(wait);
       pending.delete(message.id);
       if (message.type === "res") {
-        wait.resolve((message as ServiceIpcResponse).result);
+        wait.resolve((message as HostWireResponse).result);
       } else {
         wait.reject(
-          serviceIpcError((message as ServiceIpcErrorResponse).error),
+          hostWireError((message as HostWireErrorResponse).error),
         );
       }
     }
@@ -189,7 +189,7 @@ export async function connectServiceIpc(
       return;
     }
     failAll(
-      serviceIpcError({
+      hostWireError({
         layer: "transport",
         code: "disconnected",
         message: closing
@@ -202,17 +202,17 @@ export async function connectServiceIpc(
   socket.on("error", (error) => {
     // Swallow after mapping: Node requires an error listener, and pending
     // requests are failed via failAll; avoid unhandled 'error' emissions.
-    failAll(mapNodeIpcErrno(error as NodeJS.ErrnoException, "socket"));
+    failAll(mapNodeConnectErrno(error as NodeJS.ErrnoException, "socket"));
   });
 
   const request = (
     method: string,
     params?: unknown,
-    requestOptions: ServiceIpcRequestOptions = {},
+    requestOptions: HostWireRequestOptions = {},
   ): Promise<unknown> => {
     if (closed) {
       return Promise.reject(
-        serviceIpcError({
+        hostWireError({
           layer: "transport",
           code: "not_connected",
           message: "IPC client is closed",
@@ -223,7 +223,7 @@ export async function connectServiceIpc(
     const signal = requestOptions.signal ?? null;
     if (signal?.aborted) {
       return Promise.reject(
-        serviceIpcError({
+        hostWireError({
           layer: "transport",
           code: "cancelled",
           message: "IPC request aborted before send",
@@ -232,8 +232,8 @@ export async function connectServiceIpc(
     }
 
     const id = String(nextId++);
-    const frame: ServiceIpcRequest = {
-      v: SERVICE_IPC_PROTOCOL_VERSION,
+    const frame: HostWireRequest = {
+      v: SERVICE_HOST_PROTOCOL_VERSION,
       id,
       type: "req",
       method,
@@ -264,7 +264,7 @@ export async function connectServiceIpc(
           clearPending(current);
           pending.delete(id);
           current.reject(
-            serviceIpcError({
+            hostWireError({
               layer: "transport",
               code: "timeout",
               message: `IPC request timed out after ${timeoutMs}ms (${method})`,
@@ -282,7 +282,7 @@ export async function connectServiceIpc(
           clearPending(current);
           pending.delete(id);
           current.reject(
-            serviceIpcError({
+            hostWireError({
               layer: "transport",
               code: "cancelled",
               message: `IPC request cancelled (${method})`,
@@ -296,7 +296,7 @@ export async function connectServiceIpc(
         }
       }
 
-      socket.write(encodeServiceIpcFrame(frame), (error) => {
+      socket.write(encodeHostWireFrame(frame), (error) => {
         if (!error) {
           return;
         }
@@ -307,13 +307,13 @@ export async function connectServiceIpc(
         clearPending(current);
         pending.delete(id);
         current.reject(
-          mapNodeIpcErrno(error as NodeJS.ErrnoException, "socket"),
+          mapNodeConnectErrno(error as NodeJS.ErrnoException, "socket"),
         );
       });
     });
   };
 
-  const client: ServiceIpcClient = {
+  const client: HostWireClient = {
     request,
     async ping(requestOptions) {
       return (await request("ping", undefined, requestOptions)) as {
@@ -326,7 +326,7 @@ export async function connectServiceIpc(
         "health",
         undefined,
         requestOptions,
-      )) as ServiceIpcHealthResult;
+      )) as ServiceHostHealthResult;
     },
     onEvent(event, handler) {
       let set = eventHandlers.get(event);
@@ -357,7 +357,7 @@ export async function connectServiceIpc(
   };
 
   try {
-    await request(SERVICE_IPC_AUTH_METHOD, { token });
+    await request(SERVICE_HOST_AUTH_METHOD, { token });
   } catch (error) {
     await client.close().catch(() => undefined);
     throw error;
@@ -366,4 +366,4 @@ export async function connectServiceIpc(
   return client;
 }
 
-export { ServiceIpcError };
+export { HostWireError };

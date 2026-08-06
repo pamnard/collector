@@ -1,7 +1,7 @@
 /**
- * Service IPC private-bus credential (#336).
+ * Service host private-bus credential (#336).
  *
- * IPC is a private host bus for first-party clients. External programs contact
+ * The local host wire is a private bus for first-party clients. External programs contact
  * Collector only via explicitly published surfaces (today: MCP). The host writes
  * a per-start token under dataDir; clients must `auth` before any other traffic.
  */
@@ -11,39 +11,39 @@ import { readFile, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { isWindowsNamedPipePath } from "./paths.js";
 
-export const SERVICE_IPC_TOKEN_FILENAME = "collector-service.ipc-token";
-export const SERVICE_IPC_AUTH_METHOD = "auth";
-export const SERVICE_IPC_TOKEN_ENV = "COLLECTOR_IPC_TOKEN";
+export const SERVICE_HOST_TOKEN_FILENAME = "collector-service.host-token";
+export const SERVICE_HOST_AUTH_METHOD = "auth";
+export const SERVICE_HOST_TOKEN_ENV = "COLLECTOR_HOST_TOKEN";
 
 const TOKEN_BYTES = 32;
 
-export function defaultServiceIpcTokenPath(dataDir: string): string {
-  return join(dataDir, SERVICE_IPC_TOKEN_FILENAME);
+export function defaultServiceHostTokenPath(dataDir: string): string {
+  return join(dataDir, SERVICE_HOST_TOKEN_FILENAME);
 }
 
 /** Sibling token file for a Unix socket named `collector-service.sock`. */
-export function siblingServiceIpcTokenPath(ipcPath: string): string | null {
+export function siblingServiceHostTokenPath(ipcPath: string): string | null {
   if (isWindowsNamedPipePath(ipcPath)) {
     return null;
   }
   if (basename(ipcPath) !== "collector-service.sock") {
     return null;
   }
-  return join(dirname(ipcPath), SERVICE_IPC_TOKEN_FILENAME);
+  return join(dirname(ipcPath), SERVICE_HOST_TOKEN_FILENAME);
 }
 
-export function generateServiceIpcToken(): string {
+export function generateServiceHostToken(): string {
   return randomBytes(TOKEN_BYTES).toString("base64url");
 }
 
-export async function writeServiceIpcTokenFile(
+export async function writeServiceHostTokenFile(
   tokenPath: string,
   token: string,
 ): Promise<void> {
   await writeFile(tokenPath, `${token}\n`, { encoding: "utf8", mode: 0o600 });
 }
 
-export async function readServiceIpcTokenFile(
+export async function readServiceHostTokenFile(
   tokenPath: string,
 ): Promise<string> {
   const raw = await readFile(tokenPath, "utf8");
@@ -54,7 +54,7 @@ export async function readServiceIpcTokenFile(
   return token;
 }
 
-export async function removeServiceIpcTokenFile(
+export async function removeServiceHostTokenFile(
   tokenPath: string,
 ): Promise<void> {
   await unlink(tokenPath).catch((error: NodeJS.ErrnoException) => {
@@ -81,7 +81,7 @@ export function extractAuthToken(params: unknown): string | null {
   return typeof token === "string" && token.length > 0 ? token : null;
 }
 
-export type ResolveServiceIpcTokenOptions = {
+export type ResolveServiceHostTokenOptions = {
   token?: string;
   tokenFile?: string;
   dataDir?: string;
@@ -91,56 +91,56 @@ export type ResolveServiceIpcTokenOptions = {
 
 /**
  * Resolve the IPC handshake token for a dialer.
- * Order: explicit token → tokenFile → COLLECTOR_IPC_TOKEN → dataDir file →
+ * Order: explicit token → tokenFile → COLLECTOR_HOST_TOKEN → dataDir file →
  * sibling of collector-service.sock.
  */
-export async function resolveServiceIpcToken(
+export async function resolveServiceHostToken(
   ipcPath: string,
-  options: ResolveServiceIpcTokenOptions = {},
+  options: ResolveServiceHostTokenOptions = {},
 ): Promise<string> {
   if (options.token !== undefined && options.token.length > 0) {
     return options.token;
   }
   if (options.tokenFile !== undefined) {
-    return readServiceIpcTokenFile(options.tokenFile);
+    return readServiceHostTokenFile(options.tokenFile);
   }
   const env = options.env ?? process.env;
-  const fromEnv = env[SERVICE_IPC_TOKEN_ENV];
+  const fromEnv = env[SERVICE_HOST_TOKEN_ENV];
   if (typeof fromEnv === "string" && fromEnv.trim().length > 0) {
     return fromEnv.trim();
   }
   if (options.dataDir !== undefined) {
     try {
-      return await readServiceIpcTokenFile(
-        defaultServiceIpcTokenPath(options.dataDir),
+      return await readServiceHostTokenFile(
+        defaultServiceHostTokenPath(options.dataDir),
       );
     } catch (error) {
       const err = error as NodeJS.ErrnoException;
       if (err && err.code === "ENOENT") {
         throw Object.assign(
           new Error(
-            `IPC token file missing (is the Collector service running?): ${defaultServiceIpcTokenPath(options.dataDir)}`,
+            `Host token file missing (is the Collector service running?): ${defaultServiceHostTokenPath(options.dataDir)}`,
           ),
           {
             code: "ENOENT",
             errno: err.errno,
-            path: defaultServiceIpcTokenPath(options.dataDir),
+            path: defaultServiceHostTokenPath(options.dataDir),
           },
         );
       }
       throw error;
     }
   }
-  const sibling = siblingServiceIpcTokenPath(ipcPath);
+  const sibling = siblingServiceHostTokenPath(ipcPath);
   if (sibling) {
     try {
-      return await readServiceIpcTokenFile(sibling);
+      return await readServiceHostTokenFile(sibling);
     } catch (error) {
       const err = error as NodeJS.ErrnoException;
       if (err && err.code === "ENOENT") {
         throw Object.assign(
           new Error(
-            `IPC token file missing (is the Collector service running?): ${sibling}`,
+            `Host token file missing (is the Collector service running?): ${sibling}`,
           ),
           { code: "ENOENT", errno: err.errno, path: sibling },
         );
@@ -150,10 +150,10 @@ export async function resolveServiceIpcToken(
   }
   if (isWindowsNamedPipePath(ipcPath)) {
     throw new Error(
-      "IPC auth token required for named pipe: pass dataDir, token, tokenFile, or COLLECTOR_IPC_TOKEN",
+      "Host auth token required for named pipe: pass dataDir, token, tokenFile, or COLLECTOR_HOST_TOKEN",
     );
   }
   throw new Error(
-    "IPC auth token required: pass dataDir, token, tokenFile, or COLLECTOR_IPC_TOKEN",
+    "Host auth token required: pass dataDir, token, tokenFile, or COLLECTOR_HOST_TOKEN",
   );
 }

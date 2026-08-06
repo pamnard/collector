@@ -3,11 +3,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { connectServiceIpc } from "./client.js";
-import { encodeServiceIpcFrame, SERVICE_IPC_PROTOCOL_VERSION } from "./framing.js";
-import { startServiceIpcServer } from "./server.js";
+import { connectHostWire } from "./client.js";
+import { encodeHostWireFrame, SERVICE_HOST_PROTOCOL_VERSION } from "./framing.js";
+import { startHostWireServer } from "./server.js";
 
-const TEST_TOKEN = "unit-test-ipc-token";
+const TEST_TOKEN = "unit-test-host-token";
 
 function tempDataDir(dirs: string[]): string {
   const dataDir = mkdtempSync(join(tmpdir(), "collector-ipc-"));
@@ -24,7 +24,7 @@ async function startTestServer(
     ) => Promise<unknown | undefined>;
   } = {},
 ) {
-  return startServiceIpcServer({
+  return startHostWireServer({
     dataDir,
     token: TEST_TOKEN,
     handler: {
@@ -54,7 +54,7 @@ describe("service IPC server/client", () => {
     const server = await startTestServer(dataDir);
 
     try {
-      const client = await connectServiceIpc(server.path, {
+      const client = await connectHostWire(server.path, {
         token: TEST_TOKEN,
       });
       try {
@@ -83,8 +83,8 @@ describe("service IPC server/client", () => {
       }>((resolve, reject) => {
         const socket = createConnection({ path: server.path }, () => {
           socket.write(
-            encodeServiceIpcFrame({
-              v: SERVICE_IPC_PROTOCOL_VERSION,
+            encodeHostWireFrame({
+              v: SERVICE_HOST_PROTOCOL_VERSION,
               id: "1",
               type: "req",
               method: "ping",
@@ -117,7 +117,7 @@ describe("service IPC server/client", () => {
 
     try {
       await expect(
-        connectServiceIpc(server.path, { token: "wrong-token" }),
+        connectHostWire(server.path, { token: "wrong-token" }),
       ).rejects.toMatchObject({
         layer: "auth",
         code: "auth_failed",
@@ -144,7 +144,7 @@ describe("service IPC server/client", () => {
       });
       expect(gotEvent).toBe(false);
 
-      const client = await connectServiceIpc(server.path, {
+      const client = await connectHostWire(server.path, {
         token: TEST_TOKEN,
       });
       try {
@@ -173,7 +173,7 @@ describe("service IPC server/client", () => {
         const socket = createConnection({ path: server.path }, () => {
           const authBody = Buffer.from(
             JSON.stringify({
-              v: SERVICE_IPC_PROTOCOL_VERSION,
+              v: SERVICE_HOST_PROTOCOL_VERSION,
               id: "a",
               type: "req",
               method: "auth",
@@ -187,7 +187,7 @@ describe("service IPC server/client", () => {
 
           const body = Buffer.from(
             JSON.stringify({
-              v: SERVICE_IPC_PROTOCOL_VERSION + 99,
+              v: SERVICE_HOST_PROTOCOL_VERSION + 99,
               id: "x",
               type: "req",
               method: "ping",

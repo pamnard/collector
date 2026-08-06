@@ -7,7 +7,7 @@ import type {
 } from "@collector/api";
 import { itemCoverPath } from "@collector/core";
 import type { ItemFile } from "@collector/shared";
-import type { ServiceIpcClient } from "@collector/service/ipc";
+import type { HostWireClient } from "@collector/service/wire";
 
 /**
  * Legacy FM thumbnail path helper. Cover SoT is on-disk `media/<uuid>/cover.webp`
@@ -36,7 +36,7 @@ export function resolveThumbnailCandidate(
 }
 
 export function createNodeThumbnailPaths(
-  transport: ServiceIpcClient,
+  transport: HostWireClient,
 ): UiSessionThumbnailPaths {
   const resolveItemThumbnailPathsProgressive = async (
     items: ItemFile[],

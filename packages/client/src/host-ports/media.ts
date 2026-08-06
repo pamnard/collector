@@ -5,9 +5,9 @@ import type {
 } from "@collector/api";
 import type { ItemFile, MediaFileMeta } from "@collector/shared";
 import { bytesToBase64 } from "../bytes-to-base64.js";
-import type { IpcSessionCtx } from "../ipc-session-ctx.js";
+import type { HostSessionCtx } from "../host-session-ctx.js";
 
-export function createIpcMediaPort(ctx: IpcSessionCtx): MediaPort {
+export function createHostMediaPort(ctx: HostSessionCtx): MediaPort {
   const { transport, thumbnails } = ctx;
   return {
     listItemMedia: async (itemId: string): Promise<MediaWithPath[]> =>

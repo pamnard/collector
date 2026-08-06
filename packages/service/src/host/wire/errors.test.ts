@@ -3,26 +3,26 @@ import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { connectServiceIpc } from "./client.js";
+import { connectHostWire } from "./client.js";
 import {
-  ServiceIpcError,
+  HostWireError,
   getCollectorApiError,
   mapHandlerThrownToApiError,
-  mapNodeIpcErrno,
-  serviceIpcError,
+  mapNodeConnectErrno,
+  hostWireError,
 } from "./errors.js";
-import { encodeServiceIpcFrame } from "./framing.js";
-import { startServiceIpcServer } from "./server.js";
+import { encodeHostWireFrame } from "./framing.js";
+import { startHostWireServer } from "./server.js";
 
-const TEST_TOKEN = "unit-test-ipc-token";
+const TEST_TOKEN = "unit-test-host-token";
 
 describe("IPC error mapping helpers", () => {
   it("maps connect errno to not_connected", () => {
-    const err = mapNodeIpcErrno(
+    const err = mapNodeConnectErrno(
       Object.assign(new Error("nope"), { code: "ECONNREFUSED" }),
       "connect",
     );
-    expect(err).toBeInstanceOf(ServiceIpcError);
+    expect(err).toBeInstanceOf(HostWireError);
     expect(err.collectorError).toEqual({
       layer: "transport",
       code: "not_connected",
@@ -31,7 +31,7 @@ describe("IPC error mapping helpers", () => {
   });
 
   it("preserves thrown CollectorApiError from handlers", () => {
-    const thrown = serviceIpcError({
+    const thrown = hostWireError({
       layer: "domain",
       code: "index_unhealthy",
       message: "index bad",
@@ -64,7 +64,7 @@ describe("IPC failure modes over the wire", () => {
   }
 
   it("request timeout → transport timeout", async () => {
-    const server = await startServiceIpcServer({
+    const server = await startHostWireServer({
       dataDir: tempDir(),
       token: TEST_TOKEN,
       handler: {
@@ -77,12 +77,12 @@ describe("IPC failure modes over the wire", () => {
     });
 
     try {
-      const client = await connectServiceIpc(server.path, {
+      const client = await connectHostWire(server.path, {
         token: TEST_TOKEN,
       });
       try {
         await expect(client.health({ timeoutMs: 50 })).rejects.toMatchObject({
-          name: "ServiceIpcError",
+          name: "HostWireError",
           code: "timeout",
           layer: "transport",
         });
@@ -95,7 +95,7 @@ describe("IPC failure modes over the wire", () => {
   });
 
   it("AbortSignal → transport cancelled", async () => {
-    const server = await startServiceIpcServer({
+    const server = await startHostWireServer({
       dataDir: tempDir(),
       token: TEST_TOKEN,
       handler: {
@@ -108,7 +108,7 @@ describe("IPC failure modes over the wire", () => {
     });
 
     try {
-      const client = await connectServiceIpc(server.path, {
+      const client = await connectHostWire(server.path, {
         token: TEST_TOKEN,
       });
       try {
@@ -128,7 +128,7 @@ describe("IPC failure modes over the wire", () => {
   });
 
   it("peer disconnect mid-request → transport disconnected", async () => {
-    const server = await startServiceIpcServer({
+    const server = await startHostWireServer({
       dataDir: tempDir(),
       token: TEST_TOKEN,
       handler: {
@@ -140,7 +140,7 @@ describe("IPC failure modes over the wire", () => {
       },
     });
 
-    const client = await connectServiceIpc(server.path, { token: TEST_TOKEN });
+    const client = await connectHostWire(server.path, { token: TEST_TOKEN });
     const outcome = client.health({ timeoutMs: 5_000 }).then(
       (value) => ({ ok: true as const, value }),
       (error: unknown) => ({ ok: false as const, error }),
@@ -151,13 +151,13 @@ describe("IPC failure modes over the wire", () => {
     if (result.ok) {
       throw new Error("expected disconnect failure");
     }
-    expect(result.error).toBeInstanceOf(ServiceIpcError);
+    expect(result.error).toBeInstanceOf(HostWireError);
     expect(getCollectorApiError(result.error)?.code).toBe("disconnected");
     expect(getCollectorApiError(result.error)?.layer).toBe("transport");
   });
 
   it("closed client → not_connected", async () => {
-    const server = await startServiceIpcServer({
+    const server = await startHostWireServer({
       dataDir: tempDir(),
       token: TEST_TOKEN,
       handler: {
@@ -172,7 +172,7 @@ describe("IPC failure modes over the wire", () => {
     });
 
     try {
-      const client = await connectServiceIpc(server.path, {
+      const client = await connectHostWire(server.path, {
         token: TEST_TOKEN,
       });
       await client.close();
@@ -188,7 +188,7 @@ describe("IPC failure modes over the wire", () => {
   it("connect to missing endpoint → not_connected", async () => {
     const missing = join(tempDir(), "missing.sock");
     await expect(
-      connectServiceIpc(missing, {
+      connectHostWire(missing, {
         connectTimeoutMs: 500,
         token: TEST_TOKEN,
       }),
@@ -199,13 +199,13 @@ describe("IPC failure modes over the wire", () => {
   });
 
   it("domain error from handler is returned as err frame", async () => {
-    const server = await startServiceIpcServer({
+    const server = await startHostWireServer({
       dataDir: tempDir(),
       token: TEST_TOKEN,
       handler: {
         ping: () => ({ ok: true, pong: true }),
         health: () => {
-          throw serviceIpcError({
+          throw hostWireError({
             layer: "domain",
             code: "index_unhealthy",
             message: "rebuild required",
@@ -215,7 +215,7 @@ describe("IPC failure modes over the wire", () => {
     });
 
     try {
-      const client = await connectServiceIpc(server.path, {
+      const client = await connectHostWire(server.path, {
         token: TEST_TOKEN,
       });
       try {
@@ -233,7 +233,7 @@ describe("IPC failure modes over the wire", () => {
   });
 
   it("unknown method → validation unknown_method", async () => {
-    const server = await startServiceIpcServer({
+    const server = await startHostWireServer({
       dataDir: tempDir(),
       token: TEST_TOKEN,
       handler: {
@@ -254,7 +254,7 @@ describe("IPC failure modes over the wire", () => {
       }>((resolve, reject) => {
         const socket = createConnection({ path: server.path }, () => {
           socket.write(
-            encodeServiceIpcFrame({
+            encodeHostWireFrame({
               v: 1,
               id: "a",
               type: "req",
@@ -263,7 +263,7 @@ describe("IPC failure modes over the wire", () => {
             }),
           );
           socket.write(
-            encodeServiceIpcFrame({
+            encodeHostWireFrame({
               v: 1,
               id: "u",
               type: "req",

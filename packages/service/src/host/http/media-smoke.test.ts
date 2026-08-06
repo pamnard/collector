@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { vaultsRoot } from "@collector/core";
-import { defaultServiceIpcTokenPath } from "../ipc/auth.js";
+import { defaultServiceHostTokenPath } from "../wire/auth.js";
 import { startServiceHost } from "../service-host.js";
 
 describe("host media accept smoke (#553)", () => {
@@ -33,7 +33,7 @@ describe("host media accept smoke (#553)", () => {
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
       const token = readFileSync(
-        defaultServiceIpcTokenPath(dataDir),
+        defaultServiceHostTokenPath(dataDir),
         "utf8",
       ).trim();
       const root = vaultsRoot(dataDir);

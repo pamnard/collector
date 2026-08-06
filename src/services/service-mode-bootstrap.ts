@@ -9,15 +9,15 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import {
-  createIpcCollectorService,
-  createIpcUiSession,
-} from "./ipc-adapter";
+  createTauriDesktopCollectorService,
+  createTauriDesktopUiSession,
+} from "./tauri-desktop-adapter";
 import { createHttpUiCutover } from "./http-adapter";
 import { setCollectorService } from "./collector-client";
 import { getCollectorProfileLayout } from "./profile-layout";
-import { createTauriServiceIpcTransport } from "./tauri-service-ipc-transport";
+import { createTauriHostWireTransport } from "./tauri-host-transport";
 
-export type BootstrapCutoverResult = "ipc" | "web" | "host";
+export type BootstrapCutoverResult = "tauri" | "web" | "host";
 
 function isTauriRuntime(): boolean {
   return (
@@ -57,20 +57,20 @@ export async function bootstrapServiceModeCutover(): Promise<BootstrapCutoverRes
   const enabled = await invoke<boolean>("service_mode_is_enabled");
   if (!enabled) {
     throw new Error(
-      "COLLECTOR_SERVICE_MODE=0 is unsupported (#332); desktop UI requires service IPC",
+      "COLLECTOR_SERVICE_MODE=0 is unsupported (#332); desktop UI requires the domain host",
     );
   }
 
   const layout = await getCollectorProfileLayout();
-  const ipcPath = await invoke<string>("service_mode_bootstrap", {
+  const socketPath = await invoke<string>("service_mode_bootstrap", {
     dataDir: layout.dataDir,
     configDir: layout.configDir,
   });
-  const transport = await createTauriServiceIpcTransport(
-    ipcPath,
+  const transport = await createTauriHostWireTransport(
+    socketPath,
     layout.dataDir,
   );
-  const service = createIpcCollectorService(transport);
-  setCollectorService(service, createIpcUiSession(transport, service));
-  return "ipc";
+  const service = createTauriDesktopCollectorService(transport);
+  setCollectorService(service, createTauriDesktopUiSession(transport, service));
+  return "tauri";
 }

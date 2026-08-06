@@ -1,8 +1,8 @@
 import type { SyncNowResult, SyncPluginsPort } from "@collector/api";
-import type { IpcSessionCtx } from "../ipc-session-ctx.js";
+import type { HostSessionCtx } from "../host-session-ctx.js";
 
-export function createIpcSyncPluginsPort(
-  ctx: IpcSessionCtx,
+export function createHostSyncPluginsPort(
+  ctx: HostSessionCtx,
 ): SyncPluginsPort {
   const { transport } = ctx;
   return {

@@ -1,7 +1,7 @@
 /**
- * UiSession thumbnail path resolution (#368) — desktop FS / dev-mock / host cover bridge (#553).
+ * UiSession thumbnail path resolution (#368) — desktop FS / dev-mock / legacy cover bridge.
  * Progressive emit + bounded parallel resolve (#544).
- * Full host-side disk resolve (exists + first gallery image) is #552.
+ * Browser+host cutover uses createHostThumbnailsPort (#552), not this module.
  */
 
 import type {

@@ -1,23 +1,23 @@
 /**
- * Browser-safe IPC surface for UI / Vite (#240).
+ * Browser-safe host wire surface for UI / Vite (#240).
  * Do not add `node:*` imports here.
  */
 
 export {
-  SERVICE_IPC_PROTOCOL_VERSION,
-  SERVICE_IPC_EVENTS,
-  type ServiceIpcHealthResult,
-} from "./host/ipc/framing.js";
+  SERVICE_HOST_PROTOCOL_VERSION,
+  SERVICE_HOST_EVENTS,
+  type ServiceHostHealthResult,
+} from "./host/wire/framing.js";
 
 export type {
-  ServiceIpcClient,
-  ServiceIpcClientOptions,
-  ServiceIpcRequestOptions,
-} from "./host/ipc/transport-types.js";
+  HostWireClient,
+  HostWireClientOptions,
+  HostWireRequestOptions,
+} from "./host/wire/transport-types.js";
 
 export {
-  ServiceIpcError,
+  HostWireError,
   getCollectorApiError,
-  isServiceIpcError,
-  serviceIpcError,
-} from "./host/ipc/errors.js";
+  isHostWireError,
+  hostWireError,
+} from "./host/wire/errors.js";

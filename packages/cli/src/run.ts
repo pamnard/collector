@@ -3,10 +3,10 @@
  * Never opens SQLite — dials the running local service only.
  */
 
-import { connectCollectorIpcService } from "@collector/client/node";
+import { connectCollectorHostService } from "@collector/client/node";
 import {
-  defaultServiceIpcPath,
-  isServiceIpcError,
+  defaultHostWirePath,
+  isHostWireError,
 } from "@collector/service/host";
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
@@ -21,12 +21,12 @@ function resolveIpcPath(args: ParsedCliArgs): string {
   if (args.dataDir === undefined) {
     throw new CliUsageError("missing endpoint");
   }
-  return defaultServiceIpcPath(args.dataDir);
+  return defaultHostWirePath(args.dataDir);
 }
 
 function formatConnectFailure(error: unknown, ipcPath: string): string {
   if (
-    isServiceIpcError(error) &&
+    isHostWireError(error) &&
     (error.code === "not_connected" || error.code === "token_missing")
   ) {
     return `Collector service is not running (IPC ${ipcPath}): ${error.message}`;
@@ -57,7 +57,7 @@ export async function runCollectorCli(
   const ipcPath = resolveIpcPath(args);
   let client;
   try {
-    client = await connectCollectorIpcService(ipcPath, {
+    client = await connectCollectorHostService(ipcPath, {
       connectTimeoutMs: 2_000,
       ...(args.dataDir === undefined ? {} : { dataDir: args.dataDir }),
       ...(args.token === undefined ? {} : { token: args.token }),
@@ -221,7 +221,7 @@ export async function runCollectorCli(
     const _exhaustive: never = cmd;
     throw new Error(`unhandled command: ${JSON.stringify(_exhaustive)}`);
   } catch (error) {
-    if (isServiceIpcError(error)) {
+    if (isHostWireError(error)) {
       io.stderr(`${error.code}: ${error.message}`);
       return 1;
     }

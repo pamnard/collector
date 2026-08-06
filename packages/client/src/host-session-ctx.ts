@@ -4,8 +4,8 @@ import type {
   VaultIndexSyncStatus,
 } from "@collector/api";
 import type { AppSettings, ItemFile } from "@collector/shared";
-import type { ServiceIpcClient } from "@collector/service/ipc";
-import type { CollectorIpcClientOptions } from "./ipc-client-types.js";
+import type { HostWireClient } from "@collector/service/wire";
+import type { CollectorHostClientOptions } from "./host-client-types.js";
 
 function createNullThumbnailPaths(): UiSessionThumbnailPaths {
   return {
@@ -29,17 +29,17 @@ function createNullThumbnailPaths(): UiSessionThumbnailPaths {
 }
 
 /** Shared mutable session for domain port factories (#383). */
-export type IpcSessionCtx = {
-  transport: ServiceIpcClient;
+export type HostSessionCtx = {
+  transport: HostWireClient;
   thumbnails: UiSessionThumbnailPaths;
   cachedSyncStatus: VaultIndexSyncStatus;
   settingsCache: AppSettings | null;
 };
 
-export function createIpcSessionCtx(
-  transport: ServiceIpcClient,
-  options: CollectorIpcClientOptions = {},
-): IpcSessionCtx {
+export function createHostSessionCtx(
+  transport: HostWireClient,
+  options: CollectorHostClientOptions = {},
+): HostSessionCtx {
   return {
     transport,
     thumbnails: options.thumbnails ?? createNullThumbnailPaths(),

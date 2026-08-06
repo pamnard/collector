@@ -6,8 +6,8 @@
  */
 
 import {
-  defaultServiceIpcTokenPath,
-  readServiceIpcTokenFile,
+  defaultServiceHostTokenPath,
+  readServiceHostTokenFile,
 } from "@collector/service/host";
 
 export class McpEndpointError extends Error {
@@ -84,9 +84,9 @@ export async function resolveMcpHostEndpoint(
   }
 
   const dataDir = options.dataDir.trim();
-  const tokenPath = defaultServiceIpcTokenPath(dataDir);
+  const tokenPath = defaultServiceHostTokenPath(dataDir);
   try {
-    const token = await readServiceIpcTokenFile(tokenPath);
+    const token = await readServiceHostTokenFile(tokenPath);
     return { baseUrl, token, dataDir };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -2,53 +2,53 @@ import type {
   CollectorService,
   DashboardSnapshotPort,
 } from "@collector/api";
-import type { ServiceIpcClient } from "@collector/service/ipc";
+import type { HostWireClient } from "@collector/service/wire";
 import type {
-  CollectorIpcClientOptions,
-  CollectorIpcTransportExtras,
-} from "./ipc-client-types.js";
-import { createIpcSessionCtx } from "./ipc-session-ctx.js";
+  CollectorHostClientOptions,
+  CollectorHostTransportExtras,
+} from "./host-client-types.js";
+import { createHostSessionCtx } from "./host-session-ctx.js";
 import { createMemoryDashboardSnapshotPort } from "./memory-dashboard-snapshot-port.js";
-import { createIpcTransportExtras } from "./transport-extras.js";
-import { createIpcBootPort } from "./ipc-ports/boot.js";
-import { createIpcItemsPort } from "./ipc-ports/items.js";
-import { createIpcTagsPort } from "./ipc-ports/tags.js";
-import { createIpcFoldersPort } from "./ipc-ports/folders.js";
-import { createIpcMediaPort } from "./ipc-ports/media.js";
-import { createIpcVaultsPort } from "./ipc-ports/vaults.js";
-import { createIpcIndexPort } from "./ipc-ports/index.js";
-import { createIpcSettingsPort } from "./ipc-ports/settings.js";
-import { createIpcCredentialsPort } from "./ipc-ports/credentials.js";
-import { createIpcSyncPluginsPort } from "./ipc-ports/sync-plugins.js";
-import { createIpcTelegramSyncPort } from "./ipc-ports/telegram-sync.js";
+import { createHostTransportExtras } from "./transport-extras.js";
+import { createHostBootPort } from "./host-ports/boot.js";
+import { createHostItemsPort } from "./host-ports/items.js";
+import { createHostTagsPort } from "./host-ports/tags.js";
+import { createHostFoldersPort } from "./host-ports/folders.js";
+import { createHostMediaPort } from "./host-ports/media.js";
+import { createHostVaultsPort } from "./host-ports/vaults.js";
+import { createHostIndexPort } from "./host-ports/index.js";
+import { createHostSettingsPort } from "./host-ports/settings.js";
+import { createHostCredentialsPort } from "./host-ports/credentials.js";
+import { createHostSyncPluginsPort } from "./host-ports/sync-plugins.js";
+import { createHostTelegramSyncPort } from "./host-ports/telegram-sync.js";
 
-export type IpcBacking = {
+export type HostBacking = {
   service: CollectorService;
   snapshot: DashboardSnapshotPort;
-  extras: CollectorIpcTransportExtras;
+  extras: CollectorHostTransportExtras;
 };
 
 /**
  * Shared transport session: one cache set for ports + snapshot + extras (#366 / #368 / #383).
  */
-export function createIpcBacking(
-  transport: ServiceIpcClient,
-  options: CollectorIpcClientOptions = {},
-): IpcBacking {
-  const ctx = createIpcSessionCtx(transport, options);
-  const extras = createIpcTransportExtras(transport);
+export function createHostBacking(
+  transport: HostWireClient,
+  options: CollectorHostClientOptions = {},
+): HostBacking {
+  const ctx = createHostSessionCtx(transport, options);
+  const extras = createHostTransportExtras(transport);
   const service: CollectorService = {
-    boot: createIpcBootPort(ctx),
-    items: createIpcItemsPort(ctx),
-    tags: createIpcTagsPort(ctx),
-    folders: createIpcFoldersPort(ctx),
-    media: createIpcMediaPort(ctx),
-    vaults: createIpcVaultsPort(ctx),
-    index: createIpcIndexPort(ctx),
-    settings: createIpcSettingsPort(ctx),
-    credentials: createIpcCredentialsPort(ctx),
-    syncPlugins: createIpcSyncPluginsPort(ctx),
-    telegramSync: createIpcTelegramSyncPort(ctx),
+    boot: createHostBootPort(ctx),
+    items: createHostItemsPort(ctx),
+    tags: createHostTagsPort(ctx),
+    folders: createHostFoldersPort(ctx),
+    media: createHostMediaPort(ctx),
+    vaults: createHostVaultsPort(ctx),
+    index: createHostIndexPort(ctx),
+    settings: createHostSettingsPort(ctx),
+    credentials: createHostCredentialsPort(ctx),
+    syncPlugins: createHostSyncPluginsPort(ctx),
+    telegramSync: createHostTelegramSyncPort(ctx),
   };
   const snapshot = options.snapshot ?? createMemoryDashboardSnapshotPort();
   return { service, snapshot, extras };

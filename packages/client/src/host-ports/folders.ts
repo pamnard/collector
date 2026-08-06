@@ -9,9 +9,9 @@ import {
   subscriptionFromTeardown,
 } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
-import type { IpcSessionCtx } from "../ipc-session-ctx.js";
+import type { HostSessionCtx } from "../host-session-ctx.js";
 
-export function createIpcFoldersPort(ctx: IpcSessionCtx): FoldersPort {
+export function createHostFoldersPort(ctx: HostSessionCtx): FoldersPort {
   const { transport } = ctx;
   return {
     subscribeFolderTree(

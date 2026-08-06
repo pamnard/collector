@@ -1,10 +1,10 @@
 /**
  * HTTP Bearer auth for domain host surfaces (#551).
- * Same host token as the local dial token file / COLLECTOR_IPC_TOKEN.
+ * Same host token as the local dial token file / COLLECTOR_HOST_TOKEN.
  */
 
 import type { IncomingMessage } from "node:http";
-import { tokensEqual } from "../ipc/auth.js";
+import { tokensEqual } from "../wire/auth.js";
 
 export function extractBearerToken(req: IncomingMessage): string | null {
   const header = req.headers.authorization;

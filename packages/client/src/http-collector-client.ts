@@ -3,14 +3,14 @@
  */
 
 import type { CollectorService } from "@collector/api";
-import { createCollectorIpcService } from "./ipc-collector-client.js";
+import { createCollectorHostService } from "./host-collector-client.js";
 import {
   createHttpHostTransport,
   type HttpHostTransportOptions,
 } from "./http-host-transport.js";
-import type { CollectorIpcClientOptions } from "./ipc-client-types.js";
+import type { CollectorHostClientOptions } from "./host-client-types.js";
 
-export type CreateHttpCollectorServiceOptions = CollectorIpcClientOptions &
+export type CreateHttpCollectorServiceOptions = CollectorHostClientOptions &
   Omit<HttpHostTransportOptions, "baseUrl" | "token">;
 
 /**
@@ -27,7 +27,7 @@ export async function createHttpCollectorService(
     token,
     ...transportOptions,
   });
-  return createCollectorIpcService(transport, { snapshot, thumbnails });
+  return createCollectorHostService(transport, { snapshot, thumbnails });
 }
 
 export {

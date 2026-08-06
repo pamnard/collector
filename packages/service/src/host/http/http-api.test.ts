@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 import { vaultsRoot } from "@collector/core";
-import { defaultServiceIpcTokenPath } from "../ipc/auth.js";
+import { defaultServiceHostTokenPath } from "../wire/auth.js";
 import {
   formatServiceHostReadyLine,
   SERVICE_HOST_READY_PREFIX,
@@ -36,7 +36,7 @@ describe("host HTTP RPC + events (#551)", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     const token = readFileSync(
-      defaultServiceIpcTokenPath(dataDir),
+      defaultServiceHostTokenPath(dataDir),
       "utf8",
     ).trim();
     return { host, token, dataDir };
@@ -202,6 +202,128 @@ describe("host HTTP RPC + events (#551)", () => {
     }
   });
 
+  it("POST /api/rpc ensure/persist/clear dashboard snapshot (#552)", async () => {
+    const { host, token } = await start();
+    try {
+      const headers = {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      };
+      const ensureRes = await fetch(`${host.baseUrl}/api/rpc`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          id: "1",
+          method: "ensureDashboardSnapshot",
+        }),
+      });
+      expect(ensureRes.status).toBe(200);
+      const ensureBody = (await ensureRes.json()) as {
+        result?: unknown;
+        error?: unknown;
+      };
+      expect(ensureBody.error).toBeUndefined();
+      expect(ensureBody.result === null || typeof ensureBody.result === "object").toBe(
+        true,
+      );
+
+      const snapshot = {
+        schema_version: 2,
+        vault_id: "00000000-0000-4000-8000-000000000099",
+        nav_filter: "all",
+        search: "",
+        sort_key: "created_at",
+        sort_dir: "desc",
+        item_ids: [],
+        items: [],
+        total_count: 0,
+        stream_end_offset: 0,
+        cover_paths: {},
+        saved_at: "2026-08-06T00:00:00.000Z",
+      };
+      const persistRes = await fetch(`${host.baseUrl}/api/rpc`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          id: "2",
+          method: "persistDashboardSnapshot",
+          params: { snapshot },
+        }),
+      });
+      expect(persistRes.status).toBe(200);
+      const persistBody = (await persistRes.json()) as { error?: unknown };
+      expect(persistBody.error).toBeUndefined();
+
+      const reloadRes = await fetch(`${host.baseUrl}/api/rpc`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          id: "3",
+          method: "ensureDashboardSnapshot",
+        }),
+      });
+      const reloadBody = (await reloadRes.json()) as {
+        result?: { vault_id?: string };
+        error?: unknown;
+      };
+      expect(reloadBody.error).toBeUndefined();
+      expect(reloadBody.result?.vault_id).toBe(snapshot.vault_id);
+
+      const clearRes = await fetch(`${host.baseUrl}/api/rpc`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          id: "4",
+          method: "clearDashboardSnapshot",
+        }),
+      });
+      expect(clearRes.status).toBe(200);
+    } finally {
+      await host.close();
+    }
+  });
+
+  it("POST /api/rpc resolveItemThumbnailPaths returns wire rows (#552)", async () => {
+    const { host, token } = await start();
+    try {
+      const res = await fetch(`${host.baseUrl}/api/rpc`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          id: "thumbs",
+          method: "resolveItemThumbnailPaths",
+          params: {
+            items: [
+              {
+                id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.md",
+                thumbnail: null,
+              },
+            ],
+          },
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        result?: Array<{ id: string; path: string | null }>;
+        error?: unknown;
+      };
+      expect(body.error).toBeUndefined();
+      expect(Array.isArray(body.result)).toBe(true);
+      expect(body.result?.[0]?.id).toBe(
+        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.md",
+      );
+      expect(
+        body.result?.[0]?.path === null ||
+          typeof body.result?.[0]?.path === "string",
+      ).toBe(true);
+    } finally {
+      await host.close();
+    }
+  });
+
   it("closes WS when auth token is wrong", async () => {
     const { host } = await start();
     try {
@@ -250,7 +372,7 @@ describe("host HTTP media (#553)", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     const token = readFileSync(
-      defaultServiceIpcTokenPath(dataDir),
+      defaultServiceHostTokenPath(dataDir),
       "utf8",
     ).trim();
     return { host, token, dataDir };
