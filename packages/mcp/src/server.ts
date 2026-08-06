@@ -3,7 +3,7 @@
  * Thin adapter only — never opens SQLite.
  */
 
-import type { CollectorIpcServiceClient } from "@collector/client";
+import type { CollectorHostServiceClient } from "@collector/client";
 import { CONTENT_TYPES } from "@collector/shared";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { readFile } from "node:fs/promises";
@@ -73,7 +73,7 @@ async function resolveMediaFileInput(args: {
  * Build an MCP server whose tools call the living domain host (HTTP client).
  */
 export function createCollectorMcpServer(
-  client: CollectorIpcServiceClient,
+  client: CollectorHostServiceClient,
 ): McpServer {
   const server = new McpServer({
     name: "collector",

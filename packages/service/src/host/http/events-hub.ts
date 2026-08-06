@@ -5,11 +5,11 @@
 
 import type { IncomingMessage, Server as HttpServer } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
-import { tokensEqual } from "../ipc/auth.js";
-import { SERVICE_IPC_EVENTS } from "../ipc/framing.js";
+import { tokensEqual } from "../wire/auth.js";
+import { SERVICE_HOST_EVENTS } from "../wire/framing.js";
 
 export type HostHttpEventName =
-  (typeof SERVICE_IPC_EVENTS)[keyof typeof SERVICE_IPC_EVENTS];
+  (typeof SERVICE_HOST_EVENTS)[keyof typeof SERVICE_HOST_EVENTS];
 
 type AuthedSocket = {
   socket: WebSocket;
@@ -128,4 +128,4 @@ export function createHostHttpEventsHub(options: {
   };
 }
 
-export { SERVICE_IPC_EVENTS as HOST_HTTP_EVENTS };
+export { SERVICE_HOST_EVENTS as HOST_HTTP_EVENTS };

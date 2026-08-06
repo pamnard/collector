@@ -7,10 +7,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  SERVICE_IPC_EVENTS,
+  SERVICE_HOST_EVENTS,
   startServiceHost,
 } from "@collector/service/host";
-import { defaultServiceIpcTokenPath } from "@collector/service/host";
+import { defaultServiceHostTokenPath } from "@collector/service/host";
 import {
   createHttpCollectorService,
   createHttpHostTransport,
@@ -30,7 +30,7 @@ describe("HTTP host transport (#551)", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     const token = readFileSync(
-      defaultServiceIpcTokenPath(dataDir),
+      defaultServiceHostTokenPath(dataDir),
       "utf8",
     ).trim();
     return { host, token, dataDir };
@@ -65,7 +65,7 @@ describe("HTTP host transport (#551)", () => {
           () => reject(new Error("appSettings timeout")),
           5_000,
         );
-        transport.onEvent(SERVICE_IPC_EVENTS.appSettings, (payload) => {
+        transport.onEvent(SERVICE_HOST_EVENTS.appSettings, (payload) => {
           clearTimeout(timer);
           resolve(payload);
         });

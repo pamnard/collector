@@ -4,11 +4,11 @@
  */
 
 export {
-  connectCollectorIpcService,
-  createCollectorIpcDashboardSnapshotPort,
-  createCollectorIpcService,
-  createCollectorIpcServiceClient,
-  type CollectorIpcClientOptions,
-  type CollectorIpcServiceClient,
-  type ServiceIpcHealthResult,
-} from "./ipc-collector-client-node.js";
+  connectCollectorHostService,
+  createCollectorHostDashboardSnapshotPort,
+  createCollectorHostService,
+  createCollectorHostServiceClient,
+  type CollectorHostClientOptions,
+  type CollectorHostServiceClient,
+  type ServiceHostHealthResult,
+} from "./host-collector-client-node.js";

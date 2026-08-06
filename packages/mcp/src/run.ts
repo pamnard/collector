@@ -4,10 +4,10 @@
  */
 
 import {
-  createCollectorIpcServiceClient,
+  createCollectorHostServiceClient,
   createHttpHostTransport,
 } from "@collector/client";
-import { isServiceIpcError } from "@collector/service/host";
+import { isHostWireError } from "@collector/service/host";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   McpEndpointError,
@@ -23,7 +23,7 @@ export type RunCollectorMcpIo = {
 
 function formatConnectFailure(error: unknown, baseUrl: string): string {
   if (
-    isServiceIpcError(error) &&
+    isHostWireError(error) &&
     (error.code === "not_connected" ||
       error.code === "token_missing" ||
       error.code === "auth_failed")
@@ -65,7 +65,7 @@ export async function runCollectorMcp(
       token: endpoint.token,
       connectTimeoutMs: 2_000,
     });
-    client = createCollectorIpcServiceClient(transport);
+    client = createCollectorHostServiceClient(transport);
   } catch (error) {
     io.stderr(formatConnectFailure(error, endpoint.baseUrl));
     return 1;

@@ -1,18 +1,18 @@
 import type { DashboardSnapshotPort } from "@collector/api";
 import { createDashboardSnapshotService } from "@collector/service";
-import type { ServiceIpcClient } from "@collector/service/ipc";
-import { createCollectorIpcDashboardSnapshotPort } from "./ipc-collector-client.js";
+import type { HostWireClient } from "@collector/service/wire";
+import { createCollectorHostDashboardSnapshotPort } from "./host-collector-client.js";
 import { createNodeFileSystemAdapter } from "./node-fs-adapter.js";
 
 const nodeSnapshotByTransport = new WeakMap<
-  ServiceIpcClient,
+  HostWireClient,
   Promise<DashboardSnapshotPort>
 >();
 
-const pureSnapshot = createCollectorIpcDashboardSnapshotPort();
+const pureSnapshot = createCollectorHostDashboardSnapshotPort();
 
 export function createNodeSnapshotPort(
-  transport: ServiceIpcClient,
+  transport: HostWireClient,
 ): DashboardSnapshotPort {
   const getService = (): Promise<DashboardSnapshotPort> => {
     let pending = nodeSnapshotByTransport.get(transport);

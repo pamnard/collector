@@ -7,8 +7,8 @@ import {
   formatServiceHostReadyLine,
   startServiceHost,
 } from "./service-host.js";
-import { connectServiceIpc } from "./ipc/client.js";
-import { defaultServiceIpcTokenPath } from "./ipc/auth.js";
+import { connectHostWire } from "./wire/client.js";
+import { defaultServiceHostTokenPath } from "./wire/auth.js";
 
 describe("startServiceHost", () => {
   const dirs: string[] = [];
@@ -31,7 +31,7 @@ describe("startServiceHost", () => {
       expect(host.wsEventsUrl).toBe(`${host.baseUrl.replace(/^http/, "ws")}/api/events`);
 
       const token = readFileSync(
-        defaultServiceIpcTokenPath(dataDir),
+        defaultServiceHostTokenPath(dataDir),
         "utf8",
       ).trim();
 
@@ -53,7 +53,7 @@ describe("startServiceHost", () => {
         healthy: true,
       });
 
-      const ipc = await connectServiceIpc(host.ipcPath!, {
+      const ipc = await connectHostWire(host.ipcPath!, {
         dataDir,
       });
       try {

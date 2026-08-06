@@ -42,7 +42,8 @@ function writeDevMockSnapshot(snapshot: DashboardSnapshot | null): void {
   localStorage.setItem(DEV_MOCK_SNAPSHOT_KEY, JSON.stringify(snapshot));
 }
 
-function seedQueryCacheFromSnapshot(snapshot: DashboardSnapshot): void {
+/** Seed React Query dashboard cache when a snapshot is loaded (#150 / #552). */
+export function seedQueryCacheFromSnapshot(snapshot: DashboardSnapshot): void {
   const key = dashboardQueryCacheKey(
     navFilterSettingKey(snapshot.nav_filter),
     snapshot.search,

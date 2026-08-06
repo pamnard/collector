@@ -1,9 +1,9 @@
-import type { ServiceIpcClient } from "@collector/service/ipc";
-import type { CollectorIpcTransportExtras } from "./ipc-client-types.js";
+import type { HostWireClient } from "@collector/service/wire";
+import type { CollectorHostTransportExtras } from "./host-client-types.js";
 
-export function createIpcTransportExtras(
-  transport: ServiceIpcClient,
-): CollectorIpcTransportExtras {
+export function createHostTransportExtras(
+  transport: HostWireClient,
+): CollectorHostTransportExtras {
   return {
     ping: (options) => transport.ping(options),
     health: (options) => transport.health(options),

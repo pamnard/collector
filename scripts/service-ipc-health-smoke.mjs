@@ -36,7 +36,7 @@ function encodeFrame(message) {
 }
 
 function readToken(dataDir) {
-  return readFileSync(join(dataDir, "collector-service.ipc-token"), "utf8").trim();
+  return readFileSync(join(dataDir, "collector-service.host-token"), "utf8").trim();
 }
 
 function ipcRequest(path, method, params) {

@@ -18,7 +18,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   const dataDir = readOpt(argv, "--data-dir");
   const ipcPath = readOpt(argv, "--ipc-path");
   const tokenFlag = readOpt(argv, "--token");
-  const tokenEnv = process.env.COLLECTOR_IPC_TOKEN?.trim();
+  const tokenEnv = process.env.COLLECTOR_HOST_TOKEN?.trim();
   const resolvedToken =
     tokenFlag ??
     (tokenEnv !== undefined && tokenEnv.length > 0 ? tokenEnv : undefined);

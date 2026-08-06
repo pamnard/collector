@@ -18,16 +18,16 @@ import {
   resolveCollectorProfileLayout,
   selfContainedCollectorProfileLayout,
 } from "@collector/shared";
-import { createDomainIpcRequestHandler } from "./ipc/domain-dispatch.js";
-import { startServiceIpcServer, type ServiceIpcServer } from "./ipc/server.js";
+import { createDomainWireRequestHandler } from "./wire/domain-dispatch.js";
+import { startHostWireServer, type HostWireServer } from "./wire/server.js";
 import { createServiceDomainRuntime } from "./domain-runtime.js";
-import { SERVICE_IPC_EVENTS } from "./ipc/framing.js";
+import { SERVICE_HOST_EVENTS } from "./wire/framing.js";
 import {
-  defaultServiceIpcTokenPath,
-  generateServiceIpcToken,
-  removeServiceIpcTokenFile,
-  writeServiceIpcTokenFile,
-} from "./ipc/auth.js";
+  defaultServiceHostTokenPath,
+  generateServiceHostToken,
+  removeServiceHostTokenFile,
+  writeServiceHostTokenFile,
+} from "./wire/auth.js";
 import { vaultsRoot } from "@collector/core";
 import { isValidBearer } from "./http/bearer.js";
 import { corsHeadersForRequest, writeCorsPreflight } from "./http/cors.js";
@@ -126,12 +126,12 @@ export async function startServiceHost(
     };
   };
 
-  const domainDispatch = createDomainIpcRequestHandler(runtime);
+  const domainDispatch = createDomainWireRequestHandler(runtime);
 
   // Host token always minted for HTTP Bearer / WS auth (#551).
-  const hostToken = generateServiceIpcToken();
-  const hostTokenPath = defaultServiceIpcTokenPath(layout.dataDir);
-  await writeServiceIpcTokenFile(hostTokenPath, hostToken);
+  const hostToken = generateServiceHostToken();
+  const hostTokenPath = defaultServiceHostTokenPath(layout.dataDir);
+  await writeServiceHostTokenFile(hostTokenPath, hostToken);
 
   const eventsHub = createHostHttpEventsHub({ expectedToken: hostToken });
 
@@ -196,7 +196,7 @@ export async function startServiceHost(
   const baseUrl = `http://${listenHost}:${address.port}`;
   const wsEventsUrl = `ws://${listenHost}:${address.port}/api/events`;
 
-  let ipc: ServiceIpcServer | null = null;
+  let ipc: HostWireServer | null = null;
   let stopSyncStatusBroadcast: Subscription | null = null;
   let stopAppSettingsBroadcast: Subscription | null = null;
 
@@ -206,7 +206,7 @@ export async function startServiceHost(
   };
 
   if (options.ipcPath !== false) {
-    ipc = await startServiceIpcServer({
+    ipc = await startHostWireServer({
       dataDir: layout.dataDir,
       path: typeof options.ipcPath === "string" ? options.ipcPath : undefined,
       token: hostToken,
@@ -219,11 +219,11 @@ export async function startServiceHost(
   }
 
   stopSyncStatusBroadcast = runtime.vaultIndexSyncStatus.subscribe((status) => {
-    broadcastBoth(SERVICE_IPC_EVENTS.vaultIndexSyncStatus, status);
+    broadcastBoth(SERVICE_HOST_EVENTS.vaultIndexSyncStatus, status);
   });
   stopAppSettingsBroadcast = runtime.appSettings.subscribeAppSettings(
     (settings) => {
-      broadcastBoth(SERVICE_IPC_EVENTS.appSettings, settings);
+      broadcastBoth(SERVICE_HOST_EVENTS.appSettings, settings);
     },
   );
 
@@ -242,7 +242,7 @@ export async function startServiceHost(
       await ipc.close();
       ipc = null;
     }
-    await removeServiceIpcTokenFile(hostTokenPath);
+    await removeServiceHostTokenFile(hostTokenPath);
     await new Promise<void>((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
     });

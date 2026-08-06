@@ -10,11 +10,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
-  createCollectorIpcServiceClient,
+  createCollectorHostServiceClient,
   createHttpHostTransport,
 } from "@collector/client";
 import {
-  defaultServiceIpcTokenPath,
+  defaultServiceHostTokenPath,
   startServiceHost,
 } from "@collector/service/host";
 import {
@@ -68,13 +68,13 @@ describe("MCP endpoint parsing (#556)", () => {
 });
 
 async function dialHttpClient(baseUrl: string, dataDir: string) {
-  const token = readFileSync(defaultServiceIpcTokenPath(dataDir), "utf8").trim();
+  const token = readFileSync(defaultServiceHostTokenPath(dataDir), "utf8").trim();
   const transport = await createHttpHostTransport({
     baseUrl,
     token,
     connectTimeoutMs: 2_000,
   });
-  return createCollectorIpcServiceClient(transport);
+  return createCollectorHostServiceClient(transport);
 }
 
 describe("MCP tools over host HTTP (#556)", () => {
@@ -429,7 +429,7 @@ describe("MCP tools over host HTTP (#556)", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "collector-mcp-down-"));
     dirs.push(dataDir);
     // Token file present (as if host had run) but nothing listening.
-    const tokenPath = defaultServiceIpcTokenPath(dataDir);
+    const tokenPath = defaultServiceHostTokenPath(dataDir);
     const { writeFileSync } = await import("node:fs");
     writeFileSync(tokenPath, "dead-token\n", { mode: 0o600 });
 
@@ -459,7 +459,7 @@ describe("MCP tools over host HTTP (#556)", () => {
       const src = read(join(import.meta.dirname, name), "utf8");
       expect(src).not.toMatch(/createServiceDomainRuntime/);
       expect(src).not.toMatch(/startServiceHost/);
-      expect(src).not.toMatch(/connectCollectorIpcService/);
+      expect(src).not.toMatch(/connectCollectorHostService/);
     }
   });
 });

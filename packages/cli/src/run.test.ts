@@ -1,18 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ServiceIpcError } from "@collector/service/host";
+import { HostWireError } from "@collector/service/host";
 
-const connectCollectorIpcService = vi.fn();
+const connectCollectorHostService = vi.fn();
 
 vi.mock("@collector/client/node", () => ({
-  connectCollectorIpcService: (...args: unknown[]) =>
-    connectCollectorIpcService(...args),
+  connectCollectorHostService: (...args: unknown[]) =>
+    connectCollectorHostService(...args),
 }));
 
 import { runCollectorCli } from "./run.js";
 
 describe("runCollectorCli unit smoke", () => {
   beforeEach(() => {
-    connectCollectorIpcService.mockReset();
+    connectCollectorHostService.mockReset();
   });
 
   it("returns exit 2 on usage errors without dialing IPC", async () => {
@@ -23,12 +23,12 @@ describe("runCollectorCli unit smoke", () => {
     });
     expect(code).toBe(2);
     expect(stderr.join("\n").length).toBeGreaterThan(0);
-    expect(connectCollectorIpcService).not.toHaveBeenCalled();
+    expect(connectCollectorHostService).not.toHaveBeenCalled();
   });
 
   it("returns exit 1 with service-not-running message on not_connected", async () => {
-    connectCollectorIpcService.mockRejectedValue(
-      new ServiceIpcError({
+    connectCollectorHostService.mockRejectedValue(
+      new HostWireError({
         layer: "transport",
         code: "not_connected",
         message: "IPC connect failed: ENOENT",
@@ -47,7 +47,7 @@ describe("runCollectorCli unit smoke", () => {
   });
 
   it("returns exit 1 on generic connect failure", async () => {
-    connectCollectorIpcService.mockRejectedValue(new Error("boom"));
+    connectCollectorHostService.mockRejectedValue(new Error("boom"));
     const stderr: string[] = [];
     const code = await runCollectorCli(
       ["--ipc-path", "/tmp/collector-x.sock", "health"],
@@ -63,7 +63,7 @@ describe("runCollectorCli unit smoke", () => {
   it("health succeeds and closes the client", async () => {
     const close = vi.fn(async () => undefined);
     const health = vi.fn(async () => ({ ok: true, status: "healthy" }));
-    connectCollectorIpcService.mockResolvedValue({
+    connectCollectorHostService.mockResolvedValue({
       health,
       close,
       items: {},
@@ -90,7 +90,7 @@ describe("runCollectorCli unit smoke", () => {
       id: "Inbox/note.md",
       ...(input as object),
     }));
-    connectCollectorIpcService.mockResolvedValue({
+    connectCollectorHostService.mockResolvedValue({
       health: vi.fn(),
       close,
       items: { createItem },

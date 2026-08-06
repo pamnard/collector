@@ -19,10 +19,10 @@
       "types": "./dist/host-entry.d.ts",
       "import": "./dist/host-entry.js"
     },
-    "./ipc": {
-      "@collector/source": "./src/ipc-entry.ts",
-      "types": "./dist/ipc-entry.d.ts",
-      "import": "./dist/ipc-entry.js"
+    "./wire": {
+      "@collector/source": "./src/wire-entry.ts",
+      "types": "./dist/wire-entry.d.ts",
+      "import": "./dist/wire-entry.js"
     }
   },
   "scripts": {

@@ -1,5 +1,5 @@
 /**
- * Node-only service host / IPC surface.
+ * Node-only service host / wire surface.
  * Do not import from the app Vite bundle — use `@collector/service` for in-process UI.
  */
 
@@ -14,73 +14,73 @@ export {
 export { NodeSqliteExecutor } from "./host/node-sql.js";
 
 export {
-  SERVICE_IPC_PROTOCOL_VERSION,
-  SERVICE_IPC_EVENTS,
-  ServiceIpcFrameReader,
-  ServiceIpcFramingError,
-  encodeServiceIpcFrame,
-  assertProtocolVersion,
-  type ServiceIpcHealthResult,
-  type ServiceIpcMessage,
-  type ServiceIpcMethod,
-  type ServiceIpcRequest,
-  type ServiceIpcResponse,
-  type ServiceIpcErrorResponse,
-  type ServiceIpcEvent,
-} from "./host/ipc/framing.js";
+  SERVICE_HOST_PROTOCOL_VERSION,
+  SERVICE_HOST_EVENTS,
+  HostWireFrameReader,
+  HostWireFramingError,
+  encodeHostWireFrame,
+  assertHostWireProtocolVersion,
+  type ServiceHostHealthResult,
+  type HostWireMessage,
+  type HostWireMethod,
+  type HostWireRequest,
+  type HostWireResponse,
+  type HostWireErrorResponse,
+  type HostWireEvent,
+} from "./host/wire/framing.js";
 
 export {
-  defaultServiceIpcPath,
+  defaultHostWirePath,
   isWindowsNamedPipePath,
-} from "./host/ipc/paths.js";
+} from "./host/wire/paths.js";
 
 export {
-  SERVICE_IPC_AUTH_METHOD,
-  SERVICE_IPC_TOKEN_ENV,
-  SERVICE_IPC_TOKEN_FILENAME,
-  defaultServiceIpcTokenPath,
-  generateServiceIpcToken,
-  readServiceIpcTokenFile,
-  removeServiceIpcTokenFile,
-  resolveServiceIpcToken,
-  siblingServiceIpcTokenPath,
-  writeServiceIpcTokenFile,
-} from "./host/ipc/auth.js";
+  SERVICE_HOST_AUTH_METHOD,
+  SERVICE_HOST_TOKEN_ENV,
+  SERVICE_HOST_TOKEN_FILENAME,
+  defaultServiceHostTokenPath,
+  generateServiceHostToken,
+  readServiceHostTokenFile,
+  removeServiceHostTokenFile,
+  resolveServiceHostToken,
+  siblingServiceHostTokenPath,
+  writeServiceHostTokenFile,
+} from "./host/wire/auth.js";
 
 export {
-  startServiceIpcServer,
-  type ServiceIpcHandler,
-  type ServiceIpcServer,
-} from "./host/ipc/server.js";
+  startHostWireServer,
+  type HostWireHandler,
+  type HostWireServer,
+} from "./host/wire/server.js";
 
 export {
-  connectServiceIpc,
-  type ServiceIpcClient,
-  type ServiceIpcClientOptions,
-  type ServiceIpcRequestOptions,
-} from "./host/ipc/client.js";
+  connectHostWire,
+  type HostWireClient,
+  type HostWireClientOptions,
+  type HostWireRequestOptions,
+} from "./host/wire/client.js";
 
 export type {
-  ServiceIpcClient as ServiceIpcTransport,
-} from "./host/ipc/transport-types.js";
+  HostWireClient as HostWireTransport,
+} from "./host/wire/transport-types.js";
 
 export {
-  ServiceIpcError,
+  HostWireError,
   getCollectorApiError,
-  isServiceIpcError,
+  isHostWireError,
   mapHandlerThrownToApiError,
-  mapNodeIpcErrno,
-  serviceIpcError,
-} from "./host/ipc/errors.js";
+  mapNodeConnectErrno,
+  hostWireError,
+} from "./host/wire/errors.js";
 
 export {
-  DOMAIN_IPC_METHODS,
-  WATCHER_IPC_METHODS,
-  type DomainIpcHandler,
-  type DomainIpcHandlerMap,
-  type DomainIpcMethod,
-  type WatcherIpcMethod,
-} from "./host/ipc/domain-methods.js";
+  DOMAIN_WIRE_METHODS,
+  WATCHER_WIRE_METHODS,
+  type DomainWireHandler,
+  type DomainWireHandlerMap,
+  type DomainWireMethod,
+  type WatcherWireMethod,
+} from "./host/wire/domain-methods.js";
 
 export {
   ALL_PORT_METHOD_KEYS,
@@ -89,13 +89,13 @@ export {
   HOST_WIRE_PORT_METHODS,
   type ClientOrchestratedPortMethod,
   type HostWirePortMethod,
-} from "./host/ipc/domain-port-wire.js";
+} from "./host/wire/domain-port-wire.js";
 
 export {
-  createDomainIpcDispatcher,
-  createDomainIpcRequestHandler,
+  createDomainWireDispatcher,
+  createDomainWireRequestHandler,
   DOMAIN_DISPATCH_REGISTRY,
-} from "./host/ipc/domain-dispatch.js";
+} from "./host/wire/domain-dispatch.js";
 
 export {
   createServiceDomainRuntime,

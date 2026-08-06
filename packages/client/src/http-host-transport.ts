@@ -5,16 +5,16 @@
 
 import type { CollectorApiError } from "@collector/api";
 import type {
-  ServiceIpcClient,
-  ServiceIpcHealthResult,
-} from "@collector/service/ipc";
+  HostWireClient,
+  ServiceHostHealthResult,
+} from "@collector/service/wire";
 import {
   getCollectorApiError,
-  serviceIpcError,
-} from "@collector/service/ipc";
+  hostWireError,
+} from "@collector/service/wire";
 
 /** Neutral name for the domain host transport contract (#551). */
-export type CollectorHostTransport = ServiceIpcClient;
+export type CollectorHostTransport = HostWireClient;
 export type HttpHostTransportOptions = {
   baseUrl: string;
   token: string;
@@ -38,7 +38,7 @@ export function deriveWsEventsUrl(baseUrl: string): string {
   if (base.startsWith("http://")) {
     return `${base.replace(/^http:/, "ws:")}/api/events`;
   }
-  throw serviceIpcError({
+  throw hostWireError({
     layer: "transport",
     code: "not_connected",
     message: `baseUrl must be http(s): ${baseUrl}`,
@@ -60,7 +60,7 @@ function withTimeout<T>(
 ): Promise<T> {
   if (signal?.aborted) {
     return Promise.reject(
-      serviceIpcError({
+      hostWireError({
         layer: "transport",
         code: "cancelled",
         message: `${label} cancelled`,
@@ -74,7 +74,7 @@ function withTimeout<T>(
     return new Promise<T>((resolve, reject) => {
       const onAbort = (): void => {
         reject(
-          serviceIpcError({
+          hostWireError({
             layer: "transport",
             code: "cancelled",
             message: `${label} cancelled`,
@@ -97,7 +97,7 @@ function withTimeout<T>(
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(
-        serviceIpcError({
+        hostWireError({
           layer: "transport",
           code: "timeout",
           message: `${label} timed out after ${timeoutMs}ms`,
@@ -107,7 +107,7 @@ function withTimeout<T>(
     const onAbort = (): void => {
       clearTimeout(timer);
       reject(
-        serviceIpcError({
+        hostWireError({
           layer: "transport",
           code: "cancelled",
           message: `${label} cancelled`,
@@ -139,7 +139,7 @@ export async function createHttpHostTransport(
   const baseUrl = trimTrailingSlash(options.baseUrl);
   const token = options.token;
   if (!token) {
-    throw serviceIpcError({
+    throw hostWireError({
       layer: "auth",
       code: "token_missing",
       message: "host token required for HTTP transport",
@@ -174,7 +174,7 @@ export async function createHttpHostTransport(
       };
       const onError = (): void => {
         fail(
-          serviceIpcError({
+          hostWireError({
             layer: "transport",
             code: "not_connected",
             message: `WebSocket connect failed: ${wsEventsUrl}`,
@@ -183,7 +183,7 @@ export async function createHttpHostTransport(
       };
       const onClose = (): void => {
         fail(
-          serviceIpcError({
+          hostWireError({
             layer: "auth",
             code: "auth_failed",
             message: "WebSocket authentication failed",
@@ -196,7 +196,7 @@ export async function createHttpHostTransport(
           msg = JSON.parse(String(event.data)) as { type?: string };
         } catch {
           fail(
-            serviceIpcError({
+            hostWireError({
               layer: "transport",
               code: "framing",
               message: "invalid WS auth response",
@@ -253,7 +253,7 @@ export async function createHttpHostTransport(
   const transport: CollectorHostTransport = {
     async request(method, params, requestOptions) {
       if (closed) {
-        throw serviceIpcError({
+        throw hostWireError({
           layer: "transport",
           code: "not_connected",
           message: "HTTP host transport is closed",
@@ -273,14 +273,14 @@ export async function createHttpHostTransport(
           signal: requestOptions?.signal,
         });
         if (response.status === 401) {
-          throw serviceIpcError({
+          throw hostWireError({
             layer: "auth",
             code: "auth_failed",
             message: "Bearer authentication failed",
           });
         }
         if (!response.ok) {
-          throw serviceIpcError({
+          throw hostWireError({
             layer: "transport",
             code: "disconnected",
             message: `RPC HTTP ${response.status}`,
@@ -292,7 +292,7 @@ export async function createHttpHostTransport(
           error?: CollectorApiError;
         };
         if (body.error) {
-          throw serviceIpcError(body.error);
+          throw hostWireError(body.error);
         }
         return body.result;
       })();
@@ -301,7 +301,7 @@ export async function createHttpHostTransport(
 
     async ping(requestOptions) {
       if (closed) {
-        throw serviceIpcError({
+        throw hostWireError({
           layer: "transport",
           code: "not_connected",
           message: "HTTP host transport is closed",
@@ -314,7 +314,7 @@ export async function createHttpHostTransport(
           signal: requestOptions?.signal,
         });
         if (!response.ok) {
-          throw serviceIpcError({
+          throw hostWireError({
             layer: "transport",
             code: "disconnected",
             message: `ping HTTP ${response.status}`,
@@ -322,7 +322,7 @@ export async function createHttpHostTransport(
         }
         const body = (await response.json()) as { ok?: boolean; pong?: boolean };
         if (!body.pong) {
-          throw serviceIpcError({
+          throw hostWireError({
             layer: "transport",
             code: "framing",
             message: "invalid ping response",
@@ -335,7 +335,7 @@ export async function createHttpHostTransport(
 
     async health(requestOptions) {
       if (closed) {
-        throw serviceIpcError({
+        throw hostWireError({
           layer: "transport",
           code: "not_connected",
           message: "HTTP host transport is closed",
@@ -349,20 +349,20 @@ export async function createHttpHostTransport(
           signal: requestOptions?.signal,
         });
         if (response.status === 401) {
-          throw serviceIpcError({
+          throw hostWireError({
             layer: "auth",
             code: "auth_failed",
             message: "Bearer authentication failed",
           });
         }
         if (!response.ok && response.status !== 503) {
-          throw serviceIpcError({
+          throw hostWireError({
             layer: "transport",
             code: "disconnected",
             message: `health HTTP ${response.status}`,
           });
         }
-        return (await response.json()) as ServiceIpcHealthResult;
+        return (await response.json()) as ServiceHostHealthResult;
       })();
       return withTimeout(run, timeoutMs, "health", requestOptions?.signal);
     },

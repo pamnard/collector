@@ -101,7 +101,7 @@ try {
   }
 
   const token = readFileSync(
-    join(dataDir, "collector-service.ipc-token"),
+    join(dataDir, "collector-service.host-token"),
     "utf8",
   ).trim();
   if (!token) {
