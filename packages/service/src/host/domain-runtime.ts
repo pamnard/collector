@@ -179,8 +179,27 @@ export function createServiceDomainRuntime(
     getContext: () => getContext(),
     getActiveVaultId: () =>
       vaultsHolder.current?.getActiveVaultEntry()?.meta.id ?? null,
-    onItemsSynced: () => {
-      // Targeted sync already updated the index; status channel stays as-is.
+    onItemsSynced: (vaultId) => {
+      // Same subscriber class as full sync: in-process listeners + status channel (#567).
+      // Split running→done across turns so React subscribers observe the transition.
+      const previous = vaultIndexSyncStatus.get();
+      vaultIndexSyncStatus.set({
+        vaultId,
+        status: "running",
+        progress: previous.progress,
+        metadataReady: true,
+        ftsReady: previous.ftsReady || previous.status === "done",
+      });
+      emitComplete(vaultId);
+      setTimeout(() => {
+        vaultIndexSyncStatus.set({
+          vaultId,
+          status: "done",
+          progress: previous.progress,
+          metadataReady: true,
+          ftsReady: true,
+        });
+      }, 0);
     },
     forceVaultIndexResync: (vaultId, vaultPath) => {
       forceVaultIndexResync(vaultId, vaultPath);

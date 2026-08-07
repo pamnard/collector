@@ -50,7 +50,11 @@ export {
   vaultRoot,
 } from "./vault/paths.js";
 
-export { listFolderRelativePaths, listItemRelativePaths } from "./vault/scan.js";
+export {
+  listFolderRelativePaths,
+  listItemRelativePaths,
+  listItemRelativePathsUnderPrefix,
+} from "./vault/scan.js";
 
 export {
   ensureTagsByName,
@@ -113,13 +117,21 @@ export {
   createVaultWatchBatcher,
   dedupeVaultWatchItemIds,
 } from "./vault/vault-watch-batch.js";
-export type { VaultWatchBatcher } from "./vault/vault-watch-batch.js";
+export type {
+  VaultWatchBatch,
+  VaultWatchBatcher,
+} from "./vault/vault-watch-batch.js";
 
 export {
+  classifyVaultWatchPath,
   parseSharedMediaNoteUuid,
   parseVaultItemWatchPath,
   resolveVaultItemWatchPath,
+  resolveVaultWatchTarget,
 } from "./vault/vault-watch-path.js";
+export type { VaultWatchTarget } from "./vault/vault-watch-path.js";
+
+export { reconcileIndexFolderPrefixFromFilesystem } from "./vault/folder-prefix-index-sync.js";
 
 export {
   createSingleFlight,

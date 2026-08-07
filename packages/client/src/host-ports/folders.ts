@@ -3,13 +3,64 @@ import type {
   FoldersPort,
   ServiceSubscribeHandlers,
   Subscription,
+  VaultIndexSyncStatus,
 } from "@collector/api";
 import {
   asCollectorApiError,
   subscriptionFromTeardown,
 } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
+import { SERVICE_HOST_EVENTS } from "@collector/service/wire";
 import type { HostSessionCtx } from "../host-session-ctx.js";
+
+const FOLDER_TREE_SYNC_REPUBLISH_MS = 500;
+
+function createThrottledPublisher(
+  fn: () => void,
+  intervalMs: number,
+): { schedule: () => void; flush: () => void; cancel: () => void } {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let lastRun = 0;
+
+  const run = () => {
+    lastRun = Date.now();
+    fn();
+  };
+
+  return {
+    schedule() {
+      const elapsed = Date.now() - lastRun;
+      if (elapsed >= intervalMs) {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        run();
+        return;
+      }
+      if (timer) {
+        return;
+      }
+      timer = setTimeout(() => {
+        timer = null;
+        run();
+      }, intervalMs - elapsed);
+    },
+    flush() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      run();
+    },
+    cancel() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    },
+  };
+}
 
 export function createHostFoldersPort(ctx: HostSessionCtx): FoldersPort {
   const { transport } = ctx;
@@ -30,11 +81,13 @@ export function createHostFoldersPort(ctx: HostSessionCtx): FoldersPort {
         }
       }
       const active = controller.signal;
-      void (async () => {
+      let lastStatus: VaultIndexSyncStatus["status"] | null = null;
+
+      const publish = async () => {
+        if (active.aborted) {
+          return;
+        }
         try {
-          if (active.aborted) {
-            return;
-          }
           onUpdate(
             (await transport.request("listFolderTree")) as FolderTreeNode[],
           );
@@ -43,8 +96,40 @@ export function createHostFoldersPort(ctx: HostSessionCtx): FoldersPort {
             handlers?.onError?.("folder tree", asCollectorApiError(error));
           }
         }
-      })();
-      return subscriptionFromTeardown(() => controller.abort());
+      };
+
+      const republish = createThrottledPublisher(() => {
+        void publish();
+      }, FOLDER_TREE_SYNC_REPUBLISH_MS);
+
+      const unsubEvent = transport.onEvent(
+        SERVICE_HOST_EVENTS.vaultIndexSyncStatus,
+        (payload) => {
+          if (active.aborted) {
+            return;
+          }
+          const status = (payload as VaultIndexSyncStatus).status;
+          const prev = lastStatus;
+          lastStatus = status;
+          if (status === "running" || status === "rebuilding") {
+            republish.schedule();
+          }
+          if (
+            (prev === "running" || prev === "rebuilding") &&
+            status === "done"
+          ) {
+            republish.flush();
+          }
+        },
+      );
+
+      void publish();
+
+      return subscriptionFromTeardown(() => {
+        republish.cancel();
+        unsubEvent();
+        controller.abort();
+      });
     },
     listFolderTree: async (): Promise<FolderTreeNode[]> =>
       transport.request("listFolderTree") as Promise<FolderTreeNode[]>,

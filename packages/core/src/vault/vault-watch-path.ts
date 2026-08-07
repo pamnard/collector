@@ -41,16 +41,18 @@ export function parseSharedMediaNoteUuid(relativePath: string): string | null {
   return uuid;
 }
 
+export type VaultWatchTarget =
+  | { kind: "item"; itemId: string }
+  | { kind: "folder"; folderPath: string };
+
 /**
- * Map a filesystem change under the vault root to the affected item id
- * (vault-relative `.md` path), or `null` if the change is not item-relevant.
- * A change inside an item's `*.media/` sidecar maps to the sibling `.md` file.
- * Shared `media/<uuid>/` needs {@link resolveVaultItemWatchPath} (async lookup).
+ * Sync classify a filesystem change under the vault root.
+ * Shared `media/<uuid>/` needs {@link resolveVaultWatchTarget} (async lookup).
  */
-export function parseVaultItemWatchPath(
+export function classifyVaultWatchPath(
   vaultRootPath: string,
   changedPath: string,
-): string | null {
+): VaultWatchTarget | null {
   const relative = toVaultRelativePath(vaultRootPath, changedPath);
   if (!relative) {
     return null;
@@ -64,19 +66,46 @@ export function parseVaultItemWatchPath(
     return null;
   }
 
+  // Shared media needs async resolve — do not treat as a folder.
+  if (parseSharedMediaNoteUuid(relative)) {
+    return null;
+  }
+
   for (let i = 0; i < segments.length; i += 1) {
     const segment = segments[i]!;
     if (segment.endsWith(ITEM_MEDIA_SUFFIX)) {
       const stem = segment.slice(0, -ITEM_MEDIA_SUFFIX.length);
-      return [...segments.slice(0, i), `${stem}.md`].join("/");
+      return {
+        kind: "item",
+        itemId: [...segments.slice(0, i), `${stem}.md`].join("/"),
+      };
     }
   }
 
   if (isMarkdownItemFile(basename(relative))) {
-    return relative;
+    return { kind: "item", itemId: relative };
   }
 
-  return null;
+  // Basename with a dot is a non-md file (or unknown dotted leaf), not a folder.
+  if (basename(relative).includes(".")) {
+    return null;
+  }
+
+  return { kind: "folder", folderPath: relative };
+}
+
+/**
+ * Map a filesystem change under the vault root to the affected item id
+ * (vault-relative `.md` path), or `null` if the change is not item-relevant.
+ * A change inside an item's `*.media/` sidecar maps to the sibling `.md` file.
+ * Shared `media/<uuid>/` needs {@link resolveVaultItemWatchPath} (async lookup).
+ */
+export function parseVaultItemWatchPath(
+  vaultRootPath: string,
+  changedPath: string,
+): string | null {
+  const target = classifyVaultWatchPath(vaultRootPath, changedPath);
+  return target?.kind === "item" ? target.itemId : null;
 }
 
 /**
@@ -88,7 +117,19 @@ export async function resolveVaultItemWatchPath(
   vaultRootPath: string,
   changedPath: string,
 ): Promise<string | null> {
-  const syncHit = parseVaultItemWatchPath(vaultRootPath, changedPath);
+  const target = await resolveVaultWatchTarget(fs, vaultRootPath, changedPath);
+  return target?.kind === "item" ? target.itemId : null;
+}
+
+/**
+ * Resolve a vault FS change to an item or folder watch target (#567).
+ */
+export async function resolveVaultWatchTarget(
+  fs: FileSystemAdapter,
+  vaultRootPath: string,
+  changedPath: string,
+): Promise<VaultWatchTarget | null> {
+  const syncHit = classifyVaultWatchPath(vaultRootPath, changedPath);
   if (syncHit) {
     return syncHit;
   }
@@ -109,5 +150,5 @@ export async function resolveVaultItemWatchPath(
     const base = basename(id);
     return base.toLowerCase() === targetBase.toLowerCase() && isUuidMarkdownBasename(base);
   });
-  return match ?? null;
+  return match ? { kind: "item", itemId: match } : null;
 }

@@ -1,12 +1,13 @@
 /**
- * Node filesystem watcher for out-of-band service host (#164).
+ * Node filesystem watcher for out-of-band service host (#164 / #567).
  * Drives targeted index updates in the host process (not the UI).
  */
 
 import { watch, type FSWatcher } from "node:fs";
 import {
   createVaultWatchBatcher,
-  resolveVaultItemWatchPath,
+  reconcileIndexFolderPrefixFromFilesystem,
+  resolveVaultWatchTarget,
   syncIndexItemsFromFilesystem,
   type VaultContext,
 } from "@collector/core";
@@ -38,27 +39,50 @@ export function createNodeVaultFilesystemWatcher(
     watcher: FSWatcher;
   } | null = null;
   const pendingWatchItemIds = new Set<string>();
+  const pendingWatchFolderPaths = new Set<string>();
   let watchApplyPromise: Promise<void> | null = null;
+
+  function throwIfSyncErrors(
+    report: { errors: Array<{ message: string }> },
+    label: string,
+  ): void {
+    if (report.errors.length === 0) {
+      return;
+    }
+    const summary = report.errors.map((entry) => entry.message).join("; ");
+    throw new Error(`${label}: ${summary}`);
+  }
 
   async function drainWatchQueue(
     vaultId: string,
     vaultPath: string,
   ): Promise<void> {
-    while (pendingWatchItemIds.size > 0) {
+    while (pendingWatchItemIds.size > 0 || pendingWatchFolderPaths.size > 0) {
       const itemIds = [...pendingWatchItemIds];
+      const folderPaths = [...pendingWatchFolderPaths];
       pendingWatchItemIds.clear();
-      const report = await syncIndexItemsFromFilesystem(
-        deps.getContext(),
-        vaultPath,
-        vaultId,
-        itemIds,
-      );
-      if (report.errors.length > 0) {
-        const summary = report.errors
-          .map((entry: { message: string }) => entry.message)
-          .join("; ");
-        throw new Error(`targeted index sync failed: ${summary}`);
+      pendingWatchFolderPaths.clear();
+
+      for (const folderPath of folderPaths) {
+        const report = await reconcileIndexFolderPrefixFromFilesystem(
+          deps.getContext(),
+          vaultPath,
+          vaultId,
+          folderPath,
+        );
+        throwIfSyncErrors(report, "folder prefix index sync failed");
       }
+
+      if (itemIds.length > 0) {
+        const report = await syncIndexItemsFromFilesystem(
+          deps.getContext(),
+          vaultPath,
+          vaultId,
+          itemIds,
+        );
+        throwIfSyncErrors(report, "targeted index sync failed");
+      }
+
       deps.onItemsSynced(vaultId);
       deps.onWatchApplied?.(vaultId, vaultPath);
     }
@@ -75,7 +99,7 @@ export function createNodeVaultFilesystemWatcher(
       })
       .finally(() => {
         watchApplyPromise = null;
-        if (pendingWatchItemIds.size > 0) {
+        if (pendingWatchItemIds.size > 0 || pendingWatchFolderPaths.size > 0) {
           scheduleWatchApply(vaultId, vaultPath);
         }
       });
@@ -88,6 +112,7 @@ export function createNodeVaultFilesystemWatcher(
     const { batcher, watcher } = active;
     active = null;
     pendingWatchItemIds.clear();
+    pendingWatchFolderPaths.clear();
     batcher.dispose();
     watcher.close();
   }
@@ -102,12 +127,15 @@ export function createNodeVaultFilesystemWatcher(
 
     const batcher = createVaultWatchBatcher({
       debounceMs: VAULT_WATCH_DEBOUNCE_MS,
-      onFlush: (itemIds: string[]) => {
+      onFlush: (batch) => {
         if (deps.getActiveVaultId() !== vaultId) {
           return;
         }
-        for (const itemId of itemIds) {
+        for (const itemId of batch.itemIds) {
           pendingWatchItemIds.add(itemId);
+        }
+        for (const folderPath of batch.folderPaths) {
+          pendingWatchFolderPaths.add(folderPath);
         }
         scheduleWatchApply(vaultId, vaultPath);
       },
@@ -124,15 +152,19 @@ export function createNodeVaultFilesystemWatcher(
           return;
         }
         const changedPath = `${vaultPath.replace(/\/+$/, "")}/${String(filename).replace(/\\/g, "/")}`;
-        void resolveVaultItemWatchPath(deps.getContext().fs, vaultPath, changedPath).then(
-          (itemId) => {
-            if (!itemId) {
+        void resolveVaultWatchTarget(deps.getContext().fs, vaultPath, changedPath).then(
+          (target) => {
+            if (!target) {
               return;
             }
             if (deps.getActiveVaultId() !== vaultId) {
               return;
             }
-            batcher.enqueue(itemId);
+            if (target.kind === "item") {
+              batcher.enqueueItem(target.itemId);
+              return;
+            }
+            batcher.enqueueFolder(target.folderPath);
           },
         );
       },
