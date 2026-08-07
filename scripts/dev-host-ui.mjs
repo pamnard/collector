@@ -4,11 +4,12 @@
  *
  * Usage:
  *   npm run build:packages
- *   node scripts/dev-host-ui.mjs --data-dir <vault-data> [--config-dir <dir>] [--port 0] [--ui-port 1420]
+ *   node scripts/dev-host-ui.mjs --data-dir <vault-data> [--config-dir <dir>] [--port 1421] [--ui-port 1420]
  *
  * Or: COLLECTOR_DATA_DIR=… node scripts/dev-host-ui.mjs
  *
- * Does not kill an occupied UI port — fail loudly and pass --ui-port.
+ * Default host port is 1421 (omit --port → collector-service serve default).
+ * `--port 0` = ephemeral. Does not kill an occupied UI/host port — fail loudly.
  */
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -22,13 +23,15 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CLI = join(ROOT, "packages/service/dist/host/cli.js");
 const READY_TIMEOUT_MS = 60_000;
 const DEFAULT_UI_PORT = 1420;
+/** Must match DEFAULT_SERVICE_HOST_PORT in packages/service (serve default). */
+const DEFAULT_HOST_PORT = 1421;
 
 function usage(message) {
   if (message) {
     console.error(message);
   }
   console.error(
-    "Usage: node scripts/dev-host-ui.mjs --data-dir <path> [--config-dir <path>] [--port 0] [--ui-port 1420]\n" +
+    "Usage: node scripts/dev-host-ui.mjs --data-dir <path> [--config-dir <path>] [--port 1421] [--ui-port 1420]\n" +
       "   or: COLLECTOR_DATA_DIR=<path> node scripts/dev-host-ui.mjs [options]",
   );
   process.exit(2);
@@ -124,6 +127,15 @@ async function main(argv) {
     usage("Invalid --ui-port");
   }
 
+  let hostPortForCheck = DEFAULT_HOST_PORT;
+  if (hostPortRaw !== undefined) {
+    const parsed = Number(hostPortRaw);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      usage("Invalid --port");
+    }
+    hostPortForCheck = parsed;
+  }
+
   if (await portInUse(uiPort)) {
     console.error(
       `UI port ${uiPort} is already in use. Pass --ui-port <free-port> (will not kill the existing stand).`,
@@ -131,8 +143,17 @@ async function main(argv) {
     process.exit(1);
   }
 
-  const hostArgs = [CLI, "serve", "--data-dir", dataDir, "--port"];
-  hostArgs.push(hostPortRaw ?? "0");
+  if (hostPortForCheck !== 0 && (await portInUse(hostPortForCheck))) {
+    console.error(
+      `Host port ${hostPortForCheck} is already in use. Pass --port <free-port> or stop the other host (will not kill it).`,
+    );
+    process.exit(1);
+  }
+
+  const hostArgs = [CLI, "serve", "--data-dir", dataDir];
+  if (hostPortRaw !== undefined) {
+    hostArgs.push("--port", hostPortRaw);
+  }
   if (configDir) {
     hostArgs.push("--config-dir", configDir);
   }

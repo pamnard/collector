@@ -3,7 +3,8 @@
  * CLI entry for Collector service domain host (#151/#152/#237/#554).
  *
  * Usage:
- *   node packages/service/dist/host/cli.js serve --data-dir <dir> [--config-dir <dir>] [--port 0] [--host 127.0.0.1] [--ui-dir <path>] [--ipc-path <path>|--no-ipc]
+ *   node packages/service/dist/host/cli.js serve --data-dir <dir> [--config-dir <dir>] [--port 1421] [--host 127.0.0.1] [--ui-dir <path>] [--ipc-path <path>|--no-ipc]
+ *   `--port 0` = ephemeral (tests/smokes). Default port is DEFAULT_SERVICE_HOST_PORT (1421).
  *
  * Layout (#238): production passes --config-dir when profile dirs are split.
  * Omitting --config-dir uses self-contained `{dataDir}/config` + `{dataDir}/collector.db`.
@@ -21,11 +22,16 @@ import {
   AlreadyLockedError,
   acquireServiceLock,
 } from "./service-lock.js";
-import { startServiceHost, formatServiceHostReadyLine } from "./service-host.js";
+import {
+  DEFAULT_SERVICE_HOST_PORT,
+  startServiceHost,
+  formatServiceHostReadyLine,
+  resolveServiceHostListenPort,
+} from "./service-host.js";
 
 function usage(): never {
   console.error(
-    "Usage: collector-service serve --data-dir <path> [--config-dir <path>] [--port 0] [--host 127.0.0.1] [--ui-dir <path>] [--ipc-path <path>|--no-ipc]",
+    `Usage: collector-service serve --data-dir <path> [--config-dir <path>] [--port ${DEFAULT_SERVICE_HOST_PORT}] [--host 127.0.0.1] [--ui-dir <path>] [--ipc-path <path>|--no-ipc]`,
   );
   process.exit(2);
 }
@@ -57,7 +63,10 @@ async function main(argv: string[]): Promise<void> {
 
   const portRaw = readArg(rest, "--port");
   const host = readArg(rest, "--host") ?? "127.0.0.1";
-  const port = portRaw === undefined ? 0 : Number(portRaw);
+  const port =
+    portRaw === undefined
+      ? resolveServiceHostListenPort()
+      : Number(portRaw);
   if (!Number.isInteger(port) || port < 0) {
     console.error("Invalid --port");
     process.exit(2);

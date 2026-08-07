@@ -46,6 +46,17 @@ import { writeJson } from "./http/write-json.js";
 
 export const SERVICE_HOST_READY_PREFIX = "COLLECTOR_SERVICE_READY ";
 
+/** Product default HTTP port for the local domain host (UI stays on :1420). */
+export const DEFAULT_SERVICE_HOST_PORT = 1421;
+
+/**
+ * Resolve TCP listen port for the domain host.
+ * Omitted → {@link DEFAULT_SERVICE_HOST_PORT}; explicit `0` → ephemeral OS port.
+ */
+export function resolveServiceHostListenPort(port?: number): number {
+  return port ?? DEFAULT_SERVICE_HOST_PORT;
+}
+
 export interface ServiceHostOptions {
   /**
    * Vault files parent (`…/collector`). When `configDir` is omitted, uses the
@@ -59,7 +70,10 @@ export interface ServiceHostOptions {
   configDir?: string;
   /** Bind address (default 127.0.0.1). */
   host?: string;
-  /** TCP port; 0 = ephemeral (default). */
+  /**
+   * TCP port. Default {@link DEFAULT_SERVICE_HOST_PORT} (1421).
+   * Pass `0` for an ephemeral OS-assigned port (tests / smokes).
+   */
   port?: number;
   /**
    * Local IPC path. Default: platform path under `dataDir`.
@@ -124,7 +138,7 @@ export async function startServiceHost(
   options: ServiceHostOptions,
 ): Promise<ServiceHost> {
   const listenHost = options.host ?? "127.0.0.1";
-  const listenPort = options.port ?? 0;
+  const listenPort = resolveServiceHostListenPort(options.port);
   const layout = resolveHostLayout(options);
   const uiDir = resolveUiDir(options.uiDir);
 
