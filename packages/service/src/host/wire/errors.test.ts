@@ -26,7 +26,7 @@ describe("IPC error mapping helpers", () => {
     expect(err.collectorError).toEqual({
       layer: "transport",
       code: "not_connected",
-      message: "IPC connect failed: ECONNREFUSED",
+      message: "Host connect failed: ECONNREFUSED",
     });
   });
 
