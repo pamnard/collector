@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { NavFilter } from "../types/ui";
 import {
   buildMovedFolderPath,
+  buildRenamedFolderPath,
   collectFolderPathsFlat,
+  folderLeafName,
   folderParentPath,
   isIllegalMoveParent,
   rewriteFolderNavFilterAfterMove,
@@ -61,5 +63,33 @@ describe("folder-actions move helpers", () => {
         },
       ]),
     ).toEqual(["Work", "Work/Articles"]);
+  });
+});
+
+describe("folder-actions rename helpers", () => {
+  it("folderLeafName returns last segment", () => {
+    expect(folderLeafName("Articles")).toBe("Articles");
+    expect(folderLeafName("A/B")).toBe("B");
+    expect(folderLeafName("Work/Articles/Drafts")).toBe("Drafts");
+  });
+
+  it("buildRenamedFolderPath keeps parent and replaces leaf", () => {
+    expect(buildRenamedFolderPath("A/B", "C")).toBe("A/C");
+    expect(buildRenamedFolderPath("Articles", "Notes")).toBe("Notes");
+    expect(buildRenamedFolderPath("Work/Articles", "  Drafts  ")).toBe(
+      "Work/Drafts",
+    );
+  });
+
+  it("buildRenamedFolderPath rejects empty and slash-containing leaf", () => {
+    expect(() => buildRenamedFolderPath("A/B", "")).toThrow(
+      /leaf name must be non-empty/i,
+    );
+    expect(() => buildRenamedFolderPath("A/B", "   ")).toThrow(
+      /leaf name must be non-empty/i,
+    );
+    expect(() => buildRenamedFolderPath("A/B", "C/D")).toThrow(
+      /leaf name must not contain/i,
+    );
   });
 });
