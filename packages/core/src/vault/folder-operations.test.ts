@@ -115,6 +115,30 @@ describe("folder operations", () => {
     ).toBe(true);
   });
 
+  it("renameFolder rejects move into self or descendant", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-folder-illegal-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const ctx = { fs, index: new SqlVaultIndexStore(db) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    await createFolder(ctx, path, "A/B");
+    await createFolder(ctx, path, "C");
+
+    await expect(
+      renameFolder(ctx, path, meta.id, "A", "A/B/A"),
+    ).rejects.toThrow(/itself or a descendant/i);
+
+    await expect(
+      renameFolder(ctx, path, meta.id, "A/B", "A/B/Nested"),
+    ).rejects.toThrow(/itself or a descendant/i);
+
+    const moved = await renameFolder(ctx, path, meta.id, "A/B", "C/B");
+    expect(moved).toBe("C/B");
+    expect(await ctx.fs.exists(joinSegments(path, "C/B"))).toBe(true);
+    expect(await ctx.fs.exists(joinSegments(path, "A/B"))).toBe(false);
+  });
+
   it("renameFolder updates only items under the folder prefix from index", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "collector-folder-rename-"));
     db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));

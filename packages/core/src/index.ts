@@ -169,6 +169,7 @@ export {
   renameFolder,
 } from "./vault/folder-operations.js";
 export type { FolderTreeNode } from "./vault/folder-tree.js";
+export { renameFolderPath } from "./vault/folder-tree.js";
 export {
   ensureInboxLayout,
   resolveOrCreateInboxFolder,
