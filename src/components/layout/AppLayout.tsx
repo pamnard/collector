@@ -30,7 +30,7 @@ import {
   clampSidebarWidthPx,
 } from "../../lib/sidebar-width";
 import { formatIndexingBannerLabel } from "@collector/core";
-import type { NavFilter, ViewMode } from "../../types/ui";
+import { navFilterKey, type NavFilter, type ViewMode } from "../../types/ui";
 import { parseSettingsSection } from "../../types/sidebar-mode";
 import { cn } from "../../lib/utils";
 import { AlertBusProvider, useAlerts } from "../alerts/AlertBusProvider";
@@ -305,7 +305,7 @@ function AppLayoutInner() {
   // when the page is short.
   const mainColumn = (
     <main className="relative flex min-h-0 h-full flex-1 flex-col overflow-hidden">
-      <MainScrollArea>
+      <MainScrollArea resetKey={`${locationKey}|${navFilterKey(activeFilter)}`}>
         <div className="box-border flex min-h-full flex-col p-2">
           <div className="flex min-h-full flex-1 flex-col rounded-lg bg-white dark:bg-neutral-800">
             {showCardHeader ? (
