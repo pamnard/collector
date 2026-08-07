@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { MediaWithPath } from "@collector/core";
 import { ItemDetailAside } from "../components/items/ItemDetailAside";
 import { ItemDetailInlineEditor } from "../components/items/ItemDetailInlineEditor";
@@ -9,6 +9,7 @@ import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { useItemDetail } from "../hooks/useItemDetail";
 import { useItemDetailChrome } from "../hooks/useItemDetailChrome";
 import { useMediaPlayerOverlay } from "../hooks/useMediaPlayerOverlay";
+import { articleTocForView } from "../lib/markdown/article-toc";
 import { errorMessage } from "../services/runtime-error";
 import type { PlayableMediaKind } from "../utils/local-media-playback";
 
@@ -85,11 +86,17 @@ export function ItemDetailPage() {
     [openMediaRef],
   );
 
+  const tocItems = useMemo(
+    () => articleTocForView(mode, content),
+    [mode, content],
+  );
+
   const aside = item ? (
     <ItemDetailAside
       item={item}
       onUpdated={handleItemUpdated}
       onPlayMedia={handlePlayGalleryMedia}
+      tocItems={tocItems}
     />
   ) : null;
 
@@ -105,7 +112,7 @@ export function ItemDetailPage() {
       />
 
       {item && (
-        <article className="grid grid-cols-1 gap-6 @[1100px]:grid-cols-12 @[1100px]:items-stretch @[1100px]:gap-8">
+        <article className="grid grid-cols-1 gap-6 @[1100px]:grid-cols-12 @[1100px]:items-start @[1100px]:gap-8">
           {mode === "view" ? (
             <ItemDetailViewBody
               item={item}

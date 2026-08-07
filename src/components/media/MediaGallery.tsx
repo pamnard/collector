@@ -15,6 +15,7 @@ import {
 } from "../../services/collector-client";
 import { MediaGalleryListRow } from "./MediaGalleryListRow";
 import { MediaGalleryVisualTile } from "./MediaGalleryVisualTile";
+import { ItemDetailAsideSection } from "../items/ItemDetailAsideSection";
 
 const MEDIA_GALLERY_ERROR_ID = "media-gallery-error";
 
@@ -181,7 +182,7 @@ export function MediaGallery({
   );
 
   return (
-    <section className="mt-4 space-y-3">
+    <>
       <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => {
@@ -195,62 +196,64 @@ export function MediaGallery({
         onConfirm={handleConfirmDelete}
       />
 
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-medium">Медиа</h2>
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={isUploading}
-          className="inline-flex items-center gap-2 rounded-lg border border-black/10 dark:border-white/10 px-3 py-1.5 text-sm hover:bg-neutral-100/65 dark:hover:bg-neutral-700/65 disabled:opacity-50"
-        >
-          <ImagePlus size={16} />
-          {isUploading ? "Загрузка…" : "Добавить"}
-        </button>
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={handleUpload}
-        />
-      </div>
-
-      {files.length === 0 ? (
-        <p className="text-neutral-500 dark:text-neutral-400 text-sm">
-          Нет прикреплённых файлов.
-        </p>
-      ) : (
+      <ItemDetailAsideSection title="Медиа">
         <div className="space-y-3">
-          {visualFiles.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {visualFiles.map((file) => (
-                <MediaGalleryVisualTile
-                  key={file.id}
-                  file={file}
-                  coverSrc={coverSrc}
-                  coverBusy={coverMediaId === file.id}
-                  onSetCover={(mediaId) => void handleSetCover(mediaId)}
-                  onRequestDelete={requestDelete}
-                  onPlayMedia={onPlayMedia}
-                />
-              ))}
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={handleUpload}
+          />
+
+          {files.length === 0 ? (
+            <p className="text-neutral-500 dark:text-neutral-400 text-sm">
+              Нет прикреплённых файлов.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {visualFiles.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {visualFiles.map((file) => (
+                    <MediaGalleryVisualTile
+                      key={file.id}
+                      file={file}
+                      coverSrc={coverSrc}
+                      coverBusy={coverMediaId === file.id}
+                      onSetCover={(mediaId) => void handleSetCover(mediaId)}
+                      onRequestDelete={requestDelete}
+                      onPlayMedia={onPlayMedia}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {listFiles.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {listFiles.map((file) => (
+                    <MediaGalleryListRow
+                      key={file.id}
+                      file={file}
+                      onRequestDelete={requestDelete}
+                      onPlayMedia={onPlayMedia}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
-          {listFiles.length > 0 && (
-            <div className="flex flex-col gap-2">
-              {listFiles.map((file) => (
-                <MediaGalleryListRow
-                  key={file.id}
-                  file={file}
-                  onRequestDelete={requestDelete}
-                  onPlayMedia={onPlayMedia}
-                />
-              ))}
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={isUploading}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-black/10 dark:border-white/10 px-3 py-1.5 text-sm hover:bg-neutral-100/65 dark:hover:bg-neutral-700/65 disabled:opacity-50"
+          >
+            <ImagePlus size={16} />
+            {isUploading ? "Загрузка…" : "Добавить"}
+          </button>
         </div>
-      )}
-    </section>
+      </ItemDetailAsideSection>
+    </>
   );
 }

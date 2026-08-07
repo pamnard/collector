@@ -24,6 +24,7 @@ import {
 import { getCollectorService } from "../../services/collector-client";
 import { errorMessage } from "../../services/runtime-error";
 import { formatItemDate } from "../../utils/formatItemDate";
+import { ItemDetailAsideSection } from "./ItemDetailAsideSection";
 
 interface ItemDetailMetadataProps {
   item: ItemFile;
@@ -142,7 +143,7 @@ export function ItemDetailMetadata({ item }: ItemDetailMetadataProps) {
   }, [item.id, item.updated_at, alerts]);
 
   return (
-    <section className="@container space-y-3">
+    <ItemDetailAsideSection title="Метаданные" className="@container">
       {entries === null && (
         <p className="text-sm text-neutral-500 dark:text-neutral-400">…</p>
       )}
@@ -172,6 +173,6 @@ export function ItemDetailMetadata({ item }: ItemDetailMetadataProps) {
           })}
         </dl>
       )}
-    </section>
+    </ItemDetailAsideSection>
   );
 }
