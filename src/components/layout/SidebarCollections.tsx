@@ -11,16 +11,21 @@ import { IndexingStatusMessage } from "../alerts/IndexingStatusMessage";
 import { errorMessage } from "../alerts/alert-store";
 import { useFolderTree } from "../../hooks/useFolderTree";
 import {
+  folderLeafName,
   moveFolderTo,
+  renameFolderLeaf,
   rewriteFolderNavFilterAfterMove,
 } from "../../lib/folder-actions";
 import type { NavFilter } from "../../types/ui";
 import { navFilterKey } from "../../types/ui";
 import { FolderContextMenu } from "../folders/FolderContextMenu";
 import { MoveFolderDialog } from "../folders/MoveFolderDialog";
+import { RenameFolderDialog } from "../folders/RenameFolderDialog";
 
 const FOLDER_MOVE_BUSY_ID = "folder-move-busy";
 const FOLDER_MOVE_ERROR_ID = "folder-move-error";
+const FOLDER_RENAME_BUSY_ID = "folder-rename-busy";
+const FOLDER_RENAME_ERROR_ID = "folder-rename-error";
 
 const NEST_LIST_CLASS =
   "ml-3.5 flex min-w-0 translate-x-px flex-col gap-1 border-l border-sidebar-border pl-2.5 py-0.5";
@@ -39,12 +44,14 @@ function CollectionFolderRow({
   isSettings,
   onSelect,
   onRequestMove,
+  onRequestRename,
 }: {
   node: FolderTreeNode;
   activeKey: string;
   isSettings: boolean;
   onSelect: (filter: NavFilter) => void;
   onRequestMove: (folderPath: string) => void;
+  onRequestRename: (folderPath: string) => void;
 }) {
   const isAncestorOfActive = activeKey.startsWith(`folder:${node.path}/`);
   const [open, setOpen] = useState(isAncestorOfActive);
@@ -66,6 +73,7 @@ function CollectionFolderRow({
       <FolderContextMenu
         folderPath={node.path}
         onRequestMove={onRequestMove}
+        onRequestRename={onRequestRename}
       >
         <div className={collectionRowClass(selected)}>
           <button
@@ -107,6 +115,7 @@ function CollectionFolderRow({
               isSettings={isSettings}
               onSelect={onSelect}
               onRequestMove={onRequestMove}
+              onRequestRename={onRequestRename}
             />
           ))}
         </div>
@@ -134,7 +143,20 @@ export function SidebarCollections({
   const activeKey = navFilterKey(activeFilter);
   const alerts = useAlerts();
   const [moveSourcePath, setMoveSourcePath] = useState<string | null>(null);
-  useDismissAlertsOnUnmount([FOLDER_MOVE_BUSY_ID, FOLDER_MOVE_ERROR_ID]);
+  const [renameSourcePath, setRenameSourcePath] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [isRenaming, setIsRenaming] = useState(false);
+  useDismissAlertsOnUnmount([
+    FOLDER_MOVE_BUSY_ID,
+    FOLDER_MOVE_ERROR_ID,
+    FOLDER_RENAME_BUSY_ID,
+    FOLDER_RENAME_ERROR_ID,
+  ]);
+
+  const handleRequestRename = (folderPath: string) => {
+    setRenameSourcePath(folderPath);
+    setRenameValue(folderLeafName(folderPath));
+  };
 
   const handleConfirmMove = async (
     folderPath: string,
@@ -169,6 +191,40 @@ export function SidebarCollections({
     }
   };
 
+  const handleConfirmRename = async (folderPath: string, newLeafName: string) => {
+    alerts.dismiss(FOLDER_RENAME_ERROR_ID);
+    setIsRenaming(true);
+    alerts.upsert(FOLDER_RENAME_BUSY_ID, {
+      tone: "warning",
+      dismissible: false,
+      message: (
+        <IndexingStatusMessage label="Переименовываю папку и всё содержимое…" />
+      ),
+    });
+    try {
+      const newPath = await renameFolderLeaf(folderPath, newLeafName);
+      alerts.dismiss(FOLDER_RENAME_BUSY_ID);
+      setIsRenaming(false);
+      setRenameSourcePath(null);
+      refreshVault();
+      const next = rewriteFolderNavFilterAfterMove(
+        activeFilter,
+        folderPath,
+        newPath,
+      );
+      if (next) {
+        onSelect(next);
+      }
+    } catch (error) {
+      alerts.dismiss(FOLDER_RENAME_BUSY_ID);
+      setIsRenaming(false);
+      alerts.upsert(FOLDER_RENAME_ERROR_ID, {
+        tone: "danger",
+        message: errorMessage(error),
+      });
+    }
+  };
+
   return (
     <div className="flex flex-col gap-1">
       {folders.map((folder) => (
@@ -179,6 +235,7 @@ export function SidebarCollections({
           isSettings={isSettings}
           onSelect={onSelect}
           onRequestMove={setMoveSourcePath}
+          onRequestRename={handleRequestRename}
         />
       ))}
       {moveSourcePath !== null ? (
@@ -195,6 +252,29 @@ export function SidebarCollections({
             const source = moveSourcePath;
             setMoveSourcePath(null);
             void handleConfirmMove(source, newParentPath);
+          }}
+        />
+      ) : null}
+      {renameSourcePath !== null ? (
+        <RenameFolderDialog
+          open
+          folderPath={renameSourcePath}
+          renameValue={renameValue}
+          isRenaming={isRenaming}
+          onRenameValueChange={setRenameValue}
+          onOpenChange={(open) => {
+            if (!open && !isRenaming) {
+              setRenameSourcePath(null);
+            }
+          }}
+          onCancel={() => {
+            if (!isRenaming) {
+              setRenameSourcePath(null);
+            }
+          }}
+          onConfirm={() => {
+            const source = renameSourcePath;
+            void handleConfirmRename(source, renameValue);
           }}
         />
       ) : null}
