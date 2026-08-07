@@ -1,6 +1,6 @@
 export const SIDEBAR_WIDTH_MIN = 240;
 export const SIDEBAR_WIDTH_DEFAULT = 288;
-export const SIDEBAR_WIDTH_MAX = 400;
+export const SIDEBAR_WIDTH_MAX = 520;
 /** Icon rail (w-12) + 1px divider — collapsed docked sidebar. */
 export const SIDEBAR_RAIL_WIDTH_PX = 49;
 export const SIDEBAR_WIDTH_STORAGE_KEY = "collector.sidebarWidthPx";
