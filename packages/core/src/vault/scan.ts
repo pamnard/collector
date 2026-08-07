@@ -1,5 +1,10 @@
 import type { FileSystemAdapter } from "../adapters/types.js";
-import { isMarkdownItemFile, isReservedVaultEntry, joinSegments } from "./paths.js";
+import {
+  isMarkdownItemFile,
+  isReservedVaultEntry,
+  joinSegments,
+  normalizeRelativePath,
+} from "./paths.js";
 
 /**
  * Walk the vault tree. Recurse only into directories. Markdown files are items;
@@ -68,4 +73,32 @@ export async function listFolderRelativePaths(
     (rel) => folders.push(rel),
   );
   return folders.sort();
+}
+
+/**
+ * Markdown item ids under a folder prefix (inclusive of the folder itself).
+ * Returns [] when the prefix directory is missing.
+ */
+export async function listItemRelativePathsUnderPrefix(
+  fs: FileSystemAdapter,
+  vaultRootPath: string,
+  folderPrefix: string,
+): Promise<string[]> {
+  const normalized = normalizeRelativePath(folderPrefix);
+  if (!normalized) {
+    return listItemRelativePaths(fs, vaultRootPath);
+  }
+  const abs = joinSegments(vaultRootPath, normalized);
+  if (!(await fs.exists(abs))) {
+    return [];
+  }
+  const items: string[] = [];
+  await walkVault(
+    fs,
+    vaultRootPath,
+    normalized,
+    (rel) => items.push(rel),
+    () => {},
+  );
+  return items;
 }

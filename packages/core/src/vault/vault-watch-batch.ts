@@ -1,10 +1,16 @@
+export interface VaultWatchBatch {
+  itemIds: string[];
+  folderPaths: string[];
+}
+
 export interface VaultWatchBatcher {
-  enqueue: (itemId: string) => void;
+  enqueueItem: (itemId: string) => void;
+  enqueueFolder: (folderPath: string) => void;
   flush: () => void;
   dispose: () => void;
 }
 
-/** Dedupe item ids while preserving first-seen order. */
+/** Dedupe strings while preserving first-seen order. */
 export function dedupeVaultWatchItemIds(itemIds: string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -20,9 +26,10 @@ export function dedupeVaultWatchItemIds(itemIds: string[]): string[] {
 
 export function createVaultWatchBatcher(options: {
   debounceMs: number;
-  onFlush: (itemIds: string[]) => void | Promise<void>;
+  onFlush: (batch: VaultWatchBatch) => void | Promise<void>;
 }): VaultWatchBatcher {
-  const pending = new Set<string>();
+  const pendingItems = new Set<string>();
+  const pendingFolders = new Set<string>();
   let timer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
 
@@ -34,25 +41,42 @@ export function createVaultWatchBatcher(options: {
   };
 
   const runFlush = () => {
-    if (disposed || pending.size === 0) {
+    if (disposed || (pendingItems.size === 0 && pendingFolders.size === 0)) {
       return;
     }
-    const itemIds = dedupeVaultWatchItemIds([...pending]);
-    pending.clear();
-    void options.onFlush(itemIds);
+    // Sets already dedupe; iteration order is insertion order.
+    const itemIds = [...pendingItems];
+    const folderPaths = [...pendingFolders];
+    pendingItems.clear();
+    pendingFolders.clear();
+    void options.onFlush({ itemIds, folderPaths });
+  };
+
+  const schedule = () => {
+    if (disposed) {
+      return;
+    }
+    clearTimer();
+    timer = setTimeout(() => {
+      timer = null;
+      runFlush();
+    }, options.debounceMs);
   };
 
   return {
-    enqueue(itemId) {
+    enqueueItem(itemId) {
       if (disposed) {
         return;
       }
-      pending.add(itemId);
-      clearTimer();
-      timer = setTimeout(() => {
-        timer = null;
-        runFlush();
-      }, options.debounceMs);
+      pendingItems.add(itemId);
+      schedule();
+    },
+    enqueueFolder(folderPath) {
+      if (disposed) {
+        return;
+      }
+      pendingFolders.add(folderPath);
+      schedule();
     },
     flush() {
       if (disposed) {
@@ -64,7 +88,8 @@ export function createVaultWatchBatcher(options: {
     dispose() {
       disposed = true;
       clearTimer();
-      pending.clear();
+      pendingItems.clear();
+      pendingFolders.clear();
     },
   };
 }
