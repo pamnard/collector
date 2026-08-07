@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { X } from "lucide-react";
+import { useEffect, useState } from "react";
 import {
   useAlerts,
   useDismissAlertsOnUnmount,
@@ -8,19 +7,38 @@ import { errorMessage } from "../alerts/alert-store";
 import { EMPTY_ITEM_FORM, type ItemFormValues } from "../../types/item";
 import { ItemForm } from "./ItemForm";
 import { getCollectorService } from "../../services/collector-client";
+import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
 
 const CREATE_ITEM_ERROR_ID = "create-item-error";
 
 interface CreateItemDialogProps {
-  onClose: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onCreated: (itemId: string) => void;
 }
 
-export function CreateItemDialog({ onClose, onCreated }: CreateItemDialogProps) {
+export function CreateItemDialog({
+  open,
+  onOpenChange,
+  onCreated,
+}: CreateItemDialogProps) {
   const alerts = useAlerts();
   useDismissAlertsOnUnmount([CREATE_ITEM_ERROR_ID]);
   const [values, setValues] = useState<ItemFormValues>(EMPTY_ITEM_FORM);
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setValues(EMPTY_ITEM_FORM);
+    }
+  }, [open]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -52,49 +70,44 @@ export function CreateItemDialog({ onClose, onCreated }: CreateItemDialogProps) 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button
-        type="button"
-        aria-label="Закрыть"
-        onClick={onClose}
-        className="absolute inset-0 bg-black/50"
-      />
-
-      <form
-        onSubmit={handleSubmit}
-        className="relative z-10 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 p-6 shadow-xl"
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (isSaving) {
+          return;
+        }
+        onOpenChange(nextOpen);
+      }}
+    >
+      <DialogContent
+        className="sm:max-w-lg max-h-[90vh] overflow-y-auto"
+        showCloseButton={!isSaving}
       >
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <h2 className="text-lg font-semibold">Новый элемент</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100/65 dark:hover:bg-neutral-700/65 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
-          >
-            <X size={20} />
-          </button>
-        </div>
+        <form onSubmit={handleSubmit} className="contents">
+          <DialogHeader>
+            <DialogTitle>Новый элемент</DialogTitle>
+          </DialogHeader>
 
-        <ItemForm values={values} onChange={setValues} />
+          <ItemForm values={values} onChange={setValues} />
 
-        <div className="mt-6 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSaving}
-            className="px-4 py-2 rounded-lg border border-black/10 dark:border-white/10 hover:bg-neutral-100/65 dark:hover:bg-neutral-700/65 transition-colors text-sm"
-          >
-            Отмена
-          </button>
-          <button
-            type="submit"
-            disabled={isSaving || !values.title.trim()}
-            className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors text-sm disabled:opacity-50"
-          >
-            {isSaving ? "Сохранение…" : "Создать"}
-          </button>
-        </div>
-      </form>
-    </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isSaving}
+              onClick={() => onOpenChange(false)}
+            >
+              Отмена
+            </Button>
+            <Button
+              type="submit"
+              disabled={isSaving || !values.title.trim()}
+            >
+              {isSaving ? "Сохранение…" : "Создать"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

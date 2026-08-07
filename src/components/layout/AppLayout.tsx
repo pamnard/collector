@@ -428,12 +428,15 @@ function AppLayoutInner() {
 
         <AlertHost />
 
-        {isCreateOpen && (
-          <CreateItemDialog
-            onClose={closeCreate}
-            onCreated={handleCreated}
-          />
-        )}
+        <CreateItemDialog
+          open={isCreateOpen}
+          onOpenChange={(next) => {
+            if (!next) {
+              closeCreate();
+            }
+          }}
+          onCreated={handleCreated}
+        />
       </ItemChromeProvider>
     </ShellContext.Provider>
   );
