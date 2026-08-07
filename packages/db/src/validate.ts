@@ -59,9 +59,9 @@ export async function runIndexStartupChecks(db: SqlMigrator): Promise<IndexValid
         db.select(
           `SELECT id FROM items
            WHERE vault_id = ?
-             AND (folder_path = ? OR folder_path LIKE ?)
+             AND folder_path = ?
            LIMIT 1`,
-          ["00000000-0000-0000-0000-000000000000", "inbox", "inbox/%"],
+          ["00000000-0000-0000-0000-000000000000", "inbox"],
         ),
     },
     {

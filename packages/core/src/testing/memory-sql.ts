@@ -257,6 +257,25 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
     }
 
     if (
+      normalized.startsWith("SELECT i.id FROM items i WHERE i.vault_id = ?") &&
+      normalized.includes("i.folder_path = ?") &&
+      !normalized.includes("LIKE ?")
+    ) {
+      const vaultId = bindValues[0];
+      const folderPath = String(bindValues[1]);
+      const items = this.tables.get("items") ?? new Map();
+
+      let rows = [...items.values()].filter((row) => {
+        if (row.vault_id !== vaultId) {
+          return false;
+        }
+        return String(row.folder_path ?? "") === folderPath;
+      });
+
+      return rows.map((row) => ({ id: row.id })) as T[];
+    }
+
+    if (
       normalized.startsWith("SELECT id FROM items WHERE vault_id = ?") ||
       (normalized.startsWith("SELECT i.id FROM items i WHERE i.vault_id = ?") &&
         !normalized.includes("INNER JOIN item_tags") &&
