@@ -14,6 +14,8 @@ import {
   SidebarContent,
   SidebarProvider,
 } from "../ui/sidebar";
+import { resolveSidebarHighlightFilter } from "../../lib/sidebar-highlight-filter";
+import { useItemChromeFolderPath } from "./item-chrome";
 import { SidebarCollections } from "./SidebarCollections";
 import { SidebarIconRail } from "./SidebarIconRail";
 import { SidebarSearchPanel } from "./SidebarSearchPanel";
@@ -82,6 +84,13 @@ export function Sidebar({
   const { pathname } = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const isSettings = pathname === "/settings";
+  const isItemRoute = pathname.startsWith("/item/");
+  const itemFolderPath = useItemChromeFolderPath();
+  const highlightFilter = resolveSidebarHighlightFilter({
+    isItemRoute,
+    itemFolderPath,
+    navFilter: activeFilter,
+  });
   const settingsSection = parseSettingsSection(searchParams.get("section"));
 
   const finishSelection = () => {
@@ -190,7 +199,7 @@ export function Sidebar({
                 {mode === "collections" ? (
                   <div className="px-2 py-2">
                     <SidebarCollections
-                      activeFilter={activeFilter}
+                      activeFilter={highlightFilter}
                       isSettings={isSettings}
                       onSelect={goToDashboard}
                       vaultRevision={vaultRevision}
@@ -202,7 +211,7 @@ export function Sidebar({
                   <div className="px-2 py-2">
                     <SidebarTags
                       tags={tags}
-                      activeFilter={activeFilter}
+                      activeFilter={highlightFilter}
                       isSettings={isSettings}
                       onSelect={goToDashboard}
                     />
