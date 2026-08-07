@@ -7,6 +7,8 @@ export {
   startServiceHost,
   formatServiceHostReadyLine,
   SERVICE_HOST_READY_PREFIX,
+  DEFAULT_SERVICE_HOST_PORT,
+  resolveServiceHostListenPort,
   type ServiceHost,
   type ServiceHostOptions,
 } from "./host/service-host.js";

@@ -3,12 +3,32 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  DEFAULT_SERVICE_HOST_PORT,
   SERVICE_HOST_READY_PREFIX,
   formatServiceHostReadyLine,
+  resolveServiceHostListenPort,
   startServiceHost,
 } from "./service-host.js";
 import { connectHostWire } from "./wire/client.js";
 import { defaultServiceHostTokenPath } from "./wire/auth.js";
+
+describe("resolveServiceHostListenPort", () => {
+  it("defaults to DEFAULT_SERVICE_HOST_PORT (1421)", () => {
+    expect(DEFAULT_SERVICE_HOST_PORT).toBe(1421);
+    expect(resolveServiceHostListenPort()).toBe(DEFAULT_SERVICE_HOST_PORT);
+    expect(resolveServiceHostListenPort(undefined)).toBe(
+      DEFAULT_SERVICE_HOST_PORT,
+    );
+  });
+
+  it("keeps explicit 0 as ephemeral", () => {
+    expect(resolveServiceHostListenPort(0)).toBe(0);
+  });
+
+  it("passes through an explicit fixed port", () => {
+    expect(resolveServiceHostListenPort(9999)).toBe(9999);
+  });
+});
 
 describe("startServiceHost", () => {
   const dirs: string[] = [];

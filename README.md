@@ -84,10 +84,12 @@ Manual split:
 ```bash
 npm run serve --workspace @collector/service -- --data-dir /path/to/vault-data
 # READY line → baseUrl; token file under data-dir
-VITE_COLLECTOR_SERVICE_BASE_URL=http://127.0.0.1:PORT \
+VITE_COLLECTOR_SERVICE_BASE_URL=http://127.0.0.1:1421 \
 VITE_COLLECTOR_SERVICE_TOKEN="$(tr -d '\n' < /path/to/vault-data/collector-service.host-token)" \
 npm run dev -- --port 1430 --strictPort
 ```
+
+Default `serve` listens on **1421** (`DEFAULT_SERVICE_HOST_PORT`). Pass `--port 0` for an ephemeral port (tests/smokes).
 
 UI-only DevMock (no host): `npm run dev` on port **1420**.
 
