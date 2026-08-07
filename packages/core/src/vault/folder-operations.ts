@@ -115,6 +115,11 @@ export async function renameFolder(
   if (from === to) {
     return to;
   }
+  if (to.startsWith(`${from}/`)) {
+    throw new Error(
+      `Cannot move folder into itself or a descendant: ${from} → ${to}`,
+    );
+  }
 
   const fromAbs = joinSegments(vaultPath, from);
   const toAbs = joinSegments(vaultPath, to);

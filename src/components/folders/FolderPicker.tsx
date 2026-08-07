@@ -1,10 +1,8 @@
 import { useMemo } from "react";
-import {
-  INBOX_FOLDER_NAME,
-  compareFolderNamesForDisplay,
-} from "@collector/shared";
+import { INBOX_FOLDER_NAME } from "@collector/shared";
 import { useShell } from "../layout/AppLayout";
 import { useFolderTree } from "../../hooks/useFolderTree";
+import { collectFolderPathsFlat, sortFolderPathsFlat } from "../../lib/folder-actions";
 import {
   Select,
   SelectContent,
@@ -18,40 +16,19 @@ interface FolderPickerProps {
   onChange: (folderPath: string) => void;
 }
 
-function folderPathSortKey(path: string): string {
-  const slash = path.indexOf("/");
-  return slash === -1 ? path : path.slice(0, slash);
-}
-
 export function FolderPicker({ value, onChange }: FolderPickerProps) {
   const { vaultRevision } = useShell();
   const tree = useFolderTree(vaultRevision);
   const paths = useMemo(() => {
-    const collected: string[] = [];
-    const walk = (nodes: typeof tree) => {
-      for (const node of nodes) {
-        collected.push(node.path);
-        walk(node.children);
-      }
-    };
-    walk(tree);
+    const collected = collectFolderPathsFlat(tree);
     if (
-      !collected.some(
+      collected.some(
         (path) => path.toLowerCase() === INBOX_FOLDER_NAME.toLowerCase(),
       )
     ) {
-      collected.push(INBOX_FOLDER_NAME);
+      return collected;
     }
-    return collected.sort((a, b) => {
-      const root = compareFolderNamesForDisplay(
-        folderPathSortKey(a),
-        folderPathSortKey(b),
-      );
-      if (root !== 0) {
-        return root;
-      }
-      return a.localeCompare(b);
-    });
+    return sortFolderPathsFlat([...collected, INBOX_FOLDER_NAME]);
   }, [tree]);
 
   const selectValue = value || INBOX_FOLDER_NAME;

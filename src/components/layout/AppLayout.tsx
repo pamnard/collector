@@ -271,6 +271,7 @@ function AppLayoutInner() {
     activeFilter,
     onFilterSelect: setActiveFilter,
     vaultRevision,
+    refreshVault: bumpVaultRevision,
     searchQuery,
     onSearchChange: setSearchQuery,
     searchIndexBuilding,
