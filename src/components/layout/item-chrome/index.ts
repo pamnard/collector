@@ -7,6 +7,7 @@ export {
   ItemChromeProvider,
   useItemChrome,
   useItemChromeAdjacent,
+  useItemChromeFolderPath,
   useItemChromeHeader,
 } from "./item-chrome-context";
 export { ItemChromeAdjacentFooter } from "./ItemChromeAdjacentFooter";

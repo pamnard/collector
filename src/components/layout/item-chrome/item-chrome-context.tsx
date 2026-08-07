@@ -90,3 +90,12 @@ export function useItemChromeHeader(): ItemChromeHeaderView {
 export function useItemChromeAdjacent(): AdjacentItemsResult | null {
   return useItemChromeContext().adjacent;
 }
+
+/** Ready item folder path for sidebar highlight; `null` when chrome has no ready item. */
+export function useItemChromeFolderPath(): string | null {
+  const { domain } = useItemChromeContext();
+  if (domain?.status !== "ready" || domain.item === null) {
+    return null;
+  }
+  return domain.item.folder_path;
+}
