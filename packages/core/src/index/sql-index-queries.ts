@@ -26,25 +26,27 @@ type TagWithCount = Tag & { item_count: number };
 
 function ftsFilterParts(filter: NavSearchFilter): {
   extraJoin: string;
-  extraBinds: unknown[];
+  joinBinds: unknown[];
   folderClause: string;
+  folderBinds: unknown[];
 } {
   let extraJoin = "";
-  const extraBinds: unknown[] = [];
+  const joinBinds: unknown[] = [];
 
   if (isTagFilter(filter)) {
     extraJoin =
       "INNER JOIN item_tags it ON it.item_id = i.id AND it.tag_id = ?";
-    extraBinds.push(filter.tagId);
+    joinBinds.push(filter.tagId);
   }
 
   let folderClause = "";
+  const folderBinds: unknown[] = [];
   if (isFolderFilter(filter)) {
-    folderClause = "AND (i.folder_path = ? OR i.folder_path LIKE ?)";
-    extraBinds.push(filter.folderPath, `${filter.folderPath}/%`);
+    folderClause = "AND i.folder_path = ?";
+    folderBinds.push(filter.folderPath);
   }
 
-  return { extraJoin, extraBinds, folderClause };
+  return { extraJoin, joinBinds, folderClause, folderBinds };
 }
 
 export async function listVaultItemIds(
@@ -211,7 +213,8 @@ export async function searchItemIds(
   filter: NavSearchFilter,
   options?: ItemIdPageOptions,
 ): Promise<string[]> {
-  const { extraJoin, extraBinds, folderClause } = ftsFilterParts(filter);
+  const { extraJoin, joinBinds, folderClause, folderBinds } =
+    ftsFilterParts(filter);
   const page = sqlPageClause(options);
 
   const rows = await selector.select<SqlSelectRow>(
@@ -224,7 +227,7 @@ export async function searchItemIds(
        ${folderClause}
      ORDER BY rank
      ${page.sql}`,
-    [...extraBinds, ftsQuery, vaultId, ...page.binds],
+    [...joinBinds, ftsQuery, vaultId, ...folderBinds, ...page.binds],
   );
   return rows.map((row) => row.id);
 }
@@ -235,7 +238,8 @@ export async function countSearchItemIds(
   ftsQuery: string,
   filter: NavSearchFilter,
 ): Promise<number> {
-  const { extraJoin, extraBinds, folderClause } = ftsFilterParts(filter);
+  const { extraJoin, joinBinds, folderClause, folderBinds } =
+    ftsFilterParts(filter);
 
   const rows = await selector.select<{ count: number }>(
     `SELECT COUNT(*) AS count
@@ -245,7 +249,7 @@ export async function countSearchItemIds(
      WHERE items_fts MATCH ?
        AND i.vault_id = ?
        ${folderClause}`,
-    [...extraBinds, ftsQuery, vaultId],
+    [...joinBinds, ftsQuery, vaultId, ...folderBinds],
   );
   return rows[0]?.count ?? 0;
 }
@@ -297,6 +301,26 @@ export async function listItemIdsByTag(
      ${orderBy}
      ${page.sql}`,
     [vaultId, tagId, ...page.binds],
+  );
+  return rows.map((row) => row.id);
+}
+
+export async function listItemIdsByFolder(
+  selector: SqlIndexSelector,
+  vaultId: string,
+  folderPath: string,
+  options?: ItemIdListOptions,
+): Promise<string[]> {
+  const page = sqlPageClause(options);
+  const orderBy = resolveItemIdOrderByClause(options?.sort);
+  const rows = await selector.select<SqlSelectRow>(
+    `SELECT i.id
+     FROM items i
+     WHERE i.vault_id = ?
+       AND i.folder_path = ?
+     ${orderBy}
+     ${page.sql}`,
+    [vaultId, folderPath, ...page.binds],
   );
   return rows.map((row) => row.id);
 }
@@ -382,7 +406,7 @@ export async function listItemIdsByNavFilter(
     return listItemIdsByTag(selector, vaultId, filter.tagId, options);
   }
   if (isFolderFilter(filter)) {
-    return listItemIdsByFolderPrefix(
+    return listItemIdsByFolder(
       selector,
       vaultId,
       filter.folderPath,
@@ -424,8 +448,8 @@ export async function countItemIdsByNavFilter(
       `SELECT COUNT(*) AS count
        FROM items i
        WHERE i.vault_id = ?
-         AND (i.folder_path = ? OR i.folder_path LIKE ?)`,
-      [vaultId, filter.folderPath, `${filter.folderPath}/%`],
+         AND i.folder_path = ?`,
+      [vaultId, filter.folderPath],
     );
     return rows[0]?.count ?? 0;
   }

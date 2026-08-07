@@ -64,6 +64,84 @@ describe("listItemIdsByNavFilter", () => {
       secondId,
     ]);
   });
+
+  it("folder nav filter lists only direct items, not nested descendants", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-nav-folder-exact-"));
+    const db = BetterSqliteMigrator.open(join(dataDir, "collector-nav-folder-exact.db"));
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    const ctx = { fs, index };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    const parentId = `Parent/${createId()}.md`;
+    const childId = `Parent/Child/${createId()}.md`;
+    const timestamp = new Date().toISOString();
+    const sharedToken = "ExactFolderToken";
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: parentId,
+        vault_id: meta.id,
+        title: "Parent note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "Parent",
+        content_revision: 1,
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      content: sharedToken,
+    });
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: childId,
+        vault_id: meta.id,
+        title: "Child note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "Parent/Child",
+        content_revision: 1,
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      content: sharedToken,
+    });
+
+    const folderFilter = { type: "folder" as const, folderPath: "Parent" };
+
+    expect(await index.listItemIdsByNavFilter(meta.id, folderFilter)).toEqual([
+      parentId,
+    ]);
+    expect(await index.countItemIdsByNavFilter(meta.id, folderFilter)).toBe(1);
+
+    const ftsQuery = buildFtsMatchQuery(sharedToken);
+    expect(ftsQuery).not.toBeNull();
+    expect(await index.searchItemIds(meta.id, ftsQuery!, folderFilter)).toEqual([
+      parentId,
+    ]);
+    expect(await index.countSearchItemIds(meta.id, ftsQuery!, folderFilter)).toBe(
+      1,
+    );
+
+    expect(await index.listItemIdsByFolderPrefix(meta.id, "Parent")).toEqual(
+      expect.arrayContaining([parentId, childId]),
+    );
+    expect(
+      (await index.listItemIdsByFolderPrefix(meta.id, "Parent")).length,
+    ).toBe(2);
+
+    db.close();
+  });
 });
 
 describe("listItemIdsByNavFilter sort", () => {
