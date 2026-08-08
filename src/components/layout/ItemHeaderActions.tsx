@@ -17,6 +17,7 @@ export interface ItemHeaderActionsModel {
   onView: () => void;
   onForm: () => void;
   onSource: () => void;
+  onRename: () => void;
   onDelete: () => void;
 }
 
@@ -45,10 +46,15 @@ export function ItemHeaderActions({ actions }: ItemHeaderActionsProps) {
     onView,
     onForm,
     onSource,
+    onRename,
     onDelete,
   } = actions;
 
   const handleItemAction = (id: ItemActionId) => {
+    if (id === "rename") {
+      onRename();
+      return;
+    }
     if (id === "delete") {
       onDelete();
     }

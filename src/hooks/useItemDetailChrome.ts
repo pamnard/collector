@@ -26,6 +26,8 @@ export type UseItemDetailChromeInput = {
 export type UseItemDetailChromeResult = {
   deleteConfirmOpen: boolean;
   setDeleteConfirmOpen: (open: boolean) => void;
+  renameOpen: boolean;
+  setRenameOpen: (open: boolean) => void;
   idCopyFeedback: "copied" | "failed" | null;
   dismissIdCopyFeedback: () => void;
 };
@@ -37,6 +39,7 @@ export function useItemDetailChrome(
   const alerts = useAlerts();
   useDismissAlertsOnUnmount([ITEM_COPY_ALERT_ID]);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
   const [idCopyFeedback, setIdCopyFeedback] = useState<
     "copied" | "failed" | null
   >(null);
@@ -140,6 +143,9 @@ export function useItemDetailChrome(
       onView: onViewLive,
       onForm: onFormLive,
       onSource: onSourceLive,
+      onRename: () => {
+        setRenameOpen(true);
+      },
       onDelete: () => {
         setDeleteConfirmOpen(true);
       },
@@ -160,6 +166,8 @@ export function useItemDetailChrome(
   return {
     deleteConfirmOpen,
     setDeleteConfirmOpen,
+    renameOpen,
+    setRenameOpen,
     idCopyFeedback,
     dismissIdCopyFeedback,
   };

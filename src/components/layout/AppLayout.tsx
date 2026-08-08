@@ -50,6 +50,7 @@ import {
   ItemChromeProvider,
 } from "./item-chrome";
 import { Sidebar } from "./Sidebar";
+import { invalidateItemPresentationCache } from "../../services/item-presentation-cache";
 
 interface ShellContextValue {
   viewMode: ViewMode;
@@ -88,6 +89,7 @@ function AppLayoutInner() {
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const [vaultRevision, setVaultRevision] = useState(0);
   const bumpVaultRevision = useCallback(() => {
+    invalidateItemPresentationCache();
     setVaultRevision((value) => value + 1);
   }, []);
 
