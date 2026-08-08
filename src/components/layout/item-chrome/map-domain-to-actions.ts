@@ -41,6 +41,7 @@ export function mapDomainToActions(
     onView: domain.onView,
     onForm: domain.onForm,
     onSource: domain.onSource,
+    onMove: domain.onMove,
     onRename: domain.onRename,
     onDelete: domain.onDelete,
   };

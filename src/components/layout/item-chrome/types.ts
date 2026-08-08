@@ -23,6 +23,7 @@ export type ItemChromeDomain = {
   onView: () => void;
   onForm: () => void;
   onSource: () => void;
+  onMove: () => void;
   onRename: () => void;
   onDelete: () => void;
 };

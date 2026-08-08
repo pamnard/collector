@@ -20,6 +20,7 @@ function domain(
     onView: () => {},
     onForm: () => {},
     onSource: () => {},
+    onMove: () => {},
     onRename: () => {},
     onDelete: () => {},
     ...overrides,
@@ -98,6 +99,7 @@ describe("mapDomainToActions", () => {
     const onView = () => {};
     const onForm = () => {};
     const onSource = () => {};
+    const onMove = () => {};
     const onRename = () => {};
     const onDelete = () => {};
     const actions = mapDomainToActions(
@@ -108,6 +110,7 @@ describe("mapDomainToActions", () => {
         onView,
         onForm,
         onSource,
+        onMove,
         onRename,
         onDelete,
       }),
@@ -121,6 +124,7 @@ describe("mapDomainToActions", () => {
         onView: actions?.onView,
         onForm: actions?.onForm,
         onSource: actions?.onSource,
+        onMove: actions?.onMove,
         onRename: actions?.onRename,
         onDelete: actions?.onDelete,
       },
@@ -132,6 +136,7 @@ describe("mapDomainToActions", () => {
         onView,
         onForm,
         onSource,
+        onMove,
         onRename,
         onDelete,
       },

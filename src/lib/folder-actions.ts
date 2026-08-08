@@ -1,6 +1,10 @@
 import type { FolderTreeNode } from "@collector/core";
 import { renameFolderPath } from "@collector/core";
-import { compareFolderNamesForDisplay } from "@collector/shared";
+import {
+  compareFolderNamesForDisplay,
+  INBOX_FOLDER_NAME,
+  isInboxFolderName,
+} from "@collector/shared";
 import { isFolderFilter } from "../types/ui";
 import type { NavFilter } from "../types/ui";
 import { getCollectorService } from "../services/collector-client";
@@ -117,6 +121,29 @@ export function listFolderParentChoices(
       label: path,
     })),
   ];
+}
+
+/** Destination folders for move-item UI (Inbox guaranteed; no vault root). */
+export function listItemFolderDestinations(
+  tree: FolderTreeNode[],
+): Array<{ path: string; label: string }> {
+  const collected = collectFolderPathsFlat(tree);
+  const paths = collected.some((path) => isInboxFolderName(path))
+    ? collected
+    : sortFolderPathsFlat([...collected, INBOX_FOLDER_NAME]);
+  return paths.map((path) => ({ path, label: path }));
+}
+
+/** True when destination is the item's current folder (Inbox case-insensitive). */
+export function isCurrentItemFolderDestination(
+  currentFolderPath: string,
+  destinationPath: string,
+): boolean {
+  const current = currentFolderPath || INBOX_FOLDER_NAME;
+  if (isInboxFolderName(current) && isInboxFolderName(destinationPath)) {
+    return true;
+  }
+  return current === destinationPath;
 }
 
 export function rewriteFolderNavFilterAfterMove(
