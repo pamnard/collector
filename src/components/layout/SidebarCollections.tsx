@@ -10,6 +10,7 @@ import {
 import { IndexingStatusMessage } from "../alerts/IndexingStatusMessage";
 import { errorMessage } from "../alerts/alert-store";
 import { useFolderTree } from "../../hooks/useFolderTree";
+import type { FolderActionId } from "../../lib/folder-action-catalog";
 import {
   folderLeafName,
   moveFolderTo,
@@ -43,15 +44,13 @@ function CollectionFolderRow({
   activeKey,
   isSettings,
   onSelect,
-  onRequestMove,
-  onRequestRename,
+  onAction,
 }: {
   node: FolderTreeNode;
   activeKey: string;
   isSettings: boolean;
   onSelect: (filter: NavFilter) => void;
-  onRequestMove: (folderPath: string) => void;
-  onRequestRename: (folderPath: string) => void;
+  onAction: (id: FolderActionId, folderPath: string) => void;
 }) {
   const isAncestorOfActive = activeKey.startsWith(`folder:${node.path}/`);
   const [open, setOpen] = useState(isAncestorOfActive);
@@ -70,11 +69,7 @@ function CollectionFolderRow({
 
   return (
     <div>
-      <FolderContextMenu
-        folderPath={node.path}
-        onRequestMove={onRequestMove}
-        onRequestRename={onRequestRename}
-      >
+      <FolderContextMenu folderPath={node.path} onAction={onAction}>
         <div className={collectionRowClass(selected)}>
           <button
             type="button"
@@ -114,8 +109,7 @@ function CollectionFolderRow({
               activeKey={activeKey}
               isSettings={isSettings}
               onSelect={onSelect}
-              onRequestMove={onRequestMove}
-              onRequestRename={onRequestRename}
+              onAction={onAction}
             />
           ))}
         </div>
@@ -156,6 +150,16 @@ export function SidebarCollections({
   const handleRequestRename = (folderPath: string) => {
     setRenameSourcePath(folderPath);
     setRenameValue(folderLeafName(folderPath));
+  };
+
+  const handleFolderAction = (id: FolderActionId, path: string) => {
+    if (id === "rename") {
+      handleRequestRename(path);
+      return;
+    }
+    if (id === "move") {
+      setMoveSourcePath(path);
+    }
   };
 
   const handleConfirmMove = async (
@@ -234,8 +238,7 @@ export function SidebarCollections({
           activeKey={activeKey}
           isSettings={isSettings}
           onSelect={onSelect}
-          onRequestMove={setMoveSourcePath}
-          onRequestRename={handleRequestRename}
+          onAction={handleFolderAction}
         />
       ))}
       {moveSourcePath !== null ? (
