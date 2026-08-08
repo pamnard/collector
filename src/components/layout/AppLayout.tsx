@@ -30,7 +30,12 @@ import {
   clampSidebarWidthPx,
 } from "../../lib/sidebar-width";
 import { formatIndexingBannerLabel } from "@collector/core";
-import { navFilterKey, type NavFilter, type ViewMode } from "../../types/ui";
+import {
+  isFolderFilter,
+  navFilterKey,
+  type NavFilter,
+  type ViewMode,
+} from "../../types/ui";
 import { parseSettingsSection } from "../../types/sidebar-mode";
 import { cn } from "../../lib/utils";
 import { AlertBusProvider, useAlerts } from "../alerts/AlertBusProvider";
@@ -321,7 +326,13 @@ function AppLayoutInner() {
                 onOpenSidebar={() => setIsSidebarOpen(true)}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
-                onAddClick={openCreate}
+                onAddClick={() =>
+                  openCreate(
+                    isFolderFilter(activeFilter)
+                      ? activeFilter.folderPath
+                      : undefined,
+                  )
+                }
                 onFolderSelect={handleFolderSelectFromHeader}
                 settingsSection={settingsSection}
               />
@@ -435,13 +446,16 @@ function AppLayoutInner() {
 
         <AlertHost />
 
-        {isCreateOpen && (
-          <CreateItemDialog
-            onClose={closeCreate}
-            onCreated={handleCreated}
-            initialFolderPath={createFolderPath ?? undefined}
-          />
-        )}
+        <CreateItemDialog
+          open={isCreateOpen}
+          onOpenChange={(next) => {
+            if (!next) {
+              closeCreate();
+            }
+          }}
+          onCreated={handleCreated}
+          initialFolderPath={createFolderPath ?? undefined}
+        />
       </ItemChromeProvider>
     </ShellContext.Provider>
   );

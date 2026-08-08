@@ -22,7 +22,8 @@ export function useCreateItemShell({
   const [createFolderPath, setCreateFolderPath] = useState<string | null>(null);
 
   const openCreate = useCallback((folderPath?: string) => {
-    setCreateFolderPath(folderPath ?? null);
+    // Header wires onClick={openCreate}; the click event must not become folder_path.
+    setCreateFolderPath(typeof folderPath === "string" ? folderPath : null);
     setIsCreateOpen(true);
   }, []);
 
