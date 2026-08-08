@@ -8,7 +8,8 @@ export type UseCreateItemShellInput = {
 
 export type UseCreateItemShellResult = {
   isCreateOpen: boolean;
-  openCreate: () => void;
+  createFolderPath: string | null;
+  openCreate: (folderPath?: string) => void;
   closeCreate: () => void;
   handleCreated: (itemId: string) => void;
 };
@@ -18,18 +19,22 @@ export function useCreateItemShell({
   navigate,
 }: UseCreateItemShellInput): UseCreateItemShellResult {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [createFolderPath, setCreateFolderPath] = useState<string | null>(null);
 
-  const openCreate = useCallback(() => {
+  const openCreate = useCallback((folderPath?: string) => {
+    setCreateFolderPath(folderPath ?? null);
     setIsCreateOpen(true);
   }, []);
 
   const closeCreate = useCallback(() => {
     setIsCreateOpen(false);
+    setCreateFolderPath(null);
   }, []);
 
   const handleCreated = useCallback(
     (itemId: string) => {
       setIsCreateOpen(false);
+      setCreateFolderPath(null);
       bumpVaultRevision();
       navigate(`/item/${itemId}`);
     },
@@ -38,6 +43,7 @@ export function useCreateItemShell({
 
   return {
     isCreateOpen,
+    createFolderPath,
     openCreate,
     closeCreate,
     handleCreated,
