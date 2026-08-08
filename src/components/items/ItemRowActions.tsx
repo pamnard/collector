@@ -1,14 +1,8 @@
-import { MoreHorizontal } from "lucide-react";
 import { useState } from "react";
+import type { ItemActionId } from "../../lib/item-action-catalog";
 import { getCollectorService } from "../../services/collector-client";
-import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
+import { ItemActionsMenu } from "./ItemActionsMenu";
 
 interface ItemRowActionsProps {
   itemId: string;
@@ -34,37 +28,23 @@ export function ItemRowActions({
     }
   };
 
+  const handleAction = (id: ItemActionId) => {
+    if (id === "delete") {
+      setConfirmOpen(true);
+    }
+  };
+
   return (
     <div
       className="inline-flex items-center justify-end"
       onClick={(event) => event.stopPropagation()}
       onKeyDown={(event) => event.stopPropagation()}
     >
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Действия"
-              disabled={isDeleting}
-              className="text-neutral-500 dark:text-neutral-400"
-            />
-          }
-        >
-          <MoreHorizontal size={16} />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-36">
-          <DropdownMenuItem
-            variant="destructive"
-            disabled={isDeleting}
-            onClick={() => setConfirmOpen(true)}
-          >
-            Удалить
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <ItemActionsMenu
+        triggerVariant="row"
+        disabled={isDeleting}
+        onAction={handleAction}
+      />
 
       <ConfirmDialog
         open={confirmOpen}

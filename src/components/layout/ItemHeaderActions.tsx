@@ -1,5 +1,7 @@
-import { Code, Eye, Form, Trash2 } from "lucide-react";
+import { Code, Eye, Form } from "lucide-react";
 import { cn } from "../../lib/utils";
+import type { ItemActionId } from "../../lib/item-action-catalog";
+import { ItemActionsMenu } from "../items/ItemActionsMenu";
 import { Button } from "../ui/button";
 import { ButtonGroup } from "../ui/button-group";
 import { headerChromeBtn, headerChromeBtnActive } from "./header-chrome";
@@ -45,6 +47,12 @@ export function ItemHeaderActions({ actions }: ItemHeaderActionsProps) {
     onSource,
     onDelete,
   } = actions;
+
+  const handleItemAction = (id: ItemActionId) => {
+    if (id === "delete") {
+      onDelete();
+    }
+  };
 
   return (
     <ButtonGroup aria-label="Режим страницы">
@@ -96,22 +104,11 @@ export function ItemHeaderActions({ actions }: ItemHeaderActionsProps) {
       >
         <Code size={16} />
       </Button>
-      <Button
-        type="button"
-        variant="secondary"
-        size="icon"
-        aria-label="Удалить"
-        title="Удалить"
-        className={cn(
-          iconBtn,
-          // bg only — headerChromeBtn's text would win over red via CSS order
-          "dark:bg-neutral-700 text-red-400 hover:bg-red-500/10 hover:text-red-400 dark:text-red-400 dark:hover:bg-red-500/10 dark:hover:text-red-400",
-        )}
-        onClick={onDelete}
+      <ItemActionsMenu
+        triggerVariant="header"
         disabled={!ready || isDeleting || isSaving}
-      >
-        <Trash2 size={16} />
-      </Button>
+        onAction={handleItemAction}
+      />
     </ButtonGroup>
   );
 }
