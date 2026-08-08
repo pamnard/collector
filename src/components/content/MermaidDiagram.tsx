@@ -71,7 +71,7 @@ export function MermaidDiagram({ source }: MermaidDiagramProps) {
 
   if (state.status === "loading") {
     return (
-      <div className="markdown-mermaid-body" aria-busy="true">
+      <div className="markdown-mermaid-body custom-scrollbar" aria-busy="true">
         <p className="markdown-mermaid-status">Загрузка диаграммы…</p>
       </div>
     );
@@ -79,12 +79,12 @@ export function MermaidDiagram({ source }: MermaidDiagramProps) {
 
   if (state.status === "error") {
     return (
-      <div className="markdown-mermaid-body" role="alert">
+      <div className="markdown-mermaid-body custom-scrollbar" role="alert">
         <p className="markdown-mermaid-error-title">
           Не удалось нарисовать диаграмму
         </p>
         <p className="markdown-mermaid-error-message">{state.message}</p>
-        <pre className="markdown-mermaid-source">{source}</pre>
+        <pre className="markdown-mermaid-source custom-scrollbar">{source}</pre>
       </div>
     );
   }
@@ -92,7 +92,7 @@ export function MermaidDiagram({ source }: MermaidDiagramProps) {
   return (
     <div
       ref={containerRef}
-      className="markdown-mermaid-body markdown-mermaid-svg"
+      className="markdown-mermaid-body markdown-mermaid-svg custom-scrollbar"
       dangerouslySetInnerHTML={{ __html: state.svg }}
     />
   );

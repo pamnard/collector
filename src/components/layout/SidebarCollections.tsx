@@ -87,8 +87,8 @@ function CollectionFolderRow({
             <Icon size={18} className="shrink-0" />
             <span className="min-w-0 flex-1 truncate">{node.name}</span>
             <Badge
-              variant="secondary"
-              className="h-5 min-w-5 shrink-0 border-transparent bg-black/10 px-1.5 text-xs tabular-nums text-neutral-500 hover:bg-black/10 dark:bg-white/10 dark:text-neutral-400 dark:hover:bg-white/10"
+              variant="ghost"
+              className="h-5 min-w-5 shrink-0 px-1.5 text-xs tabular-nums text-neutral-500 dark:text-neutral-400"
             >
               {node.item_count}
             </Badge>
@@ -97,7 +97,7 @@ function CollectionFolderRow({
             <button
               type="button"
               onClick={() => setOpen((value) => !value)}
-              className="flex size-6 shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-black/5 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-white/5 dark:hover:text-neutral-100"
+              className="flex size-6 shrink-0 items-center justify-center rounded-md bg-black/10 text-neutral-500 hover:bg-black/10 hover:text-neutral-900 dark:bg-white/10 dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-neutral-100"
               aria-expanded={open}
               aria-label={open ? "Свернуть" : "Развернуть"}
             >

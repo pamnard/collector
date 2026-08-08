@@ -2,6 +2,7 @@ import { ImagePlus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MediaWithPath } from "@collector/core";
 import type { ItemFile } from "@collector/shared";
+import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   useAlerts,
@@ -196,7 +197,20 @@ export function MediaGallery({
         onConfirm={handleConfirmDelete}
       />
 
-      <ItemDetailAsideSection title="Медиа">
+      <ItemDetailAsideSection
+        title={
+          <>
+            Медиа
+            <Badge
+              variant="ghost"
+              className="h-5 min-w-5 shrink-0 px-1.5 text-xs font-medium tabular-nums text-neutral-500 dark:text-neutral-400"
+            >
+              {files.length}
+            </Badge>
+          </>
+        }
+        defaultOpen={false}
+      >
         <div className="space-y-3">
           <input
             ref={inputRef}
@@ -213,7 +227,7 @@ export function MediaGallery({
           ) : (
             <div className="space-y-3">
               {visualFiles.length > 0 && (
-                <div className="flex flex-wrap gap-2">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(8rem,1fr))] gap-2">
                   {visualFiles.map((file) => (
                     <MediaGalleryVisualTile
                       key={file.id}

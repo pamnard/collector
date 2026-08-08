@@ -3,17 +3,19 @@ import { useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 type ItemDetailAsideSectionProps = {
-  title: string;
+  title: ReactNode;
   children: ReactNode;
   className?: string;
+  defaultOpen?: boolean;
 };
 
 export function ItemDetailAsideSection({
   title,
   children,
   className,
+  defaultOpen = true,
 }: ItemDetailAsideSectionProps) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(defaultOpen);
 
   return (
     <section className={cn("space-y-3", className)}>
@@ -23,7 +25,9 @@ export function ItemDetailAsideSection({
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
-        <h2 className="text-sm font-medium">{title}</h2>
+        <h2 className="flex min-w-0 items-center gap-2 text-sm font-medium">
+          {title}
+        </h2>
         <ChevronDown
           size={16}
           className={cn(

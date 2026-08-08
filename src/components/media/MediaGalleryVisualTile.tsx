@@ -38,7 +38,7 @@ export function MediaGalleryVisualTile({
       orientation="vertical"
       size="default"
       state="done"
-      className="w-32! flex-col! flex-nowrap! items-stretch"
+      className="min-w-0"
     >
       <AttachmentMedia variant="image" className="aspect-square w-full!">
         {isVideo ? (
