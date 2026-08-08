@@ -46,7 +46,7 @@ export function FolderContextMenu({
       <ContextMenuTrigger className="block min-w-0">{children}</ContextMenuTrigger>
       <ContextMenuContent>
         {sections.map((section, sectionIndex) => (
-          <div key={section[0]?.group ?? sectionIndex}>
+          <div key={section[0].group}>
             {sectionIndex > 0 ? <ContextMenuSeparator /> : null}
             {section.map((action) => {
               const Icon = FOLDER_ACTION_ICONS[action.id];

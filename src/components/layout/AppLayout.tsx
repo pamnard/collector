@@ -454,7 +454,7 @@ function AppLayoutInner() {
             }
           }}
           onCreated={handleCreated}
-          initialFolderPath={createFolderPath ?? undefined}
+          initialFolderPath={createFolderPath}
         />
       </ItemChromeProvider>
     </ShellContext.Provider>

@@ -9,6 +9,7 @@ import {
   folderLeafName,
   folderParentPath,
   isIllegalMoveParent,
+  listFolderParentChoices,
   rewriteFolderNavFilterAfterMove,
 } from "./folder-actions";
 
@@ -87,6 +88,22 @@ describe("folder-actions move helpers", () => {
         },
       ]),
     ).toEqual(["Work", "Work/Articles"]);
+  });
+
+  it("listFolderParentChoices puts vault root first", () => {
+    expect(
+      listFolderParentChoices([
+        {
+          name: "Work",
+          path: "Work",
+          item_count: 0,
+          children: [],
+        },
+      ]),
+    ).toEqual([
+      { parentPath: "", label: "/" },
+      { parentPath: "Work", label: "Work" },
+    ]);
   });
 });
 

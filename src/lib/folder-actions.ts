@@ -15,6 +15,17 @@ export function folderLeafName(folderPath: string): string {
   return slash === -1 ? folderPath : folderPath.slice(slash + 1);
 }
 
+function assertFolderLeafName(leafName: string): string {
+  const leaf = leafName.trim();
+  if (!leaf) {
+    throw new Error("Folder leaf name must be non-empty");
+  }
+  if (leaf.includes("/")) {
+    throw new Error("Folder leaf name must not contain '/'");
+  }
+  return leaf;
+}
+
 /** `A/B` under `C` → `C/B`; under root → `B`. */
 export function buildMovedFolderPath(
   oldPath: string,
@@ -32,13 +43,7 @@ export function buildRenamedFolderPath(
   oldPath: string,
   newLeafName: string,
 ): string {
-  const leaf = newLeafName.trim();
-  if (!leaf) {
-    throw new Error("Folder leaf name must be non-empty");
-  }
-  if (leaf.includes("/")) {
-    throw new Error("Folder leaf name must not contain '/'");
-  }
+  const leaf = assertFolderLeafName(newLeafName);
   if (!folderLeafName(oldPath)) {
     throw new Error("Cannot rename the vault root");
   }
@@ -55,14 +60,7 @@ export function buildChildFolderPath(
   if (!parent) {
     throw new Error("Parent folder path must be non-empty");
   }
-  const leaf = leafName.trim();
-  if (!leaf) {
-    throw new Error("Folder leaf name must be non-empty");
-  }
-  if (leaf.includes("/")) {
-    throw new Error("Folder leaf name must not contain '/'");
-  }
-  return `${parent}/${leaf}`;
+  return `${parent}/${assertFolderLeafName(leafName)}`;
 }
 
 /** Parents that must not be choosable when moving `folderPath`. */
@@ -106,6 +104,19 @@ export function collectFolderPathsFlat(tree: FolderTreeNode[]): string[] {
   };
   walk(tree);
   return sortFolderPathsFlat(collected);
+}
+
+/** Parent choices for move-folder UI (vault root first as `/`). */
+export function listFolderParentChoices(
+  tree: FolderTreeNode[],
+): Array<{ parentPath: string; label: string }> {
+  return [
+    { parentPath: "", label: "/" },
+    ...collectFolderPathsFlat(tree).map((path) => ({
+      parentPath: path,
+      label: path,
+    })),
+  ];
 }
 
 export function rewriteFolderNavFilterAfterMove(
@@ -160,6 +171,14 @@ export async function renameFolderLeaf(
     return oldPath;
   }
   return getCollectorService().folders.renameFolder(oldPath, newPath);
+}
+
+export async function createChildFolder(
+  parentPath: string,
+  leafName: string,
+): Promise<string> {
+  const fullPath = buildChildFolderPath(parentPath, leafName);
+  return getCollectorService().folders.createFolder(fullPath);
 }
 
 export async function deleteFolderAt(folderPath: string): Promise<void> {
