@@ -1,4 +1,11 @@
-export type FolderActionId = "new-note" | "new-folder" | "rename" | "move";
+import { isInboxFolderName } from "@collector/shared";
+
+export type FolderActionId =
+  | "new-note"
+  | "new-folder"
+  | "rename"
+  | "move"
+  | "delete";
 
 /** Epic #282 groups that currently have real handlers. */
 export type FolderActionGroup = "create" | "manage" | "modify";
@@ -15,12 +22,20 @@ export const FOLDER_ACTION_ORDER: readonly FolderActionDef[] = [
   { id: "new-folder", group: "create", label: "Новая папка" },
   { id: "move", group: "manage", label: "Переместить папку в…" },
   { id: "rename", group: "modify", label: "Переименовать" },
+  { id: "delete", group: "modify", label: "Удалить" },
 ] as const;
 
+function isTopLevelInboxFolder(folderPath: string): boolean {
+  return !folderPath.includes("/") && isInboxFolderName(folderPath);
+}
+
 export function isFolderActionEnabled(
-  _id: FolderActionId,
-  _folderPath: string,
+  id: FolderActionId,
+  folderPath: string,
 ): boolean {
+  if (id === "delete" && isTopLevelInboxFolder(folderPath)) {
+    return false;
+  }
   return true;
 }
 

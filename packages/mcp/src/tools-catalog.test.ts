@@ -135,7 +135,7 @@ describe("COLLECTOR_MCP_TOOLS catalog (#273 / #265)", () => {
       (tool) => tool.name === "collector_delete_folder",
     );
     expect(del).toBeDefined();
-    expect(del!.description).toMatch(/empty/i);
+    expect(del!.description).toMatch(/recursively delete/i);
   });
 
   it("exposes media list/attach/replace/delete/set-cover (#353)", () => {

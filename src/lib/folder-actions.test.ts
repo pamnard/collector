@@ -4,6 +4,7 @@ import {
   buildChildFolderPath,
   buildMovedFolderPath,
   buildRenamedFolderPath,
+  clearFolderNavFilterAfterDelete,
   collectFolderPathsFlat,
   folderLeafName,
   folderParentPath,
@@ -44,6 +45,28 @@ describe("folder-actions move helpers", () => {
     expect(
       rewriteFolderNavFilterAfterMove({ type: "all" }, "A/B", "C/B"),
     ).toBeNull();
+  });
+
+  it("clearFolderNavFilterAfterDelete resets deleted path and descendants", () => {
+    expect(
+      clearFolderNavFilterAfterDelete(
+        { type: "folder", folderPath: "A/B" },
+        "A/B",
+      ),
+    ).toBe("all");
+    expect(
+      clearFolderNavFilterAfterDelete(
+        { type: "folder", folderPath: "A/B/X" },
+        "A/B",
+      ),
+    ).toBe("all");
+    expect(
+      clearFolderNavFilterAfterDelete(
+        { type: "folder", folderPath: "Other" },
+        "A/B",
+      ),
+    ).toBeNull();
+    expect(clearFolderNavFilterAfterDelete("all", "A/B")).toBeNull();
   });
 
   it("collectFolderPathsFlat walks tree", () => {

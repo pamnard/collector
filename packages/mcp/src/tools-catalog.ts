@@ -347,7 +347,8 @@ export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] = [
   {
     name: "collector_delete_folder",
     description:
-      "Delete an empty vault folder. Fails if the folder is missing or still has entries. " +
+      "Recursively delete a vault folder: the folder tree, all nested subfolders, and every " +
+      "item under that prefix (markdown + media + index). Fails if the folder is missing or is the vault root. " +
       "Returns { ok, deleted } with the requested path.",
     params: [
       {

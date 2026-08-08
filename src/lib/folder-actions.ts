@@ -123,6 +123,21 @@ export function rewriteFolderNavFilterAfterMove(
   return { type: "folder", folderPath: nextPath };
 }
 
+/** Clear folder nav when the active filter points at a deleted path or descendant. */
+export function clearFolderNavFilterAfterDelete(
+  filter: NavFilter,
+  deletedPath: string,
+): NavFilter | null {
+  if (!isFolderFilter(filter)) {
+    return null;
+  }
+  const path = filter.folderPath;
+  if (path === deletedPath || path.startsWith(`${deletedPath}/`)) {
+    return "all";
+  }
+  return null;
+}
+
 export async function moveFolderTo(
   oldPath: string,
   newParentPath: string,
@@ -145,4 +160,8 @@ export async function renameFolderLeaf(
     return oldPath;
   }
   return getCollectorService().folders.renameFolder(oldPath, newPath);
+}
+
+export async function deleteFolderAt(folderPath: string): Promise<void> {
+  await getCollectorService().folders.deleteFolder(folderPath);
 }

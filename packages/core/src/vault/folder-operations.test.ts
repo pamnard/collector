@@ -11,6 +11,7 @@ import { createVault } from "../vault/vault-operations.js";
 import { upsertItem } from "../vault/item-operations.js";
 import {
   createFolder,
+  deleteFolder,
   listFolderTreeFromIndex,
   moveItemToFolder,
   reconcileFolderTreeFromDisk,
@@ -238,6 +239,93 @@ describe("folder operations", () => {
     ).toEqual(expect.arrayContaining([newWorkRootId, newWorkNestedId]));
     expect(await ctx.index.listItemIdsByFolderPrefix(meta.id, "Work")).toEqual(
       [],
+    );
+  });
+
+  it("deleteFolder removes an empty folder", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-folder-delete-empty-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const ctx = { fs, index: new SqlVaultIndexStore(db) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    await createFolder(ctx, path, "Archive/Ready");
+    await deleteFolder(ctx, path, meta.id, "Archive/Ready");
+
+    expect(await ctx.fs.exists(joinSegments(path, "Archive/Ready"))).toBe(false);
+    expect(await ctx.fs.exists(joinSegments(path, "Archive"))).toBe(true);
+  });
+
+  it("deleteFolder rejects vault root", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-folder-delete-root-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const ctx = { fs, index: new SqlVaultIndexStore(db) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    await expect(deleteFolder(ctx, path, meta.id, "")).rejects.toThrow(
+      /vault root/i,
+    );
+  });
+
+  it("deleteFolder recursively removes nested folders, items, and media (#572)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-folder-delete-nested-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const ctx = { fs, index: new SqlVaultIndexStore(db) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const timestamp = new Date().toISOString();
+
+    await createFolder(ctx, path, "Work/Articles");
+    const rootId = `Work/${createId()}.md`;
+    const nestedId = `Work/Articles/${createId()}.md`;
+    const otherId = `Other/${createId()}.md`;
+
+    for (const [id, title] of [
+      [rootId, "Work root"],
+      [nestedId, "Work nested"],
+      [otherId, "Other"],
+    ] as const) {
+      await upsertItem(ctx, path, meta.id, {
+        item: {
+          id,
+          vault_id: meta.id,
+          title,
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          properties: {},
+          tag_ids: [],
+          collection_ids: [],
+          folder_path: "",
+          content_revision: 1,
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+      });
+    }
+
+    await attachMediaFile(ctx, path, nestedId, {
+      filename: "shot.png",
+      data: Uint8Array.from([9, 8, 7]),
+    });
+    const mediaRoot = itemMediaRoot(path, nestedId);
+    expect(await fs.exists(mediaRoot)).toBe(true);
+
+    await deleteFolder(ctx, path, meta.id, "Work");
+
+    expect(await ctx.fs.exists(joinSegments(path, "Work"))).toBe(false);
+    expect(await ctx.fs.exists(joinSegments(path, "Work/Articles"))).toBe(false);
+    expect(await fs.exists(mediaRoot)).toBe(false);
+    expect(await ctx.index.listItemIdsByFolderPrefix(meta.id, "Work")).toEqual(
+      [],
+    );
+    expect(await ctx.index.listItemIdsByFolderPrefix(meta.id, "Other")).toEqual([
+      otherId,
+    ]);
+    expect((await readItemFile(fs, path, otherId, meta.id)).folder_path).toBe(
+      "Other",
     );
   });
 

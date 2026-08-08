@@ -4,6 +4,7 @@ import {
   FolderPen,
   FolderPlus,
   FolderTree,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -24,6 +25,7 @@ const FOLDER_ACTION_ICONS: Record<FolderActionId, LucideIcon> = {
   "new-folder": FolderPlus,
   move: FolderTree,
   rename: FolderPen,
+  delete: Trash2,
 };
 
 export interface FolderContextMenuProps {
@@ -51,6 +53,7 @@ export function FolderContextMenu({
               return (
                 <ContextMenuItem
                   key={action.id}
+                  variant={action.id === "delete" ? "destructive" : "default"}
                   onClick={() => {
                     onAction(action.id, folderPath);
                   }}

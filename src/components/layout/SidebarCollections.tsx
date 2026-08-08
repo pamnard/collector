@@ -13,6 +13,8 @@ import { useFolderTree } from "../../hooks/useFolderTree";
 import type { FolderActionId } from "../../lib/folder-action-catalog";
 import {
   buildChildFolderPath,
+  clearFolderNavFilterAfterDelete,
+  deleteFolderAt,
   folderLeafName,
   moveFolderTo,
   renameFolderLeaf,
@@ -25,6 +27,7 @@ import { CreateChildFolderDialog } from "../folders/CreateChildFolderDialog";
 import { FolderContextMenu } from "../folders/FolderContextMenu";
 import { MoveFolderDialog } from "../folders/MoveFolderDialog";
 import { RenameFolderDialog } from "../folders/RenameFolderDialog";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 import { useShell } from "./AppLayout";
 
 const FOLDER_MOVE_BUSY_ID = "folder-move-busy";
@@ -33,6 +36,8 @@ const FOLDER_RENAME_BUSY_ID = "folder-rename-busy";
 const FOLDER_RENAME_ERROR_ID = "folder-rename-error";
 const FOLDER_CREATE_BUSY_ID = "folder-create-busy";
 const FOLDER_CREATE_ERROR_ID = "folder-create-error";
+const FOLDER_DELETE_BUSY_ID = "folder-delete-busy";
+const FOLDER_DELETE_ERROR_ID = "folder-delete-error";
 
 const NEST_LIST_CLASS =
   "ml-3.5 flex min-w-0 translate-x-px flex-col gap-1 border-l border-sidebar-border pl-2.5 py-0.5";
@@ -150,6 +155,8 @@ export function SidebarCollections({
   const [createParentPath, setCreateParentPath] = useState<string | null>(null);
   const [createLeafValue, setCreateLeafValue] = useState("");
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [deleteSourcePath, setDeleteSourcePath] = useState<string | null>(null);
+  const [isDeletingFolder, setIsDeletingFolder] = useState(false);
   useDismissAlertsOnUnmount([
     FOLDER_MOVE_BUSY_ID,
     FOLDER_MOVE_ERROR_ID,
@@ -157,6 +164,8 @@ export function SidebarCollections({
     FOLDER_RENAME_ERROR_ID,
     FOLDER_CREATE_BUSY_ID,
     FOLDER_CREATE_ERROR_ID,
+    FOLDER_DELETE_BUSY_ID,
+    FOLDER_DELETE_ERROR_ID,
   ]);
 
   const handleRequestRename = (folderPath: string) => {
@@ -184,6 +193,10 @@ export function SidebarCollections({
     }
     if (id === "move") {
       setMoveSourcePath(path);
+      return;
+    }
+    if (id === "delete") {
+      setDeleteSourcePath(path);
     }
   };
 
@@ -285,6 +298,37 @@ export function SidebarCollections({
     }
   };
 
+  const handleConfirmDelete = async (folderPath: string) => {
+    alerts.dismiss(FOLDER_DELETE_ERROR_ID);
+    setIsDeletingFolder(true);
+    alerts.upsert(FOLDER_DELETE_BUSY_ID, {
+      tone: "warning",
+      dismissible: false,
+      message: (
+        <IndexingStatusMessage label="Удаляю папку и всё содержимое…" />
+      ),
+    });
+    try {
+      await deleteFolderAt(folderPath);
+      alerts.dismiss(FOLDER_DELETE_BUSY_ID);
+      setIsDeletingFolder(false);
+      setDeleteSourcePath(null);
+      refreshVault();
+      const next = clearFolderNavFilterAfterDelete(activeFilter, folderPath);
+      if (next) {
+        onSelect(next);
+      }
+    } catch (error) {
+      alerts.dismiss(FOLDER_DELETE_BUSY_ID);
+      setIsDeletingFolder(false);
+      alerts.upsert(FOLDER_DELETE_ERROR_ID, {
+        tone: "danger",
+        message: errorMessage(error),
+      });
+      throw error;
+    }
+  };
+
   return (
     <div className="flex flex-col gap-1">
       {folders.map((folder) => (
@@ -360,6 +404,20 @@ export function SidebarCollections({
             const parent = createParentPath;
             void handleConfirmCreateChild(parent, createLeafValue);
           }}
+        />
+      ) : null}
+      {deleteSourcePath !== null ? (
+        <ConfirmDialog
+          open
+          busy={isDeletingFolder}
+          title={folderLeafName(deleteSourcePath)}
+          description={`Папка «${deleteSourcePath}» и все вложенные папки и элементы будут удалены без возможности восстановления.`}
+          onOpenChange={(open) => {
+            if (!open && !isDeletingFolder) {
+              setDeleteSourcePath(null);
+            }
+          }}
+          onConfirm={() => handleConfirmDelete(deleteSourcePath)}
         />
       ) : null}
     </div>
