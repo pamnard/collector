@@ -52,6 +52,7 @@ interface ShellContextValue {
   activeFilter: NavFilter;
   vaultRevision: number;
   refreshVault: () => void;
+  openCreate: (folderPath?: string) => void;
   dashboardCache: ReturnType<typeof useDashboardItems>;
   dashboardSort: DashboardItemSort;
   setDashboardSort: (sort: DashboardItemSort) => void;
@@ -166,8 +167,13 @@ function AppLayoutInner() {
   const activeVaultId = settings.active_vault_id ?? null;
   const { dashboardSort, setDashboardSort } =
     useDashboardShellSort(activeVaultId);
-  const { isCreateOpen, openCreate, closeCreate, handleCreated } =
-    useCreateItemShell({ bumpVaultRevision, navigate });
+  const {
+    isCreateOpen,
+    createFolderPath,
+    openCreate,
+    closeCreate,
+    handleCreated,
+  } = useCreateItemShell({ bumpVaultRevision, navigate });
 
   const { enabled: checkUpdatesOnStart } = useCheckUpdatesOnStart();
   const [startupUpdateVersion, setStartupUpdateVersion] = useState<string | null>(
@@ -355,6 +361,7 @@ function AppLayoutInner() {
         activeFilter,
         vaultRevision,
         refreshVault: bumpVaultRevision,
+        openCreate,
         dashboardCache,
         dashboardSort,
         setDashboardSort,
@@ -432,6 +439,7 @@ function AppLayoutInner() {
           <CreateItemDialog
             onClose={closeCreate}
             onCreated={handleCreated}
+            initialFolderPath={createFolderPath ?? undefined}
           />
         )}
       </ItemChromeProvider>

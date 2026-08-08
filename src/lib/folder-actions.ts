@@ -46,6 +46,25 @@ export function buildRenamedFolderPath(
   return parent ? `${parent}/${leaf}` : leaf;
 }
 
+/** Child under parent: `Parent` + `Child` → `Parent/Child`. */
+export function buildChildFolderPath(
+  parentPath: string,
+  leafName: string,
+): string {
+  const parent = parentPath.trim();
+  if (!parent) {
+    throw new Error("Parent folder path must be non-empty");
+  }
+  const leaf = leafName.trim();
+  if (!leaf) {
+    throw new Error("Folder leaf name must be non-empty");
+  }
+  if (leaf.includes("/")) {
+    throw new Error("Folder leaf name must not contain '/'");
+  }
+  return `${parent}/${leaf}`;
+}
+
 /** Parents that must not be choosable when moving `folderPath`. */
 export function isIllegalMoveParent(
   folderPath: string,

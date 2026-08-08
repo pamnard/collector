@@ -14,12 +14,21 @@ const CREATE_ITEM_ERROR_ID = "create-item-error";
 interface CreateItemDialogProps {
   onClose: () => void;
   onCreated: (itemId: string) => void;
+  /** Vault-relative folder path to prefill; omit for product default (Inbox). */
+  initialFolderPath?: string;
 }
 
-export function CreateItemDialog({ onClose, onCreated }: CreateItemDialogProps) {
+export function CreateItemDialog({
+  onClose,
+  onCreated,
+  initialFolderPath,
+}: CreateItemDialogProps) {
   const alerts = useAlerts();
   useDismissAlertsOnUnmount([CREATE_ITEM_ERROR_ID]);
-  const [values, setValues] = useState<ItemFormValues>(EMPTY_ITEM_FORM);
+  const [values, setValues] = useState<ItemFormValues>(() => ({
+    ...EMPTY_ITEM_FORM,
+    folder_path: initialFolderPath ?? EMPTY_ITEM_FORM.folder_path,
+  }));
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSubmit = async (event: React.FormEvent) => {

@@ -12,21 +12,27 @@ import { errorMessage } from "../alerts/alert-store";
 import { useFolderTree } from "../../hooks/useFolderTree";
 import type { FolderActionId } from "../../lib/folder-action-catalog";
 import {
+  buildChildFolderPath,
   folderLeafName,
   moveFolderTo,
   renameFolderLeaf,
   rewriteFolderNavFilterAfterMove,
 } from "../../lib/folder-actions";
+import { getCollectorService } from "../../services/collector-client";
 import type { NavFilter } from "../../types/ui";
 import { navFilterKey } from "../../types/ui";
+import { CreateChildFolderDialog } from "../folders/CreateChildFolderDialog";
 import { FolderContextMenu } from "../folders/FolderContextMenu";
 import { MoveFolderDialog } from "../folders/MoveFolderDialog";
 import { RenameFolderDialog } from "../folders/RenameFolderDialog";
+import { useShell } from "./AppLayout";
 
 const FOLDER_MOVE_BUSY_ID = "folder-move-busy";
 const FOLDER_MOVE_ERROR_ID = "folder-move-error";
 const FOLDER_RENAME_BUSY_ID = "folder-rename-busy";
 const FOLDER_RENAME_ERROR_ID = "folder-rename-error";
+const FOLDER_CREATE_BUSY_ID = "folder-create-busy";
+const FOLDER_CREATE_ERROR_ID = "folder-create-error";
 
 const NEST_LIST_CLASS =
   "ml-3.5 flex min-w-0 translate-x-px flex-col gap-1 border-l border-sidebar-border pl-2.5 py-0.5";
@@ -133,6 +139,7 @@ export function SidebarCollections({
   vaultRevision,
   refreshVault,
 }: SidebarCollectionsProps) {
+  const { openCreate } = useShell();
   const folders = useFolderTree(vaultRevision);
   const activeKey = navFilterKey(activeFilter);
   const alerts = useAlerts();
@@ -140,11 +147,16 @@ export function SidebarCollections({
   const [renameSourcePath, setRenameSourcePath] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
+  const [createParentPath, setCreateParentPath] = useState<string | null>(null);
+  const [createLeafValue, setCreateLeafValue] = useState("");
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   useDismissAlertsOnUnmount([
     FOLDER_MOVE_BUSY_ID,
     FOLDER_MOVE_ERROR_ID,
     FOLDER_RENAME_BUSY_ID,
     FOLDER_RENAME_ERROR_ID,
+    FOLDER_CREATE_BUSY_ID,
+    FOLDER_CREATE_ERROR_ID,
   ]);
 
   const handleRequestRename = (folderPath: string) => {
@@ -152,7 +164,20 @@ export function SidebarCollections({
     setRenameValue(folderLeafName(folderPath));
   };
 
+  const handleRequestCreateChild = (folderPath: string) => {
+    setCreateParentPath(folderPath);
+    setCreateLeafValue("");
+  };
+
   const handleFolderAction = (id: FolderActionId, path: string) => {
+    if (id === "new-note") {
+      openCreate(path);
+      return;
+    }
+    if (id === "new-folder") {
+      handleRequestCreateChild(path);
+      return;
+    }
     if (id === "rename") {
       handleRequestRename(path);
       return;
@@ -229,6 +254,37 @@ export function SidebarCollections({
     }
   };
 
+  const handleConfirmCreateChild = async (
+    parentPath: string,
+    leafName: string,
+  ) => {
+    alerts.dismiss(FOLDER_CREATE_ERROR_ID);
+    setIsCreatingFolder(true);
+    alerts.upsert(FOLDER_CREATE_BUSY_ID, {
+      tone: "warning",
+      dismissible: false,
+      message: <IndexingStatusMessage label="Создаю папку…" />,
+    });
+    try {
+      const fullPath = buildChildFolderPath(parentPath, leafName);
+      const newPath =
+        await getCollectorService().folders.createFolder(fullPath);
+      alerts.dismiss(FOLDER_CREATE_BUSY_ID);
+      setIsCreatingFolder(false);
+      setCreateParentPath(null);
+      setCreateLeafValue("");
+      refreshVault();
+      onSelect({ type: "folder", folderPath: newPath });
+    } catch (error) {
+      alerts.dismiss(FOLDER_CREATE_BUSY_ID);
+      setIsCreatingFolder(false);
+      alerts.upsert(FOLDER_CREATE_ERROR_ID, {
+        tone: "danger",
+        message: errorMessage(error),
+      });
+    }
+  };
+
   return (
     <div className="flex flex-col gap-1">
       {folders.map((folder) => (
@@ -278,6 +334,31 @@ export function SidebarCollections({
           onConfirm={() => {
             const source = renameSourcePath;
             void handleConfirmRename(source, renameValue);
+          }}
+        />
+      ) : null}
+      {createParentPath !== null ? (
+        <CreateChildFolderDialog
+          open
+          parentPath={createParentPath}
+          leafValue={createLeafValue}
+          isCreating={isCreatingFolder}
+          onLeafValueChange={setCreateLeafValue}
+          onOpenChange={(open) => {
+            if (!open && !isCreatingFolder) {
+              setCreateParentPath(null);
+              setCreateLeafValue("");
+            }
+          }}
+          onCancel={() => {
+            if (!isCreatingFolder) {
+              setCreateParentPath(null);
+              setCreateLeafValue("");
+            }
+          }}
+          onConfirm={() => {
+            const parent = createParentPath;
+            void handleConfirmCreateChild(parent, createLeafValue);
           }}
         />
       ) : null}

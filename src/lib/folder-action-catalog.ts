@@ -1,7 +1,7 @@
-export type FolderActionId = "rename" | "move";
+export type FolderActionId = "new-note" | "new-folder" | "rename" | "move";
 
 /** Epic #282 groups that currently have real handlers. */
-export type FolderActionGroup = "manage" | "modify";
+export type FolderActionGroup = "create" | "manage" | "modify";
 
 export type FolderActionDef = {
   id: FolderActionId;
@@ -9,8 +9,10 @@ export type FolderActionDef = {
   label: string;
 };
 
-/** Stable catalog order: Manage → Modify (epic #282). */
+/** Stable catalog order: Create → Manage → Modify (epic #282). */
 export const FOLDER_ACTION_ORDER: readonly FolderActionDef[] = [
+  { id: "new-note", group: "create", label: "Новая заметка" },
+  { id: "new-folder", group: "create", label: "Новая папка" },
   { id: "move", group: "manage", label: "Переместить папку в…" },
   { id: "rename", group: "modify", label: "Переименовать" },
 ] as const;

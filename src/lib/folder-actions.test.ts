@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { NavFilter } from "../types/ui";
 import {
+  buildChildFolderPath,
   buildMovedFolderPath,
   buildRenamedFolderPath,
   collectFolderPathsFlat,
@@ -89,6 +90,31 @@ describe("folder-actions rename helpers", () => {
       /leaf name must be non-empty/i,
     );
     expect(() => buildRenamedFolderPath("A/B", "C/D")).toThrow(
+      /leaf name must not contain/i,
+    );
+  });
+
+  it("buildChildFolderPath joins parent and leaf", () => {
+    expect(buildChildFolderPath("Parent", "Child")).toBe("Parent/Child");
+    expect(buildChildFolderPath("Work/Articles", "  Drafts  ")).toBe(
+      "Work/Articles/Drafts",
+    );
+  });
+
+  it("buildChildFolderPath rejects empty parent, empty leaf, and slash in leaf", () => {
+    expect(() => buildChildFolderPath("", "Child")).toThrow(
+      /parent folder path must be non-empty/i,
+    );
+    expect(() => buildChildFolderPath("   ", "Child")).toThrow(
+      /parent folder path must be non-empty/i,
+    );
+    expect(() => buildChildFolderPath("Parent", "")).toThrow(
+      /leaf name must be non-empty/i,
+    );
+    expect(() => buildChildFolderPath("Parent", "   ")).toThrow(
+      /leaf name must be non-empty/i,
+    );
+    expect(() => buildChildFolderPath("Parent", "A/B")).toThrow(
       /leaf name must not contain/i,
     );
   });

@@ -1,5 +1,11 @@
 import { type ReactNode } from "react";
-import { FolderPen, FolderTree, type LucideIcon } from "lucide-react";
+import {
+  FilePlus,
+  FolderPen,
+  FolderPlus,
+  FolderTree,
+  type LucideIcon,
+} from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -14,6 +20,8 @@ import {
 } from "../../lib/folder-action-catalog";
 
 const FOLDER_ACTION_ICONS: Record<FolderActionId, LucideIcon> = {
+  "new-note": FilePlus,
+  "new-folder": FolderPlus,
   move: FolderTree,
   rename: FolderPen,
 };
