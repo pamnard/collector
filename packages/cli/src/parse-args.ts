@@ -32,9 +32,9 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   const resolvedToken =
     tokenFlag ??
     (tokenEnv !== undefined && tokenEnv.length > 0 ? tokenEnv : undefined);
-  if (baseUrl === undefined) {
+  if (baseUrl === undefined && dataDir === undefined) {
     throw new CliUsageError(
-      "Host endpoint required: --base-url <url> or COLLECTOR_SERVICE_BASE_URL",
+      "Host endpoint required: --base-url <url> / COLLECTOR_SERVICE_BASE_URL or --data-dir <dir> (baseUrl file)",
     );
   }
 
@@ -42,7 +42,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   const [command, ...rest] = positional;
   if (command === undefined) {
     throw new CliUsageError(
-      "Usage: collector-cli --base-url <url> [--data-dir <dir>] [--token <secret>] <command> …",
+      "Usage: collector-cli (--base-url <url> | --data-dir <dir>) [--token <secret>] <command> …",
     );
   }
 

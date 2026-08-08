@@ -50,6 +50,17 @@ export {
 } from "./host/wire/auth.js";
 
 export {
+  SERVICE_HOST_BASE_URL_ENV,
+  SERVICE_HOST_BASE_URL_FILENAME,
+  defaultServiceHostBaseUrlPath,
+  readServiceHostBaseUrlFile,
+  removeServiceHostBaseUrlFile,
+  resolveServiceHostBaseUrl,
+  writeServiceHostBaseUrlFile,
+  type ResolveServiceHostBaseUrlOptions,
+} from "./host/wire/base-url.js";
+
+export {
   startHostWireServer,
   type HostWireHandler,
   type HostWireServer,

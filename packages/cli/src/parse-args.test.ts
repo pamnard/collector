@@ -306,6 +306,13 @@ describe("parseCliArgs (#172/#173 / #550 G)", () => {
     expect(() => parseCliArgs(["health"])).toThrow(CliUsageError);
   });
 
+  it("allows --data-dir without --base-url (resolve reads baseUrl file)", () => {
+    expect(parseCliArgs(["--data-dir", "/data", "health"])).toEqual({
+      command: { name: "health" },
+      dataDir: "/data",
+    });
+  });
+
   it("rejects removed --ipc-path", () => {
     expect(() => parseCliArgs(["--ipc-path", "/s", "health"])).toThrow(
       /--ipc-path is removed/,

@@ -1,12 +1,13 @@
 /**
  * Resolve domain-host HTTP endpoint for CLI (#550 G).
  *
- * Requires baseUrl (flag/env). Token from --token / COLLECTOR_HOST_TOKEN
- * or the host token file under --data-dir.
+ * baseUrl from --base-url / COLLECTOR_SERVICE_BASE_URL / data-dir baseUrl file.
+ * Token from --token / COLLECTOR_HOST_TOKEN or the host token file under --data-dir.
  */
 
 import {
   defaultServiceHostTokenPath,
+  resolveServiceHostBaseUrl,
   resolveServiceHostToken,
   SERVICE_HOST_TOKEN_ENV,
 } from "@collector/service/host";
@@ -30,11 +31,15 @@ export type CliHostEndpoint = {
 export async function resolveCliHostEndpoint(
   options: ParsedCliEndpointArgs,
 ): Promise<CliHostEndpoint> {
-  const baseUrl = options.baseUrl?.trim();
-  if (!baseUrl) {
-    throw new CliUsageError(
-      "Host endpoint required: --base-url / COLLECTOR_SERVICE_BASE_URL",
-    );
+  let baseUrl: string;
+  try {
+    baseUrl = await resolveServiceHostBaseUrl({
+      ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
+      ...(options.dataDir === undefined ? {} : { dataDir: options.dataDir }),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new CliUsageError(message);
   }
 
   if (options.token !== undefined && options.token.trim() !== "") {

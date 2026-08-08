@@ -79,13 +79,13 @@ export function parseTagNames(raw: string): string[] {
 
 export function withEndpoint(
   command: CliCommand,
-  baseUrl: string,
+  baseUrl: string | undefined,
   dataDir: string | undefined,
   token: string | undefined,
 ): ParsedCliArgs {
   return {
     command,
-    baseUrl,
+    ...(baseUrl === undefined ? {} : { baseUrl }),
     ...(dataDir === undefined ? {} : { dataDir }),
     ...(token === undefined ? {} : { token }),
   };

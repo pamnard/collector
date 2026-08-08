@@ -31,6 +31,11 @@ import {
   removeServiceHostTokenFile,
   writeServiceHostTokenFile,
 } from "./wire/auth.js";
+import {
+  defaultServiceHostBaseUrlPath,
+  removeServiceHostBaseUrlFile,
+  writeServiceHostBaseUrlFile,
+} from "./wire/base-url.js";
 import { vaultsRoot } from "@collector/core";
 import { deriveWsEventsUrl } from "@collector/shared";
 import { isValidBearer } from "./http/bearer.js";
@@ -271,6 +276,8 @@ export async function startServiceHost(
 
   const baseUrl = `http://${listenHost}:${address.port}`;
   const wsEventsUrl = deriveWsEventsUrl(baseUrl);
+  const hostBaseUrlPath = defaultServiceHostBaseUrlPath(layout.dataDir);
+  await writeServiceHostBaseUrlFile(hostBaseUrlPath, baseUrl);
 
   let ipc: HostWireServer | null = null;
   let stopSyncStatusBroadcast: Subscription | null = null;
@@ -319,6 +326,7 @@ export async function startServiceHost(
       ipc = null;
     }
     await removeServiceHostTokenFile(hostTokenPath);
+    await removeServiceHostBaseUrlFile(hostBaseUrlPath);
     await new Promise<void>((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
     });

@@ -3,7 +3,7 @@
  * Adapter never opens SQLite — dials startServiceHost only.
  */
 
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -14,6 +14,7 @@ import {
   createHttpHostTransport,
 } from "@collector/client";
 import {
+  defaultServiceHostBaseUrlPath,
   defaultServiceHostTokenPath,
   startServiceHost,
 } from "@collector/service/host";
@@ -54,10 +55,29 @@ describe("MCP endpoint parsing (#556)", () => {
     }
   });
 
-  it("resolve requires baseUrl", async () => {
+  it("resolve requires baseUrl or dataDir baseUrl file", async () => {
     await expect(resolveMcpHostEndpoint({ token: "t" })).rejects.toBeInstanceOf(
       McpEndpointError,
     );
+  });
+
+  it("resolve with dataDir only reads published baseUrl + token files", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-mcp-endpoint-"));
+    writeFileSync(defaultServiceHostTokenPath(dataDir), "tok\n", "utf8");
+    writeFileSync(
+      defaultServiceHostBaseUrlPath(dataDir),
+      "http://127.0.0.1:4242\n",
+      "utf8",
+    );
+    try {
+      await expect(resolveMcpHostEndpoint({ dataDir })).resolves.toEqual({
+        baseUrl: "http://127.0.0.1:4242",
+        token: "tok",
+        dataDir,
+      });
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
   });
 
   it("resolve requires token or dataDir", async () => {

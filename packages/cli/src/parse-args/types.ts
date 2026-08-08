@@ -58,7 +58,8 @@ export type CliCommand =
 
 export interface ParsedCliArgs {
   command: CliCommand;
-  baseUrl: string;
+  /** Optional at parse time; resolveCliHostEndpoint fills from data-dir file when omitted. */
+  baseUrl?: string;
   dataDir?: string;
   token?: string;
 }
