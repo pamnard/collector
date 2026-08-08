@@ -143,7 +143,11 @@ export function ItemDetailMetadata({ item }: ItemDetailMetadataProps) {
   }, [item.id, item.updated_at, alerts]);
 
   return (
-    <ItemDetailAsideSection title="Метаданные" className="@container">
+    <ItemDetailAsideSection
+      title="Метаданные"
+      className="@container"
+      defaultOpen={false}
+    >
       {entries === null && (
         <p className="text-sm text-neutral-500 dark:text-neutral-400">…</p>
       )}

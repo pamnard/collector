@@ -124,7 +124,7 @@ export function MarkdownPre({
         )}
         <CopyCodeButton text={codeText} />
       </div>
-      <div className="markdown-code-block-frame">
+      <div className="markdown-code-block-frame custom-scrollbar">
         <div className="markdown-code-block-gutter" aria-hidden="true">
           {lines.map((_, index) => (
             <span key={index} className="markdown-code-block-line-number">

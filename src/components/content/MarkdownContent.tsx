@@ -7,6 +7,7 @@ import type { PluggableList } from "unified";
 import { ExternalAnchor } from "./ExternalAnchor";
 import { MarkdownImage } from "./MarkdownImage";
 import { MarkdownPre } from "./MarkdownCodeBlock";
+import { MarkdownTable } from "./MarkdownTable";
 
 interface MarkdownContentProps {
   content: string;
@@ -28,8 +29,8 @@ const MARKDOWN_COMPONENTS = {
   ),
   pre: MarkdownPre,
   img: MarkdownImage,
+  table: MarkdownTable,
 };
-
 export function MarkdownContent({ content }: MarkdownContentProps) {
   if (!content.trim()) {
     return null;
