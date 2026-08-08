@@ -33,7 +33,7 @@ export function FolderPicker({ value, onChange }: FolderPickerProps) {
 
   const selectValue = value || INBOX_FOLDER_NAME;
   const items = useMemo(
-    () => paths.map((path) => ({ value: path, label: path })),
+    () => Object.fromEntries(paths.map((path) => [path, path])),
     [paths],
   );
 
@@ -51,12 +51,12 @@ export function FolderPicker({ value, onChange }: FolderPickerProps) {
         items={items}
       >
         <SelectTrigger className="mt-1 w-full">
-          <SelectValue />
+          <SelectValue>{selectValue}</SelectValue>
         </SelectTrigger>
         <SelectContent alignItemWithTrigger={false} align="start">
-          {items.map((item) => (
-            <SelectItem key={item.value} value={item.value}>
-              {item.label}
+          {paths.map((path) => (
+            <SelectItem key={path} value={path}>
+              {path}
             </SelectItem>
           ))}
         </SelectContent>

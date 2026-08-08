@@ -97,7 +97,7 @@ export function Header({
               headerChromeBtn,
               "ml-auto h-8 shrink-0 gap-1.5 border-transparent px-2.5",
             )}
-            onClick={onAddClick}
+            onClick={() => onAddClick()}
           >
             <Plus data-icon="inline-start" size={16} />
             <span className="hidden md:inline">Добавить</span>
