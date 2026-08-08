@@ -1,6 +1,6 @@
-export type ItemActionId = "rename" | "delete";
+export type ItemActionId = "move" | "rename" | "delete";
 
-export type ItemActionGroup = "modify";
+export type ItemActionGroup = "manage" | "modify";
 
 export type ItemActionDef = {
   id: ItemActionId;
@@ -10,6 +10,7 @@ export type ItemActionDef = {
 
 /** Stable catalog order. More groups/actions land via #289 children. */
 export const ITEM_ACTION_ORDER: readonly ItemActionDef[] = [
+  { id: "move", group: "manage", label: "Переместить файл в…" },
   { id: "rename", group: "modify", label: "Переименовать" },
   { id: "delete", group: "modify", label: "Удалить" },
 ] as const;

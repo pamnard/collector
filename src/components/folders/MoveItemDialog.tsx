@@ -1,48 +1,50 @@
 import { useMemo } from "react";
 import type { FolderTreeNode } from "@collector/core";
 import {
-  isIllegalMoveParent,
-  listFolderParentChoices,
+  isCurrentItemFolderDestination,
+  listItemFolderDestinations,
 } from "../../lib/folder-actions";
 import { FolderDestinationDialog } from "./FolderDestinationDialog";
 
-export interface MoveFolderDialogProps {
+export interface MoveItemDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  folderPath: string;
+  itemLabel: string;
+  currentFolderPath: string;
   tree: FolderTreeNode[];
-  onConfirm: (newParentPath: string) => void;
+  onConfirm: (folderPath: string) => void;
 }
 
-export function MoveFolderDialog({
+export function MoveItemDialog({
   open,
   onOpenChange,
-  folderPath,
+  itemLabel,
+  currentFolderPath,
   tree,
   onConfirm,
-}: MoveFolderDialogProps) {
+}: MoveItemDialogProps) {
   const destinations = useMemo(
     () =>
-      listFolderParentChoices(tree).map((row) => ({
-        path: row.parentPath,
+      listItemFolderDestinations(tree).map((row) => ({
+        path: row.path,
         label: row.label,
-        disabled: isIllegalMoveParent(folderPath, row.parentPath),
+        disabled: isCurrentItemFolderDestination(currentFolderPath, row.path),
       })),
-    [folderPath, tree],
+    [currentFolderPath, tree],
   );
 
   return (
     <FolderDestinationDialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Переместить папку"
+      title="Переместить файл"
       description={
         <>
-          Выберите новую родительскую папку для{" "}
+          Выберите папку для{" "}
           <span className="break-all font-medium text-foreground">
-            {folderPath}
+            {itemLabel}
           </span>
-          . Корень хранилища — «/».
+          .
         </>
       }
       destinations={destinations}

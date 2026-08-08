@@ -1,4 +1,10 @@
-import { MoreVertical, Pencil, Trash2, type LucideIcon } from "lucide-react";
+import {
+  FolderInput,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  type LucideIcon,
+} from "lucide-react";
 import { cn } from "../../lib/utils";
 import {
   groupItemActions,
@@ -16,6 +22,7 @@ import {
 } from "../ui/dropdown-menu";
 
 const ITEM_ACTION_ICONS: Record<ItemActionId, LucideIcon> = {
+  move: FolderInput,
   rename: Pencil,
   delete: Trash2,
 };
@@ -62,10 +69,7 @@ export function ItemActionsMenu({
       <DropdownMenuTrigger render={triggerButton}>
         <MoreVertical size={16} />
       </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        className={cn("min-w-36", triggerVariant === "header" && "min-w-40")}
-      >
+      <DropdownMenuContent align="end" className="w-max min-w-52">
         {sections.map((section, sectionIndex) => (
           <div key={`${section[0].group}-${sectionIndex}`}>
             {sectionIndex > 0 ? <DropdownMenuSeparator /> : null}
@@ -76,6 +80,7 @@ export function ItemActionsMenu({
                   key={action.id}
                   variant={action.id === "delete" ? "destructive" : "default"}
                   disabled={disabled}
+                  className="whitespace-nowrap"
                   onClick={() => {
                     onAction(action.id);
                   }}

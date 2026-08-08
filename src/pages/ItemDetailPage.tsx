@@ -1,22 +1,29 @@
 import { useCallback, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { MediaWithPath } from "@collector/core";
 import {
   useAlerts,
   useDismissAlertsOnUnmount,
 } from "../components/alerts/AlertBusProvider";
+import { MoveItemDialog } from "../components/folders/MoveItemDialog";
 import { ItemDetailAside } from "../components/items/ItemDetailAside";
 import { ItemDetailInlineEditor } from "../components/items/ItemDetailInlineEditor";
 import { ItemDetailSourceEditor } from "../components/items/ItemDetailSourceEditor";
 import { ItemDetailViewBody } from "../components/items/ItemDetailViewBody";
 import { ItemRenameDialog } from "../components/items/ItemRenameDialog";
+import { useShell } from "../components/layout/AppLayout";
 import { MediaPlayerOverlay } from "../components/media/MediaPlayerOverlay";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
+import { useFolderTree } from "../hooks/useFolderTree";
 import { useItemDetail } from "../hooks/useItemDetail";
 import { useItemDetailChrome } from "../hooks/useItemDetailChrome";
 import { useMediaPlayerOverlay } from "../hooks/useMediaPlayerOverlay";
 import {
+  ITEM_MOVE_BUSY_ID,
+  ITEM_MOVE_ERROR_ID,
   ITEM_RENAME_BUSY_ID,
   ITEM_RENAME_ERROR_ID,
+  moveItemToFolder,
   renameItemTitle,
 } from "../lib/item-actions";
 import { articleTocForView } from "../lib/markdown/article-toc";
@@ -24,6 +31,9 @@ import { errorMessage } from "../services/runtime-error";
 import type { PlayableMediaKind } from "../utils/local-media-playback";
 
 export function ItemDetailPage() {
+  const navigate = useNavigate();
+  const { vaultRevision, refreshVault } = useShell();
+  const folders = useFolderTree(vaultRevision);
   const detail = useItemDetail();
   const {
     item,
@@ -50,6 +60,8 @@ export function ItemDetailPage() {
     setDeleteConfirmOpen,
     renameOpen,
     setRenameOpen,
+    moveOpen,
+    setMoveOpen,
   } = useItemDetailChrome({
     item,
     error,
@@ -62,7 +74,12 @@ export function ItemDetailPage() {
   });
 
   const alerts = useAlerts();
-  useDismissAlertsOnUnmount([ITEM_RENAME_BUSY_ID, ITEM_RENAME_ERROR_ID]);
+  useDismissAlertsOnUnmount([
+    ITEM_RENAME_BUSY_ID,
+    ITEM_RENAME_ERROR_ID,
+    ITEM_MOVE_BUSY_ID,
+    ITEM_MOVE_ERROR_ID,
+  ]);
   const [isRenaming, setIsRenaming] = useState(false);
   const [mediaPlayError, setMediaPlayError] = useState<string | null>(null);
   const {
@@ -87,6 +104,26 @@ export function ItemDetailPage() {
       handleItemUpdated();
     },
     [alerts, handleItemUpdated, item, setRenameOpen],
+  );
+
+  const handleConfirmMove = useCallback(
+    async (folderPath: string) => {
+      if (!item) {
+        return;
+      }
+      const updated = await moveItemToFolder(alerts, item.id, folderPath);
+      if (updated === undefined) {
+        return;
+      }
+      setMoveOpen(false);
+      refreshVault();
+      if (updated.id !== item.id) {
+        navigate(`/item/${updated.id}`, { replace: true });
+        return;
+      }
+      handleItemUpdated();
+    },
+    [alerts, handleItemUpdated, item, navigate, refreshVault, setMoveOpen],
   );
 
   const handlePlayHeroVideo = useCallback(() => {
@@ -155,6 +192,19 @@ export function ItemDetailPage() {
           void handleConfirmRename(nextTitle);
         }}
       />
+
+      {item ? (
+        <MoveItemDialog
+          open={moveOpen}
+          itemLabel={item.title.trim() || item.id}
+          currentFolderPath={item.folder_path}
+          tree={folders}
+          onOpenChange={setMoveOpen}
+          onConfirm={(folderPath) => {
+            void handleConfirmMove(folderPath);
+          }}
+        />
+      ) : null}
 
       {item && (
         <article className="grid grid-cols-1 gap-6 @[1100px]:grid-cols-12 @[1100px]:items-start @[1100px]:gap-8">

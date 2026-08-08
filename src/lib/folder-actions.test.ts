@@ -8,8 +8,10 @@ import {
   collectFolderPathsFlat,
   folderLeafName,
   folderParentPath,
+  isCurrentItemFolderDestination,
   isIllegalMoveParent,
   listFolderParentChoices,
+  listItemFolderDestinations,
   rewriteFolderNavFilterAfterMove,
 } from "./folder-actions";
 
@@ -104,6 +106,29 @@ describe("folder-actions move helpers", () => {
       { parentPath: "", label: "/" },
       { parentPath: "Work", label: "Work" },
     ]);
+  });
+
+  it("listItemFolderDestinations ensures Inbox and omits vault root", () => {
+    expect(
+      listItemFolderDestinations([
+        {
+          name: "Work",
+          path: "Work",
+          item_count: 0,
+          children: [],
+        },
+      ]),
+    ).toEqual([
+      { path: "Inbox", label: "Inbox" },
+      { path: "Work", label: "Work" },
+    ]);
+  });
+
+  it("isCurrentItemFolderDestination treats empty and Inbox as current", () => {
+    expect(isCurrentItemFolderDestination("", "Inbox")).toBe(true);
+    expect(isCurrentItemFolderDestination("Inbox", "inbox")).toBe(true);
+    expect(isCurrentItemFolderDestination("Work", "Work")).toBe(true);
+    expect(isCurrentItemFolderDestination("Work", "Inbox")).toBe(false);
   });
 });
 

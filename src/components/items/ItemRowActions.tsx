@@ -1,8 +1,13 @@
 import { useState } from "react";
+import { folderPathFromItemPath } from "@collector/shared";
+import { useFolderTree } from "../../hooks/useFolderTree";
 import type { ItemActionId } from "../../lib/item-action-catalog";
 import {
+  ITEM_MOVE_BUSY_ID,
+  ITEM_MOVE_ERROR_ID,
   ITEM_RENAME_BUSY_ID,
   ITEM_RENAME_ERROR_ID,
+  moveItemToFolder,
   renameItemTitle,
 } from "../../lib/item-actions";
 import { getCollectorService } from "../../services/collector-client";
@@ -10,6 +15,8 @@ import {
   useAlerts,
   useDismissAlertsOnUnmount,
 } from "../alerts/AlertBusProvider";
+import { MoveItemDialog } from "../folders/MoveItemDialog";
+import { useShell } from "../layout/AppLayout";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { ItemActionsMenu } from "./ItemActionsMenu";
 import { ItemRenameDialog } from "./ItemRenameDialog";
@@ -26,11 +33,20 @@ export function ItemRowActions({
   onUpdated,
 }: ItemRowActionsProps) {
   const alerts = useAlerts();
-  useDismissAlertsOnUnmount([ITEM_RENAME_BUSY_ID, ITEM_RENAME_ERROR_ID]);
+  useDismissAlertsOnUnmount([
+    ITEM_RENAME_BUSY_ID,
+    ITEM_RENAME_ERROR_ID,
+    ITEM_MOVE_BUSY_ID,
+    ITEM_MOVE_ERROR_ID,
+  ]);
+  const { vaultRevision } = useShell();
+  const folders = useFolderTree(vaultRevision);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
+  const [isMoving, setIsMoving] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
 
   const handleConfirmDelete = async () => {
     setIsDeleting(true);
@@ -53,7 +69,22 @@ export function ItemRowActions({
     onUpdated?.();
   };
 
+  const handleConfirmMove = async (folderPath: string) => {
+    setIsMoving(true);
+    const updated = await moveItemToFolder(alerts, itemId, folderPath);
+    setIsMoving(false);
+    if (updated === undefined) {
+      return;
+    }
+    setMoveOpen(false);
+    onUpdated?.();
+  };
+
   const handleAction = (id: ItemActionId) => {
+    if (id === "move") {
+      setMoveOpen(true);
+      return;
+    }
     if (id === "rename") {
       setRenameOpen(true);
       return;
@@ -63,7 +94,9 @@ export function ItemRowActions({
     }
   };
 
-  const busy = isDeleting || isRenaming;
+  const busy = isDeleting || isRenaming || isMoving;
+  const itemLabel = itemTitle.trim() || itemId;
+  const currentFolderPath = folderPathFromItemPath(itemId);
 
   return (
     <div
@@ -75,6 +108,17 @@ export function ItemRowActions({
         triggerVariant="row"
         disabled={busy}
         onAction={handleAction}
+      />
+
+      <MoveItemDialog
+        open={moveOpen}
+        itemLabel={itemLabel}
+        currentFolderPath={currentFolderPath}
+        tree={folders}
+        onOpenChange={setMoveOpen}
+        onConfirm={(folderPath) => {
+          void handleConfirmMove(folderPath);
+        }}
       />
 
       <ItemRenameDialog

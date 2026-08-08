@@ -8,23 +8,31 @@ import {
 } from "./item-action-catalog";
 
 describe("item-action-catalog", () => {
-  it("lists rename then delete in modify group", () => {
+  it("lists move then rename and delete with manage before modify", () => {
     const actions = listEnabledItemActions();
-    expect(actions.map((action) => action.id)).toEqual(["rename", "delete"]);
+    expect(actions.map((action) => action.id)).toEqual([
+      "move",
+      "rename",
+      "delete",
+    ]);
     expect(actions.map((action) => action.group)).toEqual([
+      "manage",
       "modify",
       "modify",
     ]);
     expect(actions.map((action) => action.label)).toEqual([
+      "Переместить файл в…",
       "Переименовать",
       "Удалить",
     ]);
   });
 
   it("enables catalog ids", () => {
+    expect(isItemActionEnabled("move")).toBe(true);
     expect(isItemActionEnabled("rename")).toBe(true);
     expect(isItemActionEnabled("delete")).toBe(true);
     expect(ITEM_ACTION_ORDER.map((action) => action.id)).toEqual([
+      "move",
       "rename",
       "delete",
     ]);
@@ -39,14 +47,13 @@ describe("item-action-catalog", () => {
   });
 
   it("groupItemActions splits when group changes", () => {
-    // Simulate a future second group without expanding ItemActionId yet.
-    const actions = [
+    const actions: ItemActionDef[] = [
+      { id: "move", group: "manage", label: "Переместить файл в…" },
       { id: "delete", group: "modify", label: "Удалить" },
-      { id: "delete", group: "manage" as ItemActionDef["group"], label: "Другое" },
     ];
     expect(groupItemActions(actions)).toEqual([
+      [{ id: "move", group: "manage", label: "Переместить файл в…" }],
       [{ id: "delete", group: "modify", label: "Удалить" }],
-      [{ id: "delete", group: "manage", label: "Другое" }],
     ]);
   });
 });
