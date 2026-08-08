@@ -7,7 +7,6 @@ export type FolderActionId =
   | "move"
   | "delete";
 
-/** Epic #282 groups that currently have real handlers. */
 export type FolderActionGroup = "create" | "manage" | "modify";
 
 export type FolderActionDef = {
@@ -16,7 +15,7 @@ export type FolderActionDef = {
   label: string;
 };
 
-/** Stable catalog order: Create → Manage → Modify (epic #282). */
+/** Stable catalog order: Create → Manage → Modify. */
 export const FOLDER_ACTION_ORDER: readonly FolderActionDef[] = [
   { id: "new-note", group: "create", label: "Новая заметка" },
   { id: "new-folder", group: "create", label: "Новая папка" },

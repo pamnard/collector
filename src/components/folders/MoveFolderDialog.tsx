@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import type { FolderTreeNode } from "@collector/core";
 import { FolderInput } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,10 +10,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useFolderTree } from "../../hooks/useFolderTree";
 import {
-  collectFolderPathsFlat,
   isIllegalMoveParent,
+  listFolderParentChoices,
 } from "../../lib/folder-actions";
 import { cn } from "../../lib/utils";
 
@@ -20,7 +20,7 @@ export interface MoveFolderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   folderPath: string;
-  vaultRevision: number;
+  tree: FolderTreeNode[];
   onConfirm: (newParentPath: string) => void;
 }
 
@@ -28,21 +28,12 @@ export function MoveFolderDialog({
   open,
   onOpenChange,
   folderPath,
-  vaultRevision,
+  tree,
   onConfirm,
 }: MoveFolderDialogProps) {
-  const tree = useFolderTree(vaultRevision);
   const [selectedParent, setSelectedParent] = useState<string | null>(null);
 
-  const destinations = useMemo(() => {
-    const rows: Array<{ parentPath: string; label: string }> = [
-      { parentPath: "", label: "/" },
-    ];
-    for (const path of collectFolderPathsFlat(tree)) {
-      rows.push({ parentPath: path, label: path });
-    }
-    return rows;
-  }, [tree]);
+  const destinations = useMemo(() => listFolderParentChoices(tree), [tree]);
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {

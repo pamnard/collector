@@ -7,26 +7,23 @@ import {
   useAlerts,
   useDismissAlertsOnUnmount,
 } from "../alerts/AlertBusProvider";
-import { IndexingStatusMessage } from "../alerts/IndexingStatusMessage";
-import { errorMessage } from "../alerts/alert-store";
+import { runWithBusyAlert } from "../alerts/run-with-busy-alert";
 import { useFolderTree } from "../../hooks/useFolderTree";
 import type { FolderActionId } from "../../lib/folder-action-catalog";
 import {
-  buildChildFolderPath,
   clearFolderNavFilterAfterDelete,
+  createChildFolder,
   deleteFolderAt,
   folderLeafName,
   moveFolderTo,
   renameFolderLeaf,
   rewriteFolderNavFilterAfterMove,
 } from "../../lib/folder-actions";
-import { getCollectorService } from "../../services/collector-client";
 import type { NavFilter } from "../../types/ui";
 import { navFilterKey } from "../../types/ui";
-import { CreateChildFolderDialog } from "../folders/CreateChildFolderDialog";
 import { FolderContextMenu } from "../folders/FolderContextMenu";
+import { FolderLeafNameDialog } from "../folders/FolderLeafNameDialog";
 import { MoveFolderDialog } from "../folders/MoveFolderDialog";
-import { RenameFolderDialog } from "../folders/RenameFolderDialog";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { useShell } from "./AppLayout";
 
@@ -137,6 +134,10 @@ interface SidebarCollectionsProps {
   refreshVault: () => void;
 }
 
+type LeafDialog =
+  | { kind: "rename"; path: string }
+  | { kind: "create"; path: string };
+
 export function SidebarCollections({
   activeFilter,
   isSettings,
@@ -149,12 +150,8 @@ export function SidebarCollections({
   const activeKey = navFilterKey(activeFilter);
   const alerts = useAlerts();
   const [moveSourcePath, setMoveSourcePath] = useState<string | null>(null);
-  const [renameSourcePath, setRenameSourcePath] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState("");
-  const [isRenaming, setIsRenaming] = useState(false);
-  const [createParentPath, setCreateParentPath] = useState<string | null>(null);
-  const [createLeafValue, setCreateLeafValue] = useState("");
-  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [leafDialog, setLeafDialog] = useState<LeafDialog | null>(null);
+  const [leafBusy, setLeafBusy] = useState(false);
   const [deleteSourcePath, setDeleteSourcePath] = useState<string | null>(null);
   const [isDeletingFolder, setIsDeletingFolder] = useState(false);
   useDismissAlertsOnUnmount([
@@ -168,27 +165,17 @@ export function SidebarCollections({
     FOLDER_DELETE_ERROR_ID,
   ]);
 
-  const handleRequestRename = (folderPath: string) => {
-    setRenameSourcePath(folderPath);
-    setRenameValue(folderLeafName(folderPath));
-  };
-
-  const handleRequestCreateChild = (folderPath: string) => {
-    setCreateParentPath(folderPath);
-    setCreateLeafValue("");
-  };
-
   const handleFolderAction = (id: FolderActionId, path: string) => {
     if (id === "new-note") {
       openCreate(path);
       return;
     }
     if (id === "new-folder") {
-      handleRequestCreateChild(path);
+      setLeafDialog({ kind: "create", path });
       return;
     }
     if (id === "rename") {
-      handleRequestRename(path);
+      setLeafDialog({ kind: "rename", path });
       return;
     }
     if (id === "move") {
@@ -200,132 +187,85 @@ export function SidebarCollections({
     }
   };
 
+  const applyNavRewrite = (next: NavFilter | null) => {
+    if (next) {
+      onSelect(next);
+    }
+  };
+
   const handleConfirmMove = async (
     folderPath: string,
     newParentPath: string,
   ) => {
-    alerts.dismiss(FOLDER_MOVE_ERROR_ID);
-    alerts.upsert(FOLDER_MOVE_BUSY_ID, {
-      tone: "warning",
-      dismissible: false,
-      message: (
-        <IndexingStatusMessage label="Перемещаю папку и всё содержимое…" />
-      ),
+    const newPath = await runWithBusyAlert(alerts, {
+      busyId: FOLDER_MOVE_BUSY_ID,
+      errorId: FOLDER_MOVE_ERROR_ID,
+      label: "Перемещаю папку и всё содержимое…",
+      run: () => moveFolderTo(folderPath, newParentPath),
     });
-    try {
-      const newPath = await moveFolderTo(folderPath, newParentPath);
-      alerts.dismiss(FOLDER_MOVE_BUSY_ID);
-      refreshVault();
-      const next = rewriteFolderNavFilterAfterMove(
-        activeFilter,
-        folderPath,
-        newPath,
-      );
-      if (next) {
-        onSelect(next);
-      }
-    } catch (error) {
-      alerts.dismiss(FOLDER_MOVE_BUSY_ID);
-      alerts.upsert(FOLDER_MOVE_ERROR_ID, {
-        tone: "danger",
-        message: errorMessage(error),
-      });
+    if (newPath === undefined) {
+      return;
     }
+    refreshVault();
+    applyNavRewrite(
+      rewriteFolderNavFilterAfterMove(activeFilter, folderPath, newPath),
+    );
   };
 
   const handleConfirmRename = async (folderPath: string, newLeafName: string) => {
-    alerts.dismiss(FOLDER_RENAME_ERROR_ID);
-    setIsRenaming(true);
-    alerts.upsert(FOLDER_RENAME_BUSY_ID, {
-      tone: "warning",
-      dismissible: false,
-      message: (
-        <IndexingStatusMessage label="Переименовываю папку и всё содержимое…" />
-      ),
+    setLeafBusy(true);
+    const newPath = await runWithBusyAlert(alerts, {
+      busyId: FOLDER_RENAME_BUSY_ID,
+      errorId: FOLDER_RENAME_ERROR_ID,
+      label: "Переименовываю папку и всё содержимое…",
+      run: () => renameFolderLeaf(folderPath, newLeafName),
     });
-    try {
-      const newPath = await renameFolderLeaf(folderPath, newLeafName);
-      alerts.dismiss(FOLDER_RENAME_BUSY_ID);
-      setIsRenaming(false);
-      setRenameSourcePath(null);
-      refreshVault();
-      const next = rewriteFolderNavFilterAfterMove(
-        activeFilter,
-        folderPath,
-        newPath,
-      );
-      if (next) {
-        onSelect(next);
-      }
-    } catch (error) {
-      alerts.dismiss(FOLDER_RENAME_BUSY_ID);
-      setIsRenaming(false);
-      alerts.upsert(FOLDER_RENAME_ERROR_ID, {
-        tone: "danger",
-        message: errorMessage(error),
-      });
+    setLeafBusy(false);
+    if (newPath === undefined) {
+      return;
     }
+    setLeafDialog(null);
+    refreshVault();
+    applyNavRewrite(
+      rewriteFolderNavFilterAfterMove(activeFilter, folderPath, newPath),
+    );
   };
 
   const handleConfirmCreateChild = async (
     parentPath: string,
     leafName: string,
   ) => {
-    alerts.dismiss(FOLDER_CREATE_ERROR_ID);
-    setIsCreatingFolder(true);
-    alerts.upsert(FOLDER_CREATE_BUSY_ID, {
-      tone: "warning",
-      dismissible: false,
-      message: <IndexingStatusMessage label="Создаю папку…" />,
+    setLeafBusy(true);
+    const newPath = await runWithBusyAlert(alerts, {
+      busyId: FOLDER_CREATE_BUSY_ID,
+      errorId: FOLDER_CREATE_ERROR_ID,
+      label: "Создаю папку…",
+      run: () => createChildFolder(parentPath, leafName),
     });
-    try {
-      const fullPath = buildChildFolderPath(parentPath, leafName);
-      const newPath =
-        await getCollectorService().folders.createFolder(fullPath);
-      alerts.dismiss(FOLDER_CREATE_BUSY_ID);
-      setIsCreatingFolder(false);
-      setCreateParentPath(null);
-      setCreateLeafValue("");
-      refreshVault();
-      onSelect({ type: "folder", folderPath: newPath });
-    } catch (error) {
-      alerts.dismiss(FOLDER_CREATE_BUSY_ID);
-      setIsCreatingFolder(false);
-      alerts.upsert(FOLDER_CREATE_ERROR_ID, {
-        tone: "danger",
-        message: errorMessage(error),
-      });
+    setLeafBusy(false);
+    if (newPath === undefined) {
+      return;
     }
+    setLeafDialog(null);
+    refreshVault();
+    onSelect({ type: "folder", folderPath: newPath });
   };
 
   const handleConfirmDelete = async (folderPath: string) => {
-    alerts.dismiss(FOLDER_DELETE_ERROR_ID);
     setIsDeletingFolder(true);
-    alerts.upsert(FOLDER_DELETE_BUSY_ID, {
-      tone: "warning",
-      dismissible: false,
-      message: (
-        <IndexingStatusMessage label="Удаляю папку и всё содержимое…" />
-      ),
-    });
     try {
-      await deleteFolderAt(folderPath);
-      alerts.dismiss(FOLDER_DELETE_BUSY_ID);
-      setIsDeletingFolder(false);
+      await runWithBusyAlert(alerts, {
+        busyId: FOLDER_DELETE_BUSY_ID,
+        errorId: FOLDER_DELETE_ERROR_ID,
+        label: "Удаляю папку и всё содержимое…",
+        rethrow: true,
+        run: () => deleteFolderAt(folderPath),
+      });
       setDeleteSourcePath(null);
       refreshVault();
-      const next = clearFolderNavFilterAfterDelete(activeFilter, folderPath);
-      if (next) {
-        onSelect(next);
-      }
-    } catch (error) {
-      alerts.dismiss(FOLDER_DELETE_BUSY_ID);
+      applyNavRewrite(clearFolderNavFilterAfterDelete(activeFilter, folderPath));
+    } finally {
       setIsDeletingFolder(false);
-      alerts.upsert(FOLDER_DELETE_ERROR_ID, {
-        tone: "danger",
-        message: errorMessage(error),
-      });
-      throw error;
     }
   };
 
@@ -350,7 +290,7 @@ export function SidebarCollections({
             }
           }}
           folderPath={moveSourcePath}
-          vaultRevision={vaultRevision}
+          tree={folders}
           onConfirm={(newParentPath) => {
             const source = moveSourcePath;
             setMoveSourcePath(null);
@@ -358,51 +298,36 @@ export function SidebarCollections({
           }}
         />
       ) : null}
-      {renameSourcePath !== null ? (
-        <RenameFolderDialog
+      {leafDialog !== null ? (
+        <FolderLeafNameDialog
           open
-          folderPath={renameSourcePath}
-          renameValue={renameValue}
-          isRenaming={isRenaming}
-          onRenameValueChange={setRenameValue}
+          busy={leafBusy}
+          title={
+            leafDialog.kind === "rename" ? "Переименовать папку" : "Новая папка"
+          }
+          description={
+            leafDialog.kind === "rename"
+              ? `Новое имя для «${folderLeafName(leafDialog.path)}».`
+              : `Дочерняя папка внутри «${folderLeafName(leafDialog.path)}».`
+          }
+          confirmLabel={leafDialog.kind === "rename" ? "Сохранить" : "Создать"}
+          initialValue={
+            leafDialog.kind === "rename" ? folderLeafName(leafDialog.path) : ""
+          }
+          placeholder={
+            leafDialog.kind === "create" ? "Имя папки" : undefined
+          }
           onOpenChange={(open) => {
-            if (!open && !isRenaming) {
-              setRenameSourcePath(null);
+            if (!open && !leafBusy) {
+              setLeafDialog(null);
             }
           }}
-          onCancel={() => {
-            if (!isRenaming) {
-              setRenameSourcePath(null);
+          onConfirm={(leaf) => {
+            if (leafDialog.kind === "rename") {
+              void handleConfirmRename(leafDialog.path, leaf);
+              return;
             }
-          }}
-          onConfirm={() => {
-            const source = renameSourcePath;
-            void handleConfirmRename(source, renameValue);
-          }}
-        />
-      ) : null}
-      {createParentPath !== null ? (
-        <CreateChildFolderDialog
-          open
-          parentPath={createParentPath}
-          leafValue={createLeafValue}
-          isCreating={isCreatingFolder}
-          onLeafValueChange={setCreateLeafValue}
-          onOpenChange={(open) => {
-            if (!open && !isCreatingFolder) {
-              setCreateParentPath(null);
-              setCreateLeafValue("");
-            }
-          }}
-          onCancel={() => {
-            if (!isCreatingFolder) {
-              setCreateParentPath(null);
-              setCreateLeafValue("");
-            }
-          }}
-          onConfirm={() => {
-            const parent = createParentPath;
-            void handleConfirmCreateChild(parent, createLeafValue);
+            void handleConfirmCreateChild(leafDialog.path, leaf);
           }}
         />
       ) : null}
