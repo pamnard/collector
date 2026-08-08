@@ -5,6 +5,7 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeSlug from "rehype-slug";
 import type { PluggableList } from "unified";
 import { ExternalAnchor } from "./ExternalAnchor";
+import { MarkdownImage } from "./MarkdownImage";
 import { MarkdownPre } from "./MarkdownCodeBlock";
 
 interface MarkdownContentProps {
@@ -26,6 +27,7 @@ const MARKDOWN_COMPONENTS = {
     />
   ),
   pre: MarkdownPre,
+  img: MarkdownImage,
 };
 
 export function MarkdownContent({ content }: MarkdownContentProps) {
