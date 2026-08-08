@@ -630,15 +630,17 @@ export function useDashboardItems(
       setTotalCount(cached.totalCount);
       setStreamWindowEnd(cached.streamEndOffset);
       setIsLoading(false);
-    } else if (committedItemsRef.current.length === 0) {
-      setIsLoading(true);
-      const empty = new Map<string, ItemFile>();
-      itemsByIdRef.current = empty;
-      setItemsById(empty);
-      setLoadedItemIds([]);
-      totalCountRef.current = 0;
-      setTotalCount(0);
-      setStreamWindowEnd(0);
+    } else {
+      // Cache miss after invalidate: drop bodies so ids-same re-hydrates.
+      itemsByIdRef.current = new Map();
+      setItemsById(new Map());
+      if (committedItemsRef.current.length === 0) {
+        setIsLoading(true);
+        setLoadedItemIds([]);
+        totalCountRef.current = 0;
+        setTotalCount(0);
+        setStreamWindowEnd(0);
+      }
     }
 
     streamAbortRef.current?.abort();

@@ -1,14 +1,24 @@
 import { useCallback, useMemo, useState } from "react";
 import type { MediaWithPath } from "@collector/core";
+import {
+  useAlerts,
+  useDismissAlertsOnUnmount,
+} from "../components/alerts/AlertBusProvider";
 import { ItemDetailAside } from "../components/items/ItemDetailAside";
 import { ItemDetailInlineEditor } from "../components/items/ItemDetailInlineEditor";
 import { ItemDetailSourceEditor } from "../components/items/ItemDetailSourceEditor";
 import { ItemDetailViewBody } from "../components/items/ItemDetailViewBody";
+import { ItemRenameDialog } from "../components/items/ItemRenameDialog";
 import { MediaPlayerOverlay } from "../components/media/MediaPlayerOverlay";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { useItemDetail } from "../hooks/useItemDetail";
 import { useItemDetailChrome } from "../hooks/useItemDetailChrome";
 import { useMediaPlayerOverlay } from "../hooks/useMediaPlayerOverlay";
+import {
+  ITEM_RENAME_BUSY_ID,
+  ITEM_RENAME_ERROR_ID,
+  renameItemTitle,
+} from "../lib/item-actions";
 import { articleTocForView } from "../lib/markdown/article-toc";
 import { errorMessage } from "../services/runtime-error";
 import type { PlayableMediaKind } from "../utils/local-media-playback";
@@ -35,7 +45,12 @@ export function ItemDetailPage() {
     handleItemUpdated,
   } = detail;
 
-  const { deleteConfirmOpen, setDeleteConfirmOpen } = useItemDetailChrome({
+  const {
+    deleteConfirmOpen,
+    setDeleteConfirmOpen,
+    renameOpen,
+    setRenameOpen,
+  } = useItemDetailChrome({
     item,
     error,
     mode,
@@ -46,6 +61,9 @@ export function ItemDetailPage() {
     onSource: switchToSource,
   });
 
+  const alerts = useAlerts();
+  useDismissAlertsOnUnmount([ITEM_RENAME_BUSY_ID, ITEM_RENAME_ERROR_ID]);
+  const [isRenaming, setIsRenaming] = useState(false);
   const [mediaPlayError, setMediaPlayError] = useState<string | null>(null);
   const {
     session: mediaPlayerSession,
@@ -53,6 +71,23 @@ export function ItemDetailPage() {
     openMediaRef,
     close: closeMediaPlayer,
   } = useMediaPlayerOverlay();
+
+  const handleConfirmRename = useCallback(
+    async (nextTitle: string) => {
+      if (!item) {
+        return;
+      }
+      setIsRenaming(true);
+      const updated = await renameItemTitle(alerts, item.id, nextTitle);
+      setIsRenaming(false);
+      if (updated === undefined) {
+        return;
+      }
+      setRenameOpen(false);
+      handleItemUpdated();
+    },
+    [alerts, handleItemUpdated, item, setRenameOpen],
+  );
 
   const handlePlayHeroVideo = useCallback(() => {
     if (!item) {
@@ -109,6 +144,16 @@ export function ItemDetailPage() {
         description="Удалить элемент без возможности восстановления?"
         busy={isDeleting}
         onConfirm={handleConfirmDelete}
+      />
+
+      <ItemRenameDialog
+        open={renameOpen}
+        currentTitle={item?.title ?? ""}
+        busy={isRenaming}
+        onOpenChange={setRenameOpen}
+        onConfirm={(nextTitle) => {
+          void handleConfirmRename(nextTitle);
+        }}
       />
 
       {item && (

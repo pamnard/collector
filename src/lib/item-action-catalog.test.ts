@@ -8,20 +8,31 @@ import {
 } from "./item-action-catalog";
 
 describe("item-action-catalog", () => {
-  it("lists delete in modify group", () => {
+  it("lists rename then delete in modify group", () => {
     const actions = listEnabledItemActions();
-    expect(actions.map((action) => action.id)).toEqual(["delete"]);
-    expect(actions.map((action) => action.group)).toEqual(["modify"]);
-    expect(actions[0]?.label).toBe("Удалить");
+    expect(actions.map((action) => action.id)).toEqual(["rename", "delete"]);
+    expect(actions.map((action) => action.group)).toEqual([
+      "modify",
+      "modify",
+    ]);
+    expect(actions.map((action) => action.label)).toEqual([
+      "Переименовать",
+      "Удалить",
+    ]);
   });
 
   it("enables catalog ids", () => {
+    expect(isItemActionEnabled("rename")).toBe(true);
     expect(isItemActionEnabled("delete")).toBe(true);
-    expect(ITEM_ACTION_ORDER.map((action) => action.id)).toEqual(["delete"]);
+    expect(ITEM_ACTION_ORDER.map((action) => action.id)).toEqual([
+      "rename",
+      "delete",
+    ]);
   });
 
   it("groupItemActions keeps same-group items in one section", () => {
     const actions: ItemActionDef[] = [
+      { id: "rename", group: "modify", label: "Переименовать" },
       { id: "delete", group: "modify", label: "Удалить" },
     ];
     expect(groupItemActions(actions)).toEqual([actions]);

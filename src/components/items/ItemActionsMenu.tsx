@@ -1,4 +1,4 @@
-import { MoreVertical, Trash2, type LucideIcon } from "lucide-react";
+import { MoreVertical, Pencil, Trash2, type LucideIcon } from "lucide-react";
 import { cn } from "../../lib/utils";
 import {
   groupItemActions,
@@ -16,6 +16,7 @@ import {
 } from "../ui/dropdown-menu";
 
 const ITEM_ACTION_ICONS: Record<ItemActionId, LucideIcon> = {
+  rename: Pencil,
   delete: Trash2,
 };
 
