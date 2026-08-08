@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -11,6 +11,7 @@ import {
 } from "./service-host.js";
 import { connectHostWire } from "./wire/client.js";
 import { defaultServiceHostTokenPath } from "./wire/auth.js";
+import { defaultServiceHostBaseUrlPath } from "./wire/base-url.js";
 
 describe("resolveServiceHostListenPort", () => {
   it("defaults to DEFAULT_SERVICE_HOST_PORT (1421)", () => {
@@ -54,6 +55,11 @@ describe("startServiceHost", () => {
         defaultServiceHostTokenPath(dataDir),
         "utf8",
       ).trim();
+      const publishedBaseUrl = readFileSync(
+        defaultServiceHostBaseUrlPath(dataDir),
+        "utf8",
+      ).trim();
+      expect(publishedBaseUrl).toBe(host.baseUrl);
 
       const ping = await fetch(`${host.baseUrl}/ping`);
       expect(ping.status).toBe(200);
@@ -99,5 +105,7 @@ describe("startServiceHost", () => {
     } finally {
       await host.close();
     }
+    expect(existsSync(defaultServiceHostBaseUrlPath(dataDir))).toBe(false);
+    expect(existsSync(defaultServiceHostTokenPath(dataDir))).toBe(false);
   });
 });
