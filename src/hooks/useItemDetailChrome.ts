@@ -8,6 +8,7 @@ import {
   useItemChrome,
   type ItemDetailMode,
 } from "../components/layout/item-chrome";
+import { liveCallback } from "../lib/live-callback";
 
 export const ITEM_COPY_ALERT_ID = "item-copy-feedback";
 
@@ -50,6 +51,18 @@ export function useItemDetailChrome(
     onForm,
     onSource,
   } = input;
+
+  // Header chrome republishes only when status fields change — not on every
+  // parent render. Keep mode handlers live so leave-to-view still sees dirty source.
+  const onViewRef = useRef(onView);
+  const onFormRef = useRef(onForm);
+  const onSourceRef = useRef(onSource);
+  onViewRef.current = onView;
+  onFormRef.current = onForm;
+  onSourceRef.current = onSource;
+  const onViewLive = useRef(liveCallback(() => onViewRef.current)).current;
+  const onFormLive = useRef(liveCallback(() => onFormRef.current)).current;
+  const onSourceLive = useRef(liveCallback(() => onSourceRef.current)).current;
 
   useEffect(() => {
     return () => {
@@ -124,9 +137,9 @@ export function useItemDetailChrome(
       onCopyId: () => {
         void handleCopyItemId();
       },
-      onView,
-      onForm,
-      onSource,
+      onView: onViewLive,
+      onForm: onFormLive,
+      onSource: onSourceLive,
       onDelete: () => {
         setDeleteConfirmOpen(true);
       },
@@ -139,6 +152,9 @@ export function useItemDetailChrome(
     isSaving,
     isDeleting,
     publish,
+    onViewLive,
+    onFormLive,
+    onSourceLive,
   ]);
 
   return {
