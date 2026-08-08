@@ -16,6 +16,7 @@ import {
   readItemSourceRef,
   writeItemFile,
 } from "./item-io.js";
+import { deleteItem } from "./item-operations.js";
 import { ftsFieldsFromDocumentMarkdown } from "./frontmatter.js";
 import {
   basename,
@@ -151,11 +152,15 @@ export async function renameFolder(
   return to;
 }
 
-/** Empty-dir only — real collections cannot be deleted while they still hold entries. */
+/**
+ * Recursive folder wipe (#572): delete every indexed item under the prefix
+ * (`.md` + `media/<uuid>/` + index row via `deleteItem`), then remove the
+ * folder tree from disk.
+ */
 export async function deleteFolder(
   ctx: VaultContext,
   vaultPath: string,
-  _vaultId: string,
+  vaultId: string,
   path: string,
 ): Promise<void> {
   const normalized = assertFolderPath(path);
@@ -168,9 +173,9 @@ export async function deleteFolder(
     throw new Error(`Folder not found: ${normalized}`);
   }
 
-  const entries = await ctx.fs.readDir(abs);
-  if (entries.length > 0) {
-    throw new Error(`Folder is not empty: ${normalized}`);
+  const itemIds = await ctx.index.listItemIdsByFolderPrefix(vaultId, normalized);
+  for (const itemId of itemIds) {
+    await deleteItem(ctx, vaultPath, itemId);
   }
 
   await ctx.fs.remove(abs, { recursive: true });
