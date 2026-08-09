@@ -653,6 +653,15 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     super(selector);
   }
 
+  async listItemIdTitles(
+    vaultId: string,
+  ): Promise<Array<{ id: string; title: string }>> {
+    return this.selector.select<{ id: string; title: string }>(
+      `SELECT id, title FROM items WHERE vault_id = ?`,
+      [vaultId],
+    );
+  }
+
   override async upsertTag(tag: Tag, vaultId: string): Promise<void> {
     // Disk may recreate a tag id for an existing name; prefer the disk id and
     // drop the stale index row so UNIQUE(vault_id, name) does not fail.

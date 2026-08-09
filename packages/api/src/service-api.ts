@@ -80,6 +80,15 @@ export interface AdjacentItemsResult {
   next: AdjacentItemRef | null;
 }
 
+/** Parsed text link from note body (#409). Mirrors core ResolvedTextLink. */
+export interface ResolvedTextLink {
+  kind: "wikilink" | "md";
+  rawTarget: string;
+  displayText: string | null;
+  position: number;
+  resolvedItemId: string | null;
+}
+
 /** Explicit unsubscribe handle for port subscriptions (#364). */
 /** Tear-down handle. Prefer `.unsubscribe()`; also callable for React effect cleanup. */
 export type Subscription = (() => void) & { unsubscribe(): void };
@@ -156,6 +165,11 @@ export interface ItemsPort {
   getItemById(itemId: string): Promise<GetItemResult>;
   /** Exact-folder chronological neighbors (#344). */
   getAdjacentItems(itemId: string): Promise<AdjacentItemsResult>;
+  /** Resolve `[[wikilink]]` / vault md links in a note body (#409). */
+  resolveContentTextLinks(
+    itemId: string,
+    body: string,
+  ): Promise<ResolvedTextLink[]>;
   getItemSource(itemId: string): Promise<string>;
   updateItemSource(itemId: string, rawMarkdown: string): Promise<ItemFile>;
   createItem(input: CreateItemInput): Promise<ItemFile>;

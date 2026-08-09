@@ -6,6 +6,7 @@ import type {
   AdjacentItemsResult,
   CreateItemInput,
   GetItemResult,
+  ResolvedTextLink,
   UpdateItemInput,
 } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
@@ -16,11 +17,13 @@ import {
   itemMarkdownPath,
   loadTagMaps,
   moveItemToFolder,
+  parseAndResolveTextLinks,
   readItemContent,
   readItemFile,
   readItemRawMarkdown,
   resolveOrCreateInboxFolder,
   serializeItemDocument,
+  textLinkResolveContextFromItems,
   upsertItem,
   writeItemRawMarkdown,
   type AdjacentItemAnchor,
@@ -30,6 +33,10 @@ import type { ItemsSearchServiceDeps } from "./items-search.js";
 export type ItemsCrud = {
   getItemById(itemId: string): Promise<GetItemResult>;
   getAdjacentItems(itemId: string): Promise<AdjacentItemsResult>;
+  resolveContentTextLinks(
+    itemId: string,
+    body: string,
+  ): Promise<ResolvedTextLink[]>;
   getItemSource(itemId: string): Promise<string>;
   updateItemSource(itemId: string, rawMarkdown: string): Promise<ItemFile>;
   createItem(input: CreateItemInput): Promise<ItemFile>;
@@ -83,6 +90,18 @@ export function createItemsCrud(
       return { prev: null, next: null };
     }
     return index.getAdjacentItems(vault.id, anchor);
+  };
+
+  const resolveContentTextLinks = async (
+    itemId: string,
+    body: string,
+  ): Promise<ResolvedTextLink[]> => {
+    const { vault } = await deps.resolveActiveVault();
+    const items = await deps.getIndex().listItemIdTitles(vault.id);
+    return parseAndResolveTextLinks(
+      body,
+      textLinkResolveContextFromItems(itemId, items),
+    );
   };
 
   const getItemSource = async (itemId: string): Promise<string> => {
@@ -208,6 +227,7 @@ export function createItemsCrud(
   return {
     getItemById,
     getAdjacentItems,
+    resolveContentTextLinks,
     getItemSource,
     updateItemSource,
     createItem,

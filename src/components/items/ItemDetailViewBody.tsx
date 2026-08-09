@@ -36,7 +36,7 @@ export function ItemDetailViewBody({
         {content && (
           <section className="min-w-0">
             <div className="mx-auto w-full max-w-[900px]">
-              <MarkdownContent content={content} />
+              <MarkdownContent itemId={item.id} content={content} />
             </div>
           </section>
         )}

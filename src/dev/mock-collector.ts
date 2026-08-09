@@ -3,6 +3,8 @@ import {
   buildCanonicalFrontmatter,
   contentTypeFromFrontmatter,
   isItemIdSortKey,
+  parseAndResolveTextLinks,
+  textLinkResolveContextFromItems,
   parseDocumentMarkdown,
   parseKnownFrontmatter,
   resolveItemThumbnailAbsolutePath,
@@ -224,6 +226,18 @@ export async function getItemById(
   const raw = await fetchDevVaultText(devVaultFsUrl(itemId));
   const content = raw === null ? null : parseDocumentMarkdown(raw).body;
   return { item, content };
+}
+
+export async function resolveContentTextLinks(
+  itemId: string,
+  body: string,
+) {
+  ensureWarmedUp();
+  const items = mockStore.getItems();
+  return parseAndResolveTextLinks(
+    body,
+    textLinkResolveContextFromItems(itemId, items),
+  );
 }
 
 export async function getAdjacentItems(itemId: string): Promise<{
