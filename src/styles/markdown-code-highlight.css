@@ -163,6 +163,14 @@
   color: var(--code-block-fg);
 }
 
+/* Mermaid appends body>.mermaidTooltip with inline position:absolute. Idle
+   opacity:0 box still extends past the viewport and grows document
+   scrollHeight (second window scrollbar next to MainScrollArea). Fixed wins
+   over the inline absolute and keeps the tip in the viewport. */
+.mermaidTooltip {
+  position: fixed !important;
+}
+
 .markdown-mermaid-svg :is(svg) {
   display: block;
   max-width: 100%;

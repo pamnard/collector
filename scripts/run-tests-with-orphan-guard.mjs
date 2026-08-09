@@ -55,6 +55,12 @@ run(
 );
 
 run(
+  "document scrollport guard",
+  "node",
+  ["--test", join(root, "scripts/assert-document-scrollport.test.mjs")],
+);
+
+run(
   "assert no leaked test-run processes",
   "node",
   [join(root, "scripts/assert-no-test-orphans.mjs")],
