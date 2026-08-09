@@ -150,6 +150,13 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Single page scrollport = MainScrollArea (#117). Keep document from scrolling
+   when third-party nodes (e.g. Mermaid .mermaidTooltip) sit on body. */
+html,
+body {
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
