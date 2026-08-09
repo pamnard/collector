@@ -1,15 +1,19 @@
-import type { ComponentProps } from "react";
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSlug from "rehype-slug";
 import type { PluggableList } from "unified";
-import { ExternalAnchor } from "./ExternalAnchor";
+import { rewriteTextLinksForMarkdown } from "@collector/core";
+import { getCollectorService } from "../../services/collector-client";
+import { ItemMarkdownAnchor } from "./ItemMarkdownAnchor";
+import { collectorMarkdownUrlTransform } from "./item-markdown-href";
 import { MarkdownImage } from "./MarkdownImage";
 import { MarkdownPre } from "./MarkdownCodeBlock";
 import { MarkdownTable } from "./MarkdownTable";
 
 interface MarkdownContentProps {
+  itemId: string;
   content: string;
 }
 
@@ -19,19 +23,45 @@ const REHYPE_PLUGINS: PluggableList = [
   [rehypeHighlight, { detect: false, ignoreMissing: true }],
 ];
 const MARKDOWN_COMPONENTS = {
-  a: (props: ComponentProps<typeof ExternalAnchor>) => (
-    <ExternalAnchor
-      {...props}
-      className={["border-b border-indigo-400/50 no-underline", props.className]
-        .filter(Boolean)
-        .join(" ")}
-    />
-  ),
+  a: ItemMarkdownAnchor,
   pre: MarkdownPre,
   img: MarkdownImage,
   table: MarkdownTable,
 };
-export function MarkdownContent({ content }: MarkdownContentProps) {
+
+export function MarkdownContent({ itemId, content }: MarkdownContentProps) {
+  const [renderContent, setRenderContent] = useState(content);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!content.trim()) {
+      setRenderContent("");
+      return;
+    }
+    // Keep prior/current body visible until rewrite finishes (no blank flash).
+    setRenderContent(content);
+    void getCollectorService()
+      .items.resolveContentTextLinks(itemId, content)
+      .then((links) => {
+        if (cancelled) {
+          return;
+        }
+        setRenderContent(rewriteTextLinksForMarkdown(content, links));
+      })
+      .catch((error: unknown) => {
+        console.error("[MarkdownContent] resolveContentTextLinks failed", {
+          itemId,
+          error,
+        });
+        if (!cancelled) {
+          setRenderContent(content);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [itemId, content]);
+
   if (!content.trim()) {
     return null;
   }
@@ -41,9 +71,10 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
       <ReactMarkdown
         remarkPlugins={REMARK_PLUGINS}
         rehypePlugins={REHYPE_PLUGINS}
+        urlTransform={collectorMarkdownUrlTransform}
         components={MARKDOWN_COMPONENTS}
       >
-        {content}
+        {renderContent}
       </ReactMarkdown>
     </div>
   );

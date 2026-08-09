@@ -249,6 +249,32 @@ export {
 export { SqlVaultIndexAdapter, SqlVaultIndexStore } from "./index/sql-index.js";
 export type { SqlSelector } from "./index/sql-index.js";
 
+export { extractTextLinks } from "./links/extract-text-links.js";
+export type {
+  ExtractedTextLink,
+  TextLinkKind,
+} from "./links/extract-text-links.js";
+
+export { resolveTextLinks } from "./links/resolve-text-links.js";
+export type {
+  ResolvedTextLink,
+  TextLinkResolveContext,
+} from "./links/resolve-text-links.js";
+
+export { parseAndResolveTextLinks } from "./links/parse-text-links.js";
+
+export {
+  buildTextLinkResolveContext,
+  textLinkResolveContextFromItems,
+} from "./links/text-links-reindex.js";
+
+export {
+  COLLECTOR_UNRESOLVED_HREF_PREFIX,
+  decodeItemPathHref,
+  itemPathHref,
+  rewriteTextLinksForMarkdown,
+} from "./links/rewrite-text-links.js";
+
 export {
   DEFAULT_ITEM_ID_SORT,
   ITEM_ID_SORT_KEYS,

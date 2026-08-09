@@ -60,6 +60,7 @@ export {
   type IndexPort,
   type IndexQueryResult,
   type ItemsPort,
+  type ResolvedTextLink,
   type MediaPort,
   type ServiceSubscribeHandlers,
   type SettingsPort,

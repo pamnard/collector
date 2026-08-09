@@ -14,6 +14,7 @@ import {
   type GetItemResult,
   type IndexQueryResult,
   type NavFilter,
+  type ResolvedTextLink,
   type Subscription,
   type UpdateItemInput,
 } from "@collector/api";
@@ -57,6 +58,10 @@ export interface ItemsIndexPort {
     filter: NavFilter,
   ): Promise<number>;
   listItemFilesByIds(vaultId: string, itemIds: string[]): Promise<ItemFile[]>;
+  /** Light id/title rows for text-link resolve (#409); avoid full ItemFile load. */
+  listItemIdTitles(
+    vaultId: string,
+  ): Promise<Array<{ id: string; title: string }>>;
   getAdjacentItems(
     vaultId: string,
     anchor: AdjacentItemAnchor,
@@ -129,6 +134,10 @@ export interface ItemsSearchService {
   ): Promise<ItemFile[]>;
   getItemById(itemId: string): Promise<GetItemResult>;
   getAdjacentItems(itemId: string): Promise<AdjacentItemsResult>;
+  resolveContentTextLinks(
+    itemId: string,
+    body: string,
+  ): Promise<ResolvedTextLink[]>;
   getItemSource(itemId: string): Promise<string>;
   updateItemSource(itemId: string, rawMarkdown: string): Promise<ItemFile>;
   createItem(input: CreateItemInput): Promise<ItemFile>;
@@ -307,6 +316,7 @@ export function createItemsSearchService(
     loadDashboardItems,
     getItemById: crud.getItemById,
     getAdjacentItems: crud.getAdjacentItems,
+    resolveContentTextLinks: crud.resolveContentTextLinks,
     getItemSource: crud.getItemSource,
     updateItemSource: crud.updateItemSource,
     createItem: crud.createItem,

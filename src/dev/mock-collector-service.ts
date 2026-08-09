@@ -316,6 +316,7 @@ export function createDevMockCollectorService(): CollectorService {
       loadDashboardItems: mockCollector.loadDashboardItems,
       getItemById: mockCollector.getItemById,
       getAdjacentItems: mockCollector.getAdjacentItems,
+      resolveContentTextLinks: mockCollector.resolveContentTextLinks,
       getItemSource: mockCollector.getItemSource,
       updateItemSource: mockCollector.updateItemSource,
       createItem: async (_input: UiCreateItemInput) => refuseUnsupported(),

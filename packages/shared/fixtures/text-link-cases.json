@@ -1,0 +1,62 @@
+[
+  {
+    "name": "wikilink-simple",
+    "body": "See [[Note]] and more.\n",
+    "expected": [
+      { "kind": "wikilink", "rawTarget": "Note", "displayText": null }
+    ]
+  },
+  {
+    "name": "wikilink-alias",
+    "body": "See [[path/to.md|Alias]] here.\n",
+    "expected": [
+      { "kind": "wikilink", "rawTarget": "path/to.md", "displayText": "Alias" }
+    ]
+  },
+  {
+    "name": "wikilink-heading-and-block",
+    "body": "[[Note#Heading]] and [[Note^blockid]]\n",
+    "expected": [
+      { "kind": "wikilink", "rawTarget": "Note#Heading", "displayText": null },
+      { "kind": "wikilink", "rawTarget": "Note^blockid", "displayText": null }
+    ]
+  },
+  {
+    "name": "md-relative",
+    "body": "Go [label](../x.md) please.\n",
+    "expected": [
+      { "kind": "md", "rawTarget": "../x.md", "displayText": "label" }
+    ]
+  },
+  {
+    "name": "skip-http-and-mailto",
+    "body": "[web](https://example.com) [mail](mailto:a@b.c) [[Keep]]\n",
+    "expected": [
+      { "kind": "wikilink", "rawTarget": "Keep", "displayText": null }
+    ]
+  },
+  {
+    "name": "skip-inline-and-fenced-code",
+    "body": "ok [[Real]] and `[[Nope]]` and:\n```\n[[AlsoNope]]\n[no](../x.md)\n```\nafter [[After]]\n",
+    "expected": [
+      { "kind": "wikilink", "rawTarget": "Real", "displayText": null },
+      { "kind": "wikilink", "rawTarget": "After", "displayText": null }
+    ]
+  },
+  {
+    "name": "skip-embed-wikilink",
+    "body": "![[Embed]] and [[Keep]]\n",
+    "expected": [
+      { "kind": "wikilink", "rawTarget": "Keep", "displayText": null }
+    ]
+  },
+  {
+    "name": "mixed",
+    "body": "[[A]] then [b](Folder/b.md) and [[C|See C]]\n",
+    "expected": [
+      { "kind": "wikilink", "rawTarget": "A", "displayText": null },
+      { "kind": "md", "rawTarget": "Folder/b.md", "displayText": "b" },
+      { "kind": "wikilink", "rawTarget": "C", "displayText": "See C" }
+    ]
+  }
+]

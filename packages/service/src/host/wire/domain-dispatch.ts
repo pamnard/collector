@@ -220,6 +220,21 @@ export const DOMAIN_DISPATCH_REGISTRY: Record<
       return runtime.itemsSearch.getAdjacentItems(itemId);
     },
   },
+  [M.resolveContentTextLinks]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.resolveContentTextLinks);
+      const itemId = requireString(
+        p.itemId,
+        "itemId",
+        M.resolveContentTextLinks,
+      );
+      if (typeof p.body !== "string") {
+        badRequest(`${M.resolveContentTextLinks}: body must be a string`);
+      }
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.resolveContentTextLinks(itemId, p.body);
+    },
+  },
   [M.getItemSource]: {
     handle: async (runtime, params) => {
       const p = asObject(params, M.getItemSource);
