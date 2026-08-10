@@ -126,6 +126,8 @@ function parseMdLink(
   if (body[openIndex + 1] === "[") {
     return null;
   }
+  // Image `![alt](url)` is not a navigable text link (#590 regression via #409).
+  const isImage = openIndex > 0 && body[openIndex - 1] === "!";
   const labelClose = body.indexOf("]", openIndex + 1);
   if (labelClose === -1) {
     return null;
@@ -154,6 +156,9 @@ function parseMdLink(
     return null;
   }
   const end = i + 1;
+  if (isImage) {
+    return { link: null, end };
+  }
   let target = body.slice(urlStart, i).trim();
   if (target.startsWith("<") && target.endsWith(">")) {
     target = target.slice(1, -1).trim();
@@ -182,7 +187,8 @@ function parseMdLink(
 
 /**
  * Extract `[[wikilink]]` and vault-relative markdown links from a note body.
- * Skips fenced/inline code and `![[embed]]`. Does not resolve targets.
+ * Skips fenced/inline code, `![[embed]]`, and `![image](url)` (#590).
+ * Does not resolve targets.
  */
 export function extractTextLinks(body: string): ExtractedTextLink[] {
   const links: ExtractedTextLink[] = [];

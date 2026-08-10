@@ -102,6 +102,10 @@ export function rewriteTextLinksForMarkdown(
   const ordered = [...links].sort((a, b) => b.position - a.position);
   let out = body;
   for (const link of ordered) {
+    // Never rewrite `![…](…)` image spans even if a stale extractor returned them (#590).
+    if (link.position > 0 && out[link.position - 1] === "!") {
+      continue;
+    }
     const end = linkSpanEnd(out, link);
     out =
       out.slice(0, link.position) +
