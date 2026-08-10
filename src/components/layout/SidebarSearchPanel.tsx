@@ -3,18 +3,21 @@ import { Search, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { ItemFile } from "@collector/shared";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { sidebarSearchCacheKey } from "../../lib/sidebar-search-cache-key";
 import { getCollectorService } from "../../services/collector-client";
 import { Input } from "../ui/input";
 
 interface SidebarSearchPanelProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
+  vaultRevision: number;
   searchIndexBuilding?: boolean;
 }
 
 export function SidebarSearchPanel({
   searchQuery,
   onSearchChange,
+  vaultRevision,
   searchIndexBuilding = false,
 }: SidebarSearchPanelProps) {
   const navigate = useNavigate();
@@ -22,6 +25,10 @@ export function SidebarSearchPanel({
   const [results, setResults] = useState<ItemFile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const resultsCacheKey = sidebarSearchCacheKey(
+    debouncedQuery.trim(),
+    vaultRevision,
+  );
 
   useEffect(() => {
     const query = debouncedQuery.trim();
@@ -57,7 +64,8 @@ export function SidebarSearchPanel({
     return () => {
       controller.abort();
     };
-  }, [debouncedQuery]);
+    // resultsCacheKey encodes query + vaultRevision (path ids change on move).
+  }, [debouncedQuery, resultsCacheKey]);
 
   const placeholder = searchIndexBuilding
     ? "Поиск по названию… (индекс строится)"
