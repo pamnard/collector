@@ -192,6 +192,7 @@ export function Sidebar({
               <SidebarSearchPanel
                 searchQuery={searchQuery}
                 onSearchChange={onSearchChange}
+                vaultRevision={vaultRevision}
                 searchIndexBuilding={searchIndexBuilding}
               />
             ) : (
