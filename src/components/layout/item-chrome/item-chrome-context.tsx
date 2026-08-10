@@ -12,7 +12,11 @@ import {
   mapDomainToActions,
   mapDomainToBreadcrumbs,
 } from "./map-domain-to-actions";
-import type { ItemChromeBreadcrumbState, ItemChromeDomain } from "./types";
+import type {
+  ItemChromeBreadcrumbState,
+  ItemChromeDomain,
+  ItemChromeItemRef,
+} from "./types";
 import { useItemAdjacent } from "./use-item-adjacent";
 
 interface ItemChromeController {
@@ -91,11 +95,16 @@ export function useItemChromeAdjacent(): AdjacentItemsResult | null {
   return useItemChromeContext().adjacent;
 }
 
-/** Ready item folder path for sidebar highlight; `null` when chrome has no ready item. */
-export function useItemChromeFolderPath(): string | null {
+/** Ready item stub for bottom chrome (related fallback, etc.). */
+export function useItemChromeItem(): ItemChromeItemRef | null {
   const { domain } = useItemChromeContext();
   if (domain?.status !== "ready" || domain.item === null) {
     return null;
   }
-  return domain.item.folder_path;
+  return domain.item;
+}
+
+/** Ready item folder path for sidebar highlight; `null` when chrome has no ready item. */
+export function useItemChromeFolderPath(): string | null {
+  return useItemChromeItem()?.folder_path ?? null;
 }
