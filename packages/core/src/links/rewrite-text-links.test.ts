@@ -70,6 +70,38 @@ describe("rewriteTextLinksForMarkdown", () => {
     );
   });
 
+  it("does not rewrite markdown images with absolute media paths (#590)", () => {
+    const mediaPath =
+      "/home/user/.local/share/com.collector.app/collector/vaults/v/media/id/a.png";
+    const body = `Chart\n\n![TikTok ratings](${mediaPath})\n\nSee [[Target]]\n`;
+    const links = resolveTextLinks(extractTextLinks(body), {
+      sourceItemId: "Аналитика/note.md",
+      idExists: () => false,
+      idsByTitle: (title) => (title === "Target" ? ["Inbox/t.md"] : []),
+    });
+    const out = rewriteTextLinksForMarkdown(body, links);
+    expect(out).toContain(`![TikTok ratings](${mediaPath})`);
+    expect(out).not.toContain(COLLECTOR_UNRESOLVED_HREF_PREFIX);
+    expect(out).toContain("[Target](/item/Inbox/t.md)");
+  });
+
+  it("ignores stale image link spans from an old extractor (#590)", () => {
+    const mediaPath =
+      "/home/user/.local/share/com.collector.app/collector/vaults/v/media/id/a.png";
+    const body = `![TikTok ratings](${mediaPath})\n`;
+    const imageOpen = body.indexOf("[");
+    const out = rewriteTextLinksForMarkdown(body, [
+      {
+        kind: "md",
+        rawTarget: mediaPath,
+        displayText: "TikTok ratings",
+        position: imageOpen,
+        resolvedItemId: null,
+      },
+    ]);
+    expect(out).toBe(body);
+  });
+
   it("exposes itemPathHref helper", () => {
     expect(itemPathHref("Inbox/n.md")).toBe("/item/Inbox/n.md");
   });

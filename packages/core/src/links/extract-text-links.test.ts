@@ -45,4 +45,21 @@ describe("extractTextLinks", () => {
     expect(links.map((l) => l.rawTarget)).toEqual(["First", "Second"]);
     expect(links[0]!.position).toBeLessThan(links[1]!.position);
   });
+
+  it("skips markdown images so absolute media paths stay intact (#590)", () => {
+    const mediaPath =
+      "/home/user/.local/share/com.collector.app/collector/vaults/v/media/id/a.png";
+    const body = `Intro\n\n![alt text](${mediaPath})\n\nSee [[Note]] and [doc](Folder/doc.md).\n`;
+    const links = extractTextLinks(body);
+    expect(
+      links.map((link) => ({
+        kind: link.kind,
+        rawTarget: link.rawTarget,
+        displayText: link.displayText,
+      })),
+    ).toEqual([
+      { kind: "wikilink", rawTarget: "Note", displayText: null },
+      { kind: "md", rawTarget: "Folder/doc.md", displayText: "doc" },
+    ]);
+  });
 });
