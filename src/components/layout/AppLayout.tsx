@@ -46,7 +46,7 @@ import { Header } from "./Header";
 import { IndexingStatusMessage } from "../alerts/IndexingStatusMessage";
 import { MainScrollArea } from "./MainScrollArea";
 import {
-  ItemChromeAdjacentFooter,
+  ItemChromeItemFooter,
   ItemChromeProvider,
 } from "./item-chrome";
 import { Sidebar } from "./Sidebar";
@@ -359,7 +359,7 @@ function AppLayoutInner() {
             >
               <Outlet />
             </div>
-            <ItemChromeAdjacentFooter />
+            <ItemChromeItemFooter />
           </div>
         </div>
       </MainScrollArea>

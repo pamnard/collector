@@ -1,6 +1,7 @@
 export type {
   ItemChromeBreadcrumbState,
   ItemChromeDomain,
+  ItemChromeItemRef,
   ItemDetailMode,
 } from "./types";
 export {
@@ -9,8 +10,9 @@ export {
   useItemChromeAdjacent,
   useItemChromeFolderPath,
   useItemChromeHeader,
+  useItemChromeItem,
 } from "./item-chrome-context";
-export { ItemChromeAdjacentFooter } from "./ItemChromeAdjacentFooter";
+export { ItemChromeItemFooter } from "./ItemChromeItemFooter";
 export {
   mapDomainToActions,
   mapDomainToBreadcrumbs,

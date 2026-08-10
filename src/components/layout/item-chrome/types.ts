@@ -12,9 +12,16 @@ export type ItemChromeBreadcrumbState =
       onCopyId: () => void;
     };
 
+/** Ready-item stub published into item chrome (header / bottom chrome). */
+export type ItemChromeItemRef = {
+  id: string;
+  title: string;
+  folder_path: string;
+};
+
 export type ItemChromeDomain = {
   status: "loading" | "ready" | "error";
-  item: { id: string; title: string; folder_path: string } | null;
+  item: ItemChromeItemRef | null;
   mode: ItemDetailMode;
   idCopyFeedback: "copied" | "failed" | null;
   isSaving: boolean;
