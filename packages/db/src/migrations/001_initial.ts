@@ -105,6 +105,19 @@ CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
   tokenize = 'unicode61'
 );
 
+-- Semantic vectors for related/similar (#413). Disposable with the index.
+CREATE TABLE IF NOT EXISTS item_embeddings (
+  item_id TEXT PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,
+  model_id TEXT NOT NULL,
+  content_revision INTEGER NOT NULL,
+  input_fingerprint TEXT NOT NULL,
+  dims INTEGER NOT NULL,
+  vector BLOB NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_item_embeddings_model
+  ON item_embeddings(model_id);
+
 -- Marker: FTS content is full on-disk markdown (#534). Absent → recreate index.
 CREATE TABLE IF NOT EXISTS index_build (
   id INTEGER PRIMARY KEY CHECK (id = 1)

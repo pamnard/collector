@@ -1,6 +1,6 @@
 /**
  * In-process items / search / dashboard list ops (#147).
- * Host injects vault/index accessors; no Tauri / IPC here.
+ * Host injects vault/index accessors; no Tauri / host-wire here.
  */
 
 import {
@@ -15,6 +15,7 @@ import {
   type IndexQueryResult,
   type NavFilter,
   type ResolvedTextLink,
+  type SimilarItemHit,
   type Subscription,
   type UpdateItemInput,
 } from "@collector/api";
@@ -88,6 +89,10 @@ export interface ItemsSearchServiceDeps {
   onItemDeleted?: (itemId: string) => void;
   createItemId?: () => string;
   syncRepublishThrottleMs?: number;
+  findSimilarItems: (
+    itemId: string,
+    limit: number,
+  ) => Promise<SimilarItemHit[]>;
 }
 
 export interface ItemsSearchService {
@@ -134,6 +139,10 @@ export interface ItemsSearchService {
   ): Promise<ItemFile[]>;
   getItemById(itemId: string): Promise<GetItemResult>;
   getAdjacentItems(itemId: string): Promise<AdjacentItemsResult>;
+  findSimilarItems(
+    itemId: string,
+    limit: number,
+  ): Promise<SimilarItemHit[]>;
   resolveContentTextLinks(
     itemId: string,
     body: string,
@@ -316,6 +325,7 @@ export function createItemsSearchService(
     loadDashboardItems,
     getItemById: crud.getItemById,
     getAdjacentItems: crud.getAdjacentItems,
+    findSimilarItems: deps.findSimilarItems,
     resolveContentTextLinks: crud.resolveContentTextLinks,
     getItemSource: crud.getItemSource,
     updateItemSource: crud.updateItemSource,

@@ -1,6 +1,6 @@
 /**
  * @collector/api — transport-agnostic Collector service API (#145 / #361 / #363 / #364).
- * Types, constants, and thin compose / transport helpers. No host, IPC, or UI wiring.
+ * Types, constants, and thin compose / transport helpers. No host, wire, or UI wiring.
  *
  * Gate for new methods: a {@link CollectorService} domain port **or**
  * {@link UiSession} — nowhere else.
@@ -44,6 +44,7 @@ export {
   type ActiveVaultResult,
   type AdjacentItemRef,
   type AdjacentItemsResult,
+  type SimilarItemHit,
   type BootPort,
   type CollectorService,
   type CredentialRef,

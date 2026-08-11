@@ -48,14 +48,14 @@ export interface FileSystemAdapter {
   /** Move/rename a file or directory (used for folder renames + item moves). */
   rename(from: string, to: string): Promise<void>;
   join(...parts: string[]): string;
-  /** One IPC: recursively stat every markdown item `.md` file under vault root. */
+  /** One host round-trip: recursively stat every markdown item `.md` file under vault root. */
   statVaultItemsMeta?(vaultPath: string): Promise<VaultItemStatMeta[]>;
-  /** One IPC per chunk: read markdown documents for the given vault-relative paths. */
+  /** One host round-trip per chunk: read markdown documents for the given vault-relative paths. */
   readVaultItemsMeta?(
     vaultPath: string,
     itemIds: string[],
   ): Promise<VaultItemMetaRead[]>;
-  /** One IPC per chunk: read source reference sidecars for the given item paths. */
+  /** One host round-trip per chunk: read source reference sidecars for the given item paths. */
   readVaultItemSourceRefs?(
     vaultPath: string,
     itemIds: string[],
@@ -223,9 +223,25 @@ export interface ItemIdPageOptions {
 
 export type ItemIdListOptions = ItemIdPageOptions;
 
+/** Refresh disposable item embeddings after index writes (#413). */
+export type ItemEmbeddingRefreshInput = {
+  itemId: string;
+  title: string;
+  description: string;
+  tagNames: string[];
+  body?: string;
+  contentRevision: number;
+};
+
+export type ItemEmbeddingsPort = {
+  refresh(inputs: ItemEmbeddingRefreshInput[]): Promise<void>;
+};
+
 export interface VaultContext {
   fs: FileSystemAdapter;
   index: VaultIndexAdapter;
+  /** When set, item index writes refresh semantic vectors (#413). */
+  embeddings?: ItemEmbeddingsPort;
 }
 
 export interface CreateVaultInput {

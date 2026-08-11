@@ -1,4 +1,5 @@
 import type { ItemIdRewriteMapping } from "../adapters/types.js";
+import { rewriteItemEmbeddingId } from "../embeddings/embedding-store.js";
 import {
   INDEX_SYNC_WRITE_BATCH,
   INDEX_SYNC_YIELD_MS,
@@ -54,7 +55,7 @@ export async function rewriteOneItemId(
   }
   const row = rows[0]!;
 
-  // No multi-IPC BEGIN/COMMIT: sqlx pool uses a new connection per execute (#49/#77).
+  // No multi-statement BEGIN/COMMIT: sqlx pool uses a new connection per execute (#49/#77).
   // Insert new PK → rebind children → delete old row.
   await selector.execute(
     `INSERT INTO items (
@@ -210,6 +211,8 @@ export async function rewriteOneItemId(
       [newId, fts.title, fts.description, fts.content],
     );
   }
+
+  await rewriteItemEmbeddingId(selector, oldId, newId);
 
   await selector.execute("DELETE FROM items WHERE id = ?", [oldId]);
 }

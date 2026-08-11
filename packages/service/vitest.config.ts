@@ -12,5 +12,9 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    env: {
+      // Avoid downloading HF weights during unit/integration tests (#413).
+      COLLECTOR_EMBEDDINGS_ENGINE: "fake",
+    },
   },
 });

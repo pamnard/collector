@@ -24,6 +24,7 @@ import {
 import { listItemRelativePaths } from "./scan.js";
 import { diskMtimeMsFromDocumentMarkdown } from "./recover-item-mtime.js";
 import { readVaultItemMetaBatch } from "./vault-fs-batch.js";
+import { refreshItemEmbeddingAfterWrite } from "./item-embedding-refresh.js";
 
 export async function upsertItem(
   ctx: VaultContext,
@@ -68,6 +69,7 @@ export async function upsertItem(
     },
     vaultId,
   );
+  await refreshItemEmbeddingAfterWrite(ctx, vaultPath, item, fts.content);
   return item;
 }
 
@@ -122,6 +124,7 @@ export async function writeItemRawMarkdown(
     },
     vaultId,
   );
+  await refreshItemEmbeddingAfterWrite(ctx, vaultPath, item, fts.content);
   return item;
 }
 

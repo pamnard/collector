@@ -31,6 +31,7 @@ export const ITEMS_PORT_KEYS = [
   "loadDashboardItems",
   "getItemById",
   "getAdjacentItems",
+  "findSimilarItems",
   "resolveContentTextLinks",
   "getItemSource",
   "updateItemSource",

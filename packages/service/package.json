@@ -36,6 +36,7 @@
     "@collector/core": "*",
     "@collector/db": "*",
     "@collector/shared": "*",
+    "@huggingface/transformers": "^4.2.0",
     "@napi-rs/keyring": "^1.3.0",
     "@types/ws": "^8.18.1",
     "better-sqlite3": "^11.9.1",
