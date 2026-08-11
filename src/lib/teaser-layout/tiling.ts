@@ -93,6 +93,10 @@ function tilingKey(placements: TilePlacement[]): string {
     .join("|");
 }
 
+export function boardTilingKey(tiling: BoardTiling): string {
+  return tilingKey(tiling.placements);
+}
+
 function enumerateTilings(board: TeaserBoardId): BoardTiling[] {
   const { cols, rows } = boardSize(board);
   const cellCount = cols * rows;
