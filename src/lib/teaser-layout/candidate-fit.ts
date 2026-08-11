@@ -56,10 +56,14 @@ export function teaserMatchesCompositionAxes(
     if (!hasThumbnail) {
       return false;
     }
-    if (composition.form === "none") {
+    if (teaser.imageForm === null) {
       return false;
     }
-  } else if (composition.form !== "none") {
+    if (composition.form !== teaser.imageForm) {
+      return false;
+    }
+  } else if (teaser.imageForm !== null) {
+    // Covered teasers must use image compositions — no silent text demotion.
     return false;
   }
 
