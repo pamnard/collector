@@ -72,6 +72,9 @@ export function relatedTeaserFromItem(item: ItemFile): RelatedTeaser {
     id: item.id,
     title: item.title,
     thumbnail: item.thumbnail ?? null,
+    description: item.description,
+    createdAt: item.created_at,
+    contentType: item.content_type,
   };
 }
 

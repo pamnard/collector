@@ -8,6 +8,10 @@ export const RELATED_PANEL_SIZE = 6;
 export type RelatedTeaser = {
   id: string;
   title: string;
-  /** Reserved for #605 picture slots; unused by the #603 text layout. */
+  /** Cover path when present; image form/aspect is not invented here (#609). */
   thumbnail: string | null;
+  /** Item description as stored (may be empty). */
+  description: string;
+  createdAt: string;
+  contentType: string;
 };
