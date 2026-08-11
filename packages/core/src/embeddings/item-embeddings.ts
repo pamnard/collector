@@ -1,4 +1,5 @@
 import type { SqlExecutor, SqlReader } from "@collector/db";
+import { folderPathAncestorChain } from "@collector/shared";
 import type { ItemEmbeddingRefreshInput } from "../adapters/types.js";
 import { nowIso } from "../util/ids.js";
 import { buildEmbedText } from "./build-embed-text.js";
@@ -12,12 +13,43 @@ import {
 import { fingerprintEmbedText, needsRecompute } from "./invalidation.js";
 import type {
   EmbeddingEngine,
+  ItemEmbeddingRow,
   SimilarItemHit,
 } from "./types.js";
 
 type SqlEmbeddingDb = SqlExecutor & SqlReader;
 
 export type ItemEmbeddingSource = ItemEmbeddingRefreshInput;
+
+async function loadItemFolderPaths(
+  db: SqlReader,
+  itemIds: string[],
+): Promise<Map<string, string>> {
+  if (itemIds.length === 0) {
+    return new Map();
+  }
+  const placeholders = itemIds.map(() => "?").join(", ");
+  const rows = await db.select<{ id: string; folder_path: string }>(
+    `SELECT id, folder_path FROM items WHERE id IN (${placeholders})`,
+    itemIds,
+  );
+  const map = new Map<string, string>();
+  for (const row of rows) {
+    map.set(row.id, row.folder_path);
+  }
+  return map;
+}
+
+function filterEmbeddingsByFolderChain(
+  rows: ItemEmbeddingRow[],
+  folderByItemId: Map<string, string>,
+  allowedFolders: ReadonlySet<string>,
+): ItemEmbeddingRow[] {
+  return rows.filter((row) => {
+    const folderPath = folderByItemId.get(row.itemId);
+    return folderPath !== undefined && allowedFolders.has(folderPath);
+  });
+}
 
 /**
  * Recompute or clear the embedding for one item.
@@ -73,6 +105,10 @@ export async function recomputeItemEmbedding(
   return true;
 }
 
+/**
+ * Rank neighbors by cosine within the query item's folder ancestor chain
+ * (same folder → parents → root), matching related fallback scope (#603/#414).
+ */
 export async function findSimilarItemIds(
   db: SqlEmbeddingDb,
   engine: EmbeddingEngine,
@@ -88,8 +124,27 @@ export async function findSimilarItemIds(
     return [];
   }
 
-  const candidates = (await listItemEmbeddingsForModel(db, engine.modelId)).filter(
+  const queryFolderRows = await db.select<{ folder_path: string }>(
+    `SELECT folder_path FROM items WHERE id = ?`,
+    [itemId],
+  );
+  const queryFolder = queryFolderRows[0]?.folder_path;
+  if (queryFolder === undefined) {
+    return [];
+  }
+  const allowedFolders = new Set(folderPathAncestorChain(queryFolder));
+
+  const others = (await listItemEmbeddingsForModel(db, engine.modelId)).filter(
     (row) => row.itemId !== itemId,
+  );
+  const folderByItemId = await loadItemFolderPaths(
+    db,
+    others.map((row) => row.itemId),
+  );
+  const candidates = filterEmbeddingsByFolderChain(
+    others,
+    folderByItemId,
+    allowedFolders,
   );
 
   return rankByCosine(

@@ -1,7 +1,7 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { ItemAdjacentNav } from "../../items/ItemAdjacentNav";
 import { ItemRelatedPanel } from "../../items/ItemRelatedPanel";
-import { useRelatedFallbackTeasers } from "../../../hooks/useRelatedFallbackTeasers";
+import { useRelatedSemanticTeasers } from "../../../hooks/useRelatedSemanticTeasers";
 import {
   useItemChromeAdjacent,
   useItemChromeItem,
@@ -17,7 +17,7 @@ export function ItemChromeItemFooter() {
   const onItemRoute = pathname.startsWith("/item/");
   const itemAdjacent = useItemChromeAdjacent();
   const chromeItem = useItemChromeItem();
-  const relatedTeasers = useRelatedFallbackTeasers(
+  const relatedTeasers = useRelatedSemanticTeasers(
     onItemRoute ? chromeItem : null,
   );
 

@@ -87,3 +87,23 @@ export function folderPathFromItemPath(itemPath: string): string {
   }
   return normalized.slice(0, idx);
 }
+
+/** Parent of a folder path (`a/b` → `a`, `a` → ``). */
+export function folderParentPath(folderPath: string): string {
+  const slash = folderPath.lastIndexOf("/");
+  return slash === -1 ? "" : folderPath.slice(0, slash);
+}
+
+/** Leaf → … → root `""` (root included once). Used by related similarity scope. */
+export function folderPathAncestorChain(folderPath: string): string[] {
+  const chain: string[] = [];
+  let current = folderPath;
+  for (;;) {
+    chain.push(current);
+    if (current === "") {
+      break;
+    }
+    current = folderParentPath(current);
+  }
+  return chain;
+}
