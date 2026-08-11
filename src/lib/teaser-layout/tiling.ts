@@ -177,7 +177,7 @@ export function isCompleteTiling(tiling: BoardTiling): boolean {
 export function listAllowedCompositionsForBoard(
   board: TeaserBoardId,
 ): TeaserComposition[] {
-  return listAllowedCompositions().filter((c) =>
+  return [...listAllowedCompositions()].filter((c) =>
     isSpanAllowedOnBoard(board, c.span),
   );
 }

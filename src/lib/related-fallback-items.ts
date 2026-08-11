@@ -5,6 +5,7 @@ import {
   RELATED_PANEL_SIZE,
   type RelatedTeaser,
 } from "./related-teaser";
+import { resolveCoverSrc } from "../utils/item-cover-src";
 
 /** Leaf → … → root `""` (root included once). */
 export function relatedFolderPathChain(folderPath: string): string[] {
@@ -67,11 +68,18 @@ export async function collectRelatedFallbackIds(options: {
   return null;
 }
 
-export function relatedTeaserFromItem(item: ItemFile): RelatedTeaser {
+/**
+ * Layout candidate from a hydrated item + dashboard cover path
+ * (`UiSession.thumbnails`), then the same {@link resolveCoverSrc} as grid cards.
+ */
+export function relatedTeaserFromItem(
+  item: ItemFile,
+  thumbnailPath: string | null,
+): RelatedTeaser {
   return {
     id: item.id,
     title: item.title,
-    thumbnail: item.thumbnail ?? null,
+    thumbnail: resolveCoverSrc(thumbnailPath, item.url ?? undefined),
     description: item.description,
     createdAt: item.created_at,
     contentType: item.content_type,
@@ -88,6 +96,11 @@ export type RelatedFallbackHydrate = (
   options?: { signal?: AbortSignal },
 ) => AsyncIterable<ItemFile>;
 
+/** Same batch API as collection grid covers (`UiSession.thumbnails`). */
+export type RelatedFallbackResolveThumbnailPaths = (
+  items: ItemFile[],
+) => Promise<Map<string, string | null>>;
+
 /**
  * Load exactly {@link RELATED_PANEL_SIZE} recent teasers from the item's
  * folder chain, or `null` when shortfall / empty hydrate.
@@ -98,6 +111,7 @@ export async function loadRelatedFallbackTeasers(options: {
   size?: number;
   queryFolderIds: RelatedFallbackQueryIndex;
   hydrate: RelatedFallbackHydrate;
+  resolveThumbnailPaths: RelatedFallbackResolveThumbnailPaths;
   signal?: AbortSignal;
 }): Promise<RelatedTeaser[] | null> {
   const size = options.size ?? RELATED_PANEL_SIZE;
@@ -125,13 +139,21 @@ export async function loadRelatedFallbackTeasers(options: {
     return null;
   }
 
-  const teasers: RelatedTeaser[] = [];
+  const ordered: ItemFile[] = [];
   for (const id of ids) {
     const item = byId.get(id);
     if (!item) {
       return null;
     }
-    teasers.push(relatedTeaserFromItem(item));
+    ordered.push(item);
   }
-  return teasers;
+
+  const paths = await options.resolveThumbnailPaths(ordered);
+  if (options.signal?.aborted) {
+    return null;
+  }
+
+  return ordered.map((item) =>
+    relatedTeaserFromItem(item, paths.get(item.id) ?? null),
+  );
 }

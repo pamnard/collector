@@ -6,7 +6,7 @@ import {
   type TeaserSpan,
 } from "./composition";
 import { compositionsFittingCandidate } from "./candidate-fit";
-import { MIN_LAYOUT_SCORE, scoreLayout, scoreSlot } from "./layout-score";
+import { MIN_LAYOUT_SCORE, scoreSlot } from "./layout-score";
 import {
   boardTilingKey,
   listFullTilings,
@@ -66,8 +66,7 @@ function tryAssignTiling(
 ): LayoutPick | null {
   const used = new Set<string>();
   const slots: LayoutSlotAssignment[] = [];
-  const scored: { teaser: RelatedTeaser; composition: TeaserComposition }[] =
-    [];
+  let score = 0;
 
   for (const placement of sortPlacements(tiling.placements)) {
     let assigned: LayoutSlotAssignment | null = null;
@@ -101,13 +100,9 @@ function tryAssignTiling(
     }
     used.add(assigned.teaserId);
     slots.push(assigned);
-    scored.push({
-      teaser: assignedTeaser,
-      composition: assigned.composition,
-    });
+    score += scoreSlot(assignedTeaser, assigned.composition);
   }
 
-  const score = scoreLayout(scored);
   if (score < MIN_LAYOUT_SCORE) {
     return null;
   }
@@ -123,7 +118,12 @@ function teaserIdKey(slots: LayoutSlotAssignment[]): string {
   return slots.map((s) => s.teaserId).join("\0");
 }
 
-function isBetterPick(next: LayoutPick, current: LayoutPick, nextTiling: BoardTiling, currentTiling: BoardTiling): boolean {
+function isBetterPick(
+  next: LayoutPick,
+  current: LayoutPick,
+  nextTiling: BoardTiling,
+  currentTiling: BoardTiling,
+): boolean {
   if (next.score !== current.score) {
     return next.score > current.score;
   }
