@@ -121,15 +121,40 @@ describe("collectRelatedFallbackIds", () => {
 });
 
 describe("relatedTeaserFromItem", () => {
-  it("maps thumbnail null when missing", () => {
+  it("maps thumbnail null when missing and passes description/date/type through", () => {
     const item = {
       id: "x.md",
       title: "X",
+      description: "",
+      content_type: "bookmark",
+      created_at: "2020-01-02T03:04:05.000Z",
     } as ItemFile;
     expect(relatedTeaserFromItem(item)).toEqual({
       id: "x.md",
       title: "X",
       thumbnail: null,
+      description: "",
+      createdAt: "2020-01-02T03:04:05.000Z",
+      contentType: "bookmark",
+    });
+  });
+
+  it("maps thumbnail and non-empty description without inventing values", () => {
+    const item = {
+      id: "y.md",
+      title: "Y",
+      description: "Lead text",
+      content_type: "article",
+      created_at: "2015-06-01T00:00:00.000Z",
+      thumbnail: "media/cover.webp",
+    } as ItemFile;
+    expect(relatedTeaserFromItem(item)).toEqual({
+      id: "y.md",
+      title: "Y",
+      thumbnail: "media/cover.webp",
+      description: "Lead text",
+      createdAt: "2015-06-01T00:00:00.000Z",
+      contentType: "article",
     });
   });
 });
@@ -145,6 +170,9 @@ describe("loadRelatedFallbackTeasers", () => {
           id,
           title: id,
           thumbnail: null,
+          description: "",
+          content_type: "bookmark",
+          created_at: "2020-01-01T00:00:00.000Z",
         } as ItemFile;
       }
     }
@@ -157,8 +185,22 @@ describe("loadRelatedFallbackTeasers", () => {
       hydrate,
     });
     expect(ok).toEqual([
-      { id: "a.md", title: "a.md", thumbnail: null },
-      { id: "b.md", title: "b.md", thumbnail: null },
+      {
+        id: "a.md",
+        title: "a.md",
+        thumbnail: null,
+        description: "",
+        createdAt: "2020-01-01T00:00:00.000Z",
+        contentType: "bookmark",
+      },
+      {
+        id: "b.md",
+        title: "b.md",
+        thumbnail: null,
+        description: "",
+        createdAt: "2020-01-01T00:00:00.000Z",
+        contentType: "bookmark",
+      },
     ]);
 
     const bad = await loadRelatedFallbackTeasers({
