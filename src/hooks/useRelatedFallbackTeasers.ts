@@ -6,6 +6,7 @@ import {
 import type { ItemChromeItemRef } from "../components/layout/item-chrome/types";
 import { loadRelatedFallbackTeasers } from "../lib/related-fallback-items";
 import type { RelatedTeaser } from "../lib/related-teaser";
+import { probeCoverImageFormInBrowser } from "../lib/teaser-layout/probe-cover-image-form";
 import {
   getCollectorService,
   getUiSession,
@@ -59,6 +60,7 @@ export function useRelatedFallbackTeasers(
             service.items.hydrate(ids, { signal: options?.signal }),
           resolveThumbnailPaths: (items) =>
             getUiSession().thumbnails.resolveItemThumbnailPaths(items),
+          probeCoverImageForm: probeCoverImageFormInBrowser,
         });
         if (controller.signal.aborted) {
           return;

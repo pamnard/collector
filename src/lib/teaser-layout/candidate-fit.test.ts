@@ -18,6 +18,7 @@ function teaser(overrides: Partial<RelatedTeaser> & Pick<RelatedTeaser, "id">): 
   return {
     title: "Title",
     thumbnail: null,
+    imageForm: null,
     description: "",
     createdAt: "2020-01-01T00:00:00.000Z",
     contentType: "bookmark",
@@ -84,6 +85,7 @@ describe("teaserFitsComposition / compositionsFittingCandidate", () => {
       id: "a",
       title: "Hello",
       thumbnail: "cover.webp",
+      imageForm: "landscape",
       description: "Lead",
     });
     const fits = compositionsFittingCandidate(t, "2x2", "2x2");
@@ -93,6 +95,7 @@ describe("teaserFitsComposition / compositionsFittingCandidate", () => {
     expect(onWide.length).toBeGreaterThan(0);
     for (const c of onWide) {
       expect(c.span).toBe("2x2");
+      expect(c.form).toBe("landscape");
       expect(isAllowedComposition(c)).toBe(true);
       expect(isSpanAllowedOnBoard("4x2", c.span)).toBe(true);
       expect(teaserFitsComposition(t, c)).toBe(true);
@@ -102,5 +105,76 @@ describe("teaserFitsComposition / compositionsFittingCandidate", () => {
         ),
       ).toBe(true);
     }
+  });
+
+  it("requires composition form to match measured imageForm", () => {
+    const portrait = teaser({
+      id: "p",
+      title: "Hello",
+      thumbnail: "cover.webp",
+      imageForm: "portrait",
+      description: "",
+    });
+    const landscapeComp = listAllowedCompositions().find(
+      (c) =>
+        c.span === "2x1" &&
+        c.hasImage &&
+        c.form === "landscape" &&
+        c.hasTitle &&
+        c.titleLen === "short" &&
+        c.desc === "none",
+    );
+    expect(landscapeComp).toBeDefined();
+    expect(teaserFitsComposition(portrait, landscapeComp as TeaserComposition)).toBe(
+      false,
+    );
+
+    const portraitComp = listAllowedCompositions().find(
+      (c) =>
+        c.span === "1x2" &&
+        c.hasImage &&
+        c.form === "portrait" &&
+        c.hasTitle &&
+        c.titleLen === "short" &&
+        c.desc === "none",
+    );
+    expect(portraitComp).toBeDefined();
+    expect(teaserFitsComposition(portrait, portraitComp as TeaserComposition)).toBe(
+      true,
+    );
+  });
+
+  it("rejects image compositions when cover URL exists but imageForm is null", () => {
+    const t = teaser({
+      id: "a",
+      title: "Hello",
+      thumbnail: "cover.webp",
+      imageForm: null,
+    });
+    const withImage = listAllowedCompositions().find(
+      (c) => c.span === "1x1" && c.hasImage && c.hasTitle && c.titleLen === "short",
+    );
+    expect(withImage).toBeDefined();
+    expect(teaserFitsComposition(t, withImage as TeaserComposition)).toBe(false);
+  });
+
+  it("rejects text compositions when the teaser has a measured cover form", () => {
+    const t = teaser({
+      id: "a",
+      title: "Hello",
+      thumbnail: "cover.webp",
+      imageForm: "landscape",
+    });
+    const textOnly = listAllowedCompositions().find(
+      (c) =>
+        c.span === "1x1" &&
+        !c.hasImage &&
+        c.hasTitle &&
+        c.titleLen === "short" &&
+        c.desc === "none" &&
+        c.extra === "date",
+    );
+    expect(textOnly).toBeDefined();
+    expect(teaserFitsComposition(t, textOnly as TeaserComposition)).toBe(false);
   });
 });

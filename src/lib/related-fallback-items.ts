@@ -5,6 +5,8 @@ import {
   RELATED_PANEL_SIZE,
   type RelatedTeaser,
 } from "./related-teaser";
+import type { CoverImageForm } from "./teaser-layout/cover-image-form";
+import type { ProbeCoverImageForm } from "./teaser-layout/probe-cover-image-form";
 import { resolveCoverSrc } from "../utils/item-cover-src";
 
 /** Leaf → … → root `""` (root included once). */
@@ -69,17 +71,25 @@ export async function collectRelatedFallbackIds(options: {
 }
 
 /**
- * Layout candidate from a hydrated item + dashboard cover path
- * (`UiSession.thumbnails`), then the same {@link resolveCoverSrc} as grid cards.
+ * Layout candidate from a hydrated item.
+ * `thumbnail` must already be a display cover URL ({@link resolveCoverSrc}), or null.
+ * `imageForm` must be measured from that URL (or null when absent/unread).
  */
 export function relatedTeaserFromItem(
   item: ItemFile,
-  thumbnailPath: string | null,
+  thumbnail: string | null,
+  imageForm: CoverImageForm | null,
 ): RelatedTeaser {
+  if (thumbnail === null && imageForm !== null) {
+    throw new Error(
+      `related teaser ${item.id}: imageForm requires a resolved cover URL`,
+    );
+  }
   return {
     id: item.id,
     title: item.title,
-    thumbnail: resolveCoverSrc(thumbnailPath, item.url ?? undefined),
+    thumbnail,
+    imageForm,
     description: item.description,
     createdAt: item.created_at,
     contentType: item.content_type,
@@ -104,6 +114,7 @@ export type RelatedFallbackResolveThumbnailPaths = (
 /**
  * Load exactly {@link RELATED_PANEL_SIZE} recent teasers from the item's
  * folder chain, or `null` when shortfall / empty hydrate.
+ * Cover forms are probed in parallel for resolved URLs.
  */
 export async function loadRelatedFallbackTeasers(options: {
   currentItemId: string;
@@ -112,6 +123,7 @@ export async function loadRelatedFallbackTeasers(options: {
   queryFolderIds: RelatedFallbackQueryIndex;
   hydrate: RelatedFallbackHydrate;
   resolveThumbnailPaths: RelatedFallbackResolveThumbnailPaths;
+  probeCoverImageForm: ProbeCoverImageForm;
   signal?: AbortSignal;
 }): Promise<RelatedTeaser[] | null> {
   const size = options.size ?? RELATED_PANEL_SIZE;
@@ -153,7 +165,26 @@ export async function loadRelatedFallbackTeasers(options: {
     return null;
   }
 
-  return ordered.map((item) =>
-    relatedTeaserFromItem(item, paths.get(item.id) ?? null),
+  const resolved = ordered.map((item) => ({
+    item,
+    thumbnail: resolveCoverSrc(
+      paths.get(item.id) ?? null,
+      item.url ?? undefined,
+    ),
+  }));
+
+  const imageForms = await Promise.all(
+    resolved.map(({ thumbnail }) =>
+      thumbnail === null
+        ? Promise.resolve(null)
+        : options.probeCoverImageForm(thumbnail, options.signal),
+    ),
+  );
+  if (options.signal?.aborted) {
+    return null;
+  }
+
+  return resolved.map(({ item, thumbnail }, index) =>
+    relatedTeaserFromItem(item, thumbnail, imageForms[index] ?? null),
   );
 }

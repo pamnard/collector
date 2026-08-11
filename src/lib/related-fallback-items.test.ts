@@ -121,7 +121,7 @@ describe("collectRelatedFallbackIds", () => {
 });
 
 describe("relatedTeaserFromItem", () => {
-  it("uses UiSession thumbnail path via resolveCoverSrc, not frontmatter", () => {
+  it("stores a display cover URL and measured form", () => {
     const item = {
       id: "x.md",
       title: "X",
@@ -131,20 +131,22 @@ describe("relatedTeaserFromItem", () => {
       thumbnail: "fm-ignored.webp",
       url: "https://example.com",
     } as ItemFile;
-    expect(relatedTeaserFromItem(item, null)).toEqual({
+    expect(relatedTeaserFromItem(item, null, null)).toEqual({
       id: "x.md",
       title: "X",
       thumbnail: null,
+      imageForm: null,
       description: "",
       createdAt: "2020-01-02T03:04:05.000Z",
       contentType: "bookmark",
     });
     expect(
-      relatedTeaserFromItem(item, "https://host/media/cover.webp").thumbnail,
+      relatedTeaserFromItem(item, "https://host/media/cover.webp", "landscape")
+        .thumbnail,
     ).toBe("https://host/media/cover.webp");
   });
 
-  it("passes description/date/type through with a resolved cover", () => {
+  it("passes description/date/type/form through with a resolved cover", () => {
     const item = {
       id: "y.md",
       title: "Y",
@@ -154,20 +156,35 @@ describe("relatedTeaserFromItem", () => {
       thumbnail: null,
     } as ItemFile;
     expect(
-      relatedTeaserFromItem(item, "https://host/media/y.webp"),
+      relatedTeaserFromItem(item, "https://host/media/y.webp", "portrait"),
     ).toEqual({
       id: "y.md",
       title: "Y",
       thumbnail: "https://host/media/y.webp",
+      imageForm: "portrait",
       description: "Lead text",
       createdAt: "2015-06-01T00:00:00.000Z",
       contentType: "article",
     });
   });
+
+  it("rejects imageForm without a resolved cover", () => {
+    const item = {
+      id: "z.md",
+      title: "Z",
+      description: "",
+      content_type: "bookmark",
+      created_at: "2020-01-01T00:00:00.000Z",
+      thumbnail: null,
+    } as ItemFile;
+    expect(() => relatedTeaserFromItem(item, null, "square")).toThrow(
+      /imageForm requires/,
+    );
+  });
 });
 
 describe("loadRelatedFallbackTeasers", () => {
-  it("hydrates ids in order, applies thumbnail paths, or null on missing body", async () => {
+  it("hydrates ids in order, probes cover form, or null on missing body", async () => {
     async function* hydrate(ids: string[]) {
       for (const id of ids) {
         if (id === "missing.md") {
@@ -183,6 +200,11 @@ describe("loadRelatedFallbackTeasers", () => {
         } as ItemFile;
       }
     }
+
+    const probe = vi.fn(async (src: string) => {
+      expect(src).toBe("https://host/media/a.webp");
+      return "portrait" as const;
+    });
 
     const ok = await loadRelatedFallbackTeasers({
       currentItemId: "self.md",
@@ -200,12 +222,14 @@ describe("loadRelatedFallbackTeasers", () => {
         }
         return map;
       },
+      probeCoverImageForm: probe,
     });
     expect(ok).toEqual([
       {
         id: "a.md",
         title: "a.md",
         thumbnail: "https://host/media/a.webp",
+        imageForm: "portrait",
         description: "",
         createdAt: "2020-01-01T00:00:00.000Z",
         contentType: "bookmark",
@@ -214,11 +238,13 @@ describe("loadRelatedFallbackTeasers", () => {
         id: "b.md",
         title: "b.md",
         thumbnail: null,
+        imageForm: null,
         description: "",
         createdAt: "2020-01-01T00:00:00.000Z",
         contentType: "bookmark",
       },
     ]);
+    expect(probe).toHaveBeenCalledTimes(1);
 
     const bad = await loadRelatedFallbackTeasers({
       currentItemId: "self.md",
@@ -227,6 +253,7 @@ describe("loadRelatedFallbackTeasers", () => {
       queryFolderIds: async () => ["self.md", "a.md", "missing.md"],
       hydrate,
       resolveThumbnailPaths: async () => new Map(),
+      probeCoverImageForm: async () => null,
     });
     expect(bad).toBeNull();
   });

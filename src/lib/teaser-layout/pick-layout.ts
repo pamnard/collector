@@ -1,12 +1,12 @@
 import type { RelatedTeaser } from "../related-teaser";
-import type { TeaserBoardId } from "./board";
+import { boardSize, type TeaserBoardId } from "./board";
 import {
   compositionId,
   type TeaserComposition,
   type TeaserSpan,
 } from "./composition";
 import { compositionsFittingCandidate } from "./candidate-fit";
-import { MIN_LAYOUT_SCORE, scoreSlot } from "./layout-score";
+import { MIN_LAYOUT_SCORE, layoutContentScore, scoreLayout, scoreSlot } from "./layout-score";
 import {
   boardTilingKey,
   listFullTilings,
@@ -27,6 +27,8 @@ export type LayoutPick = {
   slots: LayoutSlotAssignment[];
   score: number;
 };
+
+type AssignedSlot = LayoutSlotAssignment & { teaser: RelatedTeaser };
 
 function sortPlacements(placements: TilePlacement[]): TilePlacement[] {
   return [...placements].sort(
@@ -65,12 +67,10 @@ function tryAssignTiling(
   tiling: BoardTiling,
 ): LayoutPick | null {
   const used = new Set<string>();
-  const slots: LayoutSlotAssignment[] = [];
-  let score = 0;
+  const assignedSlots: AssignedSlot[] = [];
 
   for (const placement of sortPlacements(tiling.placements)) {
-    let assigned: LayoutSlotAssignment | null = null;
-    let assignedTeaser: RelatedTeaser | null = null;
+    let assigned: AssignedSlot | null = null;
 
     for (const teaser of teasers) {
       if (used.has(teaser.id)) {
@@ -90,27 +90,37 @@ function tryAssignTiling(
         row: placement.row,
         teaserId: teaser.id,
         composition,
+        teaser,
       };
-      assignedTeaser = teaser;
       break;
     }
 
-    if (assigned === null || assignedTeaser === null) {
+    if (assigned === null) {
       return null;
     }
     used.add(assigned.teaserId);
-    slots.push(assigned);
-    score += scoreSlot(assignedTeaser, assigned.composition);
+    assignedSlots.push(assigned);
   }
 
-  if (score < MIN_LAYOUT_SCORE) {
+  const content = layoutContentScore(assignedSlots);
+  if (content < MIN_LAYOUT_SCORE) {
     return null;
   }
 
   return {
     board: tiling.board,
-    slots,
-    score,
+    slots: assignedSlots.map((assigned) => ({
+      span: assigned.span,
+      col: assigned.col,
+      row: assigned.row,
+      teaserId: assigned.teaserId,
+      composition: assigned.composition,
+    })),
+    score: scoreLayout(
+      assignedSlots,
+      boardSize(tiling.board).cols,
+      content,
+    ),
   };
 }
 

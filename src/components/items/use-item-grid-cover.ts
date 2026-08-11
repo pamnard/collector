@@ -1,15 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import { COVER_DOMINANT_RATIO } from "../../lib/teaser-layout/cover-image-form";
 import { resolveCoverSrc } from "../../utils/item-cover-src";
 import { itemGridCoverSlot } from "./item-grid-cover-slot";
-
-/** Cover is portrait when height/width >= this (1.2 ≈ «чуть выше квадрата»). */
-const PORTRAIT_COVER_RATIO = 1.2;
 
 function isPortraitNaturalSize(img: HTMLImageElement): boolean {
   if (img.naturalWidth === 0) {
     return false;
   }
-  return img.naturalHeight / img.naturalWidth >= PORTRAIT_COVER_RATIO;
+  return img.naturalHeight / img.naturalWidth >= COVER_DOMINANT_RATIO;
 }
 
 export function useItemGridCover(args: {

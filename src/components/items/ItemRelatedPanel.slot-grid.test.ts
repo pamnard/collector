@@ -22,6 +22,8 @@ describe("slotGridStyle", () => {
     expect(slotGridStyle(slot)).toEqual({
       gridColumn: "2 / span 2",
       gridRow: "1 / span 1",
+      minHeight: 0,
+      minWidth: 0,
     });
   });
 });
