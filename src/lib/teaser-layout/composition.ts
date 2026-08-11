@@ -140,6 +140,34 @@ export function listAllStructurallyValidCompositions(): TeaserComposition[] {
   return list;
 }
 
-export function listAllowedCompositions(): TeaserComposition[] {
-  return listAllStructurallyValidCompositions().filter(isAllowedComposition);
+/** Blacklist is static — materialize once for pick/fit hot paths. */
+const ALLOWED_COMPOSITIONS: readonly TeaserComposition[] =
+  listAllStructurallyValidCompositions().filter(isAllowedComposition);
+
+const ALLOWED_COMPOSITIONS_BY_SPAN: ReadonlyMap<
+  TeaserSpan,
+  readonly TeaserComposition[]
+> = (() => {
+  const map = new Map<TeaserSpan, TeaserComposition[]>();
+  for (const span of SPANS) {
+    map.set(span, []);
+  }
+  for (const composition of ALLOWED_COMPOSITIONS) {
+    const bucket = map.get(composition.span);
+    if (!bucket) {
+      throw new Error(`unexpected span in allowed composition: ${composition.span}`);
+    }
+    bucket.push(composition);
+  }
+  return map;
+})();
+
+export function listAllowedCompositions(): readonly TeaserComposition[] {
+  return ALLOWED_COMPOSITIONS;
+}
+
+export function listAllowedCompositionsForSpan(
+  span: TeaserSpan,
+): readonly TeaserComposition[] {
+  return ALLOWED_COMPOSITIONS_BY_SPAN.get(span) ?? [];
 }

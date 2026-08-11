@@ -1,8 +1,7 @@
 import { ImageIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ItemFile } from "@collector/shared";
-import { toDisplayAssetSrc } from "../../utils/asset-src";
-import { getYouTubeThumbnail } from "../../utils/youtube-thumbnail";
+import { resolveCoverSrc } from "../../utils/item-cover-src";
 import { getUiSession } from "../../services/collector-client";
 
 interface ItemThumbnailProps {
@@ -35,16 +34,9 @@ export function ItemThumbnail({
         return;
       }
 
-      if (path) {
-        setSrc(toDisplayAssetSrc(path));
-        return;
-      }
-
-      if (item.url) {
-        const youtube = getYouTubeThumbnail(item.url);
-        if (youtube) {
-          setSrc(youtube);
-        }
+      const cover = resolveCoverSrc(path, item.url ?? undefined);
+      if (cover) {
+        setSrc(cover);
       }
     })().finally(() => {
       if (!cancelled) {

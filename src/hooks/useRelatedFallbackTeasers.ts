@@ -6,7 +6,10 @@ import {
 import type { ItemChromeItemRef } from "../components/layout/item-chrome/types";
 import { loadRelatedFallbackTeasers } from "../lib/related-fallback-items";
 import type { RelatedTeaser } from "../lib/related-teaser";
-import { getCollectorService } from "../services/collector-client";
+import {
+  getCollectorService,
+  getUiSession,
+} from "../services/collector-client";
 import { errorMessage } from "../services/runtime-error";
 
 const RELATED_FALLBACK_ERROR_ID = "item-related-fallback-error";
@@ -14,6 +17,7 @@ const RELATED_FALLBACK_ERROR_ID = "item-related-fallback-error";
 /**
  * Loads related teasers for the item detail panel (#603).
  * Fail closed: errors and shortfall → `null` (panel hidden).
+ * Covers: same `UiSession.thumbnails` batch as collection cards.
  */
 export function useRelatedFallbackTeasers(
   item: Pick<ItemChromeItemRef, "id" | "folder_path"> | null,
@@ -53,6 +57,8 @@ export function useRelatedFallbackTeasers(
           },
           hydrate: (ids, options) =>
             service.items.hydrate(ids, { signal: options?.signal }),
+          resolveThumbnailPaths: (items) =>
+            getUiSession().thumbnails.resolveItemThumbnailPaths(items),
         });
         if (controller.signal.aborted) {
           return;

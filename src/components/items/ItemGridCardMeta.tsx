@@ -1,30 +1,10 @@
-import {
-  FileText,
-  Image as ImageIcon,
-  Link as LinkIcon,
-  Music,
-  Video,
-} from "lucide-react";
 import type { TagWithCount } from "@collector/core";
 import { Badge } from "@/components/ui/badge";
 import { formatItemDate } from "../../utils/formatItemDate";
-
-function iconForContentType(type: string) {
-  switch (type) {
-    case "image":
-      return <ImageIcon size={16} />;
-    case "video":
-      return <Video size={16} />;
-    case "audio":
-      return <Music size={16} />;
-    case "article":
-    case "pdf":
-    case "document":
-      return <FileText size={16} />;
-    default:
-      return <LinkIcon size={16} />;
-  }
-}
+import {
+  ContentTypeIcon,
+  contentTypeAccentClass,
+} from "./content-type-icon";
 
 interface ItemGridCardMetaProps {
   title: string;
@@ -108,12 +88,8 @@ export function ItemGridCardMeta({
         }
       >
         <div className="flex items-center gap-2">
-          <span
-            className={
-              contentType === "image" ? "text-purple-400" : "text-indigo-400"
-            }
-          >
-            {iconForContentType(contentType)}
+          <span className={contentTypeAccentClass(contentType)}>
+            <ContentTypeIcon type={contentType} size={16} />
           </span>
           <span>{formatItemDate(createdAt)}</span>
         </div>

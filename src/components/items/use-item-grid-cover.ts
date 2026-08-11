@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { toDisplayAssetSrc } from "../../utils/asset-src";
-import { getYouTubeThumbnail } from "../../utils/youtube-thumbnail";
+import { resolveCoverSrc } from "../../utils/item-cover-src";
 import { itemGridCoverSlot } from "./item-grid-cover-slot";
 
 /** Cover is portrait when height/width >= this (1.2 ≈ «чуть выше квадрата»). */
@@ -11,19 +10,6 @@ function isPortraitNaturalSize(img: HTMLImageElement): boolean {
     return false;
   }
   return img.naturalHeight / img.naturalWidth >= PORTRAIT_COVER_RATIO;
-}
-
-function resolveCoverSrc(
-  thumbnailPath: string | null,
-  itemUrl: string | undefined,
-): string | null {
-  if (thumbnailPath) {
-    return toDisplayAssetSrc(thumbnailPath);
-  }
-  if (itemUrl) {
-    return getYouTubeThumbnail(itemUrl);
-  }
-  return null;
 }
 
 export function useItemGridCover(args: {
