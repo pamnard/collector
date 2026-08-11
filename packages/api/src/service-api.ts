@@ -80,6 +80,12 @@ export interface AdjacentItemsResult {
   next: AdjacentItemRef | null;
 }
 
+/** Semantic neighbor from item embeddings (#413). */
+export interface SimilarItemHit {
+  id: string;
+  score: number;
+}
+
 /** Parsed text link from note body (#409). Mirrors core ResolvedTextLink. */
 export interface ResolvedTextLink {
   kind: "wikilink" | "md";
@@ -165,6 +171,8 @@ export interface ItemsPort {
   getItemById(itemId: string): Promise<GetItemResult>;
   /** Exact-folder chronological neighbors (#344). */
   getAdjacentItems(itemId: string): Promise<AdjacentItemsResult>;
+  /** Top-k semantic neighbors from item embeddings (#413). */
+  findSimilarItems(itemId: string, limit: number): Promise<SimilarItemHit[]>;
   /** Resolve `[[wikilink]]` / vault md links in a note body (#409). */
   resolveContentTextLinks(
     itemId: string,

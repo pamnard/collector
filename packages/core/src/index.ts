@@ -249,6 +249,19 @@ export {
 export { SqlVaultIndexAdapter, SqlVaultIndexStore } from "./index/sql-index.js";
 export type { SqlSelector } from "./index/sql-index.js";
 
+export type {
+  ItemEmbeddingRefreshInput,
+  ItemEmbeddingsPort,
+} from "./adapters/types.js";
+export {
+  EMBEDDING_DIMS,
+  EMBEDDING_MODEL_ID,
+} from "./embeddings/index.js";
+export type {
+  EmbeddingEngine,
+  SimilarItemHit,
+} from "./embeddings/index.js";
+
 export { extractTextLinks } from "./links/extract-text-links.js";
 export type {
   ExtractedTextLink,

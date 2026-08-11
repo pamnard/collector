@@ -34,6 +34,10 @@ import {
   readVaultItemSourceRefBatch,
   statAllVaultItemMeta,
 } from "./vault-fs-batch.js";
+import {
+  embeddingRefreshInputFromItem,
+  tagNamesForItem,
+} from "./item-embedding-refresh.js";
 
 function createEmptySyncReport(): SyncReport {
   return {
@@ -499,6 +503,7 @@ export async function syncIndexFromFilesystem(
       offset + INDEX_SYNC_WRITE_BATCH,
     );
     const inputs = [];
+    const embeddingInputs = [];
     for (const work of workBatch) {
       if (!work.item) {
         continue;
@@ -522,6 +527,15 @@ export async function syncIndexFromFilesystem(
           hasContentFile: work.hasContentFile,
           sourceRef,
         });
+        if (ctx.embeddings) {
+          embeddingInputs.push(
+            embeddingRefreshInputFromItem(
+              work.item,
+              tagNamesForItem(work.item, tagMaps.maps.byId),
+              work.content,
+            ),
+          );
+        }
       } catch (error) {
         report.errors.push({
           itemId: work.itemId,
@@ -534,6 +548,9 @@ export async function syncIndexFromFilesystem(
       if (inputs.length > 0) {
         await ctx.index.upsertItemContentBatch(inputs);
         report.contentIndexed += inputs.length;
+      }
+      if (ctx.embeddings && embeddingInputs.length > 0) {
+        await ctx.embeddings.refresh(embeddingInputs);
       }
     } catch (error) {
       for (const input of inputs) {

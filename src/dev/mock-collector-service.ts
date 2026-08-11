@@ -1,6 +1,6 @@
 /**
  * Explicit DevMock CollectorService for web/:1420 and unit tests (#332).
- * Not a production in-process adapter — desktop uses IPC only.
+ * Not a production in-process adapter — desktop uses the service host only.
  */
 
 import type { ItemFile, VaultMeta } from "@collector/shared";
@@ -52,7 +52,7 @@ import { createThumbnailResolveSession } from "../services/thumbnail-resolve-ses
 import { createUiDashboardSnapshotPort } from "../services/ui-dashboard-snapshot-port";
 
 const DEV_MOCK_UNSUPPORTED =
-  "DevMock CollectorService does not support this operation (#332); use service IPC on desktop";
+  "DevMock CollectorService does not support this operation (#332); use the service host on desktop";
 
 function createDevMockSyncPluginsPort(): SyncPluginsPort {
   return {
@@ -316,6 +316,7 @@ export function createDevMockCollectorService(): CollectorService {
       loadDashboardItems: mockCollector.loadDashboardItems,
       getItemById: mockCollector.getItemById,
       getAdjacentItems: mockCollector.getAdjacentItems,
+      findSimilarItems: async (_itemId: string, _limit: number) => [],
       resolveContentTextLinks: mockCollector.resolveContentTextLinks,
       getItemSource: mockCollector.getItemSource,
       updateItemSource: mockCollector.updateItemSource,
@@ -398,7 +399,7 @@ export function createDevMockCollectorService(): CollectorService {
       getCredentialsAvailability: async () => ({
         available: false,
         reason:
-          "DevMock has no OS keychain; use the domain host (desktop / service IPC)",
+          "DevMock has no OS keychain; use the domain host (desktop / service host)",
       }),
     },
     syncPlugins: createDevMockSyncPluginsPort(),

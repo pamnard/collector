@@ -164,6 +164,11 @@ export function createHostItemsPort(ctx: HostSessionCtx): ItemsPort {
       transport.request("getAdjacentItems", {
         itemId,
       }) as Promise<AdjacentItemsResult>,
+    findSimilarItems: async (itemId: string, limit: number) =>
+      transport.request("findSimilarItems", {
+        itemId,
+        limit,
+      }) as ReturnType<ItemsPort["findSimilarItems"]>,
     resolveContentTextLinks: async (itemId: string, body: string) =>
       transport.request("resolveContentTextLinks", {
         itemId,

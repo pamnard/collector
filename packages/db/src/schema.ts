@@ -9,7 +9,18 @@ export const INDEX_TABLES = [
   "media",
   "source_refs",
   "items_fts",
+  "item_embeddings",
   "index_build",
+] as const;
+
+export const ITEM_EMBEDDINGS_COLUMNS = [
+  "item_id",
+  "model_id",
+  "content_revision",
+  "input_fingerprint",
+  "dims",
+  "vector",
+  "updated_at",
 ] as const;
 
 export const ITEMS_COLUMNS = [

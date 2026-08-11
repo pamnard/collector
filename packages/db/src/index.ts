@@ -6,7 +6,7 @@ export {
   splitSqlMigration,
 } from "./migrate.js";
 export type { Migration, SqlExecutor, SqlMigrator, SqlReader } from "./migrate.js";
-export { ITEMS_COLUMNS, INDEX_TABLES } from "./schema.js";
+export { ITEMS_COLUMNS, INDEX_TABLES, ITEM_EMBEDDINGS_COLUMNS } from "./schema.js";
 export {
   ensureHealthyIndex,
   runIndexStartupChecks,

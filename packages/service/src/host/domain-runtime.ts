@@ -1,8 +1,8 @@
 /**
  * Sole domain runtime for vault-index sync / watcher / SQLite (#328).
  *
- * Service host (desktop IPC, CLI, MCP) composes this once. UI is a thin
- * client over IPC — do not re-create sync/watcher orchestration in the UI.
+ * Service host (desktop wire, CLI, MCP) composes this once. UI is a thin
+ * client over the host — do not re-create sync/watcher orchestration in the UI.
  */
 
 import { mkdir } from "node:fs/promises";
@@ -25,6 +25,7 @@ import {
 import { createCollectorIndexBoot } from "../index-boot.js";
 import { createDashboardSnapshotService } from "../dashboard-snapshot.js";
 import { createItemsSearchService } from "../items-search.js";
+import { createItemEmbeddingsService } from "../embeddings/item-embeddings-service.js";
 import { createMediaCoverService } from "../media-cover.js";
 import { createDropImportService } from "../drop-import.js";
 import { createTagsFoldersService } from "../tags-folders.js";
@@ -282,8 +283,18 @@ export function createServiceDomainRuntime(
     return new SqlVaultIndexStore(session);
   }
 
+  const itemEmbeddings = createItemEmbeddingsService({
+    getDb: () => {
+      const session = indexBoot.getSql();
+      if (!session || !indexBoot.isHealthy()) {
+        throw new Error("Collector database is not initialized");
+      }
+      return session;
+    },
+  });
+
   function getContext() {
-    return { fs, index: getIndex() };
+    return { fs, index: getIndex(), embeddings: itemEmbeddings };
   }
 
   async function ensureInitialized(): Promise<void> {
@@ -529,6 +540,8 @@ export function createServiceDomainRuntime(
     startVaultIndexSync,
     buildSearchFtsQuery,
     addVaultSyncListener,
+    findSimilarItems: (itemId, limit) =>
+      itemEmbeddings.findSimilarItems(itemId, limit),
   });
 
   const tagsFolders = createTagsFoldersService({

@@ -1,4 +1,4 @@
-import { ITEMS_COLUMNS, INDEX_TABLES } from "./schema.js";
+import { ITEMS_COLUMNS, INDEX_TABLES, ITEM_EMBEDDINGS_COLUMNS } from "./schema.js";
 import type { SqlMigrator } from "./migrate.js";
 
 export interface IndexValidationResult {
@@ -33,6 +33,12 @@ export async function validateIndexSchema(db: SqlMigrator): Promise<IndexValidat
     for (const column of ITEMS_COLUMNS) {
       if (!columns.has(column)) {
         errors.push(`items missing column: ${column}`);
+      }
+    }
+    const embeddingColumns = await tableColumns(db, "item_embeddings");
+    for (const column of ITEM_EMBEDDINGS_COLUMNS) {
+      if (!embeddingColumns.has(column)) {
+        errors.push(`item_embeddings missing column: ${column}`);
       }
     }
   }
@@ -101,6 +107,17 @@ export async function runIndexStartupChecks(db: SqlMigrator): Promise<IndexValid
              AND i.vault_id = ?
            LIMIT 1`,
           ["welcome", "00000000-0000-0000-0000-000000000000"],
+        ),
+    },
+    {
+      label: "item embeddings lookup",
+      run: () =>
+        db.select(
+          `SELECT item_id, model_id, dims
+           FROM item_embeddings
+           WHERE model_id = ?
+           LIMIT 1`,
+          ["Xenova/paraphrase-multilingual-MiniLM-L12-v2"],
         ),
     },
   ];

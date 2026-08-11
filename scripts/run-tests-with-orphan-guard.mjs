@@ -61,6 +61,12 @@ run(
 );
 
 run(
+  "@collector/core browser entry guard (#413)",
+  "node",
+  ["--test", join(root, "scripts/assert-core-browser-entry.test.mjs")],
+);
+
+run(
   "assert no leaked test-run processes",
   "node",
   [join(root, "scripts/assert-no-test-orphans.mjs")],

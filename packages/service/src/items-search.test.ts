@@ -158,6 +158,7 @@ describe("createItemsSearchService.queryIndex", () => {
       startVaultIndexSync: async () => {},
       buildSearchFtsQuery: () => null,
       addVaultSyncListener: () => () => {},
+      findSimilarItems: async () => [],
     });
 
     const result = await service.queryIndex("all", undefined, {

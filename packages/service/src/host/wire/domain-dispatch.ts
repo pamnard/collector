@@ -1,5 +1,5 @@
 /**
- * Domain IPC request handler (#330).
+ * Domain host-wire request handler (#330).
  *
  * One locality: validate params + call {@link ServiceDomainRuntime}.
  * Flat method names remain transitional wire aliases for domain ports (#366).
@@ -218,6 +218,17 @@ export const DOMAIN_DISPATCH_REGISTRY: Record<
       const itemId = requireString(p.itemId, "itemId", M.getAdjacentItems);
       await runtime.ensureInitialized();
       return runtime.itemsSearch.getAdjacentItems(itemId);
+    },
+  },
+  [M.findSimilarItems]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.findSimilarItems);
+      const itemId = requireString(p.itemId, "itemId", M.findSimilarItems);
+      if (typeof p.limit !== "number" || !Number.isFinite(p.limit)) {
+        badRequest(`${M.findSimilarItems}: limit must be a number`);
+      }
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.findSimilarItems(itemId, p.limit);
     },
   },
   [M.resolveContentTextLinks]: {

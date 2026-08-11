@@ -414,6 +414,9 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     await this.db.execute("DELETE FROM media WHERE item_id = ?", [itemId]);
     await this.db.execute("DELETE FROM source_refs WHERE item_id = ?", [itemId]);
     await this.db.execute("DELETE FROM items_fts WHERE item_id = ?", [itemId]);
+    await this.db.execute("DELETE FROM item_embeddings WHERE item_id = ?", [
+      itemId,
+    ]);
     await this.db.execute("DELETE FROM items WHERE id = ?", [itemId]);
   }
 
