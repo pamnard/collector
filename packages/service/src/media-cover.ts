@@ -31,6 +31,7 @@ export interface MediaCoverServiceDeps {
   getContext: () => VaultContext;
   generateCoverFromMedia: GenerateCoverFromMedia;
   resolveThumbnailPathsBatch: ResolveThumbnailPathsBatch;
+  onVaultPresentationChanged?: (vaultId: string) => void;
 }
 
 export interface MediaCoverService {
@@ -210,7 +211,7 @@ export function createMediaCoverService(
     itemId: string,
     files: AttachMediaFileInput[],
   ): Promise<MediaFileMeta[]> => {
-    const { path } = await deps.resolveActiveVault();
+    const { vault, path } = await deps.resolveActiveVault();
     const ctx = deps.getContext();
     const attached: MediaFileMeta[] = [];
     for (const file of files) {
@@ -222,6 +223,7 @@ export function createMediaCoverService(
       );
     }
     await syncItemCover(itemId);
+    deps.onVaultPresentationChanged?.(vault.id);
     return attached;
   };
 
@@ -230,12 +232,13 @@ export function createMediaCoverService(
     mediaId: string,
     file: AttachMediaFileInput,
   ): Promise<MediaFileMeta> => {
-    const { path } = await deps.resolveActiveVault();
+    const { vault, path } = await deps.resolveActiveVault();
     const replaced = await replaceMediaFile(deps.getContext(), path, itemId, mediaId, {
       filename: file.name,
       data: file.bytes,
     });
     await syncItemCover(itemId);
+    deps.onVaultPresentationChanged?.(vault.id);
     return replaced;
   };
 
@@ -243,16 +246,22 @@ export function createMediaCoverService(
     itemId: string,
     mediaId: string,
   ): Promise<void> => {
-    const { path } = await deps.resolveActiveVault();
+    const { vault, path } = await deps.resolveActiveVault();
     await deleteMediaFile(deps.getContext(), path, itemId, mediaId);
     await syncItemCover(itemId);
+    deps.onVaultPresentationChanged?.(vault.id);
   };
 
   return {
     listItemMedia,
     resolveItemThumbnailPath,
     resolveItemThumbnailPaths,
-    setItemCoverFromMedia,
+    setItemCoverFromMedia: async (itemId, mediaId) => {
+      const item = await setItemCoverFromMedia(itemId, mediaId);
+      const { vault } = await deps.resolveActiveVault();
+      deps.onVaultPresentationChanged?.(vault.id);
+      return item;
+    },
     attachMediaFiles,
     replaceItemMedia,
     deleteItemMedia,

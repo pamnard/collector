@@ -49,6 +49,7 @@ import {
   createVaultIndexSyncStatusStore,
   type VaultIndexSyncStatusStore,
 } from "../sync-status.js";
+import { createVaultPresentationChangedStore } from "../vault-presentation-changed.js";
 import { generateCoverFromMedia } from "./node-cover.js";
 import { NodeSqliteExecutor } from "./node-sql.js";
 import { createNodeVaultFilesystemWatcher } from "./vault-fs-watcher.js";
@@ -110,6 +111,9 @@ export interface ServiceDomainRuntime {
   isHealthy: () => boolean;
   close: () => Promise<void>;
   vaultIndexSyncStatus: VaultIndexSyncStatusStore;
+  vaultPresentationChanged: ReturnType<
+    typeof createVaultPresentationChangedStore
+  >;
   startVaultFilesystemWatcher: (
     vaultId: string,
     vaultPath: string,
@@ -151,6 +155,7 @@ export function createServiceDomainRuntime(
     }>
   >();
   const vaultIndexSyncStatus = createVaultIndexSyncStatusStore();
+  const vaultPresentationChanged = createVaultPresentationChangedStore();
   const watcherDisabledVaultIds = new Set<string>();
   let runtimeClosed = false;
 
@@ -540,6 +545,8 @@ export function createServiceDomainRuntime(
     startVaultIndexSync,
     buildSearchFtsQuery,
     addVaultSyncListener,
+    onVaultPresentationChanged: (vaultId) =>
+      vaultPresentationChanged.notify(vaultId),
     findSimilarItems: (itemId, limit) =>
       itemEmbeddings.findSimilarItems(itemId, limit),
   });
@@ -549,6 +556,8 @@ export function createServiceDomainRuntime(
     getContext,
     kickoffVaultIndexSync,
     addVaultSyncListener,
+    onVaultPresentationChanged: (vaultId) =>
+      vaultPresentationChanged.notify(vaultId),
   });
 
   const mediaCover = createMediaCoverService({
@@ -557,6 +566,8 @@ export function createServiceDomainRuntime(
     generateCoverFromMedia,
     resolveThumbnailPathsBatch: (vaultPath, items) =>
       resolveItemThumbnailPathsBatch(getContext().fs, vaultPath, items),
+    onVaultPresentationChanged: (vaultId) =>
+      vaultPresentationChanged.notify(vaultId),
   });
 
   const dropImport = createDropImportService({
@@ -701,6 +712,7 @@ export function createServiceDomainRuntime(
       }
     },
     vaultIndexSyncStatus,
+    vaultPresentationChanged,
     startVaultFilesystemWatcher: (vaultId, vaultPath) =>
       vaultFsWatcher.start(vaultId, vaultPath),
     stopVaultFilesystemWatcher: () => vaultFsWatcher.stop(),

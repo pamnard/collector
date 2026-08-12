@@ -25,6 +25,17 @@ export function assertDashboardItemSort(
   return sort;
 }
 
+async function withPresentationStamps(
+  index: ItemsIndexPort,
+  vaultId: string,
+  itemIds: string[],
+  totalCount: number,
+  offset: number,
+): Promise<DashboardIndexPage> {
+  const stamps = await index.listItemPresentationStampsByIds(vaultId, itemIds);
+  return { itemIds, stamps, totalCount, offset };
+}
+
 export async function queryDashboardIndexPage(
   index: ItemsIndexPort,
   buildSearchFtsQuery: (userQuery: string, vaultId: string) => string | null,
@@ -42,7 +53,13 @@ export async function queryDashboardIndexPage(
       index.listItemIdsByNavFilter(vaultId, filter, listPage),
       index.countItemIdsByNavFilter(vaultId, filter),
     ]);
-    return { itemIds, totalCount, offset: page.offset };
+    return withPresentationStamps(
+      index,
+      vaultId,
+      itemIds,
+      totalCount,
+      page.offset,
+    );
   }
 
   const ftsQuery = buildSearchFtsQuery(trimmedSearch, vaultId);
@@ -51,7 +68,13 @@ export async function queryDashboardIndexPage(
       index.listItemIdsByNavFilter(vaultId, filter, listPage),
       index.countItemIdsByNavFilter(vaultId, filter),
     ]);
-    return { itemIds, totalCount, offset: page.offset };
+    return withPresentationStamps(
+      index,
+      vaultId,
+      itemIds,
+      totalCount,
+      page.offset,
+    );
   }
 
   // FTS keeps ORDER BY rank; user column sort applies only to nav list path.
@@ -59,5 +82,11 @@ export async function queryDashboardIndexPage(
     index.searchItemIds(vaultId, ftsQuery, filter, page),
     index.countSearchItemIds(vaultId, ftsQuery, filter),
   ]);
-  return { itemIds, totalCount, offset: page.offset };
+  return withPresentationStamps(
+    index,
+    vaultId,
+    itemIds,
+    totalCount,
+    page.offset,
+  );
 }

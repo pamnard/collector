@@ -22,6 +22,7 @@ const RELATED_SEMANTIC_ERROR_ID = "item-related-semantic-error";
  */
 export function useRelatedSemanticTeasers(
   item: Pick<ItemChromeItemRef, "id"> | null,
+  vaultRevision: number,
 ): RelatedTeaser[] | null {
   const alerts = useAlerts();
   useDismissAlertsOnUnmount([RELATED_SEMANTIC_ERROR_ID]);
@@ -77,7 +78,7 @@ export function useRelatedSemanticTeasers(
     return () => {
       controller.abort();
     };
-  }, [alerts, itemId]);
+  }, [alerts, itemId, vaultRevision]);
 
   return teasers;
 }

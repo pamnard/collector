@@ -114,7 +114,12 @@ export function subscribeDashboardLoad(
           asCollectorApiError(error),
         );
         if (!activeSignal.aborted) {
-          handlers.onIndexPage({ itemIds: [], totalCount: 0, offset: 0 });
+          handlers.onIndexPage({
+            itemIds: [],
+            stamps: [],
+            totalCount: 0,
+            offset: 0,
+          });
         }
       }
     };

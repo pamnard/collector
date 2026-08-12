@@ -27,13 +27,22 @@ export type ApplyOffsetZeroPagePlan =
 
 export function planApplyOffsetZeroPage(input: {
   pageItemIds: string[];
+  pageStamps: string[];
   previousIds: string[];
   previousStreamEnd: number;
   prefetchSize: number;
   itemsByIdHas: (id: string) => boolean;
+  cachedStampFor: (id: string) => string | undefined;
 }): ApplyOffsetZeroPagePlan {
-  const { pageItemIds, previousIds, previousStreamEnd, prefetchSize, itemsByIdHas } =
-    input;
+  const {
+    pageItemIds,
+    pageStamps,
+    previousIds,
+    previousStreamEnd,
+    prefetchSize,
+    itemsByIdHas,
+    cachedStampFor,
+  } = input;
 
   if (!pageItemIds.length) {
     return {
@@ -42,6 +51,12 @@ export function planApplyOffsetZeroPage(input: {
       needsStream: false,
       idsToKeepBodies: [],
     };
+  }
+
+  if (pageStamps.length !== pageItemIds.length) {
+    throw new Error(
+      `pageStamps length ${pageStamps.length} !== pageItemIds length ${pageItemIds.length}`,
+    );
   }
 
   const preservedEnd = computePreservedStreamEnd(
@@ -59,9 +74,16 @@ export function planApplyOffsetZeroPage(input: {
     };
   }
 
-  const needsStream = pageItemIds
-    .slice(0, preservedEnd)
-    .some((id) => !itemsByIdHas(id));
+  const needsStream = pageItemIds.slice(0, preservedEnd).some((id, index) => {
+    if (!itemsByIdHas(id)) {
+      return true;
+    }
+    const cached = cachedStampFor(id);
+    if (cached === undefined) {
+      return true;
+    }
+    return cached !== pageStamps[index];
+  });
 
   return {
     kind: "ids-same",

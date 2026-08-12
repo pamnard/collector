@@ -41,6 +41,7 @@ export interface TagsFoldersServiceDeps {
     listener: VaultSyncBatchListener,
   ) => () => void;
   syncRepublishThrottleMs?: number;
+  onVaultPresentationChanged?: (vaultId: string) => void;
 }
 
 function createThrottledPublisher(
@@ -330,13 +331,15 @@ export function createTagsFoldersService(
   ): Promise<ItemFile> => {
     const { vault, path } = await deps.resolveActiveVault();
     deps.kickoffVaultIndexSync(vault.id, path);
-    return moveItemToFolder(
+    const moved = await moveItemToFolder(
       deps.getContext(),
       path,
       vault.id,
       itemId,
       folderPath,
     );
+    deps.onVaultPresentationChanged?.(vault.id);
+    return moved;
   };
 
   return {

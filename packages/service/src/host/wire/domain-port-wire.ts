@@ -36,6 +36,7 @@ export const CLIENT_ORCHESTRATED_PORT_METHODS = [
   "subscribeFolderTree",
   "subscribeAppSettings",
   "subscribeVaultIndexSyncStatus",
+  "subscribeVaultPresentationChanged",
   "getAppSettingsSync",
   "peekMatchingDashboardSnapshot",
   "buildDashboardSnapshot",

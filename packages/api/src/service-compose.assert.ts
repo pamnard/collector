@@ -11,7 +11,10 @@ type Equal<A, B> =
     : false;
 
 type _IndexQueryHasNoIndexSync = Expect<
-  Equal<keyof import("./service-api.js").IndexQueryResult, "ids" | "total" | "offset">
+  Equal<
+    keyof import("./service-api.js").IndexQueryResult,
+    "ids" | "stamps" | "total" | "offset"
+  >
 >;
 
 type _CollectorServiceKeys = Expect<

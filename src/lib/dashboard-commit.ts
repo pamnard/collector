@@ -39,6 +39,10 @@ export function thumbnailPathsEqual(
   return true;
 }
 
+function tagIdsKey(tagIds: string[]): string {
+  return [...tagIds].sort().join("\0");
+}
+
 export function itemsBodiesEqual(left: ItemFile[], right: ItemFile[]): boolean {
   if (left.length !== right.length) {
     return false;
@@ -50,7 +54,11 @@ export function itemsBodiesEqual(left: ItemFile[], right: ItemFile[]): boolean {
       a.id !== b.id ||
       a.updated_at !== b.updated_at ||
       a.title !== b.title ||
-      a.thumbnail !== b.thumbnail
+      a.thumbnail !== b.thumbnail ||
+      a.description !== b.description ||
+      a.url !== b.url ||
+      a.content_type !== b.content_type ||
+      tagIdsKey(a.tag_ids) !== tagIdsKey(b.tag_ids)
     ) {
       return false;
     }
@@ -135,6 +143,18 @@ export function mapsFromCoverPaths(coverPaths: DashboardSnapshot["cover_paths"])
   return { thumbnailPaths, thumbnailStamps };
 }
 
+export function mapsFromBodyStamps(
+  bodyStamps: Record<string, string> | undefined,
+): Map<string, string> {
+  return new Map(Object.entries(bodyStamps ?? {}));
+}
+
+export function bodyStampsFromMap(
+  stamps: Map<string, string>,
+): Record<string, string> {
+  return Object.fromEntries(stamps);
+}
+
 export function snapshotToCacheEntry(
   snap: DashboardSnapshot,
 ): DashboardQueryCacheEntry {
@@ -144,10 +164,27 @@ export function snapshotToCacheEntry(
   return {
     itemIds: [...snap.item_ids],
     itemsById: new Map(snap.items.map((item) => [item.id, item])),
+    bodyStamps: mapsFromBodyStamps(snap.body_stamps),
     streamEndOffset: snap.stream_end_offset,
     totalCount: snap.total_count,
     thumbnailPaths,
     thumbnailStamps,
     updatedAt: Date.now(),
   };
+}
+
+export function zipIdStamps(
+  ids: string[],
+  stamps: string[],
+): Map<string, string> {
+  if (ids.length !== stamps.length) {
+    throw new Error(
+      `stamps length ${stamps.length} !== ids length ${ids.length}`,
+    );
+  }
+  const out = new Map<string, string>();
+  for (let i = 0; i < ids.length; i++) {
+    out.set(ids[i]!, stamps[i]!);
+  }
+  return out;
 }

@@ -37,6 +37,8 @@ export interface VaultIndexSyncStatus {
 
 export interface DashboardIndexPage {
   itemIds: string[];
+  /** Parallel to itemIds: index file_mtime_ms as string (#623). */
+  stamps: string[];
   totalCount: number;
   offset: number;
 }
@@ -47,6 +49,8 @@ export interface DashboardIndexPage {
  */
 export interface IndexQueryResult {
   ids: string[];
+  /** Parallel to ids: index file_mtime_ms as string (#623). */
+  stamps: string[];
   total: number;
   offset: number;
 }
@@ -260,6 +264,13 @@ export interface IndexPort {
     onUpdate: (status: VaultIndexSyncStatus) => void,
   ): Subscription;
   getVaultIndexSyncStatus(): VaultIndexSyncStatus;
+  /**
+   * Fires after successful vault presentation writes (item/cover/move) (#623).
+   * UI invalidates presentation caches; writer path is source-agnostic.
+   */
+  subscribeVaultPresentationChanged(
+    onUpdate: (payload: { vaultId: string }) => void,
+  ): Subscription;
 }
 
 /** App settings persistence port (#361). */
@@ -379,6 +390,7 @@ export interface DashboardSnapshotPort {
     totalCount: number;
     streamEndOffset: number;
     coverPaths?: DashboardSnapshot["cover_paths"];
+    bodyStamps?: Record<string, string>;
   }): DashboardSnapshot;
 }
 

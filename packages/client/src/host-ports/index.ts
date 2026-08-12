@@ -35,5 +35,16 @@ export function createHostIndexPort(ctx: HostSessionCtx): IndexPort {
     getVaultIndexSyncStatus(): VaultIndexSyncStatus {
       return ctx.cachedSyncStatus;
     },
+    subscribeVaultPresentationChanged(
+      onUpdate: (payload: { vaultId: string }) => void,
+    ): Subscription {
+      const unsubEvent = transport.onEvent(
+        SERVICE_HOST_EVENTS.vaultPresentationChanged,
+        (payload) => {
+          onUpdate(payload as { vaultId: string });
+        },
+      );
+      return subscriptionFromTeardown(unsubEvent);
+    },
   };
 }

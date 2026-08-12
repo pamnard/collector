@@ -46,6 +46,12 @@ export {
 } from "./sync-status.js";
 
 export {
+  createVaultPresentationChangedStore,
+  type VaultPresentationChangedPayload,
+  type VaultPresentationChangedStore,
+} from "./vault-presentation-changed.js";
+
+export {
   createAppSettingsService,
   type AppSettingsService,
   type AppSettingsServiceDeps,

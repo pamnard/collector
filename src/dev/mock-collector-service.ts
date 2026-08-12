@@ -124,6 +124,7 @@ async function queryIndex(
   const result = await fetchDashboardIndexPage(filter, query ?? "", page, sort);
   return {
     ids: result.itemIds,
+    stamps: result.stamps,
     total: result.totalCount,
     offset: result.offset,
   };
@@ -383,6 +384,8 @@ export function createDevMockCollectorService(): CollectorService {
     index: {
       subscribeVaultIndexSyncStatus,
       getVaultIndexSyncStatus,
+      subscribeVaultPresentationChanged: () =>
+        subscriptionFromTeardown(() => {}),
     },
     settings: {
       ensureAppSettings,

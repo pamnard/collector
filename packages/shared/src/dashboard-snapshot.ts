@@ -2,7 +2,7 @@ import { z } from "zod";
 import { navFilterSettingSchema } from "./folders.js";
 import { itemFileSchema } from "./schemas.js";
 
-export const DASHBOARD_SNAPSHOT_VERSION = 2;
+export const DASHBOARD_SNAPSHOT_VERSION = 3;
 export const DASHBOARD_SNAPSHOT_FILE = "dashboard-snapshot.json";
 
 export const dashboardCoverPathEntrySchema = z.object({
@@ -19,6 +19,8 @@ export const dashboardSnapshotSchema = z.object({
   sort_dir: z.enum(["asc", "desc"]).default("desc"),
   item_ids: z.array(z.string().min(1)),
   items: z.array(itemFileSchema),
+  /** Parallel presentation stamps for item_ids / items (#623). Missing = dirty. */
+  body_stamps: z.record(z.string(), z.string()).default({}),
   total_count: z.number().int().nonnegative(),
   stream_end_offset: z.number().int().nonnegative(),
   cover_paths: z

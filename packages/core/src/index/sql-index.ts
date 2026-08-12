@@ -519,6 +519,15 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     );
   }
 
+  async listItemPresentationStampsByIds(
+    _vaultId: string,
+    _itemIds: string[],
+  ): Promise<string[]> {
+    throw new Error(
+      "listItemPresentationStampsByIds requires select(); use SqlVaultIndexStore instead",
+    );
+  }
+
   async patchItemSyncMeta(
     itemId: string,
     meta: {
@@ -702,6 +711,17 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     itemIds: string[],
   ): Promise<ItemFile[]> {
     return indexQueries.listItemFilesByIds(this.selector, vaultId, itemIds);
+  }
+
+  override async listItemPresentationStampsByIds(
+    vaultId: string,
+    itemIds: string[],
+  ): Promise<string[]> {
+    return indexQueries.listItemPresentationStampsByIds(
+      this.selector,
+      vaultId,
+      itemIds,
+    );
   }
 
   override async listVaultItemSyncMeta(vaultId: string): Promise<

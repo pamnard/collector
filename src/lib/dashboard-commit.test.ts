@@ -22,6 +22,10 @@ function stubItem(
   return {
     id,
     title: id,
+    description: "",
+    url: null,
+    content_type: "note",
+    tag_ids: [],
     updated_at: "2026-01-01T00:00:00.000Z",
     thumbnail: null,
     ...overrides,
@@ -101,12 +105,72 @@ describe("thumbnailPathsEqual", () => {
 
 describe("itemsBodiesEqual", () => {
   it("requires same length and body fields", () => {
-    const a = stubItem("a", { title: "A" });
-    const b = stubItem("a", { title: "A" });
-    const c = stubItem("a", { title: "B" });
+    const a = stubItem("a", {
+      title: "A",
+      description: "d",
+      url: null,
+      content_type: "link",
+      tag_ids: ["t1"],
+    });
+    const b = stubItem("a", {
+      title: "A",
+      description: "d",
+      url: null,
+      content_type: "link",
+      tag_ids: ["t1"],
+    });
+    const c = stubItem("a", {
+      title: "B",
+      description: "d",
+      url: null,
+      content_type: "link",
+      tag_ids: ["t1"],
+    });
     assert.equal(itemsBodiesEqual([a], [b]), true);
     assert.equal(itemsBodiesEqual([a], [c]), false);
     assert.equal(itemsBodiesEqual([a], []), false);
+  });
+
+  it("detects description url content_type and tag_ids changes", () => {
+    const base = stubItem("a", {
+      title: "A",
+      description: "d",
+      url: "https://a",
+      content_type: "link",
+      tag_ids: ["t1", "t2"],
+    });
+    assert.equal(
+      itemsBodiesEqual(
+        [base],
+        [stubItem("a", { ...base, description: "other" })],
+      ),
+      false,
+    );
+    assert.equal(
+      itemsBodiesEqual([base], [stubItem("a", { ...base, url: null })]),
+      false,
+    );
+    assert.equal(
+      itemsBodiesEqual(
+        [base],
+        [stubItem("a", { ...base, content_type: "note" })],
+      ),
+      false,
+    );
+    assert.equal(
+      itemsBodiesEqual(
+        [base],
+        [stubItem("a", { ...base, tag_ids: ["t2", "t1"] })],
+      ),
+      true,
+    );
+    assert.equal(
+      itemsBodiesEqual(
+        [base],
+        [stubItem("a", { ...base, tag_ids: ["t1"] })],
+      ),
+      false,
+    );
   });
 });
 
@@ -191,7 +255,7 @@ describe("snapshotToCacheEntry", () => {
     const item = stubItem("a", { thumbnail: "c.webp" });
     const stamp = itemCoverStamp(item);
     const entry = snapshotToCacheEntry({
-      schema_version: 2,
+      schema_version: 3,
       vault_id: "00000000-0000-4000-8000-000000000001",
       nav_filter: "all",
       search: "",
@@ -199,6 +263,7 @@ describe("snapshotToCacheEntry", () => {
       sort_dir: "desc",
       item_ids: ["a"],
       items: [item],
+      body_stamps: { a: "42" },
       stream_end_offset: 1,
       total_count: 5,
       cover_paths: {
@@ -208,6 +273,7 @@ describe("snapshotToCacheEntry", () => {
     });
     assert.deepEqual(entry.itemIds, ["a"]);
     assert.equal(entry.itemsById.get("a"), item);
+    assert.equal(entry.bodyStamps.get("a"), "42");
     assert.equal(entry.streamEndOffset, 1);
     assert.equal(entry.totalCount, 5);
     assert.equal(entry.thumbnailPaths.get("a"), "/cover-a");
@@ -226,6 +292,7 @@ describe("snapshotToCacheEntry", () => {
       sort_dir: "desc",
       item_ids: ["a"],
       items: [item],
+      body_stamps: {},
       stream_end_offset: 1,
       total_count: 5,
       cover_paths: {},
@@ -233,5 +300,6 @@ describe("snapshotToCacheEntry", () => {
     });
     assert.equal(entry.thumbnailPaths.size, 0);
     assert.equal(entry.thumbnailStamps.size, 0);
+    assert.equal(entry.bodyStamps.size, 0);
   });
 });

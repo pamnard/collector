@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   type Dispatch,
   type SetStateAction,
@@ -49,7 +50,7 @@ export function useItemDetail(): UseItemDetailResult {
   const params = useParams();
   const id = params["*"];
   const navigate = useNavigate();
-  const { refreshVault } = useShell();
+  const { refreshVault, vaultRevision } = useShell();
   const alerts = useAlerts();
   useDismissAlertsOnUnmount([ITEM_DETAIL_ERROR_ID]);
   const [item, setItem] = useState<ItemFile | null>(null);
@@ -107,19 +108,24 @@ export function useItemDetail(): UseItemDetailResult {
     return { item: loadedItem, content: loadedContent };
   };
 
+  const loadedIdRef = useRef<string | undefined>(undefined);
+
   useEffect(() => {
     if (!id) {
       setError("Item id is missing");
       return;
     }
 
-    setItem(null);
     setError(null);
+    if (loadedIdRef.current !== id) {
+      loadedIdRef.current = id;
+      setItem(null);
+    }
 
     reloadItem(id).catch((err: unknown) => {
       setError(errorMessage(err));
     });
-  }, [id, setError]);
+  }, [id, vaultRevision, setError]);
 
   const handleSave = async (): Promise<boolean> => {
     if (!id || !formValues) {

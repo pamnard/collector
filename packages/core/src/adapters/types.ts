@@ -187,6 +187,11 @@ export interface VaultIndexAdapter {
   ): Promise<Array<{ folder_path: string; item_count: number }>>;
   listVaultItemIds(vaultId: string): Promise<string[]>;
   listItemFilesByIds(vaultId: string, itemIds: string[]): Promise<ItemFile[]>;
+  /** Parallel presentation stamps (file_mtime_ms) for dashboard freshness (#623). */
+  listItemPresentationStampsByIds(
+    vaultId: string,
+    itemIds: string[],
+  ): Promise<string[]>;
   listVaultItemSyncMeta(vaultId: string): Promise<ItemSyncMeta[]>;
   listItemSyncMetaByIds(
     vaultId: string,

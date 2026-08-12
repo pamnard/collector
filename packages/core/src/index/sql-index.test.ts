@@ -359,6 +359,87 @@ describe("dashboard item id pagination", () => {
   });
 });
 
+describe("listItemPresentationStampsByIds", () => {
+  let dataDir = "";
+  const fs = new NodeFileSystemAdapter();
+  let db: BetterSqliteMigrator | null = null;
+
+  afterEach(async () => {
+    db?.close();
+    db = null;
+    if (dataDir) {
+      await rm(dataDir, { recursive: true, force: true });
+      dataDir = "";
+    }
+  });
+
+  it("returns file_mtime_ms stamps in id order and fails on missing mtime", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-presentation-stamps-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    const ctx = { fs, index };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const timestamp = new Date().toISOString();
+    const firstId = `Inbox/${createId()}.md`;
+    const secondId = `Inbox/${createId()}.md`;
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: firstId,
+        vault_id: meta.id,
+        title: "First",
+        description: "",
+        url: null,
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "Inbox",
+        content_revision: 1,
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      content: "one",
+    });
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: secondId,
+        vault_id: meta.id,
+        title: "Second",
+        description: "",
+        url: null,
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "Inbox",
+        content_revision: 1,
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      content: "two",
+    });
+
+    const stamps = await index.listItemPresentationStampsByIds(meta.id, [
+      secondId,
+      firstId,
+    ]);
+    expect(stamps).toHaveLength(2);
+    expect(Number(stamps[0])).toBeGreaterThan(0);
+    expect(Number(stamps[1])).toBeGreaterThan(0);
+    expect(stamps[0]).not.toEqual(stamps[1]);
+
+    await expect(
+      index.listItemPresentationStampsByIds(meta.id, ["missing.md"]),
+    ).rejects.toThrow(/Missing index row/);
+  });
+});
+
 describe("listItemFilesByIds", () => {
   let dataDir = "";
   const fs = new NodeFileSystemAdapter();

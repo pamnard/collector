@@ -26,6 +26,10 @@ import type { DashboardItemSort } from "@collector/api";
 import { useAppSettings } from "../../context/AppSettingsContext";
 import { useVaultIndexSyncStatus } from "../../hooks/useVaultIndexSyncStatus";
 import {
+  getCollectorService,
+  getUiSession,
+} from "../../services/collector-client";
+import {
   SIDEBAR_RAIL_WIDTH_PX,
   clampSidebarWidthPx,
 } from "../../lib/sidebar-width";
@@ -90,8 +94,19 @@ function AppLayoutInner() {
   const [vaultRevision, setVaultRevision] = useState(0);
   const bumpVaultRevision = useCallback(() => {
     invalidateItemPresentationCache();
+    void getUiSession().snapshot.clearDashboardSnapshot();
     setVaultRevision((value) => value + 1);
   }, []);
+
+  useEffect(() => {
+    const service = getCollectorService();
+    const sub = service.index.subscribeVaultPresentationChanged(() => {
+      bumpVaultRevision();
+    });
+    return () => {
+      sub.unsubscribe();
+    };
+  }, [bumpVaultRevision]);
 
   const {
     isSidebarOpen,

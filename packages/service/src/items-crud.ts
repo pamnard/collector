@@ -118,13 +118,15 @@ export function createItemsCrud(
     rawMarkdown: string,
   ): Promise<ItemFile> => {
     const { vault, path } = await deps.resolveActiveVault();
-    return writeItemRawMarkdown(
+    const item = await writeItemRawMarkdown(
       deps.getContext(),
       path,
       vault.id,
       itemId,
       rawMarkdown,
     );
+    deps.onVaultPresentationChanged?.(vault.id);
+    return item;
   };
 
   const createItem = async (input: CreateItemInput): Promise<ItemFile> => {
@@ -140,7 +142,7 @@ export function createItemsCrud(
     const fileName = `${newItemId()}.md`;
     const id = `${folderPath}/${fileName}`;
 
-    return upsertItem(ctx, path, vault.id, {
+    const item = await upsertItem(ctx, path, vault.id, {
       item: {
         id,
         vault_id: vault.id,
@@ -161,6 +163,8 @@ export function createItemsCrud(
       content: input.content ?? null,
       sourceRef: input.sourceRef,
     });
+    deps.onVaultPresentationChanged?.(vault.id);
+    return item;
   };
 
   const updateItem = async (
@@ -215,13 +219,22 @@ export function createItemsCrud(
       input.content !== undefined ? (input.content ?? "") : (currentContent ?? "");
     const markdown = serializeItemDocument(nextItem, body, maps.byId);
     // Same on-disk write + parse/ensure path as updateItemSource.
-    return writeItemRawMarkdown(ctx, path, vault.id, nextItem.id, markdown);
+    const updated = await writeItemRawMarkdown(
+      ctx,
+      path,
+      vault.id,
+      nextItem.id,
+      markdown,
+    );
+    deps.onVaultPresentationChanged?.(vault.id);
+    return updated;
   };
 
   const deleteItem = async (itemId: string): Promise<void> => {
-    const { path } = await deps.resolveActiveVault();
+    const { vault, path } = await deps.resolveActiveVault();
     await deleteItemOnDisk(deps.getContext(), path, itemId);
     deps.onItemDeleted?.(itemId);
+    deps.onVaultPresentationChanged?.(vault.id);
   };
 
   return {

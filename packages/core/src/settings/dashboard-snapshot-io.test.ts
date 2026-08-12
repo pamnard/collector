@@ -46,6 +46,7 @@ function syntheticSnapshot(
         updated_at: NOW,
       },
     ],
+    body_stamps: { [ITEM_ID]: "1000" },
     total_count: 1,
     stream_end_offset: 1,
     cover_paths: {},

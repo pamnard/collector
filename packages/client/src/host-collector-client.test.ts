@@ -2,7 +2,7 @@ import { selfContainedCollectorProfileLayout } from "@collector/shared";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   NodeSqliteExecutor,
   SERVICE_HOST_EVENTS,
@@ -184,10 +184,39 @@ describe("CollectorHostServiceClient", () => {
         });
         expect(created.title).toBe("IPC Note");
 
+        const before = await client.items.queryIndex("all", undefined, {
+          limit: 24,
+          offset: 0,
+        });
+        expect(before.ids).toContain(created.id);
+        expect(before.stamps).toHaveLength(before.ids.length);
+        const beforeStamp = before.stamps[before.ids.indexOf(created.id)];
+
+        const presentationEvents: Array<{ vaultId: string }> = [];
+        const unsubPresentation = client.index.subscribeVaultPresentationChanged(
+          (payload) => {
+            presentationEvents.push(payload);
+          },
+        );
+
         const updated = await client.items.updateItem(created.id, {
           title: "IPC Note 2",
+          description: "fresh teaser",
         });
         expect(updated.title).toBe("IPC Note 2");
+
+        await vi.waitFor(() => {
+          expect(presentationEvents.length).toBeGreaterThanOrEqual(1);
+        });
+        unsubPresentation.unsubscribe();
+
+        const after = await client.items.queryIndex("all", undefined, {
+          limit: 24,
+          offset: 0,
+        });
+        const afterStamp = after.stamps[after.ids.indexOf(created.id)];
+        expect(afterStamp).toBeTruthy();
+        expect(afterStamp).not.toEqual(beforeStamp);
 
         const source = await client.items.updateItemSource(
           created.id,
