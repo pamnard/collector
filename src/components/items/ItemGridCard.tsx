@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 import type { ItemFile } from "@collector/shared";
 import type { TagWithCount } from "@collector/core";
+import { cn } from "../../lib/utils";
 import { ItemGridCardMeta } from "./ItemGridCardMeta";
+import { textOnlyTeaserChromeClass } from "./text-only-teaser-chrome";
 import { useItemGridCover } from "./use-item-grid-cover";
 
 interface ItemGridCardProps {
@@ -52,6 +54,7 @@ export function ItemGridCard({
     );
   }
 
+  const hasCover = showCover || coverPending;
   const overlayLayout = Boolean(
     (showCover && isPortraitCover) || (coverPending && optimisticPortrait),
   );
@@ -80,19 +83,19 @@ export function ItemGridCard({
       }}
       // No content-visibility / contain-intrinsic-size: WebKitGTK (Tauri Linux)
       // leaves those masonry cards as blank 280px boxes.
-      className={
-        overlayLayout
-          ? "group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 hover:border-indigo-500/50 dark:hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/10"
-          : "group flex h-full cursor-pointer flex-col rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 p-5 hover:border-indigo-500/50 dark:hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/10"
-      }
+      className={cn(
+        "group flex cursor-pointer flex-col overflow-hidden",
+        !hasCover && "h-full",
+        !hasCover && textOnlyTeaserChromeClass,
+        hasCover && overlayLayout && "relative h-full",
+      )}
     >
-      {(showCover || coverPending) && (
+      {hasCover && (
         <div
-          className={
-            overlayLayout
-              ? "relative overflow-hidden bg-neutral-100 dark:bg-neutral-700"
-              : "relative -mx-5 -mt-5 mb-4 overflow-hidden rounded-t-lg bg-neutral-100 dark:bg-neutral-700"
-          }
+          className={cn(
+            "relative overflow-hidden rounded-lg bg-neutral-100 dark:bg-neutral-700",
+            !overlayLayout && "mb-4 shrink-0",
+          )}
         >
           {showCover ? (
             <img

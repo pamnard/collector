@@ -352,11 +352,7 @@ function AppLayoutInner() {
                 </div>
               )
             )}
-            <div
-              className={`flex-1 px-4 pt-4 md:px-8 ${
-                showCardHeader ? "md:pt-6" : "md:pt-8"
-              }`}
-            >
+            <div className="flex-1 p-4 md:p-8">
               <Outlet />
             </div>
             <ItemChromeItemFooter />

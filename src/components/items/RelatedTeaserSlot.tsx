@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import type { RelatedTeaser } from "../../lib/related-teaser";
 import type { TeaserComposition } from "../../lib/teaser-layout/composition";
 import { cn } from "../../lib/utils";
+import { textOnlyTeaserChromeClass } from "./text-only-teaser-chrome";
 import { formatItemDate } from "../../utils/formatItemDate";
 import {
   ContentTypeIcon,
@@ -43,6 +44,7 @@ export function RelatedTeaserSlot({
       style={style}
       className={cn(
         "flex h-full min-h-0 w-full cursor-pointer flex-col overflow-hidden text-left",
+        composition.hasImage ? null : textOnlyTeaserChromeClass,
         largeType ? "gap-2.5" : "gap-2",
       )}
       onClick={() => onNavigate(teaser.id)}
