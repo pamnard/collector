@@ -37,16 +37,66 @@ describe("item embedding orchestration", () => {
     return db;
   }
 
-  async function insertItem(id: string, title: string): Promise<void> {
+  async function insertItem(
+    id: string,
+    title: string,
+    folderPath = "",
+    description = "shared topic about gardens",
+  ): Promise<void> {
     await db!.execute(
       `INSERT INTO items (
         id, vault_id, title, description, content_type, source_type,
         metadata_json, properties_json, has_content_file, folder_path,
         created_at, updated_at, content_revision
-      ) VALUES (?, 'v1', ?, 'shared topic about gardens', 'note', 'manual', '{}', '{}', 0, '', 't', 't', 1)`,
-      [id, title],
+      ) VALUES (?, 'v1', ?, ?, 'note', 'manual', '{}', '{}', 0, ?, 't', 't', 1)`,
+      [id, title, description, folderPath],
     );
   }
+
+  it("ranks only within the query item folder ancestor chain", async () => {
+    const sql = await openDb();
+    await insertItem("Design/a.md", "Garden roses", "Design");
+    await insertItem("Design/b.md", "Garden tulips", "Design");
+    await insertItem(
+      "Other/c.md",
+      "Garden roses",
+      "Other",
+      "shared topic about gardens",
+    );
+
+    for (const [id, title, description, tags] of [
+      [
+        "Design/a.md",
+        "Garden roses",
+        "shared topic about gardens",
+        ["plants"],
+      ],
+      [
+        "Design/b.md",
+        "Garden tulips",
+        "shared topic about gardens",
+        ["plants"],
+      ],
+      [
+        "Other/c.md",
+        "Garden roses",
+        "shared topic about gardens",
+        ["plants"],
+      ],
+    ] as const) {
+      await recomputeItemEmbedding(sql, engine, {
+        itemId: id,
+        title,
+        description,
+        tagNames: [...tags],
+        contentRevision: 1,
+      });
+    }
+
+    const hits = await findSimilarItemIds(sql, engine, "Design/a.md", 8);
+    expect(hits.map((h) => h.id)).toEqual(["Design/b.md"]);
+    expect(hits.every((h) => h.id !== "Other/c.md")).toBe(true);
+  });
 
   it("writes vectors and ranks similar items; clears when signal disappears", async () => {
     const sql = await openDb();
