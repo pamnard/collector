@@ -1,9 +1,5 @@
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypeHighlight from "rehype-highlight";
-import rehypeSlug from "rehype-slug";
-import type { PluggableList } from "unified";
 import { rewriteTextLinksForMarkdown } from "@collector/core";
 import { getCollectorService } from "../../services/collector-client";
 import { ItemMarkdownAnchor } from "./ItemMarkdownAnchor";
@@ -11,26 +7,29 @@ import { collectorMarkdownUrlTransform } from "./item-markdown-href";
 import { MarkdownImage } from "./MarkdownImage";
 import { MarkdownPre } from "./MarkdownCodeBlock";
 import { MarkdownTable } from "./MarkdownTable";
+import { MarkdownSpan } from "./MarkdownKatexDisplay";
+import {
+  MARKDOWN_REHYPE_PLUGINS,
+  MARKDOWN_REMARK_PLUGINS,
+} from "./markdown-plugins";
+import { normalizeStandaloneDoubleDollarMath } from "./normalize-display-math";
 
 interface MarkdownContentProps {
   itemId: string;
   content: string;
 }
 
-const REMARK_PLUGINS: PluggableList = [remarkGfm];
-const REHYPE_PLUGINS: PluggableList = [
-  rehypeSlug,
-  [rehypeHighlight, { detect: false, ignoreMissing: true }],
-];
 const MARKDOWN_COMPONENTS = {
   a: ItemMarkdownAnchor,
   pre: MarkdownPre,
   img: MarkdownImage,
   table: MarkdownTable,
+  span: MarkdownSpan,
 };
 
 export function MarkdownContent({ itemId, content }: MarkdownContentProps) {
-  const [renderContent, setRenderContent] = useState(content);
+  const normalized = normalizeStandaloneDoubleDollarMath(content);
+  const [renderContent, setRenderContent] = useState(normalized);
 
   useEffect(() => {
     let cancelled = false;
@@ -38,15 +37,20 @@ export function MarkdownContent({ itemId, content }: MarkdownContentProps) {
       setRenderContent("");
       return;
     }
+    const next = normalizeStandaloneDoubleDollarMath(content);
     // Keep prior/current body visible until rewrite finishes (no blank flash).
-    setRenderContent(content);
+    setRenderContent(next);
     void getCollectorService()
       .items.resolveContentTextLinks(itemId, content)
       .then((links) => {
         if (cancelled) {
           return;
         }
-        setRenderContent(rewriteTextLinksForMarkdown(content, links));
+        setRenderContent(
+          normalizeStandaloneDoubleDollarMath(
+            rewriteTextLinksForMarkdown(content, links),
+          ),
+        );
       })
       .catch((error: unknown) => {
         console.error("[MarkdownContent] resolveContentTextLinks failed", {
@@ -54,7 +58,7 @@ export function MarkdownContent({ itemId, content }: MarkdownContentProps) {
           error,
         });
         if (!cancelled) {
-          setRenderContent(content);
+          setRenderContent(next);
         }
       });
     return () => {
@@ -69,8 +73,8 @@ export function MarkdownContent({ itemId, content }: MarkdownContentProps) {
   return (
     <div className="prose dark:prose-invert max-w-none prose-a:text-indigo-400 prose-code:before:content-none prose-code:after:content-none prose-code:rounded prose-code:bg-neutral-100 dark:prose-code:bg-neutral-700 prose-code:px-1.5 prose-code:py-0.5 prose-code:font-mono prose-code:font-normal prose-code:text-sm prose-code:text-neutral-900 dark:text-neutral-100 prose-headings:scroll-mt-4">
       <ReactMarkdown
-        remarkPlugins={REMARK_PLUGINS}
-        rehypePlugins={REHYPE_PLUGINS}
+        remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+        rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
         urlTransform={collectorMarkdownUrlTransform}
         components={MARKDOWN_COMPONENTS}
       >
