@@ -1,0 +1,75 @@
+/* KaTeX in note prose (#463) — Obsidian-like display math + readable fractions */
+
+/* Kill prose line-height inheritance that compresses KaTeX vlists */
+.prose .katex,
+.prose .katex * {
+  line-height: normal;
+  border-color: currentColor;
+}
+
+.prose .katex {
+  color: inherit;
+  text-indent: 0;
+}
+
+/*
+ * Block math: center in the reading column (Obsidian-style).
+ * Flex beats text-align fights with lists / typography.
+ */
+.prose .katex-display {
+  display: flex !important;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 1.5em 0;
+  padding: 0.6em 0.5em;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: center;
+}
+
+.prose .katex-display > .katex {
+  display: inline-block !important;
+  text-align: center;
+  font-size: 1.21em;
+  max-width: 100%;
+  white-space: nowrap;
+  margin-inline: auto;
+}
+
+/* Inline math stays with body size */
+.prose :not(.katex-display) > .katex {
+  font-size: 1.08em;
+}
+
+/*
+ * Fractions: Tailwind preflight zeros borders; give the rule real thickness
+ * and a little vertical room so numerator / bar / denominator do not glue.
+ */
+.prose .katex .frac-line {
+  border-bottom-style: solid !important;
+  border-bottom-width: max(0.08em, 1.5px) !important;
+}
+
+.prose .katex .mfrac {
+  margin-inline: 0.12em;
+  padding-block: 0.1em;
+}
+
+/* Nudge KaTeX fraction rows apart (vlist uses absolute tops; padding still helps hitboxes) */
+.prose .katex .mfrac .vlist-r {
+  transform: translateY(0);
+}
+
+.prose .katex-error {
+  color: #b91c1c;
+  background: rgb(185 28 28 / 0.08);
+  border-radius: 0.25rem;
+  padding: 0.05em 0.25em;
+}
+
+.dark .prose .katex-error {
+  color: #fca5a5;
+  background: rgb(252 165 165 / 0.12);
+}
