@@ -12,6 +12,8 @@ import { useAppSettings } from "../context/AppSettingsContext";
 import {
   coverNeedsResolve,
   coverPathsFromMaps,
+  bodyStampsFromMap,
+  zipIdStamps,
   itemCoverStamp,
   itemsBodiesEqual,
   mergeCommittedThumbnailPaths,
@@ -169,6 +171,9 @@ export function useDashboardItems(
   const itemsByIdRef = useRef<Map<string, ItemFile>>(
     initial?.itemsById ?? new Map(),
   );
+  const bodyStampsRef = useRef<Map<string, string>>(
+    initial?.bodyStamps ?? new Map(),
+  );
   const totalCountRef = useRef(initial?.totalCount ?? 0);
   const committedItemsRef = useRef(committedItems);
   const committedThumbnailPathsRef = useRef(committedThumbnailPaths);
@@ -243,6 +248,7 @@ export function useDashboardItems(
       setDashboardQueryCache(queryKeyRef.current, {
         itemIds: [...ids],
         itemsById: new Map(byId),
+        bodyStamps: new Map(bodyStampsRef.current),
         streamEndOffset: end,
         totalCount: nextTotal,
         thumbnailPaths: new Map(committedThumbnailPathsRef.current),
@@ -256,6 +262,7 @@ export function useDashboardItems(
   const applyCacheEntryToState = useCallback((entry: DashboardQueryCacheEntry) => {
     itemIdsRef.current = entry.itemIds;
     itemsByIdRef.current = entry.itemsById;
+    bodyStampsRef.current = new Map(entry.bodyStamps);
     streamEndOffsetRef.current = entry.streamEndOffset;
     totalCountRef.current = entry.totalCount;
     setItemIds(entry.itemIds);
@@ -475,7 +482,12 @@ export function useDashboardItems(
 
   const applyIndexPage = useCallback(
     async (
-      page: { itemIds: string[]; totalCount: number; offset: number },
+      page: {
+        itemIds: string[];
+        stamps: string[];
+        totalCount: number;
+        offset: number;
+      },
       requestVersion: number,
     ): Promise<void> => {
       totalCountRef.current = page.totalCount;
@@ -487,17 +499,22 @@ export function useDashboardItems(
 
       const plan = planApplyOffsetZeroPage({
         pageItemIds: page.itemIds,
+        pageStamps: page.stamps,
         previousIds: itemIdsRef.current,
         previousStreamEnd: streamEndOffsetRef.current,
         prefetchSize: DASHBOARD_PREFETCH_SIZE,
         itemsByIdHas: (id) => itemsByIdRef.current.has(id),
+        cachedStampFor: (id) => bodyStampsRef.current.get(id),
       });
 
       if (plan.kind === "empty") {
         setLoadedItemIds([]);
+        bodyStampsRef.current = new Map();
         setStreamWindowEnd(0);
         return;
       }
+
+      const pageStampMap = zipIdStamps(page.itemIds, page.stamps);
 
       const streamWindow = async () => {
         await streamSlice(
@@ -521,6 +538,9 @@ export function useDashboardItems(
             requestVersion,
           );
         }
+        if (requestVersionRef.current === requestVersion) {
+          bodyStampsRef.current = pageStampMap;
+        }
       };
 
       if (plan.kind === "ids-changed") {
@@ -542,6 +562,8 @@ export function useDashboardItems(
       setStreamWindowEnd(plan.preservedEnd);
       if (plan.needsStream) {
         await streamWindow();
+      } else {
+        bodyStampsRef.current = pageStampMap;
       }
     },
     [setLoadedItemIds, setStreamWindowEnd, streamSlice],
@@ -593,6 +615,7 @@ export function useDashboardItems(
     // grid-skeleton blank flash on every cold folder switch.
     itemIdsRef.current = [];
     itemsByIdRef.current = new Map();
+    bodyStampsRef.current = new Map();
     streamEndOffsetRef.current = 0;
     totalCountRef.current = 0;
     setItemIds([]);
@@ -625,6 +648,7 @@ export function useDashboardItems(
     if (cached) {
       setLoadedItemIds(cached.itemIds);
       itemsByIdRef.current = cached.itemsById;
+      bodyStampsRef.current = new Map(cached.bodyStamps);
       setItemsById(cached.itemsById);
       totalCountRef.current = cached.totalCount;
       setTotalCount(cached.totalCount);
@@ -633,6 +657,7 @@ export function useDashboardItems(
     } else {
       // Cache miss after invalidate: drop bodies so ids-same re-hydrates.
       itemsByIdRef.current = new Map();
+      bodyStampsRef.current = new Map();
       setItemsById(new Map());
       if (committedItemsRef.current.length === 0) {
         setIsLoading(true);
@@ -833,11 +858,13 @@ export function useDashboardItems(
           totalCount,
           streamEndOffset,
           coverPaths,
+          bodyStamps: bodyStampsFromMap(bodyStampsRef.current),
         }),
       );
       setDashboardQueryCache(queryKey, {
         itemIds: [...itemIds],
         itemsById: new Map(itemsById),
+        bodyStamps: new Map(bodyStampsRef.current),
         streamEndOffset,
         totalCount,
         thumbnailPaths: new Map(committedThumbnailPathsRef.current),

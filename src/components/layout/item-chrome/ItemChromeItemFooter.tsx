@@ -2,6 +2,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { ItemAdjacentNav } from "../../items/ItemAdjacentNav";
 import { ItemRelatedPanel } from "../../items/ItemRelatedPanel";
 import { useRelatedSemanticTeasers } from "../../../hooks/useRelatedSemanticTeasers";
+import { useShell } from "../AppLayout";
 import {
   useItemChromeAdjacent,
   useItemChromeItem,
@@ -14,11 +15,13 @@ import {
 export function ItemChromeItemFooter() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const { vaultRevision } = useShell();
   const onItemRoute = pathname.startsWith("/item/");
   const itemAdjacent = useItemChromeAdjacent();
   const chromeItem = useItemChromeItem();
   const relatedTeasers = useRelatedSemanticTeasers(
     onItemRoute ? chromeItem : null,
+    vaultRevision,
   );
 
   const showAdjacent =

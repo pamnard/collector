@@ -59,6 +59,10 @@ export interface ItemsIndexPort {
     filter: NavFilter,
   ): Promise<number>;
   listItemFilesByIds(vaultId: string, itemIds: string[]): Promise<ItemFile[]>;
+  listItemPresentationStampsByIds(
+    vaultId: string,
+    itemIds: string[],
+  ): Promise<string[]>;
   /** Light id/title rows for text-link resolve (#409); avoid full ItemFile load. */
   listItemIdTitles(
     vaultId: string,
@@ -87,6 +91,8 @@ export interface ItemsSearchServiceDeps {
   ) => () => void;
   /** Optional UI cache hook after delete. */
   onItemDeleted?: (itemId: string) => void;
+  /** After successful item create/update/delete/source write (#623). */
+  onVaultPresentationChanged?: (vaultId: string) => void;
   createItemId?: () => string;
   syncRepublishThrottleMs?: number;
   findSimilarItems: (
@@ -212,6 +218,7 @@ export function createItemsSearchService(
     const result = await fetchDashboardIndexPage(filter, query, page, sort);
     return {
       ids: result.itemIds,
+      stamps: result.stamps,
       total: result.totalCount,
       offset: result.offset,
     };

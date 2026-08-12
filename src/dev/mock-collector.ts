@@ -138,12 +138,25 @@ export async function fetchDashboardIndexPage(
   query = "",
   page: { limit: number; offset: number },
   sort?: DashboardItemSort,
-): Promise<{ itemIds: string[]; totalCount: number; offset: number }> {
+): Promise<{
+  itemIds: string[];
+  stamps: string[];
+  totalCount: number;
+  offset: number;
+}> {
   ensureWarmedUp();
   const allIds = listFilteredDashboardIds(filter, query, sort);
   const itemIds = allIds.slice(page.offset, page.offset + page.limit);
+  const stamps = itemIds.map((id) => {
+    const item = mockStore.getItemById(id);
+    if (!item) {
+      throw new Error(`Missing mock item for stamp: ${id}`);
+    }
+    return String(Date.parse(item.updated_at));
+  });
   return {
     itemIds,
+    stamps,
     totalCount: allIds.length,
     offset: page.offset,
   };

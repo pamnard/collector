@@ -282,6 +282,7 @@ export async function startServiceHost(
   let ipc: HostWireServer | null = null;
   let stopSyncStatusBroadcast: Subscription | null = null;
   let stopAppSettingsBroadcast: Subscription | null = null;
+  let stopPresentationChangedBroadcast: Subscription | null = null;
 
   const broadcastBoth = (event: string, payload: unknown): void => {
     ipc?.broadcastEvent(event, payload);
@@ -309,6 +310,11 @@ export async function startServiceHost(
       broadcastBoth(SERVICE_HOST_EVENTS.appSettings, settings);
     },
   );
+  stopPresentationChangedBroadcast = runtime.vaultPresentationChanged.subscribe(
+    (payload) => {
+      broadcastBoth(SERVICE_HOST_EVENTS.vaultPresentationChanged, payload);
+    },
+  );
 
   let closed = false;
   const close = async (): Promise<void> => {
@@ -320,6 +326,8 @@ export async function startServiceHost(
     stopSyncStatusBroadcast = null;
     stopAppSettingsBroadcast?.unsubscribe();
     stopAppSettingsBroadcast = null;
+    stopPresentationChangedBroadcast?.unsubscribe();
+    stopPresentationChangedBroadcast = null;
     await eventsHub.close();
     if (ipc) {
       await ipc.close();

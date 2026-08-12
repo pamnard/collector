@@ -24,10 +24,12 @@ describe("planApplyOffsetZeroPage", () => {
     assert.deepEqual(
       planApplyOffsetZeroPage({
         pageItemIds: [],
+        pageStamps: [],
         previousIds: ["a"],
         previousStreamEnd: 1,
         prefetchSize: 24,
         itemsByIdHas: () => true,
+        cachedStampFor: () => undefined,
       }),
       {
         kind: "empty",
@@ -41,10 +43,12 @@ describe("planApplyOffsetZeroPage", () => {
   it("plans ids-changed with full keep list and needsStream", () => {
     const plan = planApplyOffsetZeroPage({
       pageItemIds: ["a", "b", "c"],
+      pageStamps: ["1", "2", "3"],
       previousIds: ["x"],
       previousStreamEnd: 0,
       prefetchSize: 24,
       itemsByIdHas: () => false,
+      cachedStampFor: () => undefined,
     });
     assert.equal(plan.kind, "ids-changed");
     assert.equal(plan.preservedEnd, 3);
@@ -56,10 +60,12 @@ describe("planApplyOffsetZeroPage", () => {
     const has = new Set(["a"]);
     const plan = planApplyOffsetZeroPage({
       pageItemIds: ["a", "b"],
+      pageStamps: ["100", "200"],
       previousIds: ["a", "b"],
       previousStreamEnd: 2,
       prefetchSize: 24,
       itemsByIdHas: (id) => has.has(id),
+      cachedStampFor: (id) => (id === "a" ? "100" : "200"),
     });
     assert.deepEqual(plan, {
       kind: "ids-same",
@@ -69,16 +75,50 @@ describe("planApplyOffsetZeroPage", () => {
     });
   });
 
-  it("plans ids-same without stream when window bodies exist", () => {
+  it("plans ids-same without stream when window bodies and stamps match", () => {
+    const stamps = new Map([
+      ["a", "100"],
+      ["b", "200"],
+    ]);
     const plan = planApplyOffsetZeroPage({
       pageItemIds: ["a", "b"],
+      pageStamps: ["100", "200"],
       previousIds: ["a", "b"],
       previousStreamEnd: 2,
       prefetchSize: 24,
       itemsByIdHas: () => true,
+      cachedStampFor: (id) => stamps.get(id),
     });
     assert.equal(plan.kind, "ids-same");
     assert.equal(plan.needsStream, false);
+  });
+
+  it("plans ids-same with stream when body exists but stamp is newer", () => {
+    const plan = planApplyOffsetZeroPage({
+      pageItemIds: ["a", "b"],
+      pageStamps: ["100", "999"],
+      previousIds: ["a", "b"],
+      previousStreamEnd: 2,
+      prefetchSize: 24,
+      itemsByIdHas: () => true,
+      cachedStampFor: (id) => (id === "a" ? "100" : "200"),
+    });
+    assert.equal(plan.kind, "ids-same");
+    assert.equal(plan.needsStream, true);
+  });
+
+  it("plans ids-same with stream when cached stamp is missing", () => {
+    const plan = planApplyOffsetZeroPage({
+      pageItemIds: ["a"],
+      pageStamps: ["100"],
+      previousIds: ["a"],
+      previousStreamEnd: 1,
+      prefetchSize: 24,
+      itemsByIdHas: () => true,
+      cachedStampFor: () => undefined,
+    });
+    assert.equal(plan.kind, "ids-same");
+    assert.equal(plan.needsStream, true);
   });
 });
 

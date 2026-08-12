@@ -25,6 +25,7 @@ function entry(
   return {
     itemIds: [...partial.itemIds],
     itemsById,
+    bodyStamps: partial.bodyStamps ?? new Map(),
     streamEndOffset: partial.streamEndOffset ?? partial.itemIds.length,
     totalCount: partial.totalCount ?? partial.itemIds.length,
     thumbnailPaths: partial.thumbnailPaths ?? new Map(),

@@ -103,6 +103,7 @@ export function buildDashboardSnapshot(input: {
   totalCount: number;
   streamEndOffset: number;
   coverPaths?: DashboardSnapshot["cover_paths"];
+  bodyStamps?: Record<string, string>;
 }): DashboardSnapshot {
   return dashboardSnapshot.buildDashboardSnapshot(input);
 }

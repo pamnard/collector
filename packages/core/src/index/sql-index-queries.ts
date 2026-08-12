@@ -166,6 +166,41 @@ export async function listVaultItemSyncMeta(
   return rows;
 }
 
+/**
+ * Presentation stamps (file_mtime_ms) in the same order as `itemIds` (#623).
+ * Fail-fast when an indexed id lacks mtime — do not invent defaults.
+ */
+export async function listItemPresentationStampsByIds(
+  selector: SqlIndexSelector,
+  vaultId: string,
+  itemIds: string[],
+): Promise<string[]> {
+  if (itemIds.length === 0) {
+    return [];
+  }
+  const placeholders = sqlInPlaceholders(itemIds.length);
+  const rows = await selector.select<{
+    id: string;
+    file_mtime_ms: number | null;
+  }>(
+    `SELECT id, file_mtime_ms
+     FROM items
+     WHERE vault_id = ? AND id IN (${placeholders})`,
+    [vaultId, ...itemIds],
+  );
+  const byId = new Map(rows.map((row) => [row.id, row.file_mtime_ms]));
+  return itemIds.map((id) => {
+    if (!byId.has(id)) {
+      throw new Error(`Missing index row for item ${id}`);
+    }
+    const mtime = byId.get(id);
+    if (mtime === null || mtime === undefined) {
+      throw new Error(`Missing file_mtime_ms for indexed item ${id}`);
+    }
+    return String(mtime);
+  });
+}
+
 export async function listItemSyncMetaByIds(
   selector: SqlIndexSelector,
   vaultId: string,

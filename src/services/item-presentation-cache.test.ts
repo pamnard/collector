@@ -19,6 +19,7 @@ describe("invalidateItemPresentationCache", () => {
     setDashboardQueryCache(key, {
       itemIds: ["1"],
       itemsById: new Map([["1", { id: "1" } as ItemFile]]),
+      bodyStamps: new Map([["1", "1"]]),
       streamEndOffset: 1,
       totalCount: 1,
       thumbnailPaths: new Map(),

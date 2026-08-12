@@ -15,6 +15,9 @@ function createIndexMock(
     searchItemIds: vi.fn(async () => ["a.md"]),
     countSearchItemIds: vi.fn(async () => 1),
     listItemFilesByIds: vi.fn(async () => []),
+    listItemPresentationStampsByIds: vi.fn(async (_vaultId, itemIds) =>
+      itemIds.map((_, i) => String(1000 + i)),
+    ),
     listItemIdTitles: vi.fn(async () => []),
     getAdjacentItems: vi.fn(async () => ({ prev: null, next: null })),
     ...overrides,
@@ -40,6 +43,7 @@ describe("queryDashboardIndexPage", () => {
 
     expect(result).toEqual({
       itemIds: ["a.md", "b.md"],
+      stamps: ["1000", "1001"],
       totalCount: 2,
       offset: 0,
     });
@@ -80,6 +84,7 @@ describe("queryDashboardIndexPage", () => {
 
     expect(result).toEqual({
       itemIds: ["a.md"],
+      stamps: ["1000"],
       totalCount: 1,
       offset: 0,
     });
@@ -169,6 +174,7 @@ describe("createItemsSearchService.queryIndex", () => {
     expect(kickoff).toHaveBeenCalledWith("vault-1", "/vault");
     expect(result).toEqual({
       ids: ["a.md", "b.md"],
+      stamps: ["1000", "1001"],
       total: 2,
       offset: 0,
     });

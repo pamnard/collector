@@ -19,8 +19,18 @@ function stubItem(id: string, title = id): ItemFile {
 describe("mapIndexQueryResult", () => {
   it("maps IndexQueryResult fields to DashboardIndexPage", () => {
     assert.deepEqual(
-      mapIndexQueryResult({ ids: ["a", "b"], total: 10, offset: 0 }),
-      { itemIds: ["a", "b"], totalCount: 10, offset: 0 },
+      mapIndexQueryResult({
+        ids: ["a", "b"],
+        stamps: ["1", "2"],
+        total: 10,
+        offset: 0,
+      }),
+      {
+        itemIds: ["a", "b"],
+        stamps: ["1", "2"],
+        totalCount: 10,
+        offset: 0,
+      },
     );
   });
 });

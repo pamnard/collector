@@ -59,6 +59,7 @@ export type HostWireMessage =
 export const SERVICE_HOST_EVENTS = {
   vaultIndexSyncStatus: "vaultIndexSyncStatus",
   appSettings: "appSettings",
+  vaultPresentationChanged: "vaultPresentationChanged",
 } as const;
 
 const MAX_FRAME_BYTES = 1024 * 1024;

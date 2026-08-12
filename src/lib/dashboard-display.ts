@@ -7,6 +7,7 @@ export function mapIndexQueryResult(
 ): DashboardIndexPage {
   return {
     itemIds: result.ids,
+    stamps: result.stamps,
     totalCount: result.total,
     offset: result.offset,
   };

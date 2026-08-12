@@ -47,6 +47,7 @@ export interface DashboardSnapshotService {
     totalCount: number;
     streamEndOffset: number;
     coverPaths?: DashboardSnapshot["cover_paths"];
+    bodyStamps?: Record<string, string>;
   }): DashboardSnapshot;
 }
 
@@ -144,6 +145,7 @@ export function createDashboardSnapshotService(
         sort_dir: input.sort?.dir ?? "desc",
         item_ids: input.itemIds,
         items: input.items,
+        body_stamps: input.bodyStamps ?? {},
         total_count: input.totalCount,
         stream_end_offset: input.streamEndOffset,
         cover_paths: input.coverPaths ?? {},

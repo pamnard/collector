@@ -5,6 +5,8 @@ export const DASHBOARD_QUERY_CACHE_MAX = 16;
 export interface DashboardQueryCacheEntry {
   itemIds: string[];
   itemsById: Map<string, ItemFile>;
+  /** Index presentation stamps (file_mtime_ms) keyed by item id (#623). */
+  bodyStamps: Map<string, string>;
   streamEndOffset: number;
   totalCount: number;
   thumbnailPaths: Map<string, string | null>;
@@ -32,6 +34,7 @@ function cloneEntry(entry: DashboardQueryCacheEntry): DashboardQueryCacheEntry {
   return {
     itemIds: [...entry.itemIds],
     itemsById: new Map(entry.itemsById),
+    bodyStamps: new Map(entry.bodyStamps),
     thumbnailPaths: new Map(entry.thumbnailPaths),
     thumbnailStamps: new Map(entry.thumbnailStamps),
     streamEndOffset: entry.streamEndOffset,
@@ -74,6 +77,8 @@ export function removeItemIdFromDashboardQueryCache(itemId: string): void {
     const itemIds = entry.itemIds.filter((id) => id !== itemId);
     const itemsById = new Map(entry.itemsById);
     itemsById.delete(itemId);
+    const bodyStamps = new Map(entry.bodyStamps);
+    bodyStamps.delete(itemId);
     const thumbnailPaths = new Map(entry.thumbnailPaths);
     thumbnailPaths.delete(itemId);
     const thumbnailStamps = new Map(entry.thumbnailStamps);
@@ -82,6 +87,7 @@ export function removeItemIdFromDashboardQueryCache(itemId: string): void {
     touch(key, {
       itemIds,
       itemsById,
+      bodyStamps,
       thumbnailPaths,
       thumbnailStamps,
       streamEndOffset: Math.min(entry.streamEndOffset, itemIds.length),
