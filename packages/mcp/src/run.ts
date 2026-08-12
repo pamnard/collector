@@ -45,19 +45,20 @@ export async function runCollectorMcp(
 
   let client;
   try {
-    const transport = await createHttpHostTransport({
+    const httpTransport = await createHttpHostTransport({
       baseUrl: endpoint.baseUrl,
       token: endpoint.token,
       connectTimeoutMs: 2_000,
+      enableEvents: false,
     });
-    client = createCollectorHostServiceClient(transport);
+    client = createCollectorHostServiceClient(httpTransport);
   } catch (error) {
     io.stderr(formatHostConnectFailure(error, endpoint.baseUrl));
     return 1;
   }
 
   const server = createCollectorMcpServer(client);
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+  const stdioTransport = new StdioServerTransport();
+  await server.connect(stdioTransport);
   return 0;
 }

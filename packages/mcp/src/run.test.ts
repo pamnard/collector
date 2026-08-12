@@ -151,6 +151,7 @@ describe("runCollectorMcp (#556)", () => {
         baseUrl: "http://127.0.0.1:1",
         token: "secret",
         connectTimeoutMs: 2_000,
+        enableEvents: false,
       }),
     );
   });

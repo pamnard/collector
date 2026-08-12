@@ -87,12 +87,17 @@ describe("MCP endpoint parsing (#556)", () => {
   });
 });
 
-async function dialHttpClient(baseUrl: string, dataDir: string) {
+async function dialHttpClient(
+  baseUrl: string,
+  dataDir: string,
+  options: { enableEvents?: boolean } = {},
+) {
   const token = readFileSync(defaultServiceHostTokenPath(dataDir), "utf8").trim();
   const transport = await createHttpHostTransport({
     baseUrl,
     token,
     connectTimeoutMs: 2_000,
+    enableEvents: options.enableEvents ?? false,
   });
   return createCollectorHostServiceClient(transport);
 }
