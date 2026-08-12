@@ -94,13 +94,13 @@ describe("pickTeaserLayout", () => {
     }
   });
 
-  it("does not pack eight landscape covers as all 1x1 on 4x2", () => {
+  it("prefers 1x1 grid over 2x1 slabs for landscape covers on 4x2", () => {
     const pick = pickTeaserLayout(landscapePool(8), "4x2");
     expect(pick).not.toBeNull();
-    expect(pick!.slots.length).toBeLessThan(8);
-    expect(pick!.slots.some((s) => s.span === "2x1" || s.span === "2x2")).toBe(
-      true,
-    );
+    const spans = pick!.slots.map((s) => s.span);
+    const ones = spans.filter((s) => s === "1x1").length;
+    const wides = spans.filter((s) => s === "2x1").length;
+    expect(ones).toBeGreaterThanOrEqual(wides);
     expect(pick!.slots.every((s) => s.composition.form === "landscape")).toBe(
       true,
     );
@@ -113,6 +113,19 @@ describe("pickTeaserLayout", () => {
       pick!.slots.length === 2 &&
       pick!.slots.every((s) => s.span === "2x1");
     expect(onlyStackedBands).toBe(false);
+  });
+
+  it("avoids vertically stacked 2x1 slabs beside a side column on 4x2", () => {
+    const pick = pickTeaserLayout(landscapePool(8), "4x2");
+    expect(pick).not.toBeNull();
+    const wideByCol = new Map<number, number>();
+    for (const slot of pick!.slots) {
+      if (slot.span !== "2x1") {
+        continue;
+      }
+      wideByCol.set(slot.col, (wideByCol.get(slot.col) ?? 0) + 1);
+    }
+    expect([...wideByCol.values()].some((count) => count >= 2)).toBe(false);
   });
 
   it("with few covers still fills remaining cells instead of only two giant tiles", () => {

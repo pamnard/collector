@@ -48,7 +48,7 @@ export function RelatedTeaserSlot({
       onClick={() => onNavigate(teaser.id)}
     >
       {coverSrc ? (
-        <span className="relative min-h-0 w-full flex-1 overflow-hidden">
+        <span className="relative min-h-0 w-full flex-1 overflow-hidden rounded-lg">
           <img
             src={coverSrc}
             alt=""
