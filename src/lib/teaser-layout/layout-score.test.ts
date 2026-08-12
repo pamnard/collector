@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { TeaserComposition } from "./composition";
 import {
-  MIN_LAYOUT_SCORE,
   formSpanFitBonus,
   layoutDiversityBonus,
   layoutFullWidthStackPenalty,
   layoutLeftMassBonus,
+  layoutSpanOrientationBias,
   scoreLayout,
   scoreSlot,
 } from "./layout-score";
@@ -39,15 +39,25 @@ function composition(
 }
 
 describe("formSpanFitBonus", () => {
-  it("rewards portrait on tall 1x2 and landscape on wide 2x1", () => {
+  it("rewards portrait on tall 1x2; landscape prefers 2x2 over 2x1 slabs", () => {
     expect(formSpanFitBonus("portrait", "1x2")).toBeGreaterThan(
       formSpanFitBonus("portrait", "2x1"),
     );
-    expect(formSpanFitBonus("landscape", "2x1")).toBeGreaterThan(
-      formSpanFitBonus("landscape", "1x2"),
+    expect(formSpanFitBonus("landscape", "2x2")).toBeGreaterThan(
+      formSpanFitBonus("landscape", "2x1"),
     );
+    expect(formSpanFitBonus("landscape", "2x1")).toBe(0);
     expect(formSpanFitBonus("square", "1x1")).toBeGreaterThan(0);
     expect(formSpanFitBonus(null, "1x1")).toBe(0);
+  });
+});
+
+describe("layoutSpanOrientationBias", () => {
+  it("prefers tall 1x2 over wide 2x1", () => {
+    expect(layoutSpanOrientationBias(["1x2", "1x2"])).toBeGreaterThan(
+      layoutSpanOrientationBias(["2x1", "2x1"]),
+    );
+    expect(layoutSpanOrientationBias(["1x1", "2x2"])).toBe(0);
   });
 });
 
@@ -56,8 +66,12 @@ describe("layoutDiversityBonus / layoutLeftMassBonus", () => {
     expect(layoutDiversityBonus(["1x2", "1x2", "1x2", "1x2"])).toBeGreaterThan(
       0,
     );
-    expect(layoutDiversityBonus(["2x2", "1x1", "1x1", "2x1"])).toBeGreaterThan(
+    expect(layoutDiversityBonus(["2x2", "1x1", "1x1", "1x2"])).toBeGreaterThan(
       layoutDiversityBonus(["1x2", "1x2", "1x2", "1x2"]),
+    );
+    // A 2×1 slab must not inflate diversity over a pure 1×1 fill.
+    expect(layoutDiversityBonus(["1x1", "1x1", "1x1", "1x1"])).toBe(
+      layoutDiversityBonus(["2x1", "1x1", "1x1"]),
     );
   });
 
@@ -84,25 +98,63 @@ describe("layoutDiversityBonus / layoutLeftMassBonus", () => {
   it("penalizes stacked full-width bands but not a normal grid", () => {
     expect(
       layoutFullWidthStackPenalty(
-        [{ span: "2x1" }, { span: "2x1" }],
+        [
+          { span: "2x1", col: 0, row: 0 },
+          { span: "2x1", col: 0, row: 1 },
+        ],
         2,
       ),
     ).toBeGreaterThan(0);
     expect(
       layoutFullWidthStackPenalty(
         [
-          { span: "1x1" },
-          { span: "1x1" },
-          { span: "1x1" },
-          { span: "1x1" },
+          { span: "1x1", col: 0, row: 0 },
+          { span: "1x1", col: 1, row: 0 },
+          { span: "1x1", col: 0, row: 1 },
+          { span: "1x1", col: 1, row: 1 },
         ],
         2,
       ),
     ).toBe(0);
     expect(
       layoutFullWidthStackPenalty(
-        [{ span: "1x2" }, { span: "1x2" }],
+        [
+          { span: "1x2", col: 0, row: 0 },
+          { span: "1x2", col: 1, row: 0 },
+        ],
         2,
+      ),
+    ).toBe(0);
+  });
+
+  it("penalizes stacked wide 2x1 bands even when side slots exist", () => {
+    // Board 4×2: two landscape slabs stacked on the left + 1×1 column on the right.
+    // Old rule required ALL slots to be full-board bands → penalty was 0 here.
+    expect(
+      layoutFullWidthStackPenalty(
+        [
+          { span: "2x1", col: 0, row: 0 },
+          { span: "2x1", col: 0, row: 1 },
+          { span: "1x1", col: 2, row: 0 },
+          { span: "1x1", col: 3, row: 0 },
+          { span: "1x1", col: 2, row: 1 },
+          { span: "1x1", col: 3, row: 1 },
+        ],
+        4,
+      ),
+    ).toBeGreaterThan(0);
+    // Two wide bands side-by-side on one row are not a vertical stack.
+    expect(
+      layoutFullWidthStackPenalty(
+        [
+          { span: "2x1", col: 0, row: 0 },
+          { span: "2x1", col: 2, row: 0 },
+          { span: "1x1", col: 0, row: 1 },
+          { span: "1x1", col: 1, row: 1 },
+          { span: "1x1", col: 2, row: 1 },
+          { span: "1x1", col: 3, row: 1 },
+        ],
+        4,
       ),
     ).toBe(0);
   });
@@ -125,25 +177,25 @@ describe("scoreSlot / scoreLayout", () => {
       scoreSlot(
         t,
         composition({
-          span: "2x1",
+          span: "2x2",
           hasImage: true,
           form: "landscape",
           desc: "short",
           extra: "date",
         }),
       ),
-    ).toBe(3 + 1 + 1 + formSpanFitBonus("landscape", "2x1"));
+    ).toBe(3 + 1 + 1 + formSpanFitBonus("landscape", "2x2"));
   });
 
-  it("sums content scores so preferred wide tiles beat flat 1x1 and beat two giants", () => {
+  it("sums content so a landscape 2x2 beats a flat 1x1 and beats a 2x1 slab", () => {
     const landscape = teaser({
       id: "a",
       thumbnail: "a.webp",
       imageForm: "landscape",
       description: "Lead",
     });
-    const eightOnes = Array.from({ length: 8 }, (_, i) => ({
-      teaser: { ...landscape, id: `t${i}` },
+    const oneByOne = {
+      teaser: landscape,
       composition: composition({
         span: "1x1",
         hasImage: true,
@@ -151,9 +203,9 @@ describe("scoreSlot / scoreLayout", () => {
         desc: "short",
         extra: "date",
       }),
-    }));
-    const fourTwos = Array.from({ length: 4 }, (_, i) => ({
-      teaser: { ...landscape, id: `w${i}` },
+    };
+    const twoByOne = {
+      teaser: landscape,
       composition: composition({
         span: "2x1",
         hasImage: true,
@@ -161,9 +213,9 @@ describe("scoreSlot / scoreLayout", () => {
         desc: "short",
         extra: "date",
       }),
-    }));
-    const twoGiants = Array.from({ length: 2 }, (_, i) => ({
-      teaser: { ...landscape, id: `g${i}` },
+    };
+    const twoByTwo = {
+      teaser: landscape,
       composition: composition({
         span: "2x2",
         hasImage: true,
@@ -171,13 +223,91 @@ describe("scoreSlot / scoreLayout", () => {
         desc: "short",
         extra: "date",
       }),
-    }));
-    const content = (
-      slots: { teaser: RelatedTeaser; composition: TeaserComposition }[],
-    ) => slots.reduce((sum, s) => sum + scoreSlot(s.teaser, s.composition), 0);
-    expect(content(fourTwos)).toBeGreaterThan(content(eightOnes));
-    expect(content(fourTwos)).toBeGreaterThan(content(twoGiants));
-    expect(content(eightOnes)).toBeGreaterThanOrEqual(MIN_LAYOUT_SCORE);
+    };
+    expect(scoreSlot(twoByTwo.teaser, twoByTwo.composition)).toBeGreaterThan(
+      scoreSlot(oneByOne.teaser, oneByOne.composition),
+    );
+    expect(scoreSlot(twoByTwo.teaser, twoByTwo.composition)).toBeGreaterThan(
+      scoreSlot(twoByOne.teaser, twoByOne.composition),
+    );
+  });
+
+  it("soft-prefers two landscape 1x1 over one landscape 2x1 slab", () => {
+    const landscape = teaser({
+      id: "a",
+      thumbnail: "a.webp",
+      imageForm: "landscape",
+      description: "Lead",
+    });
+    const bottomRow = [
+      {
+        teaser: { ...landscape, id: "c" },
+        composition: composition({
+          span: "1x1" as const,
+          hasImage: true,
+          form: "landscape" as const,
+          desc: "short" as const,
+          extra: "date" as const,
+        }),
+        col: 0,
+        row: 1,
+      },
+      {
+        teaser: { ...landscape, id: "d" },
+        composition: composition({
+          span: "1x1" as const,
+          hasImage: true,
+          form: "landscape" as const,
+          desc: "short" as const,
+          extra: "date" as const,
+        }),
+        col: 1,
+        row: 1,
+      },
+    ];
+    const twoOnes = [
+      {
+        teaser: { ...landscape, id: "a" },
+        composition: composition({
+          span: "1x1",
+          hasImage: true,
+          form: "landscape",
+          desc: "short",
+          extra: "date",
+        }),
+        col: 0,
+        row: 0,
+      },
+      {
+        teaser: { ...landscape, id: "b" },
+        composition: composition({
+          span: "1x1",
+          hasImage: true,
+          form: "landscape",
+          desc: "short",
+          extra: "date",
+        }),
+        col: 1,
+        row: 0,
+      },
+      ...bottomRow,
+    ];
+    const oneWide = [
+      {
+        teaser: { ...landscape, id: "a" },
+        composition: composition({
+          span: "2x1",
+          hasImage: true,
+          form: "landscape",
+          desc: "short",
+          extra: "date",
+        }),
+        col: 0,
+        row: 0,
+      },
+      ...bottomRow,
+    ];
+    expect(scoreLayout(twoOnes, 2)).toBeGreaterThan(scoreLayout(oneWide, 2));
   });
 
   it("soft-prefers diverse span mix over mono when content is otherwise similar", () => {
@@ -198,6 +328,7 @@ describe("scoreSlot / scoreLayout", () => {
           extra: "date",
         }),
         col: 0,
+        row: 0,
       },
       {
         teaser: { ...landscape, id: "b" },
@@ -209,6 +340,7 @@ describe("scoreSlot / scoreLayout", () => {
           extra: "date",
         }),
         col: 2,
+        row: 0,
       },
       {
         teaser: { ...landscape, id: "c" },
@@ -220,6 +352,7 @@ describe("scoreSlot / scoreLayout", () => {
           extra: "date",
         }),
         col: 0,
+        row: 1,
       },
       {
         teaser: { ...landscape, id: "d" },
@@ -231,6 +364,7 @@ describe("scoreSlot / scoreLayout", () => {
           extra: "date",
         }),
         col: 2,
+        row: 1,
       },
     ];
     const diverse = [
@@ -244,6 +378,7 @@ describe("scoreSlot / scoreLayout", () => {
           extra: "date",
         }),
         col: 0,
+        row: 0,
       },
       {
         teaser: { ...landscape, id: "b" },
@@ -255,6 +390,7 @@ describe("scoreSlot / scoreLayout", () => {
           extra: "date",
         }),
         col: 2,
+        row: 0,
       },
       {
         teaser: { ...landscape, id: "c" },
@@ -266,6 +402,7 @@ describe("scoreSlot / scoreLayout", () => {
           extra: "date",
         }),
         col: 3,
+        row: 0,
       },
       {
         teaser: { ...landscape, id: "d" },
@@ -277,6 +414,7 @@ describe("scoreSlot / scoreLayout", () => {
           extra: "date",
         }),
         col: 2,
+        row: 1,
       },
       {
         teaser: { ...landscape, id: "e" },
@@ -288,8 +426,204 @@ describe("scoreSlot / scoreLayout", () => {
           extra: "date",
         }),
         col: 3,
+        row: 1,
       },
     ];
     expect(scoreLayout(diverse, 4)).toBeGreaterThan(scoreLayout(mono, 4));
+  });
+
+  it("soft-prefers a tall 1x2 pair over a wide 2x1 pair when content is equal", () => {
+    const plain = teaser({ id: "a", description: "Lead" });
+    const tall = [
+      {
+        teaser: { ...plain, id: "a" },
+        composition: composition({
+          span: "1x2",
+          desc: "short",
+          extra: "date",
+        }),
+        col: 0,
+        row: 0,
+      },
+      {
+        teaser: { ...plain, id: "b" },
+        composition: composition({
+          span: "1x2",
+          desc: "short",
+          extra: "date",
+        }),
+        col: 1,
+        row: 0,
+      },
+    ];
+    const wide = [
+      {
+        teaser: { ...plain, id: "a" },
+        composition: composition({
+          span: "2x1",
+          desc: "short",
+          extra: "date",
+        }),
+        col: 0,
+        row: 0,
+      },
+      {
+        teaser: { ...plain, id: "b" },
+        composition: composition({
+          span: "2x1",
+          desc: "short",
+          extra: "date",
+        }),
+        col: 0,
+        row: 1,
+      },
+    ];
+    expect(scoreLayout(tall, 2)).toBeGreaterThan(scoreLayout(wide, 2));
+  });
+
+  it("soft-demotes left stacked 2x1 slabs beside a side column", () => {
+    const landscape = teaser({
+      id: "a",
+      thumbnail: "a.webp",
+      imageForm: "landscape",
+      description: "Lead",
+    });
+    const stackedWide = [
+      {
+        teaser: { ...landscape, id: "a" },
+        composition: composition({
+          span: "2x1",
+          hasImage: true,
+          form: "landscape",
+          desc: "short",
+          extra: "date",
+        }),
+        col: 0,
+        row: 0,
+      },
+      {
+        teaser: { ...landscape, id: "b" },
+        composition: composition({
+          span: "2x1",
+          hasImage: true,
+          form: "landscape",
+          desc: "short",
+          extra: "date",
+        }),
+        col: 0,
+        row: 1,
+      },
+      {
+        teaser: { ...landscape, id: "c" },
+        composition: composition({
+          span: "1x1",
+          hasImage: true,
+          form: "landscape",
+          desc: "short",
+          extra: "date",
+        }),
+        col: 2,
+        row: 0,
+      },
+      {
+        teaser: { ...landscape, id: "d" },
+        composition: composition({
+          span: "1x1",
+          hasImage: true,
+          form: "landscape",
+          desc: "short",
+          extra: "date",
+        }),
+        col: 3,
+        row: 0,
+      },
+      {
+        teaser: { ...landscape, id: "e" },
+        composition: composition({
+          span: "1x1",
+          hasImage: true,
+          form: "landscape",
+          desc: "short",
+          extra: "date",
+        }),
+        col: 2,
+        row: 1,
+      },
+      {
+        teaser: { ...landscape, id: "f" },
+        composition: composition({
+          span: "1x1",
+          hasImage: true,
+          form: "landscape",
+          desc: "short",
+          extra: "date",
+        }),
+        col: 3,
+        row: 1,
+      },
+    ];
+    const mixed = [
+      {
+        teaser: { ...landscape, id: "a" },
+        composition: composition({
+          span: "2x2",
+          hasImage: true,
+          form: "landscape",
+          desc: "short",
+          extra: "date",
+        }),
+        col: 0,
+        row: 0,
+      },
+      {
+        teaser: { ...landscape, id: "b" },
+        composition: composition({
+          span: "1x1",
+          hasImage: true,
+          form: "landscape",
+          desc: "short",
+          extra: "date",
+        }),
+        col: 2,
+        row: 0,
+      },
+      {
+        teaser: { ...landscape, id: "c" },
+        composition: composition({
+          span: "1x1",
+          hasImage: true,
+          form: "landscape",
+          desc: "short",
+          extra: "date",
+        }),
+        col: 3,
+        row: 0,
+      },
+      {
+        teaser: { ...landscape, id: "d" },
+        composition: composition({
+          span: "1x1",
+          hasImage: true,
+          form: "landscape",
+          desc: "short",
+          extra: "date",
+        }),
+        col: 2,
+        row: 1,
+      },
+      {
+        teaser: { ...landscape, id: "e" },
+        composition: composition({
+          span: "1x1",
+          hasImage: true,
+          form: "landscape",
+          desc: "short",
+          extra: "date",
+        }),
+        col: 3,
+        row: 1,
+      },
+    ];
+    expect(scoreLayout(mixed, 4)).toBeGreaterThan(scoreLayout(stackedWide, 4));
   });
 });
