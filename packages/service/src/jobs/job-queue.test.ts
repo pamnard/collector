@@ -223,6 +223,43 @@ describe("createJobQueue (#628 / #629)", () => {
     await queue2.stop();
   });
 
+  it("reclaims running jobs after crash-style reopen (#640)", async () => {
+    const dbPath = tempJobsPath();
+    const sql = NodeSqliteExecutor.open(dbPath);
+    await runJobsMigrations(sql);
+    await sql.execute(
+      `INSERT INTO jobs (
+         id, type, payload_json, status, priority, idempotency_key,
+         attempts, max_attempts, available_at, started_at, created_at, updated_at
+       ) VALUES (
+         'orphan-running', '__test_noop', '{}', 'running', 0, NULL,
+         1, 3, datetime('now'), datetime('now'), datetime('now'), datetime('now')
+       )`,
+    );
+    await sql.close();
+
+    const queue = await createJobQueue({
+      dbPath,
+      registry: createHostJobRegistry(),
+      pollIntervalMs: 20,
+      timeoutMs: 1000,
+    });
+    expect(await queue.stats()).toMatchObject({
+      running: 1,
+      pending: 0,
+      succeeded: 0,
+    });
+    queue.start();
+    await waitFor(async () => (await queue.stats()).succeeded === 1);
+    expect(await queue.stats()).toMatchObject({
+      running: 0,
+      pending: 0,
+      succeeded: 1,
+      failed: 0,
+    });
+    await queue.stop();
+  });
+
   it("index reset does not touch jobs.db", async () => {
     const dir = mkdtempSync(join(tmpdir(), "collector-jobs-vs-index-"));
     dirs.push(dir);
