@@ -15,8 +15,8 @@ export interface SyncPluginWakePolicy {
 
 export interface SyncPluginWakeControllerDeps {
   enqueueSyncPluginPull: (pluginId: string) => Promise<unknown>;
-  /** Defaults to console.error with pluginId context. */
-  logError?: (pluginId: string, error: unknown) => void;
+  /** Surface enqueue failures (host wires AlertStack via reportEnqueueFailure). */
+  onEnqueueFailure: (pluginId: string, error: unknown) => void;
   setIntervalFn?: typeof setInterval;
   clearIntervalFn?: typeof clearInterval;
 }
@@ -28,17 +28,11 @@ export interface SyncPluginWakeController {
   dispose(): void;
 }
 
-function defaultLogError(pluginId: string, error: unknown): void {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(`[sync-plugin-wake] ${pluginId}: ${message}`);
-}
-
 export function createSyncPluginWakeController(
   deps: SyncPluginWakeControllerDeps,
 ): SyncPluginWakeController {
   const policies = new Map<string, SyncPluginWakePolicy>();
   const timers = new Map<string, ReturnType<typeof setInterval>>();
-  const logError = deps.logError ?? defaultLogError;
   const setIntervalFn = deps.setIntervalFn ?? setInterval;
   const clearIntervalFn = deps.clearIntervalFn ?? clearInterval;
   let disposed = false;
@@ -48,7 +42,7 @@ export function createSyncPluginWakeController(
       try {
         await deps.enqueueSyncPluginPull(pluginId);
       } catch (error) {
-        logError(pluginId, error);
+        deps.onEnqueueFailure(pluginId, error);
       }
     })();
   };

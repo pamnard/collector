@@ -62,7 +62,7 @@ import {
   createJobQueue,
   type JobQueue,
 } from "../jobs/job-queue.js";
-import { createJobPermanentFailureStore } from "../job-permanent-failure.js";
+import { createJobPermanentFailureStore, reportEnqueueFailure } from "../job-permanent-failure.js";
 import { phaseBHandlerBindings } from "../jobs/phase-b-bindings.js";
 import {
   createVaultIndexSyncHandler,
@@ -81,7 +81,7 @@ import {
   enqueueSyncPluginPull,
   takeSyncPluginPullResult,
 } from "../jobs/handlers/sync-plugin-pull.js";
-import { enqueueAndAwaitResult } from "../jobs/job-wait.js";
+import { enqueueAndAwaitResult, waitForJobTerminal } from "../jobs/job-wait.js";
 import {
   createGenerateCoverHandler,
   enqueueGenerateCover,
@@ -271,6 +271,9 @@ export function createServiceDomainRuntime(
       enqueueReindexVaultBatch(requireJobs(), payload),
     forceVaultIndexResync: (vaultId, vaultPath) => {
       forceVaultIndexResync(vaultId, vaultPath);
+    },
+    onEnqueueFailure: (error) => {
+      reportEnqueueFailure(jobPermanentFailure, "reindexVaultBatch", error);
     },
   });
 
@@ -574,7 +577,7 @@ export function createServiceDomainRuntime(
       vaultPath,
       reason,
     }).catch((error: unknown) => {
-      console.error("[collector] vaultIndexSync enqueue failed:", error);
+      reportEnqueueFailure(jobPermanentFailure, "vaultIndexSync", error);
     });
   }
 
@@ -655,8 +658,8 @@ export function createServiceDomainRuntime(
   const mediaCover = createMediaCoverService({
     resolveActiveVault: () => vaults.resolveActiveVault(),
     getContext,
-    generateCoverFromMedia,
     enqueueGenerateCover: (input) => enqueueGenerateCover(requireJobs(), input),
+    waitForCoverJob: (jobId) => waitForJobTerminal(requireJobs(), jobId),
     resolveThumbnailPathsBatch: (vaultPath, items) =>
       resolveItemThumbnailPathsBatch(getContext().fs, vaultPath, items),
     onVaultPresentationChanged: (vaultId) =>
@@ -793,6 +796,9 @@ export function createServiceDomainRuntime(
   const syncPluginWakeInner = createSyncPluginWakeController({
     enqueueSyncPluginPull: (pluginId) =>
       enqueueSyncPluginPull(requireJobs(), { pluginId }),
+    onEnqueueFailure: (_pluginId, error) => {
+      reportEnqueueFailure(jobPermanentFailure, "syncPluginPull", error);
+    },
   });
 
   const telegramWakeOverridden =

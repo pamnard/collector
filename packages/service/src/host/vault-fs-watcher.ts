@@ -20,6 +20,8 @@ export interface NodeVaultFilesystemWatcherDeps {
     payload: ReindexVaultBatchJobPayload,
   ) => Promise<unknown>;
   forceVaultIndexResync: (vaultId: string, vaultPath: string) => void;
+  /** Surface enqueue failures (#639) before force recovery. */
+  onEnqueueFailure: (error: unknown) => void;
 }
 
 export interface NodeVaultFilesystemWatcher {
@@ -65,7 +67,7 @@ export function createNodeVaultFilesystemWatcher(
     }
     watchEnqueuePromise = drainWatchQueue(vaultId, vaultPath)
       .catch((error: unknown) => {
-        console.error("[collector] vault watch enqueue failed:", error);
+        deps.onEnqueueFailure(error);
         deps.forceVaultIndexResync(vaultId, vaultPath);
       })
       .finally(() => {

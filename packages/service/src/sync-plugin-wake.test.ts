@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSyncPluginWakeController } from "./sync-plugin-wake.js";
 
+function noopEnqueueFailure(): void {
+  // tests that do not assert failures
+}
+
 describe("createSyncPluginWakeController (#31)", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -8,7 +12,10 @@ describe("createSyncPluginWakeController (#31)", () => {
 
   it("notifyVaultReady enqueues onVaultReady plugins", async () => {
     const enqueueSyncPluginPull = vi.fn(async () => undefined);
-    const wake = createSyncPluginWakeController({ enqueueSyncPluginPull });
+    const wake = createSyncPluginWakeController({
+      enqueueSyncPluginPull,
+      onEnqueueFailure: noopEnqueueFailure,
+    });
     wake.register("a", { onVaultReady: true });
     wake.register("b", { onVaultReady: false });
 
@@ -28,7 +35,10 @@ describe("createSyncPluginWakeController (#31)", () => {
     const enqueueSyncPluginPull = vi.fn(async () => {
       await gate;
     });
-    const wake = createSyncPluginWakeController({ enqueueSyncPluginPull });
+    const wake = createSyncPluginWakeController({
+      enqueueSyncPluginPull,
+      onEnqueueFailure: noopEnqueueFailure,
+    });
     wake.register("a", { onVaultReady: true });
 
     const ready = wake.notifyVaultReady();
@@ -41,7 +51,10 @@ describe("createSyncPluginWakeController (#31)", () => {
 
   it("notifyVaultReady is no-op with no registrations", async () => {
     const enqueueSyncPluginPull = vi.fn(async () => undefined);
-    const wake = createSyncPluginWakeController({ enqueueSyncPluginPull });
+    const wake = createSyncPluginWakeController({
+      enqueueSyncPluginPull,
+      onEnqueueFailure: noopEnqueueFailure,
+    });
     await wake.notifyVaultReady();
     expect(enqueueSyncPluginPull).not.toHaveBeenCalled();
     wake.dispose();
@@ -53,10 +66,10 @@ describe("createSyncPluginWakeController (#31)", () => {
         throw new Error("boom");
       }
     });
-    const logError = vi.fn();
+    const onEnqueueFailure = vi.fn();
     const wake = createSyncPluginWakeController({
       enqueueSyncPluginPull,
-      logError,
+      onEnqueueFailure,
     });
     wake.register("bad", { onVaultReady: true });
     wake.register("good", { onVaultReady: true });
@@ -65,7 +78,7 @@ describe("createSyncPluginWakeController (#31)", () => {
     await vi.waitFor(() => {
       expect(enqueueSyncPluginPull).toHaveBeenCalledWith("bad");
       expect(enqueueSyncPluginPull).toHaveBeenCalledWith("good");
-      expect(logError).toHaveBeenCalledWith("bad", expect.any(Error));
+      expect(onEnqueueFailure).toHaveBeenCalledWith("bad", expect.any(Error));
     });
     wake.dispose();
   });
@@ -78,7 +91,10 @@ describe("createSyncPluginWakeController (#31)", () => {
     const enqueueSyncPluginPull = vi.fn(async () => {
       await gate;
     });
-    const wake = createSyncPluginWakeController({ enqueueSyncPluginPull });
+    const wake = createSyncPluginWakeController({
+      enqueueSyncPluginPull,
+      onEnqueueFailure: noopEnqueueFailure,
+    });
     wake.register("a", { onVaultReady: true });
 
     const first = wake.notifyVaultReady();
@@ -96,7 +112,10 @@ describe("createSyncPluginWakeController (#31)", () => {
   it("intervalMs repeatedly enqueues sync plugin pulls", async () => {
     vi.useFakeTimers();
     const enqueueSyncPluginPull = vi.fn(async () => undefined);
-    const wake = createSyncPluginWakeController({ enqueueSyncPluginPull });
+    const wake = createSyncPluginWakeController({
+      enqueueSyncPluginPull,
+      onEnqueueFailure: noopEnqueueFailure,
+    });
     wake.register("a", { onVaultReady: false, intervalMs: 1000 });
 
     await vi.advanceTimersByTimeAsync(1000);
@@ -109,7 +128,10 @@ describe("createSyncPluginWakeController (#31)", () => {
   it("dispose stops timers", async () => {
     vi.useFakeTimers();
     const enqueueSyncPluginPull = vi.fn(async () => undefined);
-    const wake = createSyncPluginWakeController({ enqueueSyncPluginPull });
+    const wake = createSyncPluginWakeController({
+      enqueueSyncPluginPull,
+      onEnqueueFailure: noopEnqueueFailure,
+    });
     wake.register("a", { onVaultReady: false, intervalMs: 1000 });
     wake.dispose();
 
@@ -120,6 +142,7 @@ describe("createSyncPluginWakeController (#31)", () => {
   it("register rejects invalid intervalMs", () => {
     const wake = createSyncPluginWakeController({
       enqueueSyncPluginPull: async () => undefined,
+      onEnqueueFailure: noopEnqueueFailure,
     });
     expect(() =>
       wake.register("a", { onVaultReady: false, intervalMs: 0 }),

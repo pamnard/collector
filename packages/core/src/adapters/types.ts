@@ -245,11 +245,15 @@ export type ItemEmbeddingsPort = {
 export interface VaultContext {
   fs: FileSystemAdapter;
   index: VaultIndexAdapter;
-  /** When set, item index writes refresh semantic vectors (#413). */
+  /**
+   * Semantic vector compute port used by the refreshEmbeddings job handler.
+   * Must not be called from write/sync paths — use `embeddingRefreshJobs` (#633 / #639).
+   */
   embeddings?: ItemEmbeddingsPort;
   /**
-   * When set, embedding refresh is enqueued as a durable job (#633)
-   * instead of awaiting vectors on the write/sync path.
+   * When set, embedding refresh is enqueued as a durable job (#633).
+   * Required whenever semantic refresh is enabled; inline `embeddings.refresh`
+   * on write/sync is forbidden (#639).
    */
   embeddingRefreshJobs?: {
     enqueue(
