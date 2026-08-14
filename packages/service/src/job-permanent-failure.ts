@@ -1,5 +1,5 @@
 /**
- * Job permanent-failure fan-out (#630).
+ * Job permanent-failure fan-out.
  * Runner notifies once when a job reaches terminal `failed`; host broadcasts to UI.
  */
 

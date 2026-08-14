@@ -406,6 +406,7 @@ describe("createJobQueue (#628 / #629)", () => {
     expect(calls).toBe(2);
     expect(failures).toHaveLength(1);
     expect(failures[0]?.type).toBe("exhaust");
+    expect(failures[0]?.attempts).toBe(2);
     await queue.stop();
   });
 

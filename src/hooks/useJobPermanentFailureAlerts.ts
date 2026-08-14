@@ -3,7 +3,7 @@ import { getCollectorService } from "../services/collector-client";
 import { useAlerts } from "../components/alerts/AlertBusProvider";
 
 /**
- * Permanent job failures → AlertStack only (#630).
+ * Permanent job failures → AlertStack only.
  * Must run under AlertBusProvider.
  */
 export function useJobPermanentFailureAlerts(): void {

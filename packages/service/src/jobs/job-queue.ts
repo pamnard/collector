@@ -1,3 +1,4 @@
+import type { JobPermanentFailure } from "@collector/api";
 import {
   JOB_TYPE_CATALOG,
   testNoopJobType,
@@ -10,10 +11,7 @@ import {
   type JobRegistry,
   type TypedJobHandler,
 } from "./job-registry.js";
-import {
-  createJobRunner,
-  type JobPermanentFailureInfo,
-} from "./job-runner.js";
+import { createJobRunner } from "./job-runner.js";
 import { createJobStore, type JobStats, type JobStatusCounts } from "./job-store.js";
 
 export type {
@@ -22,7 +20,6 @@ export type {
   JobHandlerResult,
 } from "./job-types.js";
 export type { JobStats, JobStatusCounts };
-export type { JobPermanentFailureInfo };
 export type { JobRegistry, TypedJobHandler } from "./job-registry.js";
 export { createJobRegistry } from "./job-registry.js";
 
@@ -56,8 +53,8 @@ export interface CreateJobQueueOptions {
   pollIntervalMs?: number;
   now?: () => Date;
   createId?: () => string;
-  /** Fired once when a job reaches terminal `failed` (#630). */
-  onPermanentFailure?: (info: JobPermanentFailureInfo) => void;
+  /** Fired once when a job reaches terminal `failed`. */
+  onPermanentFailure?: (info: JobPermanentFailure) => void;
 }
 
 const DEFAULT_CONCURRENCY = 2;

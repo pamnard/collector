@@ -186,7 +186,7 @@ export function createJobStore(db: SqlMigrator) {
     availableAt: string;
     error: string;
     burnAttempt: boolean;
-  }): Promise<"pending" | "failed"> {
+  }): Promise<{ status: "pending" | "failed"; attempts: number }> {
     const job = await getJob(input.id);
     if (!job) {
       throw new Error(`job not found: ${input.id}`);
@@ -199,7 +199,7 @@ export function createJobStore(db: SqlMigrator) {
          WHERE id = ?`,
         [attempts, input.nowIso, input.nowIso, input.error, input.id],
       );
-      return "failed";
+      return { status: "failed", attempts };
     }
     await db.execute(
       `UPDATE jobs
@@ -214,7 +214,7 @@ export function createJobStore(db: SqlMigrator) {
         input.id,
       ],
     );
-    return "pending";
+    return { status: "pending", attempts };
   }
 
   return {

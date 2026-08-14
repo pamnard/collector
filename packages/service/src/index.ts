@@ -52,11 +52,6 @@ export {
 } from "./vault-presentation-changed.js";
 
 export {
-  createJobPermanentFailureStore,
-  type JobPermanentFailureStore,
-} from "./job-permanent-failure.js";
-
-export {
   createAppSettingsService,
   type AppSettingsService,
   type AppSettingsServiceDeps,
