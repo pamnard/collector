@@ -7,9 +7,39 @@ import {
   reindexVaultBatchJobType,
   type ReindexVaultBatchJobPayload,
 } from "@collector/shared";
+import { createHash } from "node:crypto";
 import type { JobQueue, EnqueueResult } from "../job-queue.js";
 import type { TypedJobHandler } from "../job-registry.js";
 import type { JobHandlerResult } from "../job-types.js";
+
+function failFromReport(
+  label: string,
+  report: { errors: Array<{ message: string }> },
+): JobHandlerResult | null {
+  if (report.errors.length === 0) {
+    return null;
+  }
+  const summary = report.errors.map((e) => e.message).join("; ");
+  return {
+    status: "fail",
+    retryable: true,
+    error: `${label}: ${summary}`,
+  };
+}
+
+function batchIdempotencyKey(
+  vaultId: string,
+  itemIds: string[],
+  folderPaths: string[],
+): string {
+  const digest = createHash("sha256")
+    .update([...itemIds].sort().join("\0"))
+    .update("\n")
+    .update([...folderPaths].sort().join("\0"))
+    .digest("hex")
+    .slice(0, 16);
+  return `reindexVaultBatch:${vaultId}:${digest}`;
+}
 
 export function createReindexVaultBatchHandler(deps: {
   getContext: () => VaultContext;
@@ -27,13 +57,9 @@ export function createReindexVaultBatchHandler(deps: {
         vaultId,
         folderPath,
       );
-      if (report.errors.length > 0) {
-        const summary = report.errors.map((e) => e.message).join("; ");
-        return {
-          status: "fail",
-          retryable: true,
-          error: `folder prefix index sync failed: ${summary}`,
-        };
+      const failure = failFromReport("folder prefix index sync failed", report);
+      if (failure) {
+        return failure;
       }
     }
 
@@ -44,13 +70,9 @@ export function createReindexVaultBatchHandler(deps: {
         vaultId,
         itemIds,
       );
-      if (report.errors.length > 0) {
-        const summary = report.errors.map((e) => e.message).join("; ");
-        return {
-          status: "fail",
-          retryable: true,
-          error: `targeted index sync failed: ${summary}`,
-        };
+      const failure = failFromReport("targeted index sync failed", report);
+      if (failure) {
+        return failure;
       }
     }
 
@@ -64,11 +86,13 @@ export function enqueueReindexVaultBatch(
   queue: JobQueue,
   payload: ReindexVaultBatchJobPayload,
 ): Promise<EnqueueResult> {
-  const itemKey = [...payload.itemIds].sort().join(",");
-  const folderKey = [...payload.folderPaths].sort().join(",");
   return queue.enqueue({
     type: "reindexVaultBatch",
     payload,
-    idempotencyKey: `reindexVaultBatch:${payload.vaultId}:${itemKey}:${folderKey}`,
+    idempotencyKey: batchIdempotencyKey(
+      payload.vaultId,
+      payload.itemIds,
+      payload.folderPaths,
+    ),
   });
 }

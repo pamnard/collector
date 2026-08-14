@@ -18,7 +18,12 @@ import {
   type TypedJobHandler,
 } from "./job-registry.js";
 import { createJobRunner } from "./job-runner.js";
-import { createJobStore, type JobStats, type JobStatusCounts } from "./job-store.js";
+import {
+  createJobStore,
+  type JobRow,
+  type JobStats,
+  type JobStatusCounts,
+} from "./job-store.js";
 import { boundPhaseBHandler } from "./phase-b-bindings.js";
 
 export type {
@@ -26,7 +31,7 @@ export type {
   JobHandlerInput,
   JobHandlerResult,
 } from "./job-types.js";
-export type { JobStats, JobStatusCounts };
+export type { JobStats, JobStatusCounts, JobRow };
 export type { JobRegistry, TypedJobHandler } from "./job-registry.js";
 export { createJobRegistry } from "./job-registry.js";
 
@@ -47,7 +52,7 @@ export interface EnqueueResult {
 export interface JobQueue {
   enqueue(input: EnqueueInput): Promise<EnqueueResult>;
   cancel(id: string): Promise<boolean>;
-  getJob(id: string): Promise<import("./job-store.js").JobRow | null>;
+  getJob(id: string): Promise<JobRow | null>;
   stats(): Promise<JobStats>;
   start(): void;
   stop(): Promise<void>;

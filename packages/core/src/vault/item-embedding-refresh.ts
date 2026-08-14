@@ -34,6 +34,27 @@ export function embeddingRefreshInputFromItem(
   };
 }
 
+/** Flush a batch of embedding inputs via jobs (preferred) or inline port. */
+export async function flushEmbeddingRefresh(
+  ctx: VaultContext,
+  vaultId: string,
+  inputs: ItemEmbeddingRefreshInput[],
+): Promise<void> {
+  if (inputs.length === 0) {
+    return;
+  }
+  if (ctx.embeddingRefreshJobs) {
+    await ctx.embeddingRefreshJobs.enqueue(
+      vaultId,
+      inputs.map((input) => input.itemId),
+    );
+    return;
+  }
+  if (ctx.embeddings) {
+    await ctx.embeddings.refresh(inputs);
+  }
+}
+
 /** Best-effort embedding refresh after an item index write (#413 / #633). */
 export async function refreshItemEmbeddingAfterWrite(
   ctx: VaultContext,

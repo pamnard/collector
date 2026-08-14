@@ -26,6 +26,7 @@ import {
 } from "./vault-fs-batch.js";
 import {
   embeddingRefreshInputFromItem,
+  flushEmbeddingRefresh,
   tagNamesForItem,
 } from "./item-embedding-refresh.js";
 
@@ -408,14 +409,7 @@ export async function syncIndexItemsFromFilesystem(
         report.contentIndexed += inputs.length;
       }
       if (embeddingInputs.length > 0) {
-        if (ctx.embeddingRefreshJobs) {
-          await ctx.embeddingRefreshJobs.enqueue(
-            vaultId,
-            embeddingInputs.map((input) => input.itemId),
-          );
-        } else if (ctx.embeddings) {
-          await ctx.embeddings.refresh(embeddingInputs);
-        }
+        await flushEmbeddingRefresh(ctx, vaultId, embeddingInputs);
       }
     } catch (error) {
       for (const input of inputs) {

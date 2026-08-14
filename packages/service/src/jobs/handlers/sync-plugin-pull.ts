@@ -6,13 +6,12 @@ import {
 import type { JobQueue, EnqueueResult } from "../job-queue.js";
 import type { TypedJobHandler } from "../job-registry.js";
 import type { JobHandlerResult } from "../job-types.js";
+import { createJobResultMailbox } from "../job-result-mailbox.js";
 
-const pullResultsByJobId = new Map<string, SyncNowResult>();
+const pullResults = createJobResultMailbox<SyncNowResult>();
 
 export function takeSyncPluginPullResult(jobId: string): SyncNowResult | null {
-  const result = pullResultsByJobId.get(jobId) ?? null;
-  pullResultsByJobId.delete(jobId);
-  return result;
+  return pullResults.take(jobId);
 }
 
 export function createSyncPluginPullHandler(deps: {
@@ -20,7 +19,7 @@ export function createSyncPluginPullHandler(deps: {
 }): TypedJobHandler<typeof syncPluginPullJobType.payload> {
   return async (job): Promise<JobHandlerResult> => {
     const result = await deps.syncNow(job.payload.pluginId);
-    pullResultsByJobId.set(job.id, result);
+    pullResults.set(job.id, result);
     return { status: "ok" };
   };
 }
@@ -36,25 +35,4 @@ export function enqueueSyncPluginPull(
   });
 }
 
-export async function waitForJobTerminal(
-  queue: JobQueue,
-  jobId: string,
-  timeoutMs = 120_000,
-): Promise<"succeeded" | "failed" | "cancelled"> {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    const row = await queue.getJob(jobId);
-    if (!row) {
-      throw new Error(`job not found: ${jobId}`);
-    }
-    if (
-      row.status === "succeeded" ||
-      row.status === "failed" ||
-      row.status === "cancelled"
-    ) {
-      return row.status;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error(`job wait timed out: ${jobId}`);
-}
+export { waitForJobTerminal } from "../job-wait.js";

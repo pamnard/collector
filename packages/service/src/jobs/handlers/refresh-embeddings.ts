@@ -3,6 +3,7 @@ import {
   type RefreshEmbeddingsJobPayload,
 } from "@collector/shared";
 import type { ItemEmbeddingRefreshInput } from "@collector/core";
+import { createHash } from "node:crypto";
 import type { JobQueue, EnqueueResult } from "../job-queue.js";
 import type { TypedJobHandler } from "../job-registry.js";
 import type { JobHandlerResult } from "../job-types.js";
@@ -31,10 +32,13 @@ export function enqueueRefreshEmbeddings(
   queue: JobQueue,
   payload: RefreshEmbeddingsJobPayload,
 ): Promise<EnqueueResult> {
-  const key = [...payload.itemIds].sort().join(",");
+  const digest = createHash("sha256")
+    .update([...payload.itemIds].sort().join("\0"))
+    .digest("hex")
+    .slice(0, 16);
   return queue.enqueue({
     type: "refreshEmbeddings",
     payload,
-    idempotencyKey: `refreshEmbeddings:${payload.vaultId}:${key}`,
+    idempotencyKey: `refreshEmbeddings:${payload.vaultId}:${digest}`,
   });
 }

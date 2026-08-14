@@ -47,7 +47,11 @@ import {
   loadTelegramPluginConfig,
   markTelegramLastSyncAt,
 } from "../plugins/telegram/index.js";
-import type { TelegramSyncPort, SyncPluginsPort } from "@collector/api";
+import type {
+  ImportDroppedFilesInput,
+  SyncPluginsPort,
+  TelegramSyncPort,
+} from "@collector/api";
 import {
   createVaultIndexSyncStatusStore,
   type VaultIndexSyncStatusStore,
@@ -80,8 +84,8 @@ import {
   createSyncPluginPullHandler,
   enqueueSyncPluginPull,
   takeSyncPluginPullResult,
-  waitForJobTerminal,
 } from "../jobs/handlers/sync-plugin-pull.js";
+import { enqueueAndAwaitResult } from "../jobs/job-wait.js";
 import {
   createGenerateCoverHandler,
   enqueueGenerateCover,
@@ -660,15 +664,17 @@ export function createServiceDomainRuntime(
       vaultPresentationChanged.notify(vaultId),
   });
 
+  async function requireActiveVaultPath(vaultId: string): Promise<string> {
+    const active = await vaults.resolveActiveVault();
+    if (active.vault.id !== vaultId) {
+      throw new Error(`active vault mismatch for job: ${vaultId}`);
+    }
+    return active.path;
+  }
+
   phaseBHandlerBindings.generateCover = createGenerateCoverHandler({
     getContext,
-    resolveVaultPath: async (vaultId) => {
-      const active = await vaults.resolveActiveVault();
-      if (active.vault.id !== vaultId) {
-        throw new Error(`active vault mismatch for cover job: ${vaultId}`);
-      }
-      return active.path;
-    },
+    resolveVaultPath: requireActiveVaultPath,
     generateCoverFromMedia,
     onVaultPresentationChanged: (vaultId) =>
       vaultPresentationChanged.notify(vaultId),
@@ -677,22 +683,20 @@ export function createServiceDomainRuntime(
   phaseBHandlerBindings.refreshEmbeddings = createRefreshEmbeddingsHandler({
     refresh: (inputs) => itemEmbeddings.refresh(inputs),
     loadRefreshInputs: async (vaultId, itemIds) => {
-      const active = await vaults.resolveActiveVault();
-      if (active.vault.id !== vaultId) {
-        throw new Error(`active vault mismatch for embeddings job: ${vaultId}`);
-      }
+      const vaultPath = await requireActiveVaultPath(vaultId);
       const ctx = getContext();
-      const maps = await loadTagMaps(ctx.fs, active.path);
-      const inputs = [];
+      const maps = await loadTagMaps(ctx.fs, vaultPath);
+      const inputs: import("@collector/core").ItemEmbeddingRefreshInput[] = [];
       for (const itemId of itemIds) {
-        const item = await readItemFile(
-          ctx.fs,
-          active.path,
-          itemId,
-          vaultId,
-        ).catch(() => null);
-        if (!item) {
-          continue;
+        let item;
+        try {
+          item = await readItemFile(ctx.fs, vaultPath, itemId, vaultId);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (/not found/i.test(message)) {
+            continue;
+          }
+          throw error instanceof Error ? error : new Error(message);
         }
         inputs.push(
           embeddingRefreshInputFromItem(
@@ -714,9 +718,7 @@ export function createServiceDomainRuntime(
   });
 
   const dropImport = {
-    async importDroppedFiles(input: Parameters<
-      ReturnType<typeof createDropImportService>["importDroppedFiles"]
-    >[0]) {
+    async importDroppedFiles(input: ImportDroppedFilesInput) {
       const active = await vaults.resolveActiveVault();
       const stagingDir = join(
         dataDir,
@@ -736,21 +738,19 @@ export function createServiceDomainRuntime(
         if (paths.length === 0) {
           return { createdIds: [] };
         }
-        const { id } = await enqueueDropImportBatch(requireJobs(), {
-          vaultId: active.vault.id,
-          stagingDir,
-          paths,
-          targetFolderId: input.folder_path?.trim() || null,
+        return enqueueAndAwaitResult({
+          queue: requireJobs(),
+          label: "dropImportBatch",
+          takeResult: takeDropImportResult,
+          acceptFailed: true,
+          enqueue: () =>
+            enqueueDropImportBatch(requireJobs(), {
+              vaultId: active.vault.id,
+              stagingDir,
+              paths,
+              targetFolderId: input.folder_path?.trim() || null,
+            }),
         });
-        const terminal = await waitForJobTerminal(requireJobs(), id);
-        const result = takeDropImportResult(id);
-        if (!result) {
-          throw new Error(`dropImportBatch ${id} finished as ${terminal} without result`);
-        }
-        if (terminal === "cancelled") {
-          throw new Error(`dropImportBatch ${id} cancelled`);
-        }
-        return result;
       } finally {
         await rm(stagingDir, { recursive: true, force: true });
       }
@@ -800,16 +800,12 @@ export function createServiceDomainRuntime(
 
   const syncPlugins: SyncPluginsPort = {
     async syncNow(pluginId) {
-      const { id } = await enqueueSyncPluginPull(requireJobs(), { pluginId });
-      const terminal = await waitForJobTerminal(requireJobs(), id);
-      if (terminal !== "succeeded") {
-        throw new Error(`syncPluginPull ${id} finished as ${terminal}`);
-      }
-      const result = takeSyncPluginPullResult(id);
-      if (!result) {
-        throw new Error(`syncPluginPull ${id} missing result`);
-      }
-      return result;
+      return enqueueAndAwaitResult({
+        queue: requireJobs(),
+        label: "syncPluginPull",
+        takeResult: takeSyncPluginPullResult,
+        enqueue: () => enqueueSyncPluginPull(requireJobs(), { pluginId }),
+      });
     },
   };
 

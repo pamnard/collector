@@ -78,6 +78,7 @@ export {
 
 export {
   embeddingRefreshInputFromItem,
+  flushEmbeddingRefresh,
   refreshItemEmbeddingAfterWrite,
   tagNamesForItem,
 } from "./vault/item-embedding-refresh.js";
