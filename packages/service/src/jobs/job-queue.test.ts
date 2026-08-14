@@ -2,13 +2,21 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   resetIndexSchema,
   runJobsMigrations,
   runMigrations,
 } from "@collector/db";
+import { defineJobType, testNoopJobType } from "@collector/shared";
 import { NodeSqliteExecutor } from "../host/node-sql.js";
-import { createJobQueue, testNoopHandler } from "./job-queue.js";
+import {
+  createJobQueue,
+  createHostJobRegistry,
+} from "./job-queue.js";
+import { createJobRegistry } from "./job-registry.js";
+import { createJobRunner } from "./job-runner.js";
+import { createJobStore } from "./job-store.js";
 
 async function waitFor(
   predicate: () => Promise<boolean>,
@@ -24,7 +32,7 @@ async function waitFor(
   throw new Error("waitFor timed out");
 }
 
-describe("createJobQueue (#628)", () => {
+describe("createJobQueue (#628 / #629)", () => {
   const dirs: string[] = [];
 
   afterEach(() => {
@@ -43,7 +51,7 @@ describe("createJobQueue (#628)", () => {
     const dbPath = tempJobsPath();
     const queue = await createJobQueue({
       dbPath,
-      handlers: { __test_noop: testNoopHandler },
+      registry: createHostJobRegistry(),
       pollIntervalMs: 20,
       timeoutMs: 1000,
     });
@@ -67,21 +75,25 @@ describe("createJobQueue (#628)", () => {
   it("burns attempt on retryable fail without retryAfterMs", async () => {
     const dbPath = tempJobsPath();
     let calls = 0;
+    const flaky = defineJobType({
+      id: "flaky",
+      payload: z.object({}),
+    });
+    const registry = createJobRegistry([flaky]);
+    registry.register(flaky, async () => {
+      calls += 1;
+      if (calls < 3) {
+        return {
+          status: "fail",
+          retryable: true,
+          error: "try again",
+        };
+      }
+      return { status: "ok" };
+    });
     const queue = await createJobQueue({
       dbPath,
-      handlers: {
-        flaky: async () => {
-          calls += 1;
-          if (calls < 3) {
-            return {
-              status: "fail",
-              retryable: true,
-              error: "try again",
-            };
-          }
-          return { status: "ok" };
-        },
-      },
+      registry,
       pollIntervalMs: 20,
       timeoutMs: 1000,
     });
@@ -96,22 +108,26 @@ describe("createJobQueue (#628)", () => {
   it("RetryAfter does not burn an attempt", async () => {
     const dbPath = tempJobsPath();
     let calls = 0;
+    const gated = defineJobType({
+      id: "gated",
+      payload: z.object({}),
+    });
+    const registry = createJobRegistry([gated]);
+    registry.register(gated, async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          status: "fail",
+          retryable: true,
+          error: "wait",
+          retryAfterMs: 30,
+        };
+      }
+      return { status: "ok" };
+    });
     const queue = await createJobQueue({
       dbPath,
-      handlers: {
-        gated: async () => {
-          calls += 1;
-          if (calls === 1) {
-            return {
-              status: "fail",
-              retryable: true,
-              error: "wait",
-              retryAfterMs: 30,
-            };
-          }
-          return { status: "ok" };
-        },
-      },
+      registry,
       pollIntervalMs: 15,
       timeoutMs: 1000,
     });
@@ -130,14 +146,18 @@ describe("createJobQueue (#628)", () => {
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
+    const slow = defineJobType({
+      id: "slow",
+      payload: z.object({}),
+    });
+    const registry = createJobRegistry([slow]);
+    registry.register(slow, async () => {
+      await gate;
+      return { status: "ok" };
+    });
     const queue = await createJobQueue({
       dbPath,
-      handlers: {
-        slow: async () => {
-          await gate;
-          return { status: "ok" };
-        },
-      },
+      registry,
       concurrency: 1,
       pollIntervalMs: 20,
       timeoutMs: 5000,
@@ -165,7 +185,7 @@ describe("createJobQueue (#628)", () => {
     const dbPath = tempJobsPath();
     const queue1 = await createJobQueue({
       dbPath,
-      handlers: { __test_noop: testNoopHandler },
+      registry: createHostJobRegistry(),
       pollIntervalMs: 20,
     });
     // enqueue without start so job stays pending
@@ -178,7 +198,7 @@ describe("createJobQueue (#628)", () => {
 
     const queue2 = await createJobQueue({
       dbPath,
-      handlers: { __test_noop: testNoopHandler },
+      registry: createHostJobRegistry(),
       pollIntervalMs: 20,
     });
     expect((await queue2.stats()).pending).toBe(1);
@@ -228,7 +248,7 @@ describe("createJobQueue (#628)", () => {
     const dbPath = tempJobsPath();
     const queue = await createJobQueue({
       dbPath,
-      handlers: { __test_noop: testNoopHandler },
+      registry: createHostJobRegistry(),
     });
     const { id } = await queue.enqueue({
       type: "__test_noop",
@@ -238,5 +258,76 @@ describe("createJobQueue (#628)", () => {
     expect(await queue.cancel(id)).toBe(false);
     expect(await queue.stats()).toMatchObject({ cancelled: 1, pending: 0 });
     await queue.stop();
+  });
+
+  it("rejects unknown job type on enqueue (#629)", async () => {
+    const dbPath = tempJobsPath();
+    const queue = await createJobQueue({
+      dbPath,
+      registry: createHostJobRegistry(),
+    });
+    await expect(
+      queue.enqueue({ type: "not_a_real_type" }),
+    ).rejects.toThrow(/unknown job type/i);
+    expect(await queue.stats()).toMatchObject({
+      pending: 0,
+      succeeded: 0,
+      failed: 0,
+    });
+    await queue.stop();
+  });
+
+  it("rejects invalid payload on enqueue (#629)", async () => {
+    const dbPath = tempJobsPath();
+    const queue = await createJobQueue({
+      dbPath,
+      registry: createHostJobRegistry(),
+    });
+    await expect(
+      queue.enqueue({
+        type: "__test_noop",
+        payload: { fail: "nope" },
+      }),
+    ).rejects.toThrow();
+    expect(await queue.stats()).toMatchObject({ pending: 0, failed: 0 });
+    await queue.stop();
+  });
+
+  it("marks failed without calling handler on invalid stored payload (#629)", async () => {
+    const dbPath = tempJobsPath();
+    let calls = 0;
+    const registry = createJobRegistry([testNoopJobType]);
+    registry.register(testNoopJobType, async () => {
+      calls += 1;
+      return { status: "ok" };
+    });
+
+    const sql = NodeSqliteExecutor.open(dbPath);
+    await runJobsMigrations(sql);
+    const store = createJobStore(sql);
+    await store.insertJob({
+      id: "bad1",
+      type: "__test_noop",
+      payloadJson: JSON.stringify({ fail: 1 }),
+      priority: 0,
+      idempotencyKey: null,
+      maxAttempts: 3,
+      availableAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    });
+
+    const runner = createJobRunner({
+      store,
+      registry,
+      concurrency: 1,
+      timeoutMs: 1000,
+      pollIntervalMs: 20,
+      now: () => new Date(),
+    });
+    runner.start();
+    await waitFor(async () => (await store.stats()).failed === 1);
+    expect(calls).toBe(0);
+    await runner.stop();
+    await sql.close();
   });
 });

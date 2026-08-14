@@ -55,8 +55,8 @@ import { NodeSqliteExecutor } from "./node-sql.js";
 import { createNodeVaultFilesystemWatcher } from "./vault-fs-watcher.js";
 import { createVaultLayoutGuardRunner } from "../vault-layout-guard-runner.js";
 import {
+  createHostJobRegistry,
   createJobQueue,
-  testNoopHandler,
   type JobQueue,
 } from "../jobs/job-queue.js";
 
@@ -725,7 +725,7 @@ export function createServiceDomainRuntime(
       if (!jobsQueue) {
         jobsQueue = await createJobQueue({
           dbPath: jobsDbPath,
-          handlers: { __test_noop: testNoopHandler },
+          registry: createHostJobRegistry(),
         });
         jobsQueue.start();
       }

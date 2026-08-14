@@ -30,6 +30,7 @@ function run(label, command, args) {
 }
 
 const workspaces = [
+  "@collector/shared",
   "@collector/db",
   "@collector/core",
   "@collector/service",

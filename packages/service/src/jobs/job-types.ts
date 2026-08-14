@@ -11,5 +11,3 @@ export interface JobHandlerInput {
 }
 
 export type JobHandler = (job: JobHandlerInput) => Promise<JobHandlerResult>;
-
-export type JobHandlers = Record<string, JobHandler>;
