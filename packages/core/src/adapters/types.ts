@@ -247,6 +247,13 @@ export interface VaultContext {
   index: VaultIndexAdapter;
   /** When set, item index writes refresh semantic vectors (#413). */
   embeddings?: ItemEmbeddingsPort;
+  /**
+   * When set, embedding refresh is enqueued as a durable job (#633)
+   * instead of awaiting vectors on the write/sync path.
+   */
+  embeddingRefreshJobs?: {
+    enqueue(vaultId: string, itemIds: string[]): Promise<void>;
+  };
 }
 
 export interface CreateVaultInput {

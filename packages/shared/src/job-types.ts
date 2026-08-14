@@ -108,6 +108,7 @@ export const generateCoverJobType = defineJobType({
 /** Drop-import heavy batch (#637). */
 export const dropImportBatchJobPayloadSchema = z.object({
   vaultId: z.string().min(1),
+  stagingDir: z.string().min(1),
   paths: z.array(z.string().min(1)).min(1),
   targetFolderId: z.string().min(1).nullable().optional(),
 });

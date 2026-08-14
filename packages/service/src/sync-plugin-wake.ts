@@ -1,20 +1,20 @@
 /**
- * Sync plugin wake controller (#31).
+ * Sync plugin wake controller (#31 / #635).
  *
- * Host lifecycle hooks that call #29 `syncNow` for plugins that opt in.
+ * Host lifecycle hooks that enqueue syncPluginPull jobs for plugins that opt in.
  * Not a settings surface — wake policy is registered per plugin at build time.
- * Serialization / coalesce lives in the registry — wake always forwards.
+ * Serialization / coalesce lives in the job queue + registry.
  */
 
 export interface SyncPluginWakePolicy {
-  /** After vault session is ready / switched — call syncNow. */
+  /** After vault session is ready / switched — enqueue sync. */
   onVaultReady: boolean;
   /** Optional repeating wake; omit = no timer. */
   intervalMs?: number;
 }
 
 export interface SyncPluginWakeControllerDeps {
-  syncNow: (pluginId: string) => Promise<unknown>;
+  enqueueSyncPluginPull: (pluginId: string) => Promise<unknown>;
   /** Defaults to console.error with pluginId context. */
   logError?: (pluginId: string, error: unknown) => void;
   setIntervalFn?: typeof setInterval;
@@ -23,7 +23,7 @@ export interface SyncPluginWakeControllerDeps {
 
 export interface SyncPluginWakeController {
   register(pluginId: string, policy: SyncPluginWakePolicy): void;
-  /** Host signals vault ready; runs onVaultReady plugins. */
+  /** Host signals vault ready; enqueues onVaultReady plugins. */
   notifyVaultReady(): Promise<void>;
   dispose(): void;
 }
@@ -43,10 +43,10 @@ export function createSyncPluginWakeController(
   const clearIntervalFn = deps.clearIntervalFn ?? clearInterval;
   let disposed = false;
 
-  const runSync = (pluginId: string): void => {
+  const runEnqueue = (pluginId: string): void => {
     void (async () => {
       try {
-        await deps.syncNow(pluginId);
+        await deps.enqueueSyncPluginPull(pluginId);
       } catch (error) {
         logError(pluginId, error);
       }
@@ -79,7 +79,7 @@ export function createSyncPluginWakeController(
         );
       }
       const timer = setIntervalFn(() => {
-        runSync(pluginId);
+        runEnqueue(pluginId);
       }, policy.intervalMs);
       timers.set(pluginId, timer);
     }
@@ -112,15 +112,12 @@ export function createSyncPluginWakeController(
       if (disposed) {
         return;
       }
-      // Re-arm intervals on vault ready / switch (fresh session).
       armIntervals();
-      // Fire-and-forget (#415 isolation): never block vault switch / host boot
-      // on plugin network I/O. Errors stay inside runSync → logError.
       for (const [pluginId, policy] of policies) {
         if (!policy.onVaultReady) {
           continue;
         }
-        runSync(pluginId);
+        runEnqueue(pluginId);
       }
     },
 

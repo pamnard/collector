@@ -6,115 +6,120 @@ describe("createSyncPluginWakeController (#31)", () => {
     vi.useRealTimers();
   });
 
-  it("notifyVaultReady calls syncNow for onVaultReady plugins", async () => {
-    const syncNow = vi.fn(async () => undefined);
-    const wake = createSyncPluginWakeController({ syncNow });
+  it("notifyVaultReady enqueues onVaultReady plugins", async () => {
+    const enqueueSyncPluginPull = vi.fn(async () => undefined);
+    const wake = createSyncPluginWakeController({ enqueueSyncPluginPull });
     wake.register("a", { onVaultReady: true });
     wake.register("b", { onVaultReady: false });
 
     await wake.notifyVaultReady();
     await Promise.resolve();
 
-    expect(syncNow).toHaveBeenCalledTimes(1);
-    expect(syncNow).toHaveBeenCalledWith("a");
+    expect(enqueueSyncPluginPull).toHaveBeenCalledTimes(1);
+    expect(enqueueSyncPluginPull).toHaveBeenCalledWith("a");
     wake.dispose();
   });
 
-  it("notifyVaultReady returns before syncNow finishes (isolation)", async () => {
+  it("notifyVaultReady returns before enqueue finishes (isolation)", async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const syncNow = vi.fn(async () => {
+    const enqueueSyncPluginPull = vi.fn(async () => {
       await gate;
     });
-    const wake = createSyncPluginWakeController({ syncNow });
+    const wake = createSyncPluginWakeController({ enqueueSyncPluginPull });
     wake.register("a", { onVaultReady: true });
 
     const ready = wake.notifyVaultReady();
     await expect(ready).resolves.toBeUndefined();
-    expect(syncNow).toHaveBeenCalledTimes(1);
+    expect(enqueueSyncPluginPull).toHaveBeenCalledTimes(1);
     release();
     await Promise.resolve();
     wake.dispose();
   });
 
   it("notifyVaultReady is no-op with no registrations", async () => {
-    const syncNow = vi.fn(async () => undefined);
-    const wake = createSyncPluginWakeController({ syncNow });
+    const enqueueSyncPluginPull = vi.fn(async () => undefined);
+    const wake = createSyncPluginWakeController({ enqueueSyncPluginPull });
     await wake.notifyVaultReady();
-    expect(syncNow).not.toHaveBeenCalled();
+    expect(enqueueSyncPluginPull).not.toHaveBeenCalled();
     wake.dispose();
   });
 
   it("error in one plugin does not block the next", async () => {
-    const syncNow = vi.fn(async (pluginId: string) => {
+    const enqueueSyncPluginPull = vi.fn(async (pluginId: string) => {
       if (pluginId === "bad") {
         throw new Error("boom");
       }
     });
     const logError = vi.fn();
-    const wake = createSyncPluginWakeController({ syncNow, logError });
+    const wake = createSyncPluginWakeController({
+      enqueueSyncPluginPull,
+      logError,
+    });
     wake.register("bad", { onVaultReady: true });
     wake.register("good", { onVaultReady: true });
 
     await wake.notifyVaultReady();
     await vi.waitFor(() => {
-      expect(syncNow).toHaveBeenCalledWith("bad");
-      expect(syncNow).toHaveBeenCalledWith("good");
+      expect(enqueueSyncPluginPull).toHaveBeenCalledWith("bad");
+      expect(enqueueSyncPluginPull).toHaveBeenCalledWith("good");
       expect(logError).toHaveBeenCalledWith("bad", expect.any(Error));
     });
     wake.dispose();
   });
 
-  it("forwards every vault-ready wake to syncNow (registry serializes)", async () => {
+  it("forwards every vault-ready wake to enqueue (queue dedupes)", async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const syncNow = vi.fn(async () => {
+    const enqueueSyncPluginPull = vi.fn(async () => {
       await gate;
     });
-    const wake = createSyncPluginWakeController({ syncNow });
+    const wake = createSyncPluginWakeController({ enqueueSyncPluginPull });
     wake.register("a", { onVaultReady: true });
 
     const first = wake.notifyVaultReady();
     const second = wake.notifyVaultReady();
     await Promise.all([first, second]);
     await Promise.resolve();
-    expect(syncNow).toHaveBeenCalledTimes(2);
+    expect(enqueueSyncPluginPull).toHaveBeenCalledTimes(2);
     release();
-    await vi.waitFor(() => expect(syncNow).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() =>
+      expect(enqueueSyncPluginPull).toHaveBeenCalledTimes(2),
+    );
     wake.dispose();
   });
 
-  it("intervalMs triggers repeated syncNow", async () => {
+  it("intervalMs repeatedly enqueues sync plugin pulls", async () => {
     vi.useFakeTimers();
-    const syncNow = vi.fn(async () => undefined);
-    const wake = createSyncPluginWakeController({ syncNow });
+    const enqueueSyncPluginPull = vi.fn(async () => undefined);
+    const wake = createSyncPluginWakeController({ enqueueSyncPluginPull });
     wake.register("a", { onVaultReady: false, intervalMs: 1000 });
 
     await vi.advanceTimersByTimeAsync(1000);
-    expect(syncNow).toHaveBeenCalledTimes(1);
+    expect(enqueueSyncPluginPull).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1000);
-    expect(syncNow).toHaveBeenCalledTimes(2);
+    expect(enqueueSyncPluginPull).toHaveBeenCalledTimes(2);
     wake.dispose();
   });
 
   it("dispose stops timers", async () => {
     vi.useFakeTimers();
-    const syncNow = vi.fn(async () => undefined);
-    const wake = createSyncPluginWakeController({ syncNow });
+    const enqueueSyncPluginPull = vi.fn(async () => undefined);
+    const wake = createSyncPluginWakeController({ enqueueSyncPluginPull });
     wake.register("a", { onVaultReady: false, intervalMs: 1000 });
     wake.dispose();
 
     await vi.advanceTimersByTimeAsync(5000);
-    expect(syncNow).not.toHaveBeenCalled();
+    expect(enqueueSyncPluginPull).not.toHaveBeenCalled();
   });
 
   it("register rejects invalid intervalMs", () => {
     const wake = createSyncPluginWakeController({
-      syncNow: async () => undefined,
+      enqueueSyncPluginPull: async () => undefined,
     });
     expect(() =>
       wake.register("a", { onVaultReady: false, intervalMs: 0 }),

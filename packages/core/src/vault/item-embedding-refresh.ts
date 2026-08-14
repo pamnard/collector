@@ -34,13 +34,18 @@ export function embeddingRefreshInputFromItem(
   };
 }
 
-/** Best-effort embedding refresh after an item index write (#413). */
+/** Best-effort embedding refresh after an item index write (#413 / #633). */
 export async function refreshItemEmbeddingAfterWrite(
   ctx: VaultContext,
   vaultPath: string,
+  vaultId: string,
   item: ItemFile,
   body?: string | null,
 ): Promise<void> {
+  if (ctx.embeddingRefreshJobs) {
+    await ctx.embeddingRefreshJobs.enqueue(vaultId, [item.id]);
+    return;
+  }
   if (!ctx.embeddings) {
     return;
   }

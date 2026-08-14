@@ -1,23 +1,14 @@
 /**
  * Late-bound Phase B job handlers (#627).
  *
- * Catalog types are registered at queue create time; domain-runtime (or a
- * focused wire module) assigns the real handler once deps exist.
- * Unbound handlers fail retryably so accidental early enqueue does not
- * permanent-fail before wiring.
+ * Catalog types are registered at queue create time; domain-runtime assigns
+ * the real handler once deps exist. Unbound handlers fail retryably so
+ * accidental early enqueue does not permanent-fail before wiring.
  */
 
-import type { z } from "zod";
-import type {
-  GenerateCoverJobPayload,
-  DropImportBatchJobPayload,
-  RefreshEmbeddingsJobPayload,
-  ReindexVaultBatchJobPayload,
-  SyncPluginPullJobPayload,
-  VaultIndexSyncJobPayload,
-} from "@collector/shared";
 import type { TypedJobHandler } from "./job-registry.js";
 import type { JobHandlerResult } from "./job-types.js";
+import type { z } from "zod";
 
 function unbound(typeId: string): () => Promise<JobHandlerResult> {
   return async () => ({
@@ -28,19 +19,15 @@ function unbound(typeId: string): () => Promise<JobHandlerResult> {
   });
 }
 
+type AnyTypedHandler = TypedJobHandler<z.ZodTypeAny>;
+
 export const phaseBHandlerBindings: {
-  vaultIndexSync: TypedJobHandler<z.ZodType<VaultIndexSyncJobPayload>> | null;
-  reindexVaultBatch: TypedJobHandler<
-    z.ZodType<ReindexVaultBatchJobPayload>
-  > | null;
-  refreshEmbeddings: TypedJobHandler<
-    z.ZodType<RefreshEmbeddingsJobPayload>
-  > | null;
-  syncPluginPull: TypedJobHandler<z.ZodType<SyncPluginPullJobPayload>> | null;
-  generateCover: TypedJobHandler<z.ZodType<GenerateCoverJobPayload>> | null;
-  dropImportBatch: TypedJobHandler<
-    z.ZodType<DropImportBatchJobPayload>
-  > | null;
+  vaultIndexSync: AnyTypedHandler | null;
+  reindexVaultBatch: AnyTypedHandler | null;
+  refreshEmbeddings: AnyTypedHandler | null;
+  syncPluginPull: AnyTypedHandler | null;
+  generateCover: AnyTypedHandler | null;
+  dropImportBatch: AnyTypedHandler | null;
 } = {
   vaultIndexSync: null,
   reindexVaultBatch: null,
@@ -50,13 +37,11 @@ export const phaseBHandlerBindings: {
   dropImportBatch: null,
 };
 
-export function boundPhaseBHandler<P>(
+export function boundPhaseBHandler(
   typeId: keyof typeof phaseBHandlerBindings,
-): TypedJobHandler<z.ZodType<P>> {
+): AnyTypedHandler {
   return async (job) => {
-    const handler = phaseBHandlerBindings[typeId] as TypedJobHandler<
-      z.ZodType<P>
-    > | null;
+    const handler = phaseBHandlerBindings[typeId];
     if (!handler) {
       return unbound(typeId)();
     }

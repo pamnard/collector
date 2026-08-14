@@ -47,6 +47,7 @@ export interface EnqueueResult {
 export interface JobQueue {
   enqueue(input: EnqueueInput): Promise<EnqueueResult>;
   cancel(id: string): Promise<boolean>;
+  getJob(id: string): Promise<import("./job-store.js").JobRow | null>;
   stats(): Promise<JobStats>;
   start(): void;
   stop(): Promise<void>;
@@ -158,6 +159,10 @@ export async function createJobQueue(
 
     cancel(id) {
       return store.cancelPending(id, now().toISOString());
+    },
+
+    getJob(id) {
+      return store.getJob(id);
     },
 
     stats() {

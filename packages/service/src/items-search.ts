@@ -83,7 +83,6 @@ export interface ItemsSearchServiceDeps {
   getContext: () => VaultContext;
   getIndex: () => ItemsIndexPort;
   kickoffVaultIndexSync: (vaultId: string, vaultPath: string) => void;
-  startVaultIndexSync: (vaultId: string, vaultPath: string) => Promise<void>;
   buildSearchFtsQuery: (userQuery: string, vaultId: string) => string | null;
   addVaultSyncListener: (
     vaultId: string,
@@ -239,10 +238,8 @@ export function createItemsSearchService(
       sort,
     );
     const { vault, path } = await deps.resolveActiveVault();
-    // Kick sync as side effect; status via IndexPort subscribe (#163 / #364).
-    void deps.startVaultIndexSync(vault.id, path).catch((error: unknown) => {
-      console.error("[collector] index sync failed:", error);
-    });
+    // Kick sync via durable job; status via IndexPort subscribe (#163 / #631).
+    deps.kickoffVaultIndexSync(vault.id, path);
     return { itemIds: page.itemIds, totalCount: page.totalCount };
   };
 

@@ -69,7 +69,7 @@ export async function upsertItem(
     },
     vaultId,
   );
-  await refreshItemEmbeddingAfterWrite(ctx, vaultPath, item, fts.content);
+  await refreshItemEmbeddingAfterWrite(ctx, vaultPath, vaultId, item, fts.content);
   return item;
 }
 
@@ -124,7 +124,7 @@ export async function writeItemRawMarkdown(
     },
     vaultId,
   );
-  await refreshItemEmbeddingAfterWrite(ctx, vaultPath, item, fts.content);
+  await refreshItemEmbeddingAfterWrite(ctx, vaultPath, vaultId, item, fts.content);
   return item;
 }
 

@@ -30,6 +30,11 @@ export interface MediaCoverServiceDeps {
   resolveActiveVault: () => Promise<{ vault: VaultMeta; path: string }>;
   getContext: () => VaultContext;
   generateCoverFromMedia: GenerateCoverFromMedia;
+  enqueueGenerateCover: (input: {
+    vaultId: string;
+    itemId: string;
+    mediaId: string;
+  }) => Promise<unknown>;
   resolveThumbnailPathsBatch: ResolveThumbnailPathsBatch;
   onVaultPresentationChanged?: (vaultId: string) => void;
 }
@@ -70,7 +75,7 @@ export function createMediaCoverService(
     return listItemMediaWithPaths(deps.getContext(), path, itemId);
   };
 
-  const syncItemCover = async (itemId: string): Promise<void> => {
+  const enqueuePreferredCover = async (itemId: string): Promise<void> => {
     const { vault, path } = await deps.resolveActiveVault();
     const ctx = deps.getContext();
     const media = await listItemMediaWithPaths(ctx, path, itemId);
@@ -83,32 +88,11 @@ export function createMediaCoverService(
       return;
     }
 
-    const data = await ctx.fs.readBinary(candidate.absolute_path);
-    try {
-      const cover = await deps.generateCoverFromMedia(
-        data,
-        candidate.filename,
-        candidate.media_type,
-      );
-
-      if (!cover) {
-        console.error("[media-cover] auto-cover soft-fail: generate returned null", {
-          itemId,
-          mediaType: candidate.media_type,
-          filename: candidate.filename,
-        });
-        return;
-      }
-
-      await applyItemCover(ctx, path, vault.id, itemId, cover);
-    } catch (error) {
-      console.error("[media-cover] auto-cover soft-fail: generate/apply threw", {
-        itemId,
-        mediaType: candidate.media_type,
-        filename: candidate.filename,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+    await deps.enqueueGenerateCover({
+      vaultId: vault.id,
+      itemId,
+      mediaId: candidate.id,
+    });
   };
 
   const resolveItemThumbnailPathsUncached = async (
@@ -222,7 +206,7 @@ export function createMediaCoverService(
         }),
       );
     }
-    await syncItemCover(itemId);
+    await enqueuePreferredCover(itemId);
     deps.onVaultPresentationChanged?.(vault.id);
     return attached;
   };
@@ -237,7 +221,7 @@ export function createMediaCoverService(
       filename: file.name,
       data: file.bytes,
     });
-    await syncItemCover(itemId);
+    await enqueuePreferredCover(itemId);
     deps.onVaultPresentationChanged?.(vault.id);
     return replaced;
   };
@@ -248,7 +232,7 @@ export function createMediaCoverService(
   ): Promise<void> => {
     const { vault, path } = await deps.resolveActiveVault();
     await deleteMediaFile(deps.getContext(), path, itemId, mediaId);
-    await syncItemCover(itemId);
+    await enqueuePreferredCover(itemId);
     deps.onVaultPresentationChanged?.(vault.id);
   };
 

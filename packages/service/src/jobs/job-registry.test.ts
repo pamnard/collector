@@ -85,11 +85,15 @@ describe("createJobRegistry (#629)", () => {
   });
 
   it("assertAllRegistered throws until every catalog type has a handler", () => {
-    const registry = createJobRegistry(JOB_TYPE_CATALOG);
+    const only = defineJobType({
+      id: "only_registered",
+      payload: z.object({}),
+    });
+    const registry = createJobRegistry([only]);
     expect(() => registry.assertAllRegistered()).toThrow(
       /no handler registered/i,
     );
-    registry.register(testNoopJobType, async () => ({ status: "ok" }));
+    registry.register(only, async () => ({ status: "ok" }));
     expect(() => registry.assertAllRegistered()).not.toThrow();
   });
 
