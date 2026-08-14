@@ -17,6 +17,7 @@ import { createHostFoldersPort } from "./host-ports/folders.js";
 import { createHostMediaPort } from "./host-ports/media.js";
 import { createHostVaultsPort } from "./host-ports/vaults.js";
 import { createHostIndexPort } from "./host-ports/index.js";
+import { createHostJobsPort } from "./host-ports/jobs.js";
 import { createHostSettingsPort } from "./host-ports/settings.js";
 import { createHostCredentialsPort } from "./host-ports/credentials.js";
 import { createHostSyncPluginsPort } from "./host-ports/sync-plugins.js";
@@ -45,6 +46,7 @@ export function createHostBacking(
     media: createHostMediaPort(ctx),
     vaults: createHostVaultsPort(ctx),
     index: createHostIndexPort(ctx),
+    jobs: createHostJobsPort(ctx),
     settings: createHostSettingsPort(ctx),
     credentials: createHostCredentialsPort(ctx),
     syncPlugins: createHostSyncPluginsPort(ctx),

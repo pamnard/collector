@@ -271,6 +271,7 @@ export async function startServiceHost(
   let stopSyncStatusBroadcast: Subscription | null = null;
   let stopAppSettingsBroadcast: Subscription | null = null;
   let stopPresentationChangedBroadcast: Subscription | null = null;
+  let stopJobPermanentFailureBroadcast: Subscription | null = null;
 
   const broadcastEvent = (event: string, payload: unknown): void => {
     eventsHub.broadcastEvent(event, payload);
@@ -289,6 +290,11 @@ export async function startServiceHost(
       broadcastEvent(SERVICE_HOST_EVENTS.vaultPresentationChanged, payload);
     },
   );
+  stopJobPermanentFailureBroadcast = runtime.jobPermanentFailure.subscribe(
+    (payload) => {
+      broadcastEvent(SERVICE_HOST_EVENTS.jobPermanentFailure, payload);
+    },
+  );
 
   let closed = false;
   const close = async (): Promise<void> => {
@@ -302,6 +308,8 @@ export async function startServiceHost(
     stopAppSettingsBroadcast = null;
     stopPresentationChangedBroadcast?.unsubscribe();
     stopPresentationChangedBroadcast = null;
+    stopJobPermanentFailureBroadcast?.unsubscribe();
+    stopJobPermanentFailureBroadcast = null;
     await eventsHub.close();
     await removeServiceHostTokenFile(hostTokenPath);
     await removeServiceHostBaseUrlFile(hostBaseUrlPath);

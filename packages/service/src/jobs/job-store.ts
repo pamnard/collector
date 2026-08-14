@@ -1,3 +1,4 @@
+import type { JobStats, JobStatusCounts } from "@collector/api";
 import type { SqlMigrator } from "@collector/db";
 
 export type JobStatus =
@@ -6,6 +7,8 @@ export type JobStatus =
   | "succeeded"
   | "failed"
   | "cancelled";
+
+export type { JobStats, JobStatusCounts };
 
 export interface JobRow {
   id: string;
@@ -24,12 +27,14 @@ export interface JobRow {
   updated_at: string;
 }
 
-export interface JobStats {
-  pending: number;
-  running: number;
-  succeeded: number;
-  failed: number;
-  cancelled: number;
+function emptyStatusCounts(): JobStatusCounts {
+  return {
+    pending: 0,
+    running: 0,
+    succeeded: 0,
+    failed: 0,
+    cancelled: 0,
+  };
 }
 
 export interface EnqueueRecord {
@@ -96,18 +101,21 @@ export function createJobStore(db: SqlMigrator) {
   }
 
   async function stats(): Promise<JobStats> {
-    const rows = await db.select<{ status: JobStatus; n: number }>(
-      `SELECT status, COUNT(*) AS n FROM jobs GROUP BY status`,
-    );
+    const rows = await db.select<{
+      status: JobStatus;
+      type: string;
+      n: number;
+    }>(`SELECT status, type, COUNT(*) AS n FROM jobs GROUP BY status, type`);
     const out: JobStats = {
-      pending: 0,
-      running: 0,
-      succeeded: 0,
-      failed: 0,
-      cancelled: 0,
+      ...emptyStatusCounts(),
+      byType: {},
     };
     for (const row of rows) {
-      out[row.status] = Number(row.n);
+      const n = Number(row.n);
+      out[row.status] += n;
+      const typeCounts = out.byType[row.type] ?? emptyStatusCounts();
+      typeCounts[row.status] += n;
+      out.byType[row.type] = typeCounts;
     }
     return out;
   }

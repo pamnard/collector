@@ -27,6 +27,7 @@ type _CollectorServiceKeys = Expect<
     | "media"
     | "vaults"
     | "index"
+    | "jobs"
     | "settings"
     | "credentials"
     | "syncPlugins"

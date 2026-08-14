@@ -67,6 +67,15 @@ describe("createJobQueue (#628 / #629)", () => {
       running: 0,
       succeeded: 1,
       failed: 0,
+      byType: {
+        __test_noop: {
+          pending: 0,
+          running: 0,
+          succeeded: 1,
+          failed: 0,
+          cancelled: 0,
+        },
+      },
     });
 
     await queue.stop();
@@ -329,5 +338,111 @@ describe("createJobQueue (#628 / #629)", () => {
     expect(calls).toBe(0);
     await runner.stop();
     await sql.close();
+  });
+
+  it("invokes onPermanentFailure once for permanent fail (#630)", async () => {
+    const dbPath = tempJobsPath();
+    const failures: Array<{
+      id: string;
+      type: string;
+      error: string;
+      attempts: number;
+    }> = [];
+    const queue = await createJobQueue({
+      dbPath,
+      registry: createHostJobRegistry(),
+      pollIntervalMs: 20,
+      timeoutMs: 1000,
+      onPermanentFailure: (info) => {
+        failures.push(info);
+      },
+    });
+    queue.start();
+
+    const { id } = await queue.enqueue({
+      type: "__test_noop",
+      payload: { fail: "permanent" },
+    });
+    await waitFor(async () => (await queue.stats()).failed === 1);
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toMatchObject({
+      id,
+      type: "__test_noop",
+      error: "noop permanent fail",
+    });
+    await queue.stop();
+  });
+
+  it("invokes onPermanentFailure when retries are exhausted (#630)", async () => {
+    const dbPath = tempJobsPath();
+    const failures: Array<{ id: string; type: string }> = [];
+    let calls = 0;
+    const flaky = defineJobType({
+      id: "exhaust",
+      payload: z.object({}),
+    });
+    const registry = createJobRegistry([flaky]);
+    registry.register(flaky, async () => {
+      calls += 1;
+      return {
+        status: "fail",
+        retryable: true,
+        error: "still failing",
+      };
+    });
+    const queue = await createJobQueue({
+      dbPath,
+      registry,
+      pollIntervalMs: 20,
+      timeoutMs: 1000,
+      onPermanentFailure: (info) => {
+        failures.push(info);
+      },
+    });
+    queue.start();
+
+    await queue.enqueue({ type: "exhaust", maxAttempts: 2 });
+    await waitFor(async () => (await queue.stats()).failed === 1);
+    expect(calls).toBe(2);
+    expect(failures).toHaveLength(1);
+    expect(failures[0]?.type).toBe("exhaust");
+    await queue.stop();
+  });
+
+  it("does not invoke onPermanentFailure for transient retry (#630)", async () => {
+    const dbPath = tempJobsPath();
+    const failures: unknown[] = [];
+    let calls = 0;
+    const flaky = defineJobType({
+      id: "recover",
+      payload: z.object({}),
+    });
+    const registry = createJobRegistry([flaky]);
+    registry.register(flaky, async () => {
+      calls += 1;
+      if (calls < 2) {
+        return {
+          status: "fail",
+          retryable: true,
+          error: "try again",
+        };
+      }
+      return { status: "ok" };
+    });
+    const queue = await createJobQueue({
+      dbPath,
+      registry,
+      pollIntervalMs: 20,
+      timeoutMs: 1000,
+      onPermanentFailure: (info) => {
+        failures.push(info);
+      },
+    });
+    queue.start();
+
+    await queue.enqueue({ type: "recover", maxAttempts: 3 });
+    await waitFor(async () => (await queue.stats()).succeeded === 1);
+    expect(failures).toHaveLength(0);
+    await queue.stop();
   });
 });

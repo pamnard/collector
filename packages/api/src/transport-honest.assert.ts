@@ -10,6 +10,7 @@ import type {
   FoldersPort,
   IndexPort,
   ItemsPort,
+  JobsPort,
   ServiceSubscribeHandlers,
   SettingsPort,
   Subscription,
@@ -37,6 +38,9 @@ type _SubscribeFolders = Expect<
 >;
 type _SubscribeIndex = Expect<
   Equal<ReturnType<IndexPort["subscribeVaultIndexSyncStatus"]>, Subscription>
+>;
+type _SubscribeJobs = Expect<
+  Equal<ReturnType<JobsPort["subscribeJobPermanentFailure"]>, Subscription>
 >;
 type _SubscribeSettings = Expect<
   Equal<ReturnType<SettingsPort["subscribeAppSettings"]>, Subscription>
@@ -79,6 +83,7 @@ type _Asserts = [
   _SubscribeTags,
   _SubscribeFolders,
   _SubscribeIndex,
+  _SubscribeJobs,
   _SubscribeSettings,
   _SubscribeDashboard,
   _OnErrorIsApiError,

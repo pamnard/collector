@@ -1,6 +1,9 @@
+import type { JobPermanentFailure } from "@collector/api";
 import type { JobRegistry } from "./job-registry.js";
 import type { JobHandlerResult } from "./job-types.js";
 import type { JobRow, JobStore } from "./job-store.js";
+
+export type JobPermanentFailureInfo = JobPermanentFailure;
 
 export interface JobRunnerOptions {
   store: JobStore;
@@ -10,6 +13,8 @@ export interface JobRunnerOptions {
   /** Idle heartbeat for delayed jobs (`available_at` in the future). */
   pollIntervalMs: number;
   now: () => Date;
+  /** Fired once when a job reaches terminal `failed` (#630). */
+  onPermanentFailure?: (info: JobPermanentFailureInfo) => void;
 }
 
 export function createJobRunner(options: JobRunnerOptions) {
@@ -20,6 +25,7 @@ export function createJobRunner(options: JobRunnerOptions) {
     timeoutMs,
     pollIntervalMs,
     now,
+    onPermanentFailure,
   } = options;
 
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -53,14 +59,33 @@ export function createJobRunner(options: JobRunnerOptions) {
     schedulePoll(0);
   }
 
+  async function reportPermanentFailure(
+    job: JobRow,
+    error: string,
+  ): Promise<void> {
+    const row = await store.getJob(job.id);
+    const attempts = row?.attempts ?? job.attempts;
+    const info: JobPermanentFailureInfo = {
+      id: job.id,
+      type: job.type,
+      error,
+      attempts,
+    };
+    console.error("[jobs] permanent failure", {
+      jobId: info.id,
+      type: info.type,
+      error: info.error,
+      attempts: info.attempts,
+    });
+    onPermanentFailure?.(info);
+  }
+
   async function executeJob(job: JobRow): Promise<void> {
     const nowIso = () => now().toISOString();
     if (!registry.has(job.type)) {
-      await store.markFailed(
-        job.id,
-        nowIso(),
-        `no handler registered for job type: ${job.type}`,
-      );
+      const error = `no handler registered for job type: ${job.type}`;
+      await store.markFailed(job.id, nowIso(), error);
+      await reportPermanentFailure(job, error);
       return;
     }
     const entry = registry.requireEntry(job.type);
@@ -69,11 +94,9 @@ export function createJobRunner(options: JobRunnerOptions) {
     try {
       raw = JSON.parse(job.payload_json) as unknown;
     } catch (err) {
-      await store.markFailed(
-        job.id,
-        nowIso(),
-        `invalid payload_json: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      const error = `invalid payload_json: ${err instanceof Error ? err.message : String(err)}`;
+      await store.markFailed(job.id, nowIso(), error);
+      await reportPermanentFailure(job, error);
       return;
     }
 
@@ -81,11 +104,9 @@ export function createJobRunner(options: JobRunnerOptions) {
     try {
       payload = registry.parsePayload(job.type, raw);
     } catch (err) {
-      await store.markFailed(
-        job.id,
-        nowIso(),
-        `invalid job payload: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      const error = `invalid job payload: ${err instanceof Error ? err.message : String(err)}`;
+      await store.markFailed(job.id, nowIso(), error);
+      await reportPermanentFailure(job, error);
       return;
     }
 
@@ -114,23 +135,37 @@ export function createJobRunner(options: JobRunnerOptions) {
     } catch (err) {
       const message =
         err instanceof Error ? err.message : String(err);
-      await store.scheduleRetry({
+      const outcome = await store.scheduleRetry({
         id: job.id,
         nowIso: nowIso(),
         availableAt: nowIso(),
         error: message,
         burnAttempt: true,
       });
+      if (outcome === "failed") {
+        await reportPermanentFailure(job, message);
+      } else {
+        console.info("[jobs] retry scheduled", {
+          jobId: job.id,
+          type: job.type,
+          error: message,
+        });
+      }
       return;
     }
 
     if (result.status === "ok") {
       await store.markSucceeded(job.id, nowIso());
+      console.info("[jobs] succeeded", {
+        jobId: job.id,
+        type: job.type,
+      });
       return;
     }
 
     if (!result.retryable) {
       await store.markFailed(job.id, nowIso(), result.error);
+      await reportPermanentFailure(job, result.error);
       return;
     }
 
@@ -138,23 +173,42 @@ export function createJobRunner(options: JobRunnerOptions) {
       const availableAt = new Date(
         now().getTime() + result.retryAfterMs,
       ).toISOString();
-      await store.scheduleRetry({
+      const outcome = await store.scheduleRetry({
         id: job.id,
         nowIso: nowIso(),
         availableAt,
         error: result.error,
         burnAttempt: false,
       });
+      if (outcome === "failed") {
+        await reportPermanentFailure(job, result.error);
+      } else {
+        console.info("[jobs] retry scheduled", {
+          jobId: job.id,
+          type: job.type,
+          error: result.error,
+          retryAfterMs: result.retryAfterMs,
+        });
+      }
       return;
     }
 
-    await store.scheduleRetry({
+    const outcome = await store.scheduleRetry({
       id: job.id,
       nowIso: nowIso(),
       availableAt: nowIso(),
       error: result.error,
       burnAttempt: true,
     });
+    if (outcome === "failed") {
+      await reportPermanentFailure(job, result.error);
+    } else {
+      console.info("[jobs] retry scheduled", {
+        jobId: job.id,
+        type: job.type,
+        error: result.error,
+      });
+    }
   }
 
   async function runTick(): Promise<void> {

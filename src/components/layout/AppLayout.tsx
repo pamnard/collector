@@ -25,6 +25,7 @@ import { useCreateItemShell } from "../../hooks/useCreateItemShell";
 import type { DashboardItemSort } from "@collector/api";
 import { useAppSettings } from "../../context/AppSettingsContext";
 import { useVaultIndexSyncStatus } from "../../hooks/useVaultIndexSyncStatus";
+import { useJobPermanentFailureAlerts } from "../../hooks/useJobPermanentFailureAlerts";
 import {
   getCollectorService,
   getUiSession,
@@ -233,6 +234,7 @@ function AppLayoutInner() {
   const showDashboardLoading = dashboardCache.isLoading;
   const showUpdateAlert = startupUpdateVersion !== null;
   const alerts = useAlerts();
+  useJobPermanentFailureAlerts();
 
   useEffect(() => {
     if (showDashboardLoading) {

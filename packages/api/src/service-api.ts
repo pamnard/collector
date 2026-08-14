@@ -273,6 +273,36 @@ export interface IndexPort {
   ): Subscription;
 }
 
+/** Aggregate job counts by status (#630). */
+export interface JobStatusCounts {
+  pending: number;
+  running: number;
+  succeeded: number;
+  failed: number;
+  cancelled: number;
+}
+
+/** Queue stats including optional per-type breakdown (#630). */
+export interface JobStats extends JobStatusCounts {
+  byType: Record<string, JobStatusCounts>;
+}
+
+/** Terminal job failure payload for AlertStack (#630). */
+export interface JobPermanentFailure {
+  id: string;
+  type: string;
+  error: string;
+  attempts: number;
+}
+
+/** Read-only job queue observability port (#630). */
+export interface JobsPort {
+  getJobStats(): Promise<JobStats>;
+  subscribeJobPermanentFailure(
+    onUpdate: (failure: JobPermanentFailure) => void,
+  ): Subscription;
+}
+
 /** App settings persistence port (#361). */
 export interface SettingsPort {
   ensureAppSettings(): Promise<AppSettings>;
@@ -412,4 +442,6 @@ export interface CollectorService {
   syncPlugins: SyncPluginsPort;
   /** Telegram Path C settings (#415). */
   telegramSync: TelegramSyncPort;
+  /** Background job queue observability (#630). */
+  jobs: JobsPort;
 }

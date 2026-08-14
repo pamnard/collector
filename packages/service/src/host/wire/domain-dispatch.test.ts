@@ -103,6 +103,21 @@ function stubRuntime(overrides: {
     startVaultFilesystemWatcher: vi.fn(),
     stopVaultFilesystemWatcher: vi.fn(),
     isVaultFilesystemWatcherActive: vi.fn(() => false),
+    jobs: {
+      enqueue: vi.fn(),
+      cancel: vi.fn(),
+      stats: vi.fn(async () => ({
+        pending: 0,
+        running: 0,
+        succeeded: 0,
+        failed: 0,
+        cancelled: 0,
+        byType: {},
+      })),
+      start: vi.fn(),
+      stop: vi.fn(async () => undefined),
+      ...overrides.jobs,
+    },
   } as unknown as ServiceDomainRuntime;
   return { runtime, ensureInitialized };
 }
@@ -318,6 +333,36 @@ describe("createDomainWireRequestHandler (#330)", () => {
     ).resolves.toMatchObject({ vault: { id: "v2" } });
     expect(ensureInitialized).toHaveBeenCalled();
     expect(notifyVaultReady).toHaveBeenCalledTimes(1);
+  });
+
+  it("getJobStats returns queue stats (#630)", async () => {
+    const { runtime, ensureInitialized } = stubRuntime({
+      jobs: {
+        stats: vi.fn(async () => ({
+          pending: 1,
+          running: 0,
+          succeeded: 2,
+          failed: 0,
+          cancelled: 0,
+          byType: {
+            __test_noop: {
+              pending: 1,
+              running: 0,
+              succeeded: 2,
+              failed: 0,
+              cancelled: 0,
+            },
+          },
+        })),
+      },
+    });
+    const dispatch = createDomainWireRequestHandler(runtime);
+    await expect(dispatch(M.getJobStats)).resolves.toMatchObject({
+      pending: 1,
+      succeeded: 2,
+      byType: { __test_noop: { pending: 1, succeeded: 2 } },
+    });
+    expect(ensureInitialized).toHaveBeenCalled();
   });
 });
 
