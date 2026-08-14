@@ -1,8 +1,17 @@
-import { ChevronDown, ChevronRight, Folder, FolderOpen, Inbox } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  FilePlus,
+  Folder,
+  FolderOpen,
+  FolderPlus,
+  Inbox,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FolderTreeNode } from "@collector/core";
 import { isInboxFolderName } from "@collector/shared";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   useAlerts,
   useDismissAlertsOnUnmount,
@@ -20,7 +29,8 @@ import {
   rewriteFolderNavFilterAfterMove,
 } from "../../lib/folder-actions";
 import type { NavFilter } from "../../types/ui";
-import { navFilterKey } from "../../types/ui";
+import { isFolderFilter, navFilterKey } from "../../types/ui";
+import { CreateFolderDialog } from "../folders/CreateFolderDialog";
 import { FolderContextMenu } from "../folders/FolderContextMenu";
 import { FolderLeafNameDialog } from "../folders/FolderLeafNameDialog";
 import { MoveFolderDialog } from "../folders/MoveFolderDialog";
@@ -150,10 +160,15 @@ export function SidebarCollections({
   const activeKey = navFilterKey(activeFilter);
   const alerts = useAlerts();
   const [moveSourcePath, setMoveSourcePath] = useState<string | null>(null);
+  const [createFolderOpen, setCreateFolderOpen] = useState(false);
   const [leafDialog, setLeafDialog] = useState<LeafDialog | null>(null);
   const [leafBusy, setLeafBusy] = useState(false);
   const [deleteSourcePath, setDeleteSourcePath] = useState<string | null>(null);
   const [isDeletingFolder, setIsDeletingFolder] = useState(false);
+  const defaultCreateParentPath = isFolderFilter(activeFilter)
+    ? activeFilter.folderPath
+    : "";
+
   useDismissAlertsOnUnmount([
     FOLDER_MOVE_BUSY_ID,
     FOLDER_MOVE_ERROR_ID,
@@ -247,6 +262,7 @@ export function SidebarCollections({
       return;
     }
     setLeafDialog(null);
+    setCreateFolderOpen(false);
     refreshVault();
     onSelect({ type: "folder", folderPath: newPath });
   };
@@ -271,6 +287,36 @@ export function SidebarCollections({
 
   return (
     <div className="flex flex-col gap-1">
+      <div className="mb-1 flex items-center gap-0.5 px-1">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-sm"
+          className="bg-transparent dark:bg-transparent"
+          aria-label="Новая заметка"
+          title="Новая заметка"
+          onClick={() =>
+            openCreate(
+              isFolderFilter(activeFilter)
+                ? activeFilter.folderPath
+                : undefined,
+            )
+          }
+        >
+          <FilePlus size={16} />
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-sm"
+          className="bg-transparent dark:bg-transparent"
+          aria-label="Новая папка"
+          title="Новая папка"
+          onClick={() => setCreateFolderOpen(true)}
+        >
+          <FolderPlus size={16} />
+        </Button>
+      </div>
       {folders.map((folder) => (
         <CollectionFolderRow
           key={folder.path}
@@ -281,6 +327,22 @@ export function SidebarCollections({
           onAction={handleFolderAction}
         />
       ))}
+      {createFolderOpen ? (
+        <CreateFolderDialog
+          open
+          busy={leafBusy}
+          tree={folders}
+          initialParentPath={defaultCreateParentPath}
+          onOpenChange={(open) => {
+            if (!open && !leafBusy) {
+              setCreateFolderOpen(false);
+            }
+          }}
+          onConfirm={(parentPath, leafName) => {
+            void handleConfirmCreateChild(parentPath, leafName);
+          }}
+        />
+      ) : null}
       {moveSourcePath !== null ? (
         <MoveFolderDialog
           open
@@ -308,7 +370,7 @@ export function SidebarCollections({
           description={
             leafDialog.kind === "rename"
               ? `Новое имя для «${folderLeafName(leafDialog.path)}».`
-              : `Дочерняя папка внутри «${folderLeafName(leafDialog.path)}».`
+              : `Дочерняя папка внутри «${leafDialog.path}».`
           }
           confirmLabel={leafDialog.kind === "rename" ? "Сохранить" : "Создать"}
           initialValue={

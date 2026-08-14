@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { FolderInput } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +24,9 @@ export interface FolderDestinationDialogProps {
   description: ReactNode;
   destinations: readonly FolderDestinationRow[];
   listAriaLabel: string;
+  confirmLabel?: string;
+  /** Prefill selection when the dialog opens (`""` = vault root). */
+  initialSelectedPath?: string;
   onConfirm: (path: string) => void;
 }
 
@@ -34,9 +37,19 @@ export function FolderDestinationDialog({
   description,
   destinations,
   listAriaLabel,
+  confirmLabel = "Переместить",
+  initialSelectedPath,
   onConfirm,
 }: FolderDestinationDialogProps) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setSelectedPath(
+        initialSelectedPath !== undefined ? initialSelectedPath : null,
+      );
+    }
+  }, [open, initialSelectedPath]);
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {
@@ -109,7 +122,7 @@ export function FolderDestinationDialog({
             disabled={selectedPath === null}
             onClick={handleConfirm}
           >
-            Переместить
+            {confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>
