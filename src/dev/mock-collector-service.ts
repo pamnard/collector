@@ -387,6 +387,17 @@ export function createDevMockCollectorService(): CollectorService {
       subscribeVaultPresentationChanged: () =>
         subscriptionFromTeardown(() => {}),
     },
+    jobs: {
+      getJobStats: async () => ({
+        pending: 0,
+        running: 0,
+        succeeded: 0,
+        failed: 0,
+        cancelled: 0,
+        byType: {},
+      }),
+      subscribeJobPermanentFailure: () => subscriptionFromTeardown(() => {}),
+    },
     settings: {
       ensureAppSettings,
       getAppSettingsSync,

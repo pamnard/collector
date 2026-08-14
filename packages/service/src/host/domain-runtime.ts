@@ -59,6 +59,7 @@ import {
   createJobQueue,
   type JobQueue,
 } from "../jobs/job-queue.js";
+import { createJobPermanentFailureStore } from "../job-permanent-failure.js";
 
 const SYNC_STATUS_THROTTLE_MS = 200;
 
@@ -138,6 +139,8 @@ export interface ServiceDomainRuntime {
   dashboardSnapshot: ReturnType<typeof createDashboardSnapshotService>;
   /** Durable background job queue (#628). Host-internal. */
   jobs: JobQueue;
+  /** Permanent job failure fan-out (#630). */
+  jobPermanentFailure: ReturnType<typeof createJobPermanentFailureStore>;
 }
 
 export interface ServiceDomainRuntimeOptions {
@@ -163,6 +166,7 @@ export function createServiceDomainRuntime(
   >();
   const vaultIndexSyncStatus = createVaultIndexSyncStatusStore();
   const vaultPresentationChanged = createVaultPresentationChangedStore();
+  const jobPermanentFailure = createJobPermanentFailureStore();
   const watcherDisabledVaultIds = new Set<string>();
   let runtimeClosed = false;
   let jobsQueue: JobQueue | null = null;
@@ -726,6 +730,9 @@ export function createServiceDomainRuntime(
         jobsQueue = await createJobQueue({
           dbPath: jobsDbPath,
           registry: createHostJobRegistry(),
+          onPermanentFailure: (info) => {
+            jobPermanentFailure.notify(info);
+          },
         });
         jobsQueue.start();
       }
@@ -765,5 +772,6 @@ export function createServiceDomainRuntime(
     syncPluginWake,
     dashboardSnapshot,
     jobs,
+    jobPermanentFailure,
   };
 }

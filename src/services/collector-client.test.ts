@@ -16,6 +16,7 @@ const PORT_KEYS = [
   "folders",
   "index",
   "items",
+  "jobs",
   "media",
   "settings",
   "syncPlugins",

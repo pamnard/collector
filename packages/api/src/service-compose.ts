@@ -5,6 +5,7 @@ import type {
   FoldersPort,
   IndexPort,
   ItemsPort,
+  JobsPort,
   MediaPort,
   SettingsPort,
   SyncPluginsPort,
@@ -80,6 +81,11 @@ export const INDEX_PORT_KEYS = [
   "getVaultIndexSyncStatus",
   "subscribeVaultPresentationChanged",
 ] as const satisfies readonly (keyof IndexPort)[];
+
+export const JOBS_PORT_KEYS = [
+  "getJobStats",
+  "subscribeJobPermanentFailure",
+] as const satisfies readonly (keyof JobsPort)[];
 
 export const SETTINGS_PORT_KEYS = [
   "ensureAppSettings",

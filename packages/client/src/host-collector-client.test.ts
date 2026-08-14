@@ -26,6 +26,7 @@ import {
   FOLDERS_PORT_KEYS,
   INDEX_PORT_KEYS,
   ITEMS_PORT_KEYS,
+  JOBS_PORT_KEYS,
   MEDIA_PORT_KEYS,
   SETTINGS_PORT_KEYS,
   SYNC_PLUGINS_PORT_KEYS,
@@ -783,6 +784,7 @@ const PORT_KEYS = [
   "folders",
   "index",
   "items",
+  "jobs",
   "media",
   "settings",
   "syncPlugins",
@@ -846,6 +848,9 @@ describe("CollectorHostService ports (#366)", () => {
     }
     for (const key of INDEX_PORT_KEYS) {
       expect(typeof service.index[key], `index.${key}`).toBe("function");
+    }
+    for (const key of JOBS_PORT_KEYS) {
+      expect(typeof service.jobs[key], `jobs.${key}`).toBe("function");
     }
     for (const key of SETTINGS_PORT_KEYS) {
       expect(typeof service.settings[key], `settings.${key}`).toBe("function");

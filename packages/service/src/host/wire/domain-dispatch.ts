@@ -658,6 +658,13 @@ export const DOMAIN_DISPATCH_REGISTRY: Record<
     },
   },
 
+  // #630 job queue stats
+  [M.getJobStats]: {
+    handle: async (runtime) => {
+      await runtime.ensureInitialized();
+      return runtime.jobs.stats();
+    },
+  },
 
   // #552 dashboard snapshot I/O (peek/build stay client-orchestrated)
   [M.ensureDashboardSnapshot]: {
