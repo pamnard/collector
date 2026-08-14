@@ -55,16 +55,14 @@ export function buildRenamedFolderPath(
   return parent ? `${parent}/${leaf}` : leaf;
 }
 
-/** Child under parent: `Parent` + `Child` → `Parent/Child`. */
+/** Child under parent: `Parent` + `Child` → `Parent/Child`; empty parent → leaf at vault root. */
 export function buildChildFolderPath(
   parentPath: string,
   leafName: string,
 ): string {
   const parent = parentPath.trim();
-  if (!parent) {
-    throw new Error("Parent folder path must be non-empty");
-  }
-  return `${parent}/${assertFolderLeafName(leafName)}`;
+  const leaf = assertFolderLeafName(leafName);
+  return parent ? `${parent}/${leaf}` : leaf;
 }
 
 /** Parents that must not be choosable when moving `folderPath`. */

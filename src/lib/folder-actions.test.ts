@@ -166,17 +166,19 @@ describe("folder-actions rename helpers", () => {
     );
   });
 
-  it("buildChildFolderPath rejects empty parent, empty leaf, and slash in leaf", () => {
-    expect(() => buildChildFolderPath("", "Child")).toThrow(
-      /parent folder path must be non-empty/i,
-    );
-    expect(() => buildChildFolderPath("   ", "Child")).toThrow(
-      /parent folder path must be non-empty/i,
-    );
+  it("buildChildFolderPath allows empty parent as vault root", () => {
+    expect(buildChildFolderPath("", "Child")).toBe("Child");
+    expect(buildChildFolderPath("   ", "  Archive  ")).toBe("Archive");
+  });
+
+  it("buildChildFolderPath rejects empty leaf and slash in leaf", () => {
     expect(() => buildChildFolderPath("Parent", "")).toThrow(
       /leaf name must be non-empty/i,
     );
     expect(() => buildChildFolderPath("Parent", "   ")).toThrow(
+      /leaf name must be non-empty/i,
+    );
+    expect(() => buildChildFolderPath("", "")).toThrow(
       /leaf name must be non-empty/i,
     );
     expect(() => buildChildFolderPath("Parent", "A/B")).toThrow(
