@@ -20,9 +20,9 @@ export interface HostWireClientOptions {
   /** Default per-request timeout when `request` options omit `timeoutMs`. */
   requestTimeoutMs?: number;
   /**
-   * Explicit host handshake token (#336). When omitted, resolved from
-   * `tokenFile` / `COLLECTOR_HOST_TOKEN` / `dataDir` token file / sock sibling.
-   */
+ * Explicit host handshake token (#336). When omitted, resolved from
+ * `tokenFile` / `COLLECTOR_HOST_TOKEN` / `dataDir` token file.
+ */
   token?: string;
   /** Read token from this path instead of the default dataDir file. */
   tokenFile?: string;
@@ -32,7 +32,7 @@ export interface HostWireClientOptions {
 
 /**
  * Low-level transport to the domain host (#551).
- * HTTP+WS browser dial and legacy socket dial both implement this shape.
+ * HTTP+WS dial implements this shape.
  */
 export interface CollectorHostTransport {
   request(

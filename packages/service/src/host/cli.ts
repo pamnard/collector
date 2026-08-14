@@ -3,7 +3,7 @@
  * CLI entry for Collector service domain host (#151/#152/#237/#554).
  *
  * Usage:
- *   node packages/service/dist/host/cli.js serve --data-dir <dir> [--config-dir <dir>] [--port 1421] [--host 127.0.0.1] [--ui-dir <path>] [--ipc-path <path>|--no-ipc]
+ *   node packages/service/dist/host/cli.js serve --data-dir <dir> [--config-dir <dir>] [--port 1421] [--host 127.0.0.1] [--ui-dir <path>]
  *   `--port 0` = ephemeral (tests/smokes). Default port is DEFAULT_SERVICE_HOST_PORT (1421).
  *
  * Layout (#238): production passes --config-dir when profile dirs are split.
@@ -31,7 +31,7 @@ import {
 
 function usage(): never {
   console.error(
-    `Usage: collector-service serve --data-dir <path> [--config-dir <path>] [--port ${DEFAULT_SERVICE_HOST_PORT}] [--host 127.0.0.1] [--ui-dir <path>] [--ipc-path <path>|--no-ipc]`,
+    `Usage: collector-service serve --data-dir <path> [--config-dir <path>] [--port ${DEFAULT_SERVICE_HOST_PORT}] [--host 127.0.0.1] [--ui-dir <path>]`,
   );
   process.exit(2);
 }
@@ -44,14 +44,17 @@ function readArg(argv: string[], name: string): string | undefined {
   return argv[idx + 1];
 }
 
-function hasFlag(argv: string[], name: string): boolean {
-  return argv.includes(name);
-}
-
 async function main(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
   if (command !== "serve") {
     usage();
+  }
+
+  if (rest.includes("--ipc-path") || rest.includes("--no-ipc")) {
+    console.error(
+      "collector-service: --ipc-path / --no-ipc removed; host is HTTP-only",
+    );
+    process.exit(2);
   }
 
   const dataDir = readArg(rest, "--data-dir");
@@ -70,18 +73,6 @@ async function main(argv: string[]): Promise<void> {
   if (!Number.isInteger(port) || port < 0) {
     console.error("Invalid --port");
     process.exit(2);
-  }
-
-  let ipcPath: string | false | undefined;
-  if (hasFlag(rest, "--no-ipc")) {
-    ipcPath = false;
-  } else if (readArg(rest, "--ipc-path") !== undefined) {
-    const value = readArg(rest, "--ipc-path");
-    if (!value) {
-      console.error("Missing value for --ipc-path");
-      process.exit(2);
-    }
-    ipcPath = value;
   }
 
   let lock;
@@ -108,7 +99,6 @@ async function main(argv: string[]): Promise<void> {
     ...(uiDir === undefined ? {} : { uiDir }),
     host,
     port,
-    ipcPath,
   });
   console.log(formatServiceHostReadyLine(service));
 

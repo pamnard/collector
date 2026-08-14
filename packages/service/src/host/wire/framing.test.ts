@@ -6,9 +6,8 @@ import {
   encodeHostWireFrame,
   type HostWireRequest,
 } from "./framing.js";
-import { defaultHostWirePath, isWindowsNamedPipePath } from "./paths.js";
 
-describe("IPC framing", () => {
+describe("host wire framing", () => {
   it("round-trips length-prefixed frames across chunk boundaries", () => {
     const req: HostWireRequest = {
       v: SERVICE_HOST_PROTOCOL_VERSION,
@@ -43,19 +42,5 @@ describe("IPC framing", () => {
     header.writeUInt32BE(2 * 1024 * 1024, 0);
     const reader = new HostWireFrameReader();
     expect(() => reader.push(header)).toThrow(HostWireFramingError);
-  });
-});
-
-describe("defaultHostWirePath", () => {
-  it("uses a Unix socket under dataDir on non-Windows", () => {
-    if (process.platform === "win32") {
-      expect(isWindowsNamedPipePath(defaultHostWirePath("C:\\\\data"))).toBe(
-        true,
-      );
-      return;
-    }
-    expect(defaultHostWirePath("/tmp/collector-data")).toBe(
-      "/tmp/collector-data/collector-service.sock",
-    );
   });
 });

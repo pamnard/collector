@@ -34,8 +34,6 @@ npm run test:service-host
 step "service host lifecycle smoke"
 npm run test:service-host-lifecycle
 
-step "service IPC health smoke"
-npm run test:service-ipc
 
 step "large empty-index smoke"
 npm run test:large-empty-index

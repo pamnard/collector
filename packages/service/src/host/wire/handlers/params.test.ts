@@ -8,7 +8,7 @@ import {
   requireString,
 } from "./params.js";
 
-describe("IPC handler params helpers", () => {
+describe("handler params helpers", () => {
   it("asObject accepts undefined/null/object and rejects arrays/primitives", () => {
     expect(asObject(undefined, "m")).toEqual({});
     expect(asObject(null, "m")).toEqual({});

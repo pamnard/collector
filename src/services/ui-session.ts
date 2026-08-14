@@ -16,7 +16,7 @@ export function getUiSession(): UiSession {
   return activeSession;
 }
 
-/** Replace the active session (tests / #170 IPC cutover). */
+/** Replace the active session (tests / #170 host cutover). */
 export function setUiSession(session: UiSession): void {
   activeSession = session;
 }

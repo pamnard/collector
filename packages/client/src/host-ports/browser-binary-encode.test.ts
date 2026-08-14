@@ -37,7 +37,7 @@ function mockTransport(calls: RequestCall[]): HostWireClient {
   };
 }
 
-describe("IPC binary encode without global Buffer (webview)", () => {
+describe("binary encode without global Buffer (webview)", () => {
   const bytes = new Uint8Array([1, 2, 3]);
   // Oracle while Node Buffer still exists; encode under test runs after delete.
   const expectedBase64 = Buffer.from(bytes).toString("base64");

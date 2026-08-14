@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   indexDbPathForConfigDir,
+  jobsDbPathForDataDir,
   resolveCollectorProfileLayout,
   selfContainedCollectorProfileLayout,
 } from "./profile-layout.js";
@@ -14,6 +15,9 @@ describe("collector profile layout (#238)", () => {
     expect(layout.indexDbPath).toBe(
       "/home/user/.config/com.collector.app/collector.db",
     );
+    expect(layout.jobsDbPath).toBe(
+      "/home/user/.local/share/com.collector.app/collector/jobs.db",
+    );
   });
 
   it("maps self-contained --data-dir to config/ + collector.db under the same root", () => {
@@ -22,8 +26,10 @@ describe("collector profile layout (#238)", () => {
       dataDir: "/tmp/profile",
       configDir: "/tmp/profile/config",
       indexDbPath: "/tmp/profile/collector.db",
+      jobsDbPath: "/tmp/profile/jobs.db",
     });
     expect(indexDbPathForConfigDir(layout.configDir)).toBe(layout.indexDbPath);
+    expect(jobsDbPathForDataDir(layout.dataDir)).toBe(layout.jobsDbPath);
   });
 
   it("rejects empty roots", () => {

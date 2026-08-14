@@ -42,7 +42,7 @@ export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] = [
   {
     name: "collector_health",
     description:
-      "Ping Collector service health over local IPC. " +
+      "Ping Collector service health over HTTP. " +
       "Returns { ok, status, open, healthy }. " +
       "The vault/index is usable when ok and healthy are true (status \"healthy\"). " +
       "open indicates the service host has its index gate open; after a successful connect it is typically true.",

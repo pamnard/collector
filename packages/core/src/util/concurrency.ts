@@ -4,13 +4,13 @@ export const DISK_ITEM_READ_CONCURRENCY = 4;
 /** SQLite write batch size during background index sync; yields between batches. */
 export const INDEX_SYNC_WRITE_BATCH = 32;
 
-/** Sleep between sync batches so WebView / compositor keep air under plugin IPC. */
+/** Sleep between sync batches so WebView / compositor keep air under load. */
 export const INDEX_SYNC_YIELD_MS = 16;
 
 /** Longer yield before content/FTS phase — lower priority than metadata/list UI. */
 export const INDEX_SYNC_CONTENT_YIELD_MS = 32;
 
-/** Yield the event loop; pass ms > 0 for a real sleep (IPC backpressure). */
+/** Yield the event loop; pass ms > 0 for a real sleep (backpressure). */
 export function yieldToEventLoop(ms = 0): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -47,7 +47,7 @@ export async function runWithConcurrency<T>(
 
 /**
  * Run work in chunks of `yieldEvery`, yielding `yieldMs` between chunks
- * so plugin-fs / plugin-sql IPC cannot saturate the host.
+ * so filesystem/SQL batching cannot saturate the host.
  */
 export async function runWithConcurrencyYielding<T>(
   count: number,

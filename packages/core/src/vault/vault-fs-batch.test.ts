@@ -106,7 +106,7 @@ describe("vault-fs-batch", () => {
     readSpy.mockRestore();
   });
 
-  it("readVaultItemMetaBatch yields between IPC chunks", async () => {
+  it("readVaultItemMetaBatch yields between chunks", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "collector-batch-read-yield-"));
     const ctx = { fs, index: new SqlVaultIndexStore(new MemorySqlAdapter()) };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
@@ -281,7 +281,7 @@ describe("vault-fs-batch perf guard", () => {
     }
   });
 
-  it("indexes 200 items with O(1) stat IPC and few read IPC calls", async () => {
+  it("indexes 200 items with O(1) stat and few read calls", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "collector-batch-perf-"));
     const inner = new NodeFileSystemAdapter();
     const fs = new CountingBatchAdapter(inner);

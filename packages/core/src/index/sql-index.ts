@@ -87,7 +87,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
   ): Promise<void> {
     const { item } = record;
 
-    // No multi-IPC BEGIN/COMMIT: sqlx pool uses a new connection per execute (#49/#77).
+    // No multi-statement BEGIN/COMMIT across pooled executes (#49/#77).
     await this.db.execute(
       `INSERT INTO items (
         id, vault_id, title, description, url, content_type, source_type, source_id,

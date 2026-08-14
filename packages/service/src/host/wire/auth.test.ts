@@ -4,16 +4,14 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   defaultServiceHostTokenPath,
-  extractAuthToken,
   generateServiceHostToken,
   readServiceHostTokenFile,
   resolveServiceHostToken,
-  siblingServiceHostTokenPath,
   tokensEqual,
   writeServiceHostTokenFile,
 } from "./auth.js";
 
-describe("service IPC auth helpers", () => {
+describe("service host auth helpers", () => {
   const dirs: string[] = [];
 
   afterEach(() => {
@@ -25,15 +23,6 @@ describe("service IPC auth helpers", () => {
   it("defaultServiceHostTokenPath sits under dataDir", () => {
     expect(defaultServiceHostTokenPath("/vault/data")).toBe(
       join("/vault/data", "collector-service.host-token"),
-    );
-  });
-
-  it("sibling token path only for collector-service.sock", () => {
-    expect(
-      siblingServiceHostTokenPath(join("/vault/data", "collector-service.sock")),
-    ).toBe(join("/vault/data", "collector-service.host-token"));
-    expect(siblingServiceHostTokenPath(join("/vault/data", "other.sock"))).toBe(
-      null,
     );
   });
 
@@ -59,15 +48,9 @@ describe("service IPC auth helpers", () => {
     expect(tokensEqual("abc", "ab")).toBe(false);
   });
 
-  it("extractAuthToken reads params.token", () => {
-    expect(extractAuthToken({ token: "x" })).toBe("x");
-    expect(extractAuthToken({})).toBe(null);
-    expect(extractAuthToken(null)).toBe(null);
-  });
-
   it("resolveServiceHostToken prefers explicit token", async () => {
     expect(
-      await resolveServiceHostToken("/ignored", {
+      await resolveServiceHostToken({
         token: "explicit",
         dataDir: "/nope",
         env: { COLLECTOR_HOST_TOKEN: "env" },
@@ -76,23 +59,15 @@ describe("service IPC auth helpers", () => {
   });
 
   it("resolveServiceHostToken reads dataDir file", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "collector-ipc-resolve-"));
+    const dir = mkdtempSync(join(tmpdir(), "collector-host-resolve-"));
     dirs.push(dir);
     const path = defaultServiceHostTokenPath(dir);
     writeFileSync(path, "from-file\n", "utf8");
     expect(
-      await resolveServiceHostToken(join(dir, "collector-service.sock"), {
+      await resolveServiceHostToken({
         dataDir: dir,
         env: {},
       }),
     ).toBe("from-file");
-  });
-
-  it("resolveServiceHostToken reads sibling sock token", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "collector-ipc-sib-"));
-    dirs.push(dir);
-    const sock = join(dir, "collector-service.sock");
-    writeFileSync(defaultServiceHostTokenPath(dir), "sib\n", "utf8");
-    expect(await resolveServiceHostToken(sock, { env: {} })).toBe("sib");
   });
 });

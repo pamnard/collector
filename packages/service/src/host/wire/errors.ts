@@ -1,5 +1,5 @@
 /**
- * IPC failure → `@collector/api` error mapping (#153).
+ * Host transport failure → `@collector/api` error mapping (#153).
  *
  * | Failure mode                         | layer       | code               |
  * | ------------------------------------ | ----------- | ------------------ |
@@ -85,49 +85,6 @@ export function formatHostConnectFailure(
     return `Failed to reach Collector service at ${endpointLabel}: ${error.message}`;
   }
   return `Failed to reach Collector service at ${endpointLabel}`;
-}
-
-/** Map a Node connect/socket errno into a stable transport error. */
-export function mapNodeConnectErrno(
-  error: NodeJS.ErrnoException,
-  phase: "connect" | "socket",
-): HostWireError {
-  const code = error.code;
-  if (phase === "connect") {
-    if (code === "ENOENT" || code === "ECONNREFUSED" || code === "EADDRNOTAVAIL") {
-      return hostWireError({
-        layer: "transport",
-        code: "not_connected",
-        message: `Host connect failed: ${code ?? error.message}`,
-      });
-    }
-    if (code === "ETIMEDOUT") {
-      return hostWireError({
-        layer: "transport",
-        code: "timeout",
-        message: `Host connect timed out: ${error.message}`,
-      });
-    }
-    return hostWireError({
-      layer: "transport",
-      code: "not_connected",
-      message: `Host connect failed: ${error.message}`,
-    });
-  }
-
-  if (code === "ECONNRESET" || code === "EPIPE" || code === "ERR_STREAM_DESTROYED") {
-    return hostWireError({
-      layer: "transport",
-      code: "disconnected",
-      message: `Host socket error: ${code ?? error.message}`,
-    });
-  }
-
-  return hostWireError({
-    layer: "transport",
-    code: "disconnected",
-    message: `Host socket error: ${error.message}`,
-  });
 }
 
 /** Normalize any thrown value from a handler into a wire `CollectorApiError`. */

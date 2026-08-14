@@ -43,7 +43,7 @@ export interface CollectorApiDomainError extends CollectorApiErrorBase {
     | "failed";
 }
 
-/** Service IPC handshake failures (#336). */
+/** Service host auth handshake failures (#336). */
 export interface CollectorApiAuthError extends CollectorApiErrorBase {
   layer: "auth";
   code?: "auth_required" | "auth_failed" | "token_missing";

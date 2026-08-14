@@ -10,6 +10,7 @@ import {
 function stubRuntime(overrides: {
   itemsSearch?: Partial<ServiceDomainRuntime["itemsSearch"]>;
   dropImport?: Partial<ServiceDomainRuntime["dropImport"]>;
+  jobs?: Partial<ServiceDomainRuntime["jobs"]>;
 }): {
   runtime: ServiceDomainRuntime;
   ensureInitialized: ReturnType<typeof vi.fn>;

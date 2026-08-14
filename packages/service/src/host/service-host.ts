@@ -1,14 +1,11 @@
 /**
  * Collector service domain host (#151/#152/#155+/#237/#238/#551):
- * open index DB + HTTP ping/health/RPC/events + local dial with domain handlers.
+ * open index DB + HTTP ping/health/RPC/events with domain handlers.
  *
- * Uses the canonical profile layout (#238). Default desktop path stays
- * in-process until cutover (#170). Supervise may start this host behind
- * COLLECTOR_ENABLE_SERVICE_SUPERVISE with an isolated `--data-dir`
- * (self-contained layout) so it does not share SQLite with the UI writer.
+ * Uses the canonical profile layout (#238).
  *
  * Browser surfaces (#551/#553/#555): always-on POST /api/rpc + WS /api/events +
- * GET/HEAD /media/file with the same host token as the local dial.
+ * GET/HEAD /media/file with the same host token.
  * Optional static UI dir + GET /api/ui-bootstrap for packaged browser UI (#555).
  */
 
@@ -22,7 +19,6 @@ import {
   selfContainedCollectorProfileLayout,
 } from "@collector/shared";
 import { createDomainWireRequestHandler } from "./wire/domain-dispatch.js";
-import { startHostWireServer, type HostWireServer } from "./wire/server.js";
 import { createServiceDomainRuntime } from "./domain-runtime.js";
 import { SERVICE_HOST_EVENTS } from "./wire/framing.js";
 import {
@@ -81,11 +77,6 @@ export interface ServiceHostOptions {
    */
   port?: number;
   /**
-   * Local IPC path. Default: platform path under `dataDir`.
-   * Pass `false` to disable IPC (HTTP-only).
-   */
-  ipcPath?: string | false;
-  /**
    * Directory of built browser UI (vite dist). When set, host serves static
    * files + SPA fallback and exposes GET /api/ui-bootstrap (#555).
    */
@@ -98,8 +89,6 @@ export interface ServiceHost {
   baseUrl: string;
   /** Browser WebSocket URL for push events (#551). */
   wsEventsUrl: string;
-  /** Local IPC endpoint (Unix socket or Windows named pipe), if enabled. */
-  ipcPath: string | null;
   /** Absolute UI static root when configured (#555). */
   uiDir: string | null;
   /** Resolved profile layout used by this host. */
@@ -279,40 +268,25 @@ export async function startServiceHost(
   const hostBaseUrlPath = defaultServiceHostBaseUrlPath(layout.dataDir);
   await writeServiceHostBaseUrlFile(hostBaseUrlPath, baseUrl);
 
-  let ipc: HostWireServer | null = null;
   let stopSyncStatusBroadcast: Subscription | null = null;
   let stopAppSettingsBroadcast: Subscription | null = null;
   let stopPresentationChangedBroadcast: Subscription | null = null;
 
-  const broadcastBoth = (event: string, payload: unknown): void => {
-    ipc?.broadcastEvent(event, payload);
+  const broadcastEvent = (event: string, payload: unknown): void => {
     eventsHub.broadcastEvent(event, payload);
   };
 
-  if (options.ipcPath !== false) {
-    ipc = await startHostWireServer({
-      dataDir: layout.dataDir,
-      path: typeof options.ipcPath === "string" ? options.ipcPath : undefined,
-      token: hostToken,
-      handler: {
-        ping: () => ({ ok: true, pong: true }),
-        health: healthPayload,
-        request: domainDispatch,
-      },
-    });
-  }
-
   stopSyncStatusBroadcast = runtime.vaultIndexSyncStatus.subscribe((status) => {
-    broadcastBoth(SERVICE_HOST_EVENTS.vaultIndexSyncStatus, status);
+    broadcastEvent(SERVICE_HOST_EVENTS.vaultIndexSyncStatus, status);
   });
   stopAppSettingsBroadcast = runtime.appSettings.subscribeAppSettings(
     (settings) => {
-      broadcastBoth(SERVICE_HOST_EVENTS.appSettings, settings);
+      broadcastEvent(SERVICE_HOST_EVENTS.appSettings, settings);
     },
   );
   stopPresentationChangedBroadcast = runtime.vaultPresentationChanged.subscribe(
     (payload) => {
-      broadcastBoth(SERVICE_HOST_EVENTS.vaultPresentationChanged, payload);
+      broadcastEvent(SERVICE_HOST_EVENTS.vaultPresentationChanged, payload);
     },
   );
 
@@ -329,10 +303,6 @@ export async function startServiceHost(
     stopPresentationChangedBroadcast?.unsubscribe();
     stopPresentationChangedBroadcast = null;
     await eventsHub.close();
-    if (ipc) {
-      await ipc.close();
-      ipc = null;
-    }
     await removeServiceHostTokenFile(hostTokenPath);
     await removeServiceHostBaseUrlFile(hostBaseUrlPath);
     await new Promise<void>((resolve, reject) => {
@@ -346,7 +316,6 @@ export async function startServiceHost(
     port: address.port,
     baseUrl,
     wsEventsUrl,
-    ipcPath: ipc?.path ?? null,
     uiDir,
     layout,
     isHealthy: () => runtime.isHealthy(),
@@ -361,10 +330,10 @@ export function formatServiceHostReadyLine(host: ServiceHost): string {
     port: host.port,
     baseUrl: host.baseUrl,
     wsEventsUrl: host.wsEventsUrl,
-    ipcPath: host.ipcPath,
     uiDir: host.uiDir,
     dataDir: host.layout.dataDir,
     configDir: host.layout.configDir,
     indexDbPath: host.layout.indexDbPath,
+    jobsDbPath: host.layout.jobsDbPath,
   })}`;
 }

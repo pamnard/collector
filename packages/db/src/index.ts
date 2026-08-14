@@ -14,3 +14,8 @@ export {
 } from "./validate.js";
 export type { IndexValidationResult } from "./validate.js";
 export { resetIndexSchema } from "./reset.js";
+export {
+  CURRENT_JOBS_SCHEMA_VERSION,
+  JOBS_MIGRATIONS,
+  runJobsMigrations,
+} from "./jobs/migrate.js";

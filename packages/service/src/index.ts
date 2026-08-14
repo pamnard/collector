@@ -1,7 +1,7 @@
 /**
  * @collector/service — in-process Collector service application module.
  *
- * Browser/Tauri UI must import only from this entry. Node host / IPC live at
+ * Browser UI must import only from this entry. Node host lives at
  * `@collector/service/host` so Vite does not pull `node:fs` into the client.
  */
 
