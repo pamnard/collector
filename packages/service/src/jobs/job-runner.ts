@@ -1,9 +1,10 @@
-import type { JobHandlerResult, JobHandlers } from "./job-types.js";
+import type { JobRegistry } from "./job-registry.js";
+import type { JobHandlerResult } from "./job-types.js";
 import type { JobRow, JobStore } from "./job-store.js";
 
 export interface JobRunnerOptions {
   store: JobStore;
-  handlers: JobHandlers;
+  registry: JobRegistry;
   concurrency: number;
   timeoutMs: number;
   /** Idle heartbeat for delayed jobs (`available_at` in the future). */
@@ -14,7 +15,7 @@ export interface JobRunnerOptions {
 export function createJobRunner(options: JobRunnerOptions) {
   const {
     store,
-    handlers,
+    registry,
     concurrency,
     timeoutMs,
     pollIntervalMs,
@@ -54,8 +55,7 @@ export function createJobRunner(options: JobRunnerOptions) {
 
   async function executeJob(job: JobRow): Promise<void> {
     const nowIso = () => now().toISOString();
-    const handler = handlers[job.type];
-    if (!handler) {
+    if (!registry.has(job.type)) {
       await store.markFailed(
         job.id,
         nowIso(),
@@ -63,10 +63,11 @@ export function createJobRunner(options: JobRunnerOptions) {
       );
       return;
     }
+    const entry = registry.requireEntry(job.type);
 
-    let payload: unknown;
+    let raw: unknown;
     try {
-      payload = JSON.parse(job.payload_json) as unknown;
+      raw = JSON.parse(job.payload_json) as unknown;
     } catch (err) {
       await store.markFailed(
         job.id,
@@ -76,20 +77,34 @@ export function createJobRunner(options: JobRunnerOptions) {
       return;
     }
 
+    let payload: unknown;
+    try {
+      payload = registry.parsePayload(job.type, raw);
+    } catch (err) {
+      await store.markFailed(
+        job.id,
+        nowIso(),
+        `invalid job payload: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+
     let result: JobHandlerResult;
     try {
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
       result = await Promise.race([
-        handler({
-          id: job.id,
-          type: job.type,
-          payload,
-          attempts: job.attempts,
-        }).finally(() => {
-          if (timeoutId) {
-            clearTimeout(timeoutId);
-          }
-        }),
+        entry
+          .handler({
+            id: job.id,
+            type: job.type,
+            payload,
+            attempts: job.attempts,
+          })
+          .finally(() => {
+            if (timeoutId) {
+              clearTimeout(timeoutId);
+            }
+          }),
         new Promise<JobHandlerResult>((_, reject) => {
           timeoutId = setTimeout(() => {
             reject(new Error(`job timed out after ${timeoutMs}ms`));

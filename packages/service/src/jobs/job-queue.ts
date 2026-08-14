@@ -1,16 +1,26 @@
+import {
+  JOB_TYPE_CATALOG,
+  testNoopJobType,
+  type TestNoopJobPayload,
+} from "@collector/shared";
 import { runJobsMigrations } from "@collector/db";
 import { NodeSqliteExecutor } from "../host/node-sql.js";
+import {
+  createJobRegistry,
+  type JobRegistry,
+  type TypedJobHandler,
+} from "./job-registry.js";
 import { createJobRunner } from "./job-runner.js";
 import { createJobStore, type JobStats } from "./job-store.js";
-import type { JobHandler, JobHandlers } from "./job-types.js";
 
 export type {
   JobHandler,
   JobHandlerInput,
   JobHandlerResult,
-  JobHandlers,
 } from "./job-types.js";
 export type { JobStats };
+export type { JobRegistry, TypedJobHandler } from "./job-registry.js";
+export { createJobRegistry } from "./job-registry.js";
 
 export interface EnqueueInput {
   type: string;
@@ -36,7 +46,7 @@ export interface JobQueue {
 
 export interface CreateJobQueueOptions {
   dbPath: string;
-  handlers: JobHandlers;
+  registry: JobRegistry;
   concurrency?: number;
   timeoutMs?: number;
   pollIntervalMs?: number;
@@ -58,6 +68,7 @@ export async function createJobQueue(
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const now = options.now ?? (() => new Date());
   const createId = options.createId ?? (() => crypto.randomUUID());
+  const { registry } = options;
 
   if (concurrency < 1) {
     throw new Error("job queue concurrency must be >= 1");
@@ -71,7 +82,7 @@ export async function createJobQueue(
   const store = createJobStore(sql);
   const runner = createJobRunner({
     store,
-    handlers: options.handlers,
+    registry,
     concurrency,
     timeoutMs,
     pollIntervalMs,
@@ -83,7 +94,9 @@ export async function createJobQueue(
       if (!input.type) {
         throw new Error("job enqueue requires a non-empty type");
       }
-      const nowIso = now().toISOString();
+      registry.assertReady(input.type);
+      const payload = registry.parsePayload(input.type, input.payload ?? {});
+
       const delayMs = input.delayMs ?? 0;
       if (delayMs < 0) {
         throw new Error("job enqueue delayMs must be >= 0");
@@ -92,8 +105,9 @@ export async function createJobQueue(
       if (maxAttempts < 1) {
         throw new Error("job enqueue maxAttempts must be >= 1");
       }
+      const nowIso = now().toISOString();
       const availableAt = new Date(now().getTime() + delayMs).toISOString();
-      const payloadJson = JSON.stringify(input.payload ?? {});
+      const payloadJson = JSON.stringify(payload);
       const priority = input.priority ?? 0;
       const idempotencyKey = input.idempotencyKey ?? null;
 
@@ -140,6 +154,7 @@ export async function createJobQueue(
     },
 
     start() {
+      registry.assertAllRegistered();
       runner.start();
     },
 
@@ -150,16 +165,15 @@ export async function createJobQueue(
   };
 }
 
-/** Built-in handler for host wiring / smoke (#628). */
-export const testNoopHandler: JobHandler = async (job) => {
-  const payload = job.payload as {
-    fail?: "retryable" | "permanent";
-    retryAfterMs?: number;
-  };
-  if (payload?.fail === "permanent") {
+/** Built-in handler for host wiring / smoke (#628 / #629). Payload already validated. */
+export const testNoopHandler: TypedJobHandler<
+  typeof testNoopJobType.payload
+> = async (job) => {
+  const payload: TestNoopJobPayload = job.payload;
+  if (payload.fail === "permanent") {
     return { status: "fail", retryable: false, error: "noop permanent fail" };
   }
-  if (payload?.fail === "retryable") {
+  if (payload.fail === "retryable") {
     return {
       status: "fail",
       retryable: true,
@@ -169,3 +183,10 @@ export const testNoopHandler: JobHandler = async (job) => {
   }
   return { status: "ok" };
 };
+
+/** Production/smoke registry: `JOB_TYPE_CATALOG` + built-in handlers. */
+export function createHostJobRegistry(): JobRegistry {
+  const registry = createJobRegistry(JOB_TYPE_CATALOG);
+  registry.register(testNoopJobType, testNoopHandler);
+  return registry;
+}
