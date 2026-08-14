@@ -160,7 +160,6 @@ describe("createItemsSearchService.queryIndex", () => {
       getContext: () => ({}) as never,
       getIndex: () => index,
       kickoffVaultIndexSync: kickoff,
-      startVaultIndexSync: async () => {},
       buildSearchFtsQuery: () => null,
       addVaultSyncListener: () => () => {},
       findSimilarItems: async () => [],

@@ -1,26 +1,25 @@
 /**
  * Node filesystem watcher for out-of-band service host (#164 / #567).
- * Drives targeted index updates in the host process (not the UI).
+ * Debounced batches enqueue durable reindex jobs (#632).
  */
 
 import { watch, type FSWatcher } from "node:fs";
 import {
   createVaultWatchBatcher,
-  reconcileIndexFolderPrefixFromFilesystem,
   resolveVaultWatchTarget,
-  syncIndexItemsFromFilesystem,
   type VaultContext,
 } from "@collector/core";
+import type { ReindexVaultBatchJobPayload } from "@collector/shared";
 
 const VAULT_WATCH_DEBOUNCE_MS = 300;
 
 export interface NodeVaultFilesystemWatcherDeps {
   getContext: () => VaultContext;
   getActiveVaultId: () => string | null;
-  onItemsSynced: (vaultId: string) => void;
+  enqueueReindexVaultBatch: (
+    payload: ReindexVaultBatchJobPayload,
+  ) => Promise<unknown>;
   forceVaultIndexResync: (vaultId: string, vaultPath: string) => void;
-  /** Fired after a successful targeted watch apply (non-blocking hooks). */
-  onWatchApplied?: (vaultId: string, vaultPath: string) => void;
 }
 
 export interface NodeVaultFilesystemWatcher {
@@ -40,18 +39,7 @@ export function createNodeVaultFilesystemWatcher(
   } | null = null;
   const pendingWatchItemIds = new Set<string>();
   const pendingWatchFolderPaths = new Set<string>();
-  let watchApplyPromise: Promise<void> | null = null;
-
-  function throwIfSyncErrors(
-    report: { errors: Array<{ message: string }> },
-    label: string,
-  ): void {
-    if (report.errors.length === 0) {
-      return;
-    }
-    const summary = report.errors.map((entry) => entry.message).join("; ");
-    throw new Error(`${label}: ${summary}`);
-  }
+  let watchEnqueuePromise: Promise<void> | null = null;
 
   async function drainWatchQueue(
     vaultId: string,
@@ -62,45 +50,28 @@ export function createNodeVaultFilesystemWatcher(
       const folderPaths = [...pendingWatchFolderPaths];
       pendingWatchItemIds.clear();
       pendingWatchFolderPaths.clear();
-
-      for (const folderPath of folderPaths) {
-        const report = await reconcileIndexFolderPrefixFromFilesystem(
-          deps.getContext(),
-          vaultPath,
-          vaultId,
-          folderPath,
-        );
-        throwIfSyncErrors(report, "folder prefix index sync failed");
-      }
-
-      if (itemIds.length > 0) {
-        const report = await syncIndexItemsFromFilesystem(
-          deps.getContext(),
-          vaultPath,
-          vaultId,
-          itemIds,
-        );
-        throwIfSyncErrors(report, "targeted index sync failed");
-      }
-
-      deps.onItemsSynced(vaultId);
-      deps.onWatchApplied?.(vaultId, vaultPath);
+      await deps.enqueueReindexVaultBatch({
+        vaultId,
+        vaultPath,
+        itemIds,
+        folderPaths,
+      });
     }
   }
 
-  function scheduleWatchApply(vaultId: string, vaultPath: string): void {
-    if (watchApplyPromise) {
+  function scheduleWatchEnqueue(vaultId: string, vaultPath: string): void {
+    if (watchEnqueuePromise) {
       return;
     }
-    watchApplyPromise = drainWatchQueue(vaultId, vaultPath)
+    watchEnqueuePromise = drainWatchQueue(vaultId, vaultPath)
       .catch((error: unknown) => {
-        console.error("[collector] vault watch index sync failed:", error);
+        console.error("[collector] vault watch enqueue failed:", error);
         deps.forceVaultIndexResync(vaultId, vaultPath);
       })
       .finally(() => {
-        watchApplyPromise = null;
+        watchEnqueuePromise = null;
         if (pendingWatchItemIds.size > 0 || pendingWatchFolderPaths.size > 0) {
-          scheduleWatchApply(vaultId, vaultPath);
+          scheduleWatchEnqueue(vaultId, vaultPath);
         }
       });
   }
@@ -137,7 +108,7 @@ export function createNodeVaultFilesystemWatcher(
         for (const folderPath of batch.folderPaths) {
           pendingWatchFolderPaths.add(folderPath);
         }
-        scheduleWatchApply(vaultId, vaultPath);
+        scheduleWatchEnqueue(vaultId, vaultPath);
       },
     });
 

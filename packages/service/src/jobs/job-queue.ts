@@ -1,7 +1,13 @@
 import type { JobPermanentFailure } from "@collector/api";
 import {
   JOB_TYPE_CATALOG,
+  dropImportBatchJobType,
+  generateCoverJobType,
+  refreshEmbeddingsJobType,
+  reindexVaultBatchJobType,
+  syncPluginPullJobType,
   testNoopJobType,
+  vaultIndexSyncJobType,
   type TestNoopJobPayload,
 } from "@collector/shared";
 import { runJobsMigrations } from "@collector/db";
@@ -12,14 +18,20 @@ import {
   type TypedJobHandler,
 } from "./job-registry.js";
 import { createJobRunner } from "./job-runner.js";
-import { createJobStore, type JobStats, type JobStatusCounts } from "./job-store.js";
+import {
+  createJobStore,
+  type JobRow,
+  type JobStats,
+  type JobStatusCounts,
+} from "./job-store.js";
+import { boundPhaseBHandler } from "./phase-b-bindings.js";
 
 export type {
   JobHandler,
   JobHandlerInput,
   JobHandlerResult,
 } from "./job-types.js";
-export type { JobStats, JobStatusCounts };
+export type { JobStats, JobStatusCounts, JobRow };
 export type { JobRegistry, TypedJobHandler } from "./job-registry.js";
 export { createJobRegistry } from "./job-registry.js";
 
@@ -40,6 +52,7 @@ export interface EnqueueResult {
 export interface JobQueue {
   enqueue(input: EnqueueInput): Promise<EnqueueResult>;
   cancel(id: string): Promise<boolean>;
+  getJob(id: string): Promise<JobRow | null>;
   stats(): Promise<JobStats>;
   start(): void;
   stop(): Promise<void>;
@@ -153,6 +166,10 @@ export async function createJobQueue(
       return store.cancelPending(id, now().toISOString());
     },
 
+    getJob(id) {
+      return store.getJob(id);
+    },
+
     stats() {
       return store.stats();
     },
@@ -192,5 +209,21 @@ export const testNoopHandler: TypedJobHandler<
 export function createHostJobRegistry(): JobRegistry {
   const registry = createJobRegistry(JOB_TYPE_CATALOG);
   registry.register(testNoopJobType, testNoopHandler);
+  // Phase B: real handlers late-bound via phaseBHandlerBindings (#627).
+  registry.register(vaultIndexSyncJobType, boundPhaseBHandler("vaultIndexSync"));
+  registry.register(
+    reindexVaultBatchJobType,
+    boundPhaseBHandler("reindexVaultBatch"),
+  );
+  registry.register(
+    refreshEmbeddingsJobType,
+    boundPhaseBHandler("refreshEmbeddings"),
+  );
+  registry.register(syncPluginPullJobType, boundPhaseBHandler("syncPluginPull"));
+  registry.register(generateCoverJobType, boundPhaseBHandler("generateCover"));
+  registry.register(
+    dropImportBatchJobType,
+    boundPhaseBHandler("dropImportBatch"),
+  );
   return registry;
 }

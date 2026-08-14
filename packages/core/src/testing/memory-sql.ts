@@ -46,6 +46,10 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       return this.deleteByField("items_fts", "item_id", bindValues[0]);
     }
 
+    if (normalized.startsWith("DELETE FROM item_embeddings")) {
+      return this.deleteByField("item_embeddings", "item_id", bindValues[0]);
+    }
+
     if (normalized.startsWith("DELETE FROM item_tags WHERE tag_id = ?")) {
       return this.deleteByField("item_tags", "tag_id", bindValues[0]);
     }

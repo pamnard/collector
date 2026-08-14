@@ -75,6 +75,14 @@ export {
   type TagMapsHolder,
 } from "./vault/item-io.js";
 
+
+export {
+  embeddingRefreshInputFromItem,
+  flushEmbeddingRefresh,
+  refreshItemEmbeddingAfterWrite,
+  tagNamesForItem,
+} from "./vault/item-embedding-refresh.js";
+
 export {
   buildTagMaps,
   parseItemDocument,

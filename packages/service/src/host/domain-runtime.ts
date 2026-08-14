@@ -5,7 +5,6 @@
  * client over the host — do not re-create sync/watcher orchestration in the UI.
  */
 
-import { mkdir } from "node:fs/promises";
 import {
   SqlVaultIndexStore,
   buildFtsMatchQuery,
@@ -44,7 +43,11 @@ import {
   loadTelegramPluginConfig,
   markTelegramLastSyncAt,
 } from "../plugins/telegram/index.js";
-import type { TelegramSyncPort, SyncPluginsPort } from "@collector/api";
+import type {
+  ImportDroppedFilesInput,
+  SyncPluginsPort,
+  TelegramSyncPort,
+} from "@collector/api";
 import {
   createVaultIndexSyncStatusStore,
   type VaultIndexSyncStatusStore,
@@ -60,6 +63,36 @@ import {
   type JobQueue,
 } from "../jobs/job-queue.js";
 import { createJobPermanentFailureStore } from "../job-permanent-failure.js";
+import { phaseBHandlerBindings } from "../jobs/phase-b-bindings.js";
+import {
+  createVaultIndexSyncHandler,
+  enqueueVaultIndexSync,
+} from "../jobs/handlers/vault-index-sync.js";
+import {
+  createReindexVaultBatchHandler,
+  enqueueReindexVaultBatch,
+} from "../jobs/handlers/reindex-vault-batch.js";
+import {
+  createRefreshEmbeddingsHandler,
+  enqueueRefreshEmbeddings,
+} from "../jobs/handlers/refresh-embeddings.js";
+import {
+  createSyncPluginPullHandler,
+  enqueueSyncPluginPull,
+  takeSyncPluginPullResult,
+} from "../jobs/handlers/sync-plugin-pull.js";
+import { enqueueAndAwaitResult } from "../jobs/job-wait.js";
+import {
+  createGenerateCoverHandler,
+  enqueueGenerateCover,
+} from "../jobs/handlers/generate-cover.js";
+import {
+  createDropImportBatchHandler,
+  enqueueDropImportBatch,
+  takeDropImportResult,
+} from "../jobs/handlers/drop-import-batch.js";
+import { mkdir, writeFile, rm } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 const SYNC_STATUS_THROTTLE_MS = 200;
 
@@ -181,6 +214,7 @@ export function createServiceDomainRuntime(
   const jobs: JobQueue = {
     enqueue: (input) => requireJobs().enqueue(input),
     cancel: (id) => requireJobs().cancel(id),
+    getJob: (id) => requireJobs().getJob(id),
     stats: () => requireJobs().stats(),
     start: () => requireJobs().start(),
     stop: () => requireJobs().stop(),
@@ -208,37 +242,35 @@ export function createServiceDomainRuntime(
     },
   });
 
+  function notifyWatchItemsSynced(vaultId: string): void {
+    const previous = vaultIndexSyncStatus.get();
+    vaultIndexSyncStatus.set({
+      vaultId,
+      status: "running",
+      progress: previous.progress,
+      metadataReady: true,
+      ftsReady: previous.ftsReady || previous.status === "done",
+    });
+    emitComplete(vaultId);
+    setTimeout(() => {
+      vaultIndexSyncStatus.set({
+        vaultId,
+        status: "done",
+        progress: previous.progress,
+        metadataReady: true,
+        ftsReady: true,
+      });
+    }, 0);
+  }
+
   const vaultFsWatcher = createNodeVaultFilesystemWatcher({
     getContext: () => getContext(),
     getActiveVaultId: () =>
       vaultsHolder.current?.getActiveVaultEntry()?.meta.id ?? null,
-    onItemsSynced: (vaultId) => {
-      // Same subscriber class as full sync: in-process listeners + status channel (#567).
-      // Split running→done across turns so React subscribers observe the transition.
-      const previous = vaultIndexSyncStatus.get();
-      vaultIndexSyncStatus.set({
-        vaultId,
-        status: "running",
-        progress: previous.progress,
-        metadataReady: true,
-        ftsReady: previous.ftsReady || previous.status === "done",
-      });
-      emitComplete(vaultId);
-      setTimeout(() => {
-        vaultIndexSyncStatus.set({
-          vaultId,
-          status: "done",
-          progress: previous.progress,
-          metadataReady: true,
-          ftsReady: true,
-        });
-      }, 0);
-    },
+    enqueueReindexVaultBatch: (payload) =>
+      enqueueReindexVaultBatch(requireJobs(), payload),
     forceVaultIndexResync: (vaultId, vaultPath) => {
       forceVaultIndexResync(vaultId, vaultPath);
-    },
-    onWatchApplied: (vaultId, vaultPath) => {
-      vaultLayoutGuard.schedule(vaultId, vaultPath);
     },
   });
 
@@ -326,7 +358,22 @@ export function createServiceDomainRuntime(
   });
 
   function getContext() {
-    return { fs, index: getIndex(), embeddings: itemEmbeddings };
+    return {
+      fs,
+      index: getIndex(),
+      embeddings: itemEmbeddings,
+      embeddingRefreshJobs: {
+        enqueue: async (
+          vaultId: string,
+          inputs: import("@collector/core").ItemEmbeddingRefreshInput[],
+        ) => {
+          if (inputs.length === 0) {
+            return;
+          }
+          await enqueueRefreshEmbeddings(requireJobs(), { vaultId, inputs });
+        },
+      },
+    };
   }
 
   async function ensureInitialized(): Promise<void> {
@@ -516,10 +563,18 @@ export function createServiceDomainRuntime(
     return promise;
   }
 
-  function kickoffVaultIndexSync(vaultId: string, vaultPath: string): void {
+  function kickoffVaultIndexSync(
+    vaultId: string,
+    vaultPath: string,
+    reason: "kickoff" | "force" | "recovery" = "kickoff",
+  ): void {
     vaultLayoutGuard.schedule(vaultId, vaultPath);
-    void startVaultIndexSync(vaultId, vaultPath).catch((error: unknown) => {
-      console.error("[collector] index sync failed:", error);
+    void enqueueVaultIndexSync(requireJobs(), {
+      vaultId,
+      vaultPath,
+      reason,
+    }).catch((error: unknown) => {
+      console.error("[collector] vaultIndexSync enqueue failed:", error);
     });
   }
 
@@ -532,8 +587,19 @@ export function createServiceDomainRuntime(
       watcherDisabledVaultIds.add(vaultId);
     }
     syncedVaultIds.delete(vaultId);
-    kickoffVaultIndexSync(vaultId, vaultPath);
+    kickoffVaultIndexSync(vaultId, vaultPath, "force");
   };
+
+  phaseBHandlerBindings.vaultIndexSync = createVaultIndexSyncHandler({
+    startVaultIndexSync,
+  });
+  phaseBHandlerBindings.reindexVaultBatch = createReindexVaultBatchHandler({
+    getContext,
+    onItemsSynced: notifyWatchItemsSynced,
+    onWatchApplied: (vaultId, vaultPath) => {
+      vaultLayoutGuard.schedule(vaultId, vaultPath);
+    },
+  });
 
   function isVaultFtsReady(vaultId: string): boolean {
     return syncedVaultIds.has(vaultId);
@@ -569,7 +635,6 @@ export function createServiceDomainRuntime(
     getContext,
     getIndex,
     kickoffVaultIndexSync,
-    startVaultIndexSync,
     buildSearchFtsQuery,
     addVaultSyncListener,
     onVaultPresentationChanged: (vaultId) =>
@@ -591,19 +656,80 @@ export function createServiceDomainRuntime(
     resolveActiveVault: () => vaults.resolveActiveVault(),
     getContext,
     generateCoverFromMedia,
+    enqueueGenerateCover: (input) => enqueueGenerateCover(requireJobs(), input),
     resolveThumbnailPathsBatch: (vaultPath, items) =>
       resolveItemThumbnailPathsBatch(getContext().fs, vaultPath, items),
     onVaultPresentationChanged: (vaultId) =>
       vaultPresentationChanged.notify(vaultId),
   });
 
-  const dropImport = createDropImportService({
+  async function requireActiveVaultPath(vaultId: string): Promise<string> {
+    const active = await vaults.resolveActiveVault();
+    if (active.vault.id !== vaultId) {
+      throw new Error(`active vault mismatch for job: ${vaultId}`);
+    }
+    return active.path;
+  }
+
+  phaseBHandlerBindings.generateCover = createGenerateCoverHandler({
+    getContext,
+    resolveVaultPath: requireActiveVaultPath,
+    generateCoverFromMedia,
+    onVaultPresentationChanged: (vaultId) =>
+      vaultPresentationChanged.notify(vaultId),
+  });
+
+  phaseBHandlerBindings.refreshEmbeddings = createRefreshEmbeddingsHandler({
+    refresh: (inputs) => itemEmbeddings.refresh(inputs),
+  });
+
+  phaseBHandlerBindings.dropImportBatch = createDropImportBatchHandler({
     createItem: (input) => itemsSearch.createItem(input),
     attachMediaFiles: (itemId, files) =>
       mediaCover.attachMediaFiles(itemId, files),
     updateItemSource: (itemId, raw) =>
       itemsSearch.updateItemSource(itemId, raw),
   });
+
+  const dropImport = {
+    async importDroppedFiles(input: ImportDroppedFilesInput) {
+      const active = await vaults.resolveActiveVault();
+      const stagingDir = join(
+        dataDir,
+        "drop-import-staging",
+        crypto.randomUUID(),
+      );
+      await mkdir(stagingDir, { recursive: true });
+      const paths: string[] = [];
+      try {
+        for (const file of input.files) {
+          const rel = file.relativePath.replace(/\\/g, "/");
+          const dest = join(stagingDir, rel);
+          await mkdir(dirname(dest), { recursive: true });
+          await writeFile(dest, file.bytes);
+          paths.push(dest);
+        }
+        if (paths.length === 0) {
+          return { createdIds: [] };
+        }
+        return enqueueAndAwaitResult({
+          queue: requireJobs(),
+          label: "dropImportBatch",
+          takeResult: takeDropImportResult,
+          acceptFailed: true,
+          enqueue: () =>
+            enqueueDropImportBatch(requireJobs(), {
+              vaultId: active.vault.id,
+              stagingDir,
+              paths,
+              targetFolderId: input.folder_path?.trim() || null,
+            }),
+        });
+      } finally {
+        await rm(stagingDir, { recursive: true, force: true });
+      }
+    },
+  };
 
   const credentials = createCredentialsService({
     backend: createOsKeychainBackend(),
@@ -632,8 +758,8 @@ export function createServiceDomainRuntime(
     createCatalog: () => [telegramPlugin],
   });
 
-  const syncPlugins: SyncPluginsPort = {
-    async syncNow(pluginId) {
+  phaseBHandlerBindings.syncPluginPull = createSyncPluginPullHandler({
+    syncNow: async (pluginId) => {
       const result = await registry.syncNow(pluginId);
       if (pluginId === TELEGRAM_PLUGIN_ID) {
         await markTelegramLastSyncAt({
@@ -643,6 +769,17 @@ export function createServiceDomainRuntime(
         });
       }
       return result;
+    },
+  });
+
+  const syncPlugins: SyncPluginsPort = {
+    async syncNow(pluginId) {
+      return enqueueAndAwaitResult({
+        queue: requireJobs(),
+        label: "syncPluginPull",
+        takeResult: takeSyncPluginPullResult,
+        enqueue: () => enqueueSyncPluginPull(requireJobs(), { pluginId }),
+      });
     },
   };
 
@@ -654,7 +791,8 @@ export function createServiceDomainRuntime(
   });
 
   const syncPluginWakeInner = createSyncPluginWakeController({
-    syncNow: (pluginId) => syncPlugins.syncNow(pluginId),
+    enqueueSyncPluginPull: (pluginId) =>
+      enqueueSyncPluginPull(requireJobs(), { pluginId }),
   });
 
   const telegramWakeOverridden =

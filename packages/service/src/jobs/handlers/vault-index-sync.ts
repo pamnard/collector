@@ -1,0 +1,27 @@
+import {
+  vaultIndexSyncJobType,
+  type VaultIndexSyncJobPayload,
+} from "@collector/shared";
+import type { JobQueue, EnqueueResult } from "../job-queue.js";
+import type { TypedJobHandler } from "../job-registry.js";
+import type { JobHandlerResult } from "../job-types.js";
+
+export function createVaultIndexSyncHandler(deps: {
+  startVaultIndexSync: (vaultId: string, vaultPath: string) => Promise<void>;
+}): TypedJobHandler<typeof vaultIndexSyncJobType.payload> {
+  return async (job): Promise<JobHandlerResult> => {
+    await deps.startVaultIndexSync(job.payload.vaultId, job.payload.vaultPath);
+    return { status: "ok" };
+  };
+}
+
+export function enqueueVaultIndexSync(
+  queue: JobQueue,
+  payload: VaultIndexSyncJobPayload,
+): Promise<EnqueueResult> {
+  return queue.enqueue({
+    type: "vaultIndexSync",
+    payload,
+    idempotencyKey: `vaultIndexSync:${payload.vaultId}`,
+  });
+}

@@ -185,7 +185,19 @@ describe("item operations", () => {
   it("writes raw markdown as-is and reindexes from parse", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "collector-vault-raw-"));
     const sql = new MemorySqlAdapter();
-    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const enqueued: Array<{ vaultId: string; itemIds: string[] }> = [];
+    const ctx = {
+      fs,
+      index: new SqlVaultIndexStore(sql),
+      embeddingRefreshJobs: {
+        enqueue: async (vaultId: string, inputs: Array<{ itemId: string }>) => {
+          enqueued.push({
+            vaultId,
+            itemIds: inputs.map((input) => input.itemId),
+          });
+        },
+      },
+    };
     const { meta, path } = await createVault(ctx, dataDir, {
       name: "Vault",
     });
@@ -241,6 +253,10 @@ describe("item operations", () => {
     const indexed = await listItemsByIds(ctx, path, [itemId]);
     expect(indexed[0]?.title).toBe("From source");
     expect(indexed[0]?.description).toBe("edited raw");
+    expect(enqueued).toEqual([
+      { vaultId: meta.id, itemIds: [itemId] },
+      { vaultId: meta.id, itemIds: [itemId] },
+    ]);
   });
 
   it("listItemsByIds preserves order and skips missing items", async () => {

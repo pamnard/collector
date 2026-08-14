@@ -34,22 +34,42 @@ export function embeddingRefreshInputFromItem(
   };
 }
 
-/** Best-effort embedding refresh after an item index write (#413). */
+/** Flush a batch of embedding inputs via jobs (preferred) or inline port. */
+export async function flushEmbeddingRefresh(
+  ctx: VaultContext,
+  vaultId: string,
+  inputs: ItemEmbeddingRefreshInput[],
+): Promise<void> {
+  if (inputs.length === 0) {
+    return;
+  }
+  if (ctx.embeddingRefreshJobs) {
+    await ctx.embeddingRefreshJobs.enqueue(vaultId, inputs);
+    return;
+  }
+  if (ctx.embeddings) {
+    await ctx.embeddings.refresh(inputs);
+  }
+}
+
+/** Best-effort embedding refresh after an item index write (#413 / #633). */
 export async function refreshItemEmbeddingAfterWrite(
   ctx: VaultContext,
   vaultPath: string,
+  vaultId: string,
   item: ItemFile,
   body?: string | null,
 ): Promise<void> {
-  if (!ctx.embeddings) {
+  if (!ctx.embeddingRefreshJobs && !ctx.embeddings) {
     return;
   }
   const maps = await loadTagMaps(ctx.fs, vaultPath);
-  await ctx.embeddings.refresh([
+  const inputs = [
     embeddingRefreshInputFromItem(
       item,
       tagNamesForItem(item, maps.byId),
       body,
     ),
-  ]);
+  ];
+  await flushEmbeddingRefresh(ctx, vaultId, inputs);
 }

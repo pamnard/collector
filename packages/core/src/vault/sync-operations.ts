@@ -36,6 +36,7 @@ import {
 } from "./vault-fs-batch.js";
 import {
   embeddingRefreshInputFromItem,
+  flushEmbeddingRefresh,
   tagNamesForItem,
 } from "./item-embedding-refresh.js";
 
@@ -527,7 +528,7 @@ export async function syncIndexFromFilesystem(
           hasContentFile: work.hasContentFile,
           sourceRef,
         });
-        if (ctx.embeddings) {
+        if (ctx.embeddings || ctx.embeddingRefreshJobs) {
           embeddingInputs.push(
             embeddingRefreshInputFromItem(
               work.item,
@@ -549,8 +550,8 @@ export async function syncIndexFromFilesystem(
         await ctx.index.upsertItemContentBatch(inputs);
         report.contentIndexed += inputs.length;
       }
-      if (ctx.embeddings && embeddingInputs.length > 0) {
-        await ctx.embeddings.refresh(embeddingInputs);
+      if (embeddingInputs.length > 0) {
+        await flushEmbeddingRefresh(ctx, vaultId, embeddingInputs);
       }
     } catch (error) {
       for (const input of inputs) {
