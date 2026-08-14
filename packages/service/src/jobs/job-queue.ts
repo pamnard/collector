@@ -1,7 +1,13 @@
 import type { JobPermanentFailure } from "@collector/api";
 import {
   JOB_TYPE_CATALOG,
+  dropImportBatchJobType,
+  generateCoverJobType,
+  refreshEmbeddingsJobType,
+  reindexVaultBatchJobType,
+  syncPluginPullJobType,
   testNoopJobType,
+  vaultIndexSyncJobType,
   type TestNoopJobPayload,
 } from "@collector/shared";
 import { runJobsMigrations } from "@collector/db";
@@ -13,6 +19,7 @@ import {
 } from "./job-registry.js";
 import { createJobRunner } from "./job-runner.js";
 import { createJobStore, type JobStats, type JobStatusCounts } from "./job-store.js";
+import { boundPhaseBHandler } from "./phase-b-bindings.js";
 
 export type {
   JobHandler,
@@ -192,5 +199,21 @@ export const testNoopHandler: TypedJobHandler<
 export function createHostJobRegistry(): JobRegistry {
   const registry = createJobRegistry(JOB_TYPE_CATALOG);
   registry.register(testNoopJobType, testNoopHandler);
+  // Phase B: real handlers late-bound via phaseBHandlerBindings (#627).
+  registry.register(vaultIndexSyncJobType, boundPhaseBHandler("vaultIndexSync"));
+  registry.register(
+    reindexVaultBatchJobType,
+    boundPhaseBHandler("reindexVaultBatch"),
+  );
+  registry.register(
+    refreshEmbeddingsJobType,
+    boundPhaseBHandler("refreshEmbeddings"),
+  );
+  registry.register(syncPluginPullJobType, boundPhaseBHandler("syncPluginPull"));
+  registry.register(generateCoverJobType, boundPhaseBHandler("generateCover"));
+  registry.register(
+    dropImportBatchJobType,
+    boundPhaseBHandler("dropImportBatch"),
+  );
   return registry;
 }

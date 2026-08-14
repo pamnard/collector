@@ -37,11 +37,101 @@ export const testNoopJobType = defineJobType({
   payload: testNoopJobPayloadSchema,
 });
 
+/** Full / force vault index sync (#631 / #638). */
+export const vaultIndexSyncJobPayloadSchema = z.object({
+  vaultId: z.string().min(1),
+  vaultPath: z.string().min(1),
+  reason: z.enum(["kickoff", "force", "recovery"]).default("kickoff"),
+});
+export type VaultIndexSyncJobPayload = z.infer<
+  typeof vaultIndexSyncJobPayloadSchema
+>;
+export const vaultIndexSyncJobType = defineJobType({
+  id: "vaultIndexSync",
+  payload: vaultIndexSyncJobPayloadSchema,
+});
+
+/** Targeted FS-watcher reindex batch (#632). */
+export const reindexVaultBatchJobPayloadSchema = z.object({
+  vaultId: z.string().min(1),
+  vaultPath: z.string().min(1),
+  itemIds: z.array(z.string().min(1)).default([]),
+  folderPaths: z.array(z.string()).default([]),
+});
+export type ReindexVaultBatchJobPayload = z.infer<
+  typeof reindexVaultBatchJobPayloadSchema
+>;
+export const reindexVaultBatchJobType = defineJobType({
+  id: "reindexVaultBatch",
+  payload: reindexVaultBatchJobPayloadSchema,
+});
+
+/** Embedding refresh batch (#633). */
+export const refreshEmbeddingsJobPayloadSchema = z.object({
+  vaultId: z.string().min(1),
+  itemIds: z.array(z.string().min(1)).min(1),
+});
+export type RefreshEmbeddingsJobPayload = z.infer<
+  typeof refreshEmbeddingsJobPayloadSchema
+>;
+export const refreshEmbeddingsJobType = defineJobType({
+  id: "refreshEmbeddings",
+  payload: refreshEmbeddingsJobPayloadSchema,
+});
+
+/** Sync plugin pull cycle (#634 / #635). */
+export const syncPluginPullJobPayloadSchema = z.object({
+  pluginId: z.string().min(1),
+});
+export type SyncPluginPullJobPayload = z.infer<
+  typeof syncPluginPullJobPayloadSchema
+>;
+export const syncPluginPullJobType = defineJobType({
+  id: "syncPluginPull",
+  payload: syncPluginPullJobPayloadSchema,
+});
+
+/** Media cover generation (#636). */
+export const generateCoverJobPayloadSchema = z.object({
+  vaultId: z.string().min(1),
+  itemId: z.string().min(1),
+  mediaId: z.string().min(1),
+});
+export type GenerateCoverJobPayload = z.infer<
+  typeof generateCoverJobPayloadSchema
+>;
+export const generateCoverJobType = defineJobType({
+  id: "generateCover",
+  payload: generateCoverJobPayloadSchema,
+});
+
+/** Drop-import heavy batch (#637). */
+export const dropImportBatchJobPayloadSchema = z.object({
+  vaultId: z.string().min(1),
+  paths: z.array(z.string().min(1)).min(1),
+  targetFolderId: z.string().min(1).nullable().optional(),
+});
+export type DropImportBatchJobPayload = z.infer<
+  typeof dropImportBatchJobPayloadSchema
+>;
+export const dropImportBatchJobType = defineJobType({
+  id: "dropImportBatch",
+  payload: dropImportBatchJobPayloadSchema,
+});
+
 /**
  * Production catalog — the single explicit list of job type ids (#629).
  * Phase B types join here; test suites may pass a local catalog to
  * `createJobRegistry` without mutating this array.
  */
-export const JOB_TYPE_CATALOG = [testNoopJobType] as const;
+export const JOB_TYPE_CATALOG = [
+  testNoopJobType,
+  vaultIndexSyncJobType,
+  reindexVaultBatchJobType,
+  refreshEmbeddingsJobType,
+  syncPluginPullJobType,
+  generateCoverJobType,
+  dropImportBatchJobType,
+] as const;
 
 export type JobTypeId = (typeof JOB_TYPE_CATALOG)[number]["id"];
