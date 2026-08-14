@@ -134,6 +134,18 @@ Browser Vite env uses `VITE_COLLECTOR_SERVICE_*` (Vite requires the `VITE_` pref
 
 Contributors from a checkout: `npm run build:packages`, then `npx collector-mcp --base-url … --data-dir …`.
 
+### Agent skill (MCP / CLI)
+
+Operational Agent Skill for vault work through the living host (not for editing this repo’s source): [`skills/collector-vault`](skills/collector-vault). Format: [Agent Skills](https://agentskills.io/specification).
+
+Install examples:
+
+```bash
+npx skills add https://github.com/pamnard/collector --skill collector-vault
+```
+
+Or copy `skills/collector-vault/` into your agent’s skills directory (Claude Code / Codex / OpenCode — see that tool’s docs). Requires a running Collector host and configured MCP or `collector-cli`.
+
 ## Build and checks
 
 ```bash
