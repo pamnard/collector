@@ -33,7 +33,6 @@ export {
 
 export {
   createMediaCoverService,
-  type GenerateCoverFromMedia,
   type MediaCoverService,
   type MediaCoverServiceDeps,
   type ResolveThumbnailPathsBatch,

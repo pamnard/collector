@@ -4,8 +4,8 @@ const listItemMediaWithPaths = vi.fn();
 const attachMediaFile = vi.fn();
 const replaceMediaFile = vi.fn();
 const deleteMediaFile = vi.fn();
-const applyItemCover = vi.fn();
 const clearItemCover = vi.fn();
+const readItemFile = vi.fn();
 
 vi.mock("@collector/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@collector/core")>();
@@ -16,8 +16,8 @@ vi.mock("@collector/core", async (importOriginal) => {
     attachMediaFile: (...args: unknown[]) => attachMediaFile(...args),
     replaceMediaFile: (...args: unknown[]) => replaceMediaFile(...args),
     deleteMediaFile: (...args: unknown[]) => deleteMediaFile(...args),
-    applyItemCover: (...args: unknown[]) => applyItemCover(...args),
     clearItemCover: (...args: unknown[]) => clearItemCover(...args),
+    readItemFile: (...args: unknown[]) => readItemFile(...args),
   };
 });
 
@@ -33,8 +33,8 @@ describe("createMediaCoverService", () => {
   };
   const readBinary = vi.fn(async () => new Uint8Array([1, 2, 3]));
   const ctx = { fs: { readBinary } } as never;
-  const generateCoverFromMedia = vi.fn(async () => new Uint8Array([9]));
-  const enqueueGenerateCover = vi.fn(async () => undefined);
+  const enqueueGenerateCover = vi.fn(async () => ({ id: "job-1" }));
+  const waitForCoverJob = vi.fn(async () => "succeeded" as const);
   const resolveThumbnailPathsBatch = vi.fn(
     async (_vaultPath: string, items: Array<{ id: string }>) =>
       items.map((item) => ({ id: item.id, path: `/thumb/${item.id}` })),
@@ -45,20 +45,22 @@ describe("createMediaCoverService", () => {
     attachMediaFile.mockReset();
     replaceMediaFile.mockReset();
     deleteMediaFile.mockReset();
-    applyItemCover.mockReset();
     clearItemCover.mockReset();
+    readItemFile.mockReset();
     readBinary.mockClear();
-    generateCoverFromMedia.mockClear();
     enqueueGenerateCover.mockClear();
+    waitForCoverJob.mockClear();
     resolveThumbnailPathsBatch.mockClear();
+    enqueueGenerateCover.mockResolvedValue({ id: "job-1" });
+    waitForCoverJob.mockResolvedValue("succeeded");
   });
 
   function createService() {
     return createMediaCoverService({
       resolveActiveVault: async () => ({ vault: vault as never, path: "/vault" }),
       getContext: () => ctx,
-      generateCoverFromMedia,
       enqueueGenerateCover,
+      waitForCoverJob,
       resolveThumbnailPathsBatch,
     });
   }
@@ -109,8 +111,6 @@ describe("createMediaCoverService", () => {
       filename: "a.png",
       mediaType: "image",
     });
-    expect(generateCoverFromMedia).not.toHaveBeenCalled();
-    expect(applyItemCover).not.toHaveBeenCalled();
     expect(result).toEqual([{ id: "m1", filename: "a.png" }]);
   });
 
@@ -146,7 +146,7 @@ describe("createMediaCoverService", () => {
     expect(result).toEqual([{ id: "m1", filename: "clip.mp4" }]);
   });
 
-  it("setItemCoverFromMedia throws when cover generate returns null (#437)", async () => {
+  it("setItemCoverFromMedia enqueues generateCover and re-reads item (#639)", async () => {
     listItemMediaWithPaths.mockResolvedValue([
       {
         id: "m1",
@@ -155,13 +155,40 @@ describe("createMediaCoverService", () => {
         absolute_path: "/vault/note.media/a.png",
       },
     ]);
-    generateCoverFromMedia.mockResolvedValueOnce(null);
+    const item = { id: "note.md", title: "Note" };
+    readItemFile.mockResolvedValue(item);
+
+    const result = await createService().setItemCoverFromMedia("note.md", "m1");
+
+    expect(enqueueGenerateCover).toHaveBeenCalledWith({
+      vaultId: "v1",
+      itemId: "note.md",
+      mediaId: "m1",
+      absolutePath: "/vault/note.media/a.png",
+      filename: "a.png",
+      mediaType: "image",
+    });
+    expect(waitForCoverJob).toHaveBeenCalledWith("job-1");
+    expect(readBinary).not.toHaveBeenCalled();
+    expect(readItemFile).toHaveBeenCalledWith(ctx.fs, "/vault", "note.md", "v1");
+    expect(result).toEqual(item);
+  });
+
+  it("setItemCoverFromMedia throws when cover job fails (#639)", async () => {
+    listItemMediaWithPaths.mockResolvedValue([
+      {
+        id: "m1",
+        media_type: "image",
+        filename: "a.png",
+        absolute_path: "/vault/note.media/a.png",
+      },
+    ]);
+    waitForCoverJob.mockResolvedValueOnce("failed");
 
     await expect(
       createService().setItemCoverFromMedia("note.md", "m1"),
-    ).rejects.toThrow(/Failed to generate cover from media/);
-    expect(clearItemCover).not.toHaveBeenCalled();
-    expect(applyItemCover).not.toHaveBeenCalled();
+    ).rejects.toThrow(/generateCover job-1 finished as failed/);
+    expect(readItemFile).not.toHaveBeenCalled();
   });
 
   it("setItemCoverFromMedia rejects missing media", async () => {
@@ -201,8 +228,6 @@ describe("createMediaCoverService", () => {
       filename: "b.png",
       mediaType: "image",
     });
-    expect(generateCoverFromMedia).not.toHaveBeenCalled();
-    expect(applyItemCover).not.toHaveBeenCalled();
     expect(result).toEqual({ id: "m1", filename: "b.png" });
   });
 });

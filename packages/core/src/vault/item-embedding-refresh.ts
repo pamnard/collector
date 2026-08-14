@@ -34,7 +34,7 @@ export function embeddingRefreshInputFromItem(
   };
 }
 
-/** Flush a batch of embedding inputs via jobs (preferred) or inline port. */
+/** Flush a batch of embedding inputs via durable jobs only (#633 / #639). */
 export async function flushEmbeddingRefresh(
   ctx: VaultContext,
   vaultId: string,
@@ -48,7 +48,9 @@ export async function flushEmbeddingRefresh(
     return;
   }
   if (ctx.embeddings) {
-    await ctx.embeddings.refresh(inputs);
+    throw new Error(
+      "embedding refresh requires embeddingRefreshJobs (inline embeddings.refresh is removed)",
+    );
   }
 }
 

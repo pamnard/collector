@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { createJobPermanentFailureStore } from "./job-permanent-failure.js";
+import { describe, expect, it, vi } from "vitest";
+import {
+  createJobPermanentFailureStore,
+  reportEnqueueFailure,
+} from "./job-permanent-failure.js";
 
 describe("createJobPermanentFailureStore (#630)", () => {
   it("notifies subscribers", () => {
@@ -25,5 +28,36 @@ describe("createJobPermanentFailureStore (#630)", () => {
       attempts: 2,
     });
     expect(seen).toHaveLength(1);
+  });
+});
+
+describe("reportEnqueueFailure (#639)", () => {
+  it("notifies with synthetic id and attempts 0", () => {
+    const store = createJobPermanentFailureStore();
+    const seen: Array<{
+      id: string;
+      type: string;
+      error: string;
+      attempts: number;
+    }> = [];
+    store.subscribe((payload) => {
+      seen.push(payload);
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    reportEnqueueFailure(store, "vaultIndexSync", new Error("db locked"), () =>
+      "fixed-id",
+    );
+
+    expect(seen).toEqual([
+      {
+        id: "enqueue-failed:vaultIndexSync:fixed-id",
+        type: "vaultIndexSync",
+        error: "enqueue failed: db locked",
+        attempts: 0,
+      },
+    ]);
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });

@@ -7,25 +7,19 @@ import type { AttachMediaFileInput, MediaWithPath } from "@collector/api";
 import type {
   ItemFile,
   MediaFileMeta,
-  MediaType,
   VaultMeta,
   GenerateCoverJobPayload,
 } from "@collector/shared";
 import {
-  applyItemCover,
   attachMediaFile,
   clearItemCover,
   deleteMediaFile,
   listItemMediaWithPaths,
+  readItemFile,
   replaceMediaFile,
   type VaultContext,
 } from "@collector/core";
-
-export type GenerateCoverFromMedia = (
-  data: Uint8Array,
-  filename: string,
-  mediaType: MediaType,
-) => Promise<Uint8Array | null>;
+import type { TerminalJobStatus } from "./jobs/job-wait.js";
 
 export type ResolveThumbnailPathsBatch = (
   vaultPath: string,
@@ -35,8 +29,12 @@ export type ResolveThumbnailPathsBatch = (
 export interface MediaCoverServiceDeps {
   resolveActiveVault: () => Promise<{ vault: VaultMeta; path: string }>;
   getContext: () => VaultContext;
-  generateCoverFromMedia: GenerateCoverFromMedia;
-  enqueueGenerateCover: (input: GenerateCoverJobPayload) => Promise<unknown>;
+  /** Durable cover job (#636 / #639) — returns enqueue id. */
+  enqueueGenerateCover: (
+    input: GenerateCoverJobPayload,
+  ) => Promise<{ id: string }>;
+  /** Wait until generateCover leaves pending/running. */
+  waitForCoverJob: (jobId: string) => Promise<TerminalJobStatus>;
   resolveThumbnailPathsBatch: ResolveThumbnailPathsBatch;
   onVaultPresentationChanged?: (vaultId: string) => void;
 }
@@ -186,18 +184,19 @@ export function createMediaCoverService(
       throw new Error("Cover can only be set from image or video files");
     }
 
-    const data = await ctx.fs.readBinary(file.absolute_path);
-    const cover = await deps.generateCoverFromMedia(
-      data,
-      file.filename,
-      file.media_type,
-    );
-
-    if (!cover) {
-      throw new Error("Failed to generate cover from media");
+    const { id: jobId } = await deps.enqueueGenerateCover({
+      vaultId: vault.id,
+      itemId,
+      mediaId: file.id,
+      absolutePath: file.absolute_path,
+      filename: file.filename,
+      mediaType: file.media_type,
+    });
+    const terminal = await deps.waitForCoverJob(jobId);
+    if (terminal !== "succeeded") {
+      throw new Error(`generateCover ${jobId} finished as ${terminal}`);
     }
-
-    return applyItemCover(ctx, path, vault.id, itemId, cover);
+    return readItemFile(ctx.fs, path, itemId, vault.id);
   };
 
   const attachMediaFiles = async (

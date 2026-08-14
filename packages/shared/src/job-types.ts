@@ -6,6 +6,8 @@
  * 2. Append the def to `JOB_TYPE_CATALOG` (sole production type-id list).
  * 3. In the host: `registry.register(thatType, handler)` — no runner/poll edits.
  * 4. Enqueue with `{ type: id, payload }` — unknown types and invalid payloads fail fast.
+ *
+ * Timers and RPC paths must only enqueue — never call business handlers directly (#639).
  */
 
 import { z } from "zod";
