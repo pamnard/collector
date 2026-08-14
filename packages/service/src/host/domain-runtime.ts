@@ -9,13 +9,9 @@ import {
   SqlVaultIndexStore,
   buildFtsMatchQuery,
   buildMetadataFtsMatchQuery,
-  embeddingRefreshInputFromItem,
-  loadTagMaps,
   migrateLegacyUnifiedProfileLayout,
-  readItemFile,
   resolveItemThumbnailPathsBatch,
   syncVaultIndexFromFilesystem,
-  tagNamesForItem,
   type IndexSyncProgress,
 } from "@collector/core";
 import { NodeFileSystemAdapter } from "@collector/core/node";
@@ -367,11 +363,14 @@ export function createServiceDomainRuntime(
       index: getIndex(),
       embeddings: itemEmbeddings,
       embeddingRefreshJobs: {
-        enqueue: async (vaultId: string, itemIds: string[]) => {
-          if (itemIds.length === 0) {
+        enqueue: async (
+          vaultId: string,
+          inputs: import("@collector/core").ItemEmbeddingRefreshInput[],
+        ) => {
+          if (inputs.length === 0) {
             return;
           }
-          await enqueueRefreshEmbeddings(requireJobs(), { vaultId, itemIds });
+          await enqueueRefreshEmbeddings(requireJobs(), { vaultId, inputs });
         },
       },
     };
@@ -682,31 +681,6 @@ export function createServiceDomainRuntime(
 
   phaseBHandlerBindings.refreshEmbeddings = createRefreshEmbeddingsHandler({
     refresh: (inputs) => itemEmbeddings.refresh(inputs),
-    loadRefreshInputs: async (vaultId, itemIds) => {
-      const vaultPath = await requireActiveVaultPath(vaultId);
-      const ctx = getContext();
-      const maps = await loadTagMaps(ctx.fs, vaultPath);
-      const inputs: import("@collector/core").ItemEmbeddingRefreshInput[] = [];
-      for (const itemId of itemIds) {
-        let item;
-        try {
-          item = await readItemFile(ctx.fs, vaultPath, itemId, vaultId);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          if (/not found/i.test(message)) {
-            continue;
-          }
-          throw error instanceof Error ? error : new Error(message);
-        }
-        inputs.push(
-          embeddingRefreshInputFromItem(
-            item,
-            tagNamesForItem(item, maps.byId),
-          ),
-        );
-      }
-      return inputs;
-    },
   });
 
   phaseBHandlerBindings.dropImportBatch = createDropImportBatchHandler({

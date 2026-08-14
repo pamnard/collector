@@ -190,8 +190,11 @@ describe("item operations", () => {
       fs,
       index: new SqlVaultIndexStore(sql),
       embeddingRefreshJobs: {
-        enqueue: async (vaultId: string, itemIds: string[]) => {
-          enqueued.push({ vaultId, itemIds });
+        enqueue: async (vaultId: string, inputs: Array<{ itemId: string }>) => {
+          enqueued.push({
+            vaultId,
+            itemIds: inputs.map((input) => input.itemId),
+          });
         },
       },
     };

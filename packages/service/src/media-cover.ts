@@ -4,7 +4,13 @@
  */
 
 import type { AttachMediaFileInput, MediaWithPath } from "@collector/api";
-import type { ItemFile, MediaFileMeta, MediaType, VaultMeta } from "@collector/shared";
+import type {
+  ItemFile,
+  MediaFileMeta,
+  MediaType,
+  VaultMeta,
+  GenerateCoverJobPayload,
+} from "@collector/shared";
 import {
   applyItemCover,
   attachMediaFile,
@@ -30,11 +36,7 @@ export interface MediaCoverServiceDeps {
   resolveActiveVault: () => Promise<{ vault: VaultMeta; path: string }>;
   getContext: () => VaultContext;
   generateCoverFromMedia: GenerateCoverFromMedia;
-  enqueueGenerateCover: (input: {
-    vaultId: string;
-    itemId: string;
-    mediaId: string;
-  }) => Promise<unknown>;
+  enqueueGenerateCover: (input: GenerateCoverJobPayload) => Promise<unknown>;
   resolveThumbnailPathsBatch: ResolveThumbnailPathsBatch;
   onVaultPresentationChanged?: (vaultId: string) => void;
 }
@@ -88,10 +90,17 @@ export function createMediaCoverService(
       return;
     }
 
+    const mediaType = candidate.media_type;
+    if (mediaType !== "image" && mediaType !== "video") {
+      throw new Error(`cover unsupported media type: ${mediaType}`);
+    }
     await deps.enqueueGenerateCover({
       vaultId: vault.id,
       itemId,
       mediaId: candidate.id,
+      absolutePath: candidate.absolute_path,
+      filename: candidate.filename,
+      mediaType,
     });
   };
 

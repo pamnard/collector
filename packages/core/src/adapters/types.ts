@@ -252,7 +252,10 @@ export interface VaultContext {
    * instead of awaiting vectors on the write/sync path.
    */
   embeddingRefreshJobs?: {
-    enqueue(vaultId: string, itemIds: string[]): Promise<void>;
+    enqueue(
+      vaultId: string,
+      inputs: ItemEmbeddingRefreshInput[],
+    ): Promise<void>;
   };
 }
 

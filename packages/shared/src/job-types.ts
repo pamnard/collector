@@ -67,9 +67,18 @@ export const reindexVaultBatchJobType = defineJobType({
 });
 
 /** Embedding refresh batch (#633). */
+export const embeddingRefreshInputSchema = z.object({
+  itemId: z.string().min(1),
+  title: z.string(),
+  description: z.string(),
+  tagNames: z.array(z.string()),
+  body: z.string().optional(),
+  contentRevision: z.number().int(),
+});
+
 export const refreshEmbeddingsJobPayloadSchema = z.object({
   vaultId: z.string().min(1),
-  itemIds: z.array(z.string().min(1)).min(1),
+  inputs: z.array(embeddingRefreshInputSchema).min(1),
 });
 export type RefreshEmbeddingsJobPayload = z.infer<
   typeof refreshEmbeddingsJobPayloadSchema
@@ -96,6 +105,9 @@ export const generateCoverJobPayloadSchema = z.object({
   vaultId: z.string().min(1),
   itemId: z.string().min(1),
   mediaId: z.string().min(1),
+  absolutePath: z.string().min(1),
+  filename: z.string().min(1),
+  mediaType: z.enum(["image", "video"]),
 });
 export type GenerateCoverJobPayload = z.infer<
   typeof generateCoverJobPayloadSchema

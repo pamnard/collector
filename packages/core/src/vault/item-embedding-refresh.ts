@@ -44,10 +44,7 @@ export async function flushEmbeddingRefresh(
     return;
   }
   if (ctx.embeddingRefreshJobs) {
-    await ctx.embeddingRefreshJobs.enqueue(
-      vaultId,
-      inputs.map((input) => input.itemId),
-    );
+    await ctx.embeddingRefreshJobs.enqueue(vaultId, inputs);
     return;
   }
   if (ctx.embeddings) {
@@ -63,19 +60,16 @@ export async function refreshItemEmbeddingAfterWrite(
   item: ItemFile,
   body?: string | null,
 ): Promise<void> {
-  if (ctx.embeddingRefreshJobs) {
-    await ctx.embeddingRefreshJobs.enqueue(vaultId, [item.id]);
-    return;
-  }
-  if (!ctx.embeddings) {
+  if (!ctx.embeddingRefreshJobs && !ctx.embeddings) {
     return;
   }
   const maps = await loadTagMaps(ctx.fs, vaultPath);
-  await ctx.embeddings.refresh([
+  const inputs = [
     embeddingRefreshInputFromItem(
       item,
       tagNamesForItem(item, maps.byId),
       body,
     ),
-  ]);
+  ];
+  await flushEmbeddingRefresh(ctx, vaultId, inputs);
 }

@@ -1,8 +1,4 @@
-import {
-  applyItemCover,
-  listItemMediaWithPaths,
-  type VaultContext,
-} from "@collector/core";
+import { applyItemCover, type VaultContext } from "@collector/core";
 import type { MediaType } from "@collector/shared";
 import {
   generateCoverJobType,
@@ -25,30 +21,20 @@ export function createGenerateCoverHandler(deps: {
   onVaultPresentationChanged?: (vaultId: string) => void;
 }): TypedJobHandler<typeof generateCoverJobType.payload> {
   return async (job): Promise<JobHandlerResult> => {
-    const { vaultId, itemId, mediaId } = job.payload;
+    const {
+      vaultId,
+      itemId,
+      absolutePath,
+      filename,
+      mediaType,
+    } = job.payload;
     const vaultPath = await deps.resolveVaultPath(vaultId);
     const ctx = deps.getContext();
-    const media = await listItemMediaWithPaths(ctx, vaultPath, itemId);
-    const file = media.find((entry) => entry.id === mediaId);
-    if (!file) {
-      return {
-        status: "fail",
-        retryable: false,
-        error: `media not found: ${mediaId}`,
-      };
-    }
-    if (file.media_type !== "image" && file.media_type !== "video") {
-      return {
-        status: "fail",
-        retryable: false,
-        error: `cover unsupported media type: ${file.media_type}`,
-      };
-    }
-    const data = await ctx.fs.readBinary(file.absolute_path);
+    const data = await ctx.fs.readBinary(absolutePath);
     const cover = await deps.generateCoverFromMedia(
       data,
-      file.filename,
-      file.media_type,
+      filename,
+      mediaType,
     );
     if (!cover) {
       return {

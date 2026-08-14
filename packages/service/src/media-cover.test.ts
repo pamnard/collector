@@ -105,6 +105,9 @@ describe("createMediaCoverService", () => {
       vaultId: "v1",
       itemId: "note.md",
       mediaId: "m1",
+      absolutePath: "/vault/note.media/a.png",
+      filename: "a.png",
+      mediaType: "image",
     });
     expect(generateCoverFromMedia).not.toHaveBeenCalled();
     expect(applyItemCover).not.toHaveBeenCalled();
@@ -135,6 +138,9 @@ describe("createMediaCoverService", () => {
       vaultId: "v1",
       itemId: "note.md",
       mediaId: "existing-image",
+      absolutePath: "/vault/note.media/photo.png",
+      filename: "photo.png",
+      mediaType: "image",
     });
     expect(readBinary).not.toHaveBeenCalled();
     expect(result).toEqual([{ id: "m1", filename: "clip.mp4" }]);
@@ -191,6 +197,9 @@ describe("createMediaCoverService", () => {
       vaultId: "v1",
       itemId: "note.md",
       mediaId: "m1",
+      absolutePath: "/vault/note.media/b.png",
+      filename: "b.png",
+      mediaType: "image",
     });
     expect(generateCoverFromMedia).not.toHaveBeenCalled();
     expect(applyItemCover).not.toHaveBeenCalled();
