@@ -102,7 +102,7 @@ class CountingFileSystemAdapter implements FileSystemAdapter {
     if (!this.inner.statVaultItemsMeta) {
       throw new Error("inner adapter missing statVaultItemsMeta");
     }
-    // Delegate: sync fingerprint tests count only adapter.stat, not batch IPC.
+    // Delegate: sync fingerprint tests count only adapter.stat, not batch reads.
     return this.inner.statVaultItemsMeta(vaultPath);
   }
 

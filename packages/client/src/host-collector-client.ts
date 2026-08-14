@@ -1,7 +1,7 @@
 /**
- * IPC Collector client (#154 / #366 / #370 / #383): domain ports primary.
+ * Host Collector client (#154 / #366 / #370 / #383): domain ports primary.
  *
- * Browser-safe with injectable transport (#240/#241). Node dialer: `./node`.
+ * Browser-safe with injectable transport (#240/#241). Node dialer: `./node` (HTTP).
  * UI subscribe/stream/settings helpers orchestrate host RPCs.
  * Flat wire method names remain transitional aliases for port methods.
  */
@@ -29,7 +29,7 @@ export type {
   CollectorHostTransportExtras,
 };
 
-/** Domain ports over IPC transport (#366 / #368). */
+/** Domain ports over host transport (#366 / #368). */
 export function createCollectorHostService(
   transport: HostWireClient,
   options: CollectorHostClientOptions = {},

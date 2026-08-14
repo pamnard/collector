@@ -91,7 +91,7 @@ export async function resolveMcpHostEndpoint(
 
   const dataDir = options.dataDir.trim();
   try {
-    const token = await resolveServiceHostToken("", {
+    const token = await resolveServiceHostToken({
       dataDir,
       ...(options.token === undefined ? {} : { token: options.token }),
     });

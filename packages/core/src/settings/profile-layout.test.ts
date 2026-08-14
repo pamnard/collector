@@ -26,6 +26,7 @@ describe("collector profile layout (#238)", () => {
       dataDir: "/tmp/profile",
       configDir: "/tmp/profile/config",
       indexDbPath: "/tmp/profile/collector.db",
+      jobsDbPath: "/tmp/profile/jobs.db",
     });
   });
 });

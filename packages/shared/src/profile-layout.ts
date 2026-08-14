@@ -6,18 +6,22 @@
  * - **dataDir** — vault files parent (`…/collector/`), contains `vaults/`
  * - **configDir** — UI preferences (`…/collector/`), contains `settings.json`
  * - **indexDbPath** — disposable SQLite index: sibling of `configDir` named `collector.db`
+ * - **jobsDbPath** — durable job queue SQLite under `dataDir` (`jobs.db`, #628)
  *
  * Production (split roots):
  *   dataDir   = `{appDataDir}/collector`
  *   configDir = `{appConfigDir}/collector`
  *   indexDb   = `{appConfigDir}/collector.db`
+ *   jobsDb    = `{appDataDir}/collector/jobs.db`
  *
  * Self-contained profile (smokes / isolated `--data-dir` only):
  *   configDir = `{dataDir}/config`
  *   indexDb   = `{dataDir}/collector.db`
+ *   jobsDb    = `{dataDir}/jobs.db`
  */
 
 export const COLLECTOR_INDEX_DB_FILE = "collector.db";
+export const COLLECTOR_JOBS_DB_FILE = "jobs.db";
 export const COLLECTOR_SELF_CONTAINED_CONFIG_DIR = "config";
 
 export interface CollectorProfileLayout {
@@ -27,6 +31,8 @@ export interface CollectorProfileLayout {
   configDir: string;
   /** Absolute path to `collector.db`. */
   indexDbPath: string;
+  /** Absolute path to durable `jobs.db` (survives index wipe). */
+  jobsDbPath: string;
 }
 
 function trimTrailingSlashes(path: string): string {
@@ -67,6 +73,11 @@ export function indexDbPathForConfigDir(configDir: string): string {
   return joinPath(parentDir(configDir), COLLECTOR_INDEX_DB_FILE);
 }
 
+/** Jobs DB path for a data directory: `{dataDir}/jobs.db`. */
+export function jobsDbPathForDataDir(dataDir: string): string {
+  return joinPath(dataDir, COLLECTOR_JOBS_DB_FILE);
+}
+
 /** Build layout from explicit vault + settings roots. */
 export function resolveCollectorProfileLayout(input: {
   dataDir: string;
@@ -84,6 +95,7 @@ export function resolveCollectorProfileLayout(input: {
     dataDir,
     configDir,
     indexDbPath: indexDbPathForConfigDir(configDir),
+    jobsDbPath: jobsDbPathForDataDir(dataDir),
   };
 }
 

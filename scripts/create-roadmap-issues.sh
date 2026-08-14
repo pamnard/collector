@@ -34,7 +34,7 @@ M5_TITLE="M5: Sync Plugins"
 M6_TITLE="M6: Polish"
 
 if ! gh api "repos/${REPO}/milestones" --jq '.[].title' | grep -q "M0: Foundation"; then
-  create_milestone "$M0_TITLE" "Project structure, vault filesystem, SQLite schema, core ops, Tauri plugins + IPC."
+  create_milestone "$M0_TITLE" "Project structure, vault filesystem, SQLite schema, core ops, Tauri plugins."
   create_milestone "$M1_TITLE" "App layout, routing, settings."
   create_milestone "$M2_TITLE" "GitHub Releases, CI builds, Tauri auto-updater."
   create_milestone "$M3_TITLE" "ContentItem CRUD, tags, folders, search, grid/table UI, detail page."
@@ -58,8 +58,8 @@ create_issue "SQLite schema and migrations" \
 create_issue "Core vault operations" \
   "Implement in \`packages/core\`:\n- create/open vault\n- upsert item (file + index)\n- delete item\n- sync index from filesystem (full scan)\n\nAcceptance: integration test — write file, index updated; delete file, index cleaned." "$M0_TITLE"
 
-create_issue "Tauri plugins (fs, sql) and IPC bridge" \
-  "Add \`tauri-plugin-fs\`, \`tauri-plugin-sql\`.\nTyped IPC commands wrapping core ops (thin Rust, logic in TS).\nPreload + contextIsolation.\n\nAcceptance: renderer calls \`createItem\` via IPC; item appears on disk and in DB." "$M0_TITLE"
+create_issue "Tauri plugins (fs, sql) and host bridge" \
+  "Add \`tauri-plugin-fs\`, \`tauri-plugin-sql\`.\nTyped host commands wrapping core ops (thin Rust, logic in TS).\nPreload + contextIsolation.\n\nAcceptance: renderer calls \`createItem\` via host; item appears on disk and in DB." "$M0_TITLE"
 
 echo "Creating M1 issues..."
 create_issue "App shell: Layout, Sidebar, Header" \

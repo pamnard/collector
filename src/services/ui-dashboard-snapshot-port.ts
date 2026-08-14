@@ -1,6 +1,6 @@
 /**
  * Browser/local dashboard snapshot port for UiSession (#332 / #363).
- * Used by IPC and DevMock adapters — not host IPC.
+ * Used by host and DevMock adapters.
  */
 
 import type {

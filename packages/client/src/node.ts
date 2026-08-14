@@ -1,5 +1,5 @@
 /**
- * Node-only Collector IPC dialer (#154/#240/#366/#370).
+ * Node-only Collector host HTTP dialer (#154/#240/#366/#370/#551).
  * Use from smokes/CLI — not from the Vite UI bundle.
  */
 

@@ -1,5 +1,5 @@
 /**
- * Domain IPC method names (#155+ / #330). Transport ping/health stay separate.
+ * Domain wire method names (#155+ / #330). Transport ping/health stay separate.
  *
  * Catalog is derived from host-wire port keys + watcher extras — not a hand
  * list. Handlers live in {@link createDomainWireRequestHandler}.
@@ -10,7 +10,7 @@ import {
   type HostWirePortMethod,
 } from "./domain-port-wire.js";
 
-/** Watcher RPC is host IPC but not part of `@collector/api` port keys (#164). */
+/** Watcher RPC is host-only and not part of `@collector/api` port keys (#164). */
 export const WATCHER_WIRE_METHODS = [
   "startVaultFilesystemWatcher",
   "stopVaultFilesystemWatcher",

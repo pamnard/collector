@@ -54,6 +54,11 @@ import { generateCoverFromMedia } from "./node-cover.js";
 import { NodeSqliteExecutor } from "./node-sql.js";
 import { createNodeVaultFilesystemWatcher } from "./vault-fs-watcher.js";
 import { createVaultLayoutGuardRunner } from "../vault-layout-guard-runner.js";
+import {
+  createJobQueue,
+  testNoopHandler,
+  type JobQueue,
+} from "../jobs/job-queue.js";
 
 const SYNC_STATUS_THROTTLE_MS = 200;
 
@@ -131,6 +136,8 @@ export interface ServiceDomainRuntime {
   telegramSync: TelegramSyncPort;
   syncPluginWake: SyncPluginWakeController;
   dashboardSnapshot: ReturnType<typeof createDashboardSnapshotService>;
+  /** Durable background job queue (#628). Host-internal. */
+  jobs: JobQueue;
 }
 
 export interface ServiceDomainRuntimeOptions {
@@ -143,7 +150,7 @@ export function createServiceDomainRuntime(
   options: ServiceDomainRuntimeOptions = {},
 ): ServiceDomainRuntime {
   const fs = new NodeFileSystemAdapter();
-  const { dataDir, configDir, indexDbPath: dbPath } = layout;
+  const { dataDir, configDir, indexDbPath: dbPath, jobsDbPath } = layout;
 
   const syncedVaultIds = new Set<string>();
   const vaultSyncPromises = new Map<string, Promise<void>>();
@@ -158,6 +165,22 @@ export function createServiceDomainRuntime(
   const vaultPresentationChanged = createVaultPresentationChangedStore();
   const watcherDisabledVaultIds = new Set<string>();
   let runtimeClosed = false;
+  let jobsQueue: JobQueue | null = null;
+
+  function requireJobs(): JobQueue {
+    if (!jobsQueue) {
+      throw new Error("Job queue is not open");
+    }
+    return jobsQueue;
+  }
+
+  const jobs: JobQueue = {
+    enqueue: (input) => requireJobs().enqueue(input),
+    cancel: (id) => requireJobs().cancel(id),
+    stats: () => requireJobs().stats(),
+    start: () => requireJobs().start(),
+    stop: () => requireJobs().stop(),
+  };
 
   const vaultsHolder: {
     current: ReturnType<typeof createVaultsService> | null;
@@ -697,7 +720,16 @@ export function createServiceDomainRuntime(
 
   return {
     dataDir,
-    open: () => indexBoot.open(),
+    async open() {
+      await indexBoot.open();
+      if (!jobsQueue) {
+        jobsQueue = await createJobQueue({
+          dbPath: jobsDbPath,
+          handlers: { __test_noop: testNoopHandler },
+        });
+        jobsQueue.start();
+      }
+    },
     ensureInitialized,
     isHealthy: () => indexBoot.isHealthy(),
     async close() {
@@ -706,6 +738,10 @@ export function createServiceDomainRuntime(
       syncPluginWake.dispose();
       await Promise.allSettled([...vaultSyncPromises.values()]);
       await vaultFsWatcher.stop();
+      if (jobsQueue) {
+        await jobsQueue.stop();
+        jobsQueue = null;
+      }
       const sql = indexBoot.getSql();
       if (sql) {
         await sql.close();
@@ -728,5 +764,6 @@ export function createServiceDomainRuntime(
     telegramSync,
     syncPluginWake,
     dashboardSnapshot,
+    jobs,
   };
 }

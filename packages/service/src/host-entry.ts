@@ -32,12 +32,6 @@ export {
 } from "./host/wire/framing.js";
 
 export {
-  defaultHostWirePath,
-  isWindowsNamedPipePath,
-} from "./host/wire/paths.js";
-
-export {
-  SERVICE_HOST_AUTH_METHOD,
   SERVICE_HOST_TOKEN_ENV,
   SERVICE_HOST_TOKEN_FILENAME,
   defaultServiceHostTokenPath,
@@ -45,7 +39,6 @@ export {
   readServiceHostTokenFile,
   removeServiceHostTokenFile,
   resolveServiceHostToken,
-  siblingServiceHostTokenPath,
   writeServiceHostTokenFile,
 } from "./host/wire/auth.js";
 
@@ -60,21 +53,10 @@ export {
   type ResolveServiceHostBaseUrlOptions,
 } from "./host/wire/base-url.js";
 
-export {
-  startHostWireServer,
-  type HostWireHandler,
-  type HostWireServer,
-} from "./host/wire/server.js";
-
-export {
-  connectHostWire,
-  type HostWireClient,
-  type HostWireClientOptions,
-  type HostWireRequestOptions,
-} from "./host/wire/client.js";
-
 export type {
-  HostWireClient as HostWireTransport,
+  HostWireClient,
+  HostWireClientOptions,
+  HostWireRequestOptions,
 } from "./host/wire/transport-types.js";
 
 export {
@@ -83,7 +65,6 @@ export {
   getCollectorApiError,
   isHostWireError,
   mapHandlerThrownToApiError,
-  mapNodeConnectErrno,
   hostWireError,
 } from "./host/wire/errors.js";
 
@@ -116,6 +97,28 @@ export {
   type ServiceDomainRuntime,
   type ServiceDomainRuntimeOptions,
 } from "./host/domain-runtime.js";
+
+export {
+  isValidBearer,
+  isValidHostToken,
+  extractBearerToken,
+} from "./host/http/bearer.js";
+
+export {
+  createHostHttpEventsHub,
+  HOST_HTTP_EVENTS,
+  type HostHttpEventsHub,
+  type HostHttpEventName,
+} from "./host/http/events-hub.js";
+
+export {
+  handleHttpRpc,
+  writeUnauthorized,
+  type DomainDispatch,
+  type HttpRpcBody,
+} from "./host/http/rpc-handler.js";
+
+export { writeJson } from "./host/http/write-json.js";
 
 /** Sync plugin wake controller (#31) — also on service barrel; host uses runtime.syncPluginWake. */
 export {

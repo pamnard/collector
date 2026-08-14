@@ -54,7 +54,6 @@ const child = spawn(
     "127.0.0.1",
     "--ui-dir",
     UI_DIR,
-    "--no-ipc",
   ],
   {
     cwd: HOST_DIR,

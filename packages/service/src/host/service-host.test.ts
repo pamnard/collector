@@ -9,7 +9,6 @@ import {
   resolveServiceHostListenPort,
   startServiceHost,
 } from "./service-host.js";
-import { connectHostWire } from "./wire/client.js";
 import { defaultServiceHostTokenPath } from "./wire/auth.js";
 import { defaultServiceHostBaseUrlPath } from "./wire/base-url.js";
 
@@ -40,7 +39,7 @@ describe("startServiceHost", () => {
     }
   });
 
-  it("opens index DB and answers ping + health over HTTP and IPC", async () => {
+  it("opens index DB and answers ping + health over HTTP", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "collector-service-host-"));
     dirs.push(dataDir);
 
@@ -48,7 +47,6 @@ describe("startServiceHost", () => {
     try {
       expect(host.isHealthy()).toBe(true);
       expect(host.port).toBeGreaterThan(0);
-      expect(host.ipcPath).toBeTruthy();
       expect(host.wsEventsUrl).toBe(`${host.baseUrl.replace(/^http/, "ws")}/api/events`);
 
       const token = readFileSync(
@@ -79,16 +77,6 @@ describe("startServiceHost", () => {
         healthy: true,
       });
 
-      const ipc = await connectHostWire(host.ipcPath!, {
-        dataDir,
-      });
-      try {
-        expect(await ipc.ping()).toEqual({ ok: true, pong: true });
-        expect(await ipc.health()).toMatchObject({ healthy: true });
-      } finally {
-        await ipc.close();
-      }
-
       const ready = formatServiceHostReadyLine(host);
       expect(ready.startsWith(SERVICE_HOST_READY_PREFIX)).toBe(true);
       expect(JSON.parse(ready.slice(SERVICE_HOST_READY_PREFIX.length))).toEqual({
@@ -96,11 +84,11 @@ describe("startServiceHost", () => {
         port: host.port,
         baseUrl: host.baseUrl,
         wsEventsUrl: host.wsEventsUrl,
-        ipcPath: host.ipcPath,
         uiDir: null,
         dataDir: host.layout.dataDir,
         configDir: host.layout.configDir,
         indexDbPath: host.layout.indexDbPath,
+        jobsDbPath: host.layout.jobsDbPath,
       });
     } finally {
       await host.close();

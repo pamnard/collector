@@ -1,5 +1,5 @@
 /**
- * Shared IPC params helpers for domain handlers.
+ * Shared params helpers for domain handlers.
  */
 
 import type { DashboardItemSort, NavFilter } from "@collector/api";

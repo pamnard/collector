@@ -13,7 +13,7 @@ import { itemMarkdownPath } from "./paths.js";
 import { readItemSourceRef } from "./item-io.js";
 import { listItemRelativePaths } from "./scan.js";
 
-/** Max item ids per batched read-meta IPC call; aligned with write batch for yield cadence. */
+/** Max item ids per batched read-meta call; aligned with write batch for yield cadence. */
 export const VAULT_ITEM_READ_META_BATCH = INDEX_SYNC_WRITE_BATCH;
 
 export function hasVaultFsBatch(fs: FileSystemAdapter): boolean {

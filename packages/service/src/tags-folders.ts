@@ -1,6 +1,6 @@
 /**
  * In-process tags + folders (+ move item) ops (#148).
- * Host injects vault/index accessors; no Tauri / IPC here.
+ * Host injects vault/index accessors.
  */
 
 import type {
