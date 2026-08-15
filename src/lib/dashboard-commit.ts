@@ -26,6 +26,21 @@ export function coverNeedsResolve(
   return stamps.get(item.id) !== itemCoverStamp(item);
 }
 
+/**
+ * Dashboard masonry reads committed cover maps only (#657).
+ * `undefined` = still resolving; `null` = no cover.
+ */
+export function resolveDashboardGridThumbnailPath(
+  item: ItemFile,
+  paths: Map<string, string | null>,
+  stamps: Map<string, string>,
+): string | null | undefined {
+  if (!coverNeedsResolve(item, paths, stamps)) {
+    return paths.get(item.id) ?? null;
+  }
+  return undefined;
+}
+
 export function thumbnailPathsEqual(
   left: Map<string, string | null>,
   right: Map<string, string | null>,

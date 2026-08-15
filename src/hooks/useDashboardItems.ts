@@ -23,8 +23,11 @@ import {
   pruneItemIdFromDashboardLists,
   shouldSkipEmptyCommit,
   snapshotToCacheEntry,
-  thumbnailPathsEqual,
 } from "../lib/dashboard-commit";
+import {
+  createCoverPathCommitBatcher,
+  type CoverPathCommitBatcher,
+} from "../lib/cover-path-commit-batcher";
 import {
   collectHydratedItems,
   createThrottledPublisher,
@@ -193,7 +196,12 @@ export function useDashboardItems(
     ),
   );
   const streamAbortRef = useRef<AbortController | null>(null);
-  const coverAbortRef = useRef<AbortController | null>(null);
+  const coverFlightRef = useRef<{
+    version: number;
+    promise: Promise<void>;
+    controller: AbortController;
+    batcher: CoverPathCommitBatcher;
+  } | null>(null);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryBusyRef = useRef(false);
   const filterRef = useRef(filter);
@@ -356,64 +364,83 @@ export function useDashboardItems(
 
       writeQueryCache(ids, byId, end, nextTotal);
 
-      const needsResolve = ordered.filter((item) =>
-        coverNeedsResolve(
-          item,
-          committedThumbnailPathsRef.current,
-          committedThumbnailStampsRef.current,
-        ),
-      );
-      if (!needsResolve.length) {
-        return;
-      }
-
-      coverAbortRef.current?.abort();
-      const coverController = new AbortController();
-      coverAbortRef.current = coverController;
-
-      const stampById = new Map(
-        needsResolve.map((item) => [item.id, itemCoverStamp(item)]),
-      );
-
-      await resolveDashboardCoverPathsProgressive(needsResolve, {
-        signal: coverController.signal,
-        onResolved: (id, path) => {
-          if (requestVersionRef.current !== requestVersion) {
-            return;
-          }
-          if (coverController.signal.aborted) {
-            return;
-          }
-          const stamp = stampById.get(id);
-          if (stamp === undefined) {
-            return;
-          }
-          const paths = new Map<string, string | null>([[id, path]]);
-          const stamps = new Map<string, string>([[id, stamp]]);
-          const mergedPaths = mergeCommittedThumbnailPaths(
+      const collectNeedsResolve = () =>
+        ordered.filter((item) =>
+          coverNeedsResolve(
+            item,
             committedThumbnailPathsRef.current,
-            paths,
-            nextOrderedIds,
-          );
-          const mergedStamps = mergeCommittedThumbnailStamps(
             committedThumbnailStampsRef.current,
-            stamps,
-            nextOrderedIds,
-          );
-          if (
-            !thumbnailPathsEqual(
-              committedThumbnailPathsRef.current,
-              mergedPaths,
-              nextOrderedIds,
-            )
-          ) {
+          ),
+        );
+
+      // Same-version waiters share one flight so sync republish does not abort
+      // in-flight covers (#657).
+      while (true) {
+        if (requestVersionRef.current !== requestVersion) {
+          return;
+        }
+        const needsResolve = collectNeedsResolve();
+        if (!needsResolve.length) {
+          return;
+        }
+
+        const existingFlight = coverFlightRef.current;
+        if (existingFlight && existingFlight.version === requestVersion) {
+          await existingFlight.promise;
+          continue;
+        }
+
+        existingFlight?.batcher.cancel();
+        existingFlight?.controller.abort();
+
+        const coverController = new AbortController();
+        const stampById = new Map(
+          needsResolve.map((item) => [item.id, itemCoverStamp(item)]),
+        );
+        const coverBatcher = createCoverPathCommitBatcher({
+          requestVersion,
+          getRequestVersion: () => requestVersionRef.current,
+          isAborted: () => coverController.signal.aborted,
+          getOrderedIds: () => nextOrderedIds,
+          getPaths: () => committedThumbnailPathsRef.current,
+          getStamps: () => committedThumbnailStampsRef.current,
+          commit: (mergedPaths, mergedStamps) => {
             setCommittedThumbnailPaths(mergedPaths);
             setCommittedThumbnailStamps(mergedStamps);
             committedThumbnailPathsRef.current = mergedPaths;
             committedThumbnailStampsRef.current = mergedStamps;
+          },
+        });
+
+        const flightPromise = (async () => {
+          await resolveDashboardCoverPathsProgressive(needsResolve, {
+            signal: coverController.signal,
+            onResolved: (id, path) => {
+              const stamp = stampById.get(id);
+              if (stamp === undefined) {
+                return;
+              }
+              coverBatcher.enqueue(id, path, stamp);
+            },
+          });
+          coverBatcher.flush();
+        })();
+
+        coverFlightRef.current = {
+          version: requestVersion,
+          promise: flightPromise,
+          controller: coverController,
+          batcher: coverBatcher,
+        };
+        try {
+          await flightPromise;
+        } finally {
+          if (coverFlightRef.current?.promise === flightPromise) {
+            coverFlightRef.current = null;
           }
-        },
-      });
+        }
+        break;
+      }
 
       if (requestVersionRef.current !== requestVersion) {
         return;
@@ -711,7 +738,9 @@ export function useDashboardItems(
     }
 
     streamAbortRef.current?.abort();
-    coverAbortRef.current?.abort();
+    coverFlightRef.current?.batcher.cancel();
+    coverFlightRef.current?.controller.abort();
+    coverFlightRef.current = null;
 
     const controller = new AbortController();
 
@@ -777,7 +806,9 @@ export function useDashboardItems(
     return () => {
       controller.abort();
       streamAbortRef.current?.abort();
-      coverAbortRef.current?.abort();
+      coverFlightRef.current?.batcher.cancel();
+      coverFlightRef.current?.controller.abort();
+      coverFlightRef.current = null;
       if (requestVersionRef.current === requestVersion) {
         queryBusyRef.current = false;
       }
@@ -871,12 +902,17 @@ export function useDashboardItems(
       return;
     }
     // load-more / in-place stream growth after offset-0 commit settled
+    const prevCommittedLen = committedItemsRef.current.length;
     setCommittedItems(workingItems);
     setCommittedTotalCount(totalCount);
     setCommittedHasMore(streamEndOffset < totalCount);
     committedItemsRef.current = workingItems;
     committedTotalCountRef.current = totalCount;
-  }, [isLoading, workingItems, totalCount, streamEndOffset]);
+    // Grid no longer resolves covers — resolve when the window grows (#657).
+    if (workingItems.length > prevCommittedLen) {
+      void commitWorkingToDisplay(requestVersionRef.current);
+    }
+  }, [commitWorkingToDisplay, isLoading, workingItems, totalCount, streamEndOffset]);
 
   useEffect(() => {
     if (!vaultId || isLoading || !itemIds.length || !workingItems.length) {

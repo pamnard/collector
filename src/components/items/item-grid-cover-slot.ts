@@ -9,3 +9,14 @@ export function itemGridCoverSlot(args: {
     showCover: Boolean(args.coverSrc && args.coverSettled),
   };
 }
+
+/** Reserve a cover teaser while paths resolve — image/video only, not notes. */
+export function itemGridCoverSlotPending(args: {
+  coverPending: boolean;
+  pathUnresolved: boolean;
+  optimisticPortrait: boolean;
+}): boolean {
+  return (
+    args.coverPending || (args.pathUnresolved && args.optimisticPortrait)
+  );
+}

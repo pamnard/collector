@@ -13,6 +13,7 @@ import {
   mergeCommittedThumbnailStamps,
   orderedIds,
   pruneItemIdFromDashboardLists,
+  resolveDashboardGridThumbnailPath,
   shouldSkipEmptyCommit,
   snapshotToCacheEntry,
   thumbnailPathsEqual,
@@ -82,6 +83,36 @@ describe("coverNeedsResolve", () => {
     const paths = new Map<string, string | null>([["a", null]]);
     const stamps = new Map([["a", itemCoverStamp(item)]]);
     assert.equal(coverNeedsResolve(item, paths, stamps), false);
+  });
+});
+
+describe("resolveDashboardGridThumbnailPath", () => {
+  it("returns committed path when resolve is not needed", () => {
+    const item = stubItem("a", { thumbnail: "c.webp" });
+    const paths = new Map<string, string | null>([["a", "/a"]]);
+    const stamps = new Map([["a", itemCoverStamp(item)]]);
+    assert.equal(
+      resolveDashboardGridThumbnailPath(item, paths, stamps),
+      "/a",
+    );
+  });
+
+  it("returns null when committed null and stamp matches", () => {
+    const item = stubItem("a");
+    const paths = new Map<string, string | null>([["a", null]]);
+    const stamps = new Map([["a", itemCoverStamp(item)]]);
+    assert.equal(
+      resolveDashboardGridThumbnailPath(item, paths, stamps),
+      null,
+    );
+  });
+
+  it("returns undefined while cover still needs resolve", () => {
+    const item = stubItem("a");
+    assert.equal(
+      resolveDashboardGridThumbnailPath(item, new Map(), new Map()),
+      undefined,
+    );
   });
 });
 
