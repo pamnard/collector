@@ -62,11 +62,25 @@ collector-cli --base-url http://127.0.0.1:PORT --data-dir /path/to/vault-data <c
 2. Optional: type, description, url, content, folder.
 3. Store returned `id` for all later calls.
 
+When creating or filling an item (especially imports), **prefer also setting a short `description` and relevant `tags`** when you can derive them from the content or user intent — empty description/tags are weaker for search and browsing.
+
 ### Update fields
 
 Prefer **structured** update (`collector_update_item` / `update-item`) for title, description, url, content, content_type, tags, folder.
 
 Use **source** get/update only when replacing the entire `.md` (frontmatter + body) as one document.
+
+### Article / imported body
+
+When filling `content` from a web article (or similar):
+
+- Put the canonical link in the item **`url`** field (frontmatter), not as a “Source: …” / byline block at the **top** of the body.
+- Body starts with the article text itself.
+- Do **not** invent a provenance header. If the user asks for an explicit source line, put it at the **bottom** of the body — never at the top.
+
+### Import: local assets
+
+When importing a page, article, or other remote content into an item, **prefer bringing related assets into local item media** (images, and other fetchable binaries the body depends on): download → `attach-media` / `collector_attach_media` → reference the attached files in the markdown body (same path style as other vault notes). The vault is meant to work offline; leaving body images on a third-party CDN is a weak default.
 
 ### Move
 
@@ -94,6 +108,7 @@ List → create / rename / move / delete. **Delete folder is recursive** (tree +
 - Reusing pre-move `itemId` after a successful move
 - Passing `itemId` where `tagId` / `mediaId` is required (or the reverse)
 - Preferring source rewrite for a single field change
+- Prefacing imported article body with `Source:`, byline, or duplicated original URL (belongs in `url`, or at bottom only if asked)
 
 Details and edge cases: [references/pitfalls.md](references/pitfalls.md).
 
