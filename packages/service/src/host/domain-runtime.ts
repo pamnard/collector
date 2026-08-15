@@ -7,12 +7,9 @@
 
 import {
   SqlVaultIndexStore,
-  buildFtsMatchQuery,
-  buildMetadataFtsMatchQuery,
   migrateLegacyUnifiedProfileLayout,
   resolveItemThumbnailPathsBatch,
-  syncVaultIndexFromFilesystem,
-  type IndexSyncProgress,
+  type VaultContext,
 } from "@collector/core";
 import { NodeFileSystemAdapter } from "@collector/core/node";
 import type { CollectorProfileLayout } from "@collector/shared";
@@ -29,31 +26,13 @@ import { createMediaCoverService } from "../media-cover.js";
 import { createDropImportService } from "../drop-import.js";
 import { createTagsFoldersService } from "../tags-folders.js";
 import { createVaultsService } from "../vaults.js";
-import { createSyncPluginRegistry } from "../sync-plugin-registry.js";
-import {
-  createSyncPluginWakeController,
-  type SyncPluginWakePolicy,
-  type SyncPluginWakeController,
-} from "../sync-plugin-wake.js";
-import {
-  DEFAULT_TELEGRAM_SYNC_INTERVAL_MS,
-  TELEGRAM_PLUGIN_ID,
-  createTelegramSyncPlugin,
-  createTelegramSyncService,
-  loadTelegramPluginConfig,
-  markTelegramLastSyncAt,
-} from "../plugins/telegram/index.js";
-import type {
-  ImportDroppedFilesInput,
-  SyncPluginsPort,
-  TelegramSyncPort,
-} from "@collector/api";
+import type { SyncPluginWakePolicy, SyncPluginWakeController } from "../sync-plugin-wake.js";
+import type { SyncPluginsPort, TelegramSyncPort } from "@collector/api";
 import {
   createVaultIndexSyncStatusStore,
   type VaultIndexSyncStatusStore,
 } from "../sync-status.js";
 import { createVaultPresentationChangedStore } from "../vault-presentation-changed.js";
-import { generateCoverFromMedia } from "./node-cover.js";
 import { NodeSqliteExecutor } from "./node-sql.js";
 import { createNodeVaultFilesystemWatcher } from "./vault-fs-watcher.js";
 import { createVaultLayoutGuardRunner } from "../vault-layout-guard-runner.js";
@@ -62,86 +41,22 @@ import {
   createJobQueue,
   type JobQueue,
 } from "../jobs/job-queue.js";
-import { createJobPermanentFailureStore, reportEnqueueFailure } from "../job-permanent-failure.js";
-import { phaseBHandlerBindings } from "../jobs/phase-b-bindings.js";
 import {
-  createVaultIndexSyncHandler,
-  enqueueVaultIndexSync,
-} from "../jobs/handlers/vault-index-sync.js";
+  createJobPermanentFailureStore,
+  reportEnqueueFailure,
+} from "../job-permanent-failure.js";
+import { enqueueReindexVaultBatch } from "../jobs/handlers/reindex-vault-batch.js";
+import { enqueueRefreshEmbeddings } from "../jobs/handlers/refresh-embeddings.js";
+import { enqueueGenerateCover } from "../jobs/handlers/generate-cover.js";
+import { waitForJobTerminal } from "../jobs/job-wait.js";
+import { mkdir } from "node:fs/promises";
+import { bindHostPhaseBHandlers } from "./runtime/phase-b-bind.js";
+import { createHostDropImport } from "./runtime/drop-import.js";
+import { createHostSyncPlugins } from "./runtime/sync-plugins.js";
 import {
-  createReindexVaultBatchHandler,
-  enqueueReindexVaultBatch,
-} from "../jobs/handlers/reindex-vault-batch.js";
-import {
-  createRefreshEmbeddingsHandler,
-  enqueueRefreshEmbeddings,
-} from "../jobs/handlers/refresh-embeddings.js";
-import {
-  createSyncPluginPullHandler,
-  enqueueSyncPluginPull,
-  takeSyncPluginPullResult,
-} from "../jobs/handlers/sync-plugin-pull.js";
-import { enqueueAndAwaitResult, waitForJobTerminal } from "../jobs/job-wait.js";
-import {
-  createGenerateCoverHandler,
-  enqueueGenerateCover,
-} from "../jobs/handlers/generate-cover.js";
-import {
-  createDropImportBatchHandler,
-  enqueueDropImportBatch,
-  takeDropImportResult,
-} from "../jobs/handlers/drop-import-batch.js";
-import { mkdir, writeFile, rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
-
-const SYNC_STATUS_THROTTLE_MS = 200;
-
-function createThrottledPublisher(
-  fn: () => void,
-  intervalMs: number,
-): { schedule: () => void; flush: () => void; cancel: () => void } {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  let lastRun = 0;
-
-  const run = () => {
-    lastRun = Date.now();
-    fn();
-  };
-
-  return {
-    schedule() {
-      const elapsed = Date.now() - lastRun;
-      if (elapsed >= intervalMs) {
-        if (timer) {
-          clearTimeout(timer);
-          timer = null;
-        }
-        run();
-        return;
-      }
-      if (timer) {
-        return;
-      }
-      timer = setTimeout(() => {
-        timer = null;
-        run();
-      }, intervalMs - elapsed);
-    },
-    flush() {
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
-      run();
-    },
-    cancel() {
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
-    },
-  };
-}
+  createVaultIndexSyncRuntime,
+  type ForceVaultIndexResync,
+} from "./runtime/vault-index-sync.js";
 
 export interface ServiceDomainRuntime {
   dataDir: string;
@@ -188,15 +103,6 @@ export function createServiceDomainRuntime(
   const fs = new NodeFileSystemAdapter();
   const { dataDir, configDir, indexDbPath: dbPath, jobsDbPath } = layout;
 
-  const syncedVaultIds = new Set<string>();
-  const vaultSyncPromises = new Map<string, Promise<void>>();
-  const vaultSyncListeners = new Map<
-    string,
-    Set<{
-      onBatch?: (p: IndexSyncProgress) => void;
-      onComplete?: () => void;
-    }>
-  >();
   const vaultIndexSyncStatus = createVaultIndexSyncStatusStore();
   const vaultPresentationChanged = createVaultPresentationChangedStore();
   const jobPermanentFailure = createJobPermanentFailureStore();
@@ -224,44 +130,21 @@ export function createServiceDomainRuntime(
     current: ReturnType<typeof createVaultsService> | null;
   } = { current: null };
 
-  let forceVaultIndexResync: (
-    vaultId: string,
-    vaultPath: string,
-    options?: { restartWatcher?: boolean },
-  ) => void = () => {
-    throw new Error("forceVaultIndexResync not initialized");
+  const forceHolder: { current: ForceVaultIndexResync } = {
+    current: () => {
+      throw new Error("forceVaultIndexResync not initialized");
+    },
   };
 
   const vaultLayoutGuard = createVaultLayoutGuardRunner({
     getContext: () => getContext(),
     onComplete: (vaultId, vaultPath) => {
-      forceVaultIndexResync(vaultId, vaultPath, { restartWatcher: false });
+      forceHolder.current(vaultId, vaultPath, { restartWatcher: false });
     },
     onError: (vaultId, error) => {
       console.error("[collector] vault layout guard failed:", vaultId, error);
     },
   });
-
-  function notifyWatchItemsSynced(vaultId: string): void {
-    const previous = vaultIndexSyncStatus.get();
-    vaultIndexSyncStatus.set({
-      vaultId,
-      status: "running",
-      progress: previous.progress,
-      metadataReady: true,
-      ftsReady: previous.ftsReady || previous.status === "done",
-    });
-    emitComplete(vaultId);
-    setTimeout(() => {
-      vaultIndexSyncStatus.set({
-        vaultId,
-        status: "done",
-        progress: previous.progress,
-        metadataReady: true,
-        ftsReady: true,
-      });
-    }, 0);
-  }
 
   const vaultFsWatcher = createNodeVaultFilesystemWatcher({
     getContext: () => getContext(),
@@ -270,7 +153,7 @@ export function createServiceDomainRuntime(
     enqueueReindexVaultBatch: (payload) =>
       enqueueReindexVaultBatch(requireJobs(), payload),
     forceVaultIndexResync: (vaultId, vaultPath) => {
-      forceVaultIndexResync(vaultId, vaultPath);
+      forceHolder.current(vaultId, vaultPath);
     },
     onEnqueueFailure: (error) => {
       reportEnqueueFailure(jobPermanentFailure, "reindexVaultBatch", error);
@@ -304,6 +187,18 @@ export function createServiceDomainRuntime(
     },
   });
 
+  const vaultIndexSync = createVaultIndexSyncRuntime({
+    getContext,
+    vaultIndexSyncStatus,
+    vaultFsWatcher,
+    vaultLayoutGuard,
+    requireJobs,
+    jobPermanentFailure,
+    isRuntimeClosed: () => runtimeClosed,
+    watcherDisabledVaultIds,
+  });
+  forceHolder.current = vaultIndexSync.forceVaultIndexResync;
+
   const indexBoot = createCollectorIndexBoot({
     prepareEnvironment: async () => {
       await mkdir(dataDir, { recursive: true });
@@ -312,11 +207,9 @@ export function createServiceDomainRuntime(
     },
     openSql: async () => NodeSqliteExecutor.open(dbPath),
     onUnhealthyRebuildStart: async () => {
-      const pending = [...vaultSyncPromises.values()];
+      const pending = [...vaultIndexSync.vaultSyncPromises.values()];
       await Promise.allSettled(pending);
-      syncedVaultIds.clear();
-      vaultSyncPromises.clear();
-      vaultSyncListeners.clear();
+      vaultIndexSync.resetForRebuild();
       watcherDisabledVaultIds.clear();
       vaultsHolder.current?.clearActiveVault();
       await vaultFsWatcher.stop();
@@ -360,7 +253,7 @@ export function createServiceDomainRuntime(
     },
   });
 
-  function getContext() {
+  function getContext(): VaultContext {
     return {
       fs,
       index: getIndex(),
@@ -383,242 +276,6 @@ export function createServiceDomainRuntime(
     await indexBoot.ensureHealthy();
   }
 
-  function addVaultSyncListener(
-    vaultId: string,
-    listener: {
-      onBatch?: (p: IndexSyncProgress) => void;
-      onComplete?: () => void;
-    },
-  ): () => void {
-    let set = vaultSyncListeners.get(vaultId);
-    if (!set) {
-      set = new Set();
-      vaultSyncListeners.set(vaultId, set);
-    }
-    set.add(listener);
-    return () => {
-      set!.delete(listener);
-      if (set!.size === 0) {
-        vaultSyncListeners.delete(vaultId);
-      }
-    };
-  }
-
-  function emitComplete(vaultId: string): void {
-    const set = vaultSyncListeners.get(vaultId);
-    if (!set) return;
-    for (const listener of set) {
-      listener.onComplete?.();
-    }
-  }
-
-  async function startVaultIndexSync(
-    vaultId: string,
-    vaultPath: string,
-  ): Promise<void> {
-    if (syncedVaultIds.has(vaultId)) {
-      if (
-        !runtimeClosed &&
-        !watcherDisabledVaultIds.has(vaultId) &&
-        !vaultFsWatcher.isWatching()
-      ) {
-        void vaultFsWatcher.start(vaultId, vaultPath).catch((error: unknown) => {
-          console.error("[collector] start vault filesystem watcher:", error);
-        });
-      }
-      return;
-    }
-    const inflight = vaultSyncPromises.get(vaultId);
-    if (inflight) {
-      return inflight;
-    }
-
-    let metadataReady = true;
-    let ftsReady = false;
-
-    vaultIndexSyncStatus.set({
-      vaultId,
-      status: "running",
-      progress: {
-        phase: "metadata",
-        processed: 0,
-        total: 0,
-        skipped: 0,
-        patched: 0,
-        indexed: 0,
-        contentIndexed: 0,
-        removed: 0,
-      },
-      metadataReady,
-      ftsReady,
-    });
-
-    let latestProgress: IndexSyncProgress = {
-      phase: "metadata",
-      processed: 0,
-      total: 0,
-      skipped: 0,
-      patched: 0,
-      indexed: 0,
-      contentIndexed: 0,
-      removed: 0,
-    };
-
-    const publishRunningStatus = createThrottledPublisher(() => {
-      vaultIndexSyncStatus.set({
-        vaultId,
-        status: "running",
-        progress: latestProgress,
-        metadataReady,
-        ftsReady,
-      });
-    }, SYNC_STATUS_THROTTLE_MS);
-
-    const noteProgress = (progress: IndexSyncProgress) => {
-      latestProgress = progress;
-      if (
-        metadataReady &&
-        progress.phase === "metadata" &&
-        progress.processed < progress.total
-      ) {
-        metadataReady = false;
-        publishRunningStatus.flush();
-        return;
-      }
-      publishRunningStatus.schedule();
-    };
-
-    const promise = (async () => {
-      try {
-        const report = await syncVaultIndexFromFilesystem(
-          getContext(),
-          vaultPath,
-          {
-            onProgress: (progress) => {
-              noteProgress(progress);
-            },
-            onBatch: (progress) => {
-              noteProgress(progress);
-              const set = vaultSyncListeners.get(vaultId);
-              if (set) {
-                for (const listener of set) {
-                  listener.onBatch?.(progress);
-                }
-              }
-            },
-            onMetadataComplete: (progress) => {
-              latestProgress = progress;
-              metadataReady = true;
-              publishRunningStatus.flush();
-            },
-          },
-        );
-        if (report.vaultId !== vaultId) {
-          throw new Error(
-            `Vault id mismatch during index sync: expected ${vaultId}, got ${report.vaultId}`,
-          );
-        }
-        syncedVaultIds.add(vaultId);
-        metadataReady = true;
-        ftsReady = true;
-        const finalProgress: IndexSyncProgress = {
-          phase: "content",
-          processed: report.indexed + report.patched + report.skipped,
-          total: report.indexed + report.patched + report.skipped,
-          skipped: report.skipped,
-          patched: report.patched,
-          indexed: report.indexed,
-          contentIndexed: report.contentIndexed,
-          removed: report.removed,
-        };
-        publishRunningStatus.cancel();
-        vaultIndexSyncStatus.set({
-          vaultId,
-          status: "done",
-          progress: finalProgress,
-          metadataReady,
-          ftsReady,
-        });
-        emitComplete(vaultId);
-        if (
-          !runtimeClosed &&
-          !watcherDisabledVaultIds.has(vaultId)
-        ) {
-          void vaultFsWatcher.start(vaultId, vaultPath).catch((error: unknown) => {
-            console.error("[collector] start vault filesystem watcher:", error);
-          });
-        }
-      } catch (error) {
-        publishRunningStatus.cancel();
-        vaultIndexSyncStatus.set({
-          vaultId,
-          status: "idle",
-          progress: null,
-          metadataReady: false,
-          ftsReady: false,
-        });
-        throw error;
-      }
-    })().finally(() => {
-      vaultSyncPromises.delete(vaultId);
-    });
-    vaultSyncPromises.set(vaultId, promise);
-    return promise;
-  }
-
-  function kickoffVaultIndexSync(
-    vaultId: string,
-    vaultPath: string,
-    reason: "kickoff" | "force" | "recovery" = "kickoff",
-  ): void {
-    vaultLayoutGuard.schedule(vaultId, vaultPath);
-    void enqueueVaultIndexSync(requireJobs(), {
-      vaultId,
-      vaultPath,
-      reason,
-    }).catch((error: unknown) => {
-      reportEnqueueFailure(jobPermanentFailure, "vaultIndexSync", error);
-    });
-  }
-
-  forceVaultIndexResync = (
-    vaultId: string,
-    vaultPath: string,
-    options: { restartWatcher?: boolean } = {},
-  ) => {
-    if (options.restartWatcher === false) {
-      watcherDisabledVaultIds.add(vaultId);
-    }
-    syncedVaultIds.delete(vaultId);
-    kickoffVaultIndexSync(vaultId, vaultPath, "force");
-  };
-
-  phaseBHandlerBindings.vaultIndexSync = createVaultIndexSyncHandler({
-    startVaultIndexSync,
-  });
-  phaseBHandlerBindings.reindexVaultBatch = createReindexVaultBatchHandler({
-    getContext,
-    onItemsSynced: notifyWatchItemsSynced,
-    onWatchApplied: (vaultId, vaultPath) => {
-      vaultLayoutGuard.schedule(vaultId, vaultPath);
-    },
-  });
-
-  function isVaultFtsReady(vaultId: string): boolean {
-    return syncedVaultIds.has(vaultId);
-  }
-
-  function buildSearchFtsQuery(userQuery: string, vaultId: string): string | null {
-    const trimmed = userQuery.trim();
-    if (!trimmed) {
-      return null;
-    }
-    if (isVaultFtsReady(vaultId)) {
-      return buildFtsMatchQuery(trimmed);
-    }
-    return buildMetadataFtsMatchQuery(trimmed);
-  }
-
   const vaults = createVaultsService({
     ensureInitialized,
     getDataDir: () => dataDir,
@@ -637,9 +294,9 @@ export function createServiceDomainRuntime(
     resolveActiveVault: () => vaults.resolveActiveVault(),
     getContext,
     getIndex,
-    kickoffVaultIndexSync,
-    buildSearchFtsQuery,
-    addVaultSyncListener,
+    kickoffVaultIndexSync: vaultIndexSync.kickoffVaultIndexSync,
+    buildSearchFtsQuery: vaultIndexSync.buildSearchFtsQuery,
+    addVaultSyncListener: vaultIndexSync.addVaultSyncListener,
     onVaultPresentationChanged: (vaultId) =>
       vaultPresentationChanged.notify(vaultId),
     findSimilarItems: (itemId, limit) =>
@@ -649,8 +306,8 @@ export function createServiceDomainRuntime(
   const tagsFolders = createTagsFoldersService({
     resolveActiveVault: () => vaults.resolveActiveVault(),
     getContext,
-    kickoffVaultIndexSync,
-    addVaultSyncListener,
+    kickoffVaultIndexSync: vaultIndexSync.kickoffVaultIndexSync,
+    addVaultSyncListener: vaultIndexSync.addVaultSyncListener,
     onVaultPresentationChanged: (vaultId) =>
       vaultPresentationChanged.notify(vaultId),
   });
@@ -674,65 +331,28 @@ export function createServiceDomainRuntime(
     return active.path;
   }
 
-  phaseBHandlerBindings.generateCover = createGenerateCoverHandler({
+  bindHostPhaseBHandlers({
+    startVaultIndexSync: vaultIndexSync.startVaultIndexSync,
     getContext,
-    resolveVaultPath: requireActiveVaultPath,
-    generateCoverFromMedia,
+    notifyWatchItemsSynced: vaultIndexSync.notifyWatchItemsSynced,
+    scheduleLayoutGuard: (vaultId, vaultPath) => {
+      vaultLayoutGuard.schedule(vaultId, vaultPath);
+    },
+    requireActiveVaultPath,
     onVaultPresentationChanged: (vaultId) =>
       vaultPresentationChanged.notify(vaultId),
-  });
-
-  phaseBHandlerBindings.refreshEmbeddings = createRefreshEmbeddingsHandler({
-    refresh: (inputs) => itemEmbeddings.refresh(inputs),
-  });
-
-  phaseBHandlerBindings.dropImportBatch = createDropImportBatchHandler({
+    refreshEmbeddings: (inputs) => itemEmbeddings.refresh(inputs),
     createItem: (input) => itemsSearch.createItem(input),
     attachMediaFiles: (itemId, files) =>
       mediaCover.attachMediaFiles(itemId, files),
-    updateItemSource: (itemId, raw) =>
-      itemsSearch.updateItemSource(itemId, raw),
+    updateItemSource: (itemId, raw) => itemsSearch.updateItemSource(itemId, raw),
   });
 
-  const dropImport = {
-    async importDroppedFiles(input: ImportDroppedFilesInput) {
-      const active = await vaults.resolveActiveVault();
-      const stagingDir = join(
-        dataDir,
-        "drop-import-staging",
-        crypto.randomUUID(),
-      );
-      await mkdir(stagingDir, { recursive: true });
-      const paths: string[] = [];
-      try {
-        for (const file of input.files) {
-          const rel = file.relativePath.replace(/\\/g, "/");
-          const dest = join(stagingDir, rel);
-          await mkdir(dirname(dest), { recursive: true });
-          await writeFile(dest, file.bytes);
-          paths.push(dest);
-        }
-        if (paths.length === 0) {
-          return { createdIds: [] };
-        }
-        return enqueueAndAwaitResult({
-          queue: requireJobs(),
-          label: "dropImportBatch",
-          takeResult: takeDropImportResult,
-          acceptFailed: true,
-          enqueue: () =>
-            enqueueDropImportBatch(requireJobs(), {
-              vaultId: active.vault.id,
-              stagingDir,
-              paths,
-              targetFolderId: input.folder_path?.trim() || null,
-            }),
-        });
-      } finally {
-        await rm(stagingDir, { recursive: true, force: true });
-      }
-    },
-  };
+  const dropImport = createHostDropImport({
+    dataDir,
+    resolveActiveVault: () => vaults.resolveActiveVault(),
+    requireJobs,
+  });
 
   const credentials = createCredentialsService({
     backend: createOsKeychainBackend(),
@@ -743,128 +363,19 @@ export function createServiceDomainRuntime(
     return vault.id;
   };
 
-  const telegramPlugin = createTelegramSyncPlugin({
+  const { syncPlugins, telegramSync, syncPluginWake } = createHostSyncPlugins({
     credentials,
     fs,
     dataDir,
     resolveActiveVaultId,
     listFolderTree: () => tagsFolders.listFolderTree(),
-  });
-
-  const registry = createSyncPluginRegistry({
-    fs,
-    dataDir,
-    resolveActiveVaultId,
     createItem: (input) => itemsSearch.createItem(input),
     attachMediaFiles: (itemId, files) =>
       mediaCover.attachMediaFiles(itemId, files),
-    createCatalog: () => [telegramPlugin],
+    requireJobs,
+    jobPermanentFailure,
+    wakePolicies: options.wakePolicies,
   });
-
-  phaseBHandlerBindings.syncPluginPull = createSyncPluginPullHandler({
-    syncNow: async (pluginId) => {
-      const result = await registry.syncNow(pluginId);
-      if (pluginId === TELEGRAM_PLUGIN_ID) {
-        await markTelegramLastSyncAt({
-          fs,
-          dataDir,
-          resolveActiveVaultId,
-        });
-      }
-      return result;
-    },
-  });
-
-  const syncPlugins: SyncPluginsPort = {
-    async syncNow(pluginId) {
-      return enqueueAndAwaitResult({
-        queue: requireJobs(),
-        label: "syncPluginPull",
-        takeResult: takeSyncPluginPullResult,
-        enqueue: () => enqueueSyncPluginPull(requireJobs(), { pluginId }),
-      });
-    },
-  };
-
-  const telegramSyncBase = createTelegramSyncService({
-    fs,
-    dataDir,
-    resolveActiveVaultId,
-    listFolderTree: () => tagsFolders.listFolderTree(),
-  });
-
-  const syncPluginWakeInner = createSyncPluginWakeController({
-    enqueueSyncPluginPull: (pluginId) =>
-      enqueueSyncPluginPull(requireJobs(), { pluginId }),
-    onEnqueueFailure: (_pluginId, error) => {
-      reportEnqueueFailure(jobPermanentFailure, "syncPluginPull", error);
-    },
-  });
-
-  const telegramWakeOverridden =
-    options.wakePolicies?.[TELEGRAM_PLUGIN_ID] !== undefined;
-
-  const armTelegramWake = (
-    enabled: boolean,
-    syncIntervalMs = DEFAULT_TELEGRAM_SYNC_INTERVAL_MS,
-  ): void => {
-    if (telegramWakeOverridden) {
-      return;
-    }
-    syncPluginWakeInner.register(
-      TELEGRAM_PLUGIN_ID,
-      enabled
-        ? { onVaultReady: true, intervalMs: syncIntervalMs }
-        : { onVaultReady: false },
-    );
-  };
-
-  const refreshTelegramWakeFromConfig = async (): Promise<void> => {
-    if (telegramWakeOverridden) {
-      return;
-    }
-    const vaultId = await resolveActiveVaultId();
-    const config = await loadTelegramPluginConfig(fs, dataDir, vaultId);
-    armTelegramWake(config.enabled, config.sync_interval_ms);
-  };
-
-  for (const [pluginId, policy] of Object.entries(options.wakePolicies ?? {})) {
-    if (pluginId === TELEGRAM_PLUGIN_ID) {
-      continue;
-    }
-    syncPluginWakeInner.register(pluginId, policy);
-  }
-  if (telegramWakeOverridden) {
-    const override = options.wakePolicies?.[TELEGRAM_PLUGIN_ID];
-    if (!override) {
-      throw new Error("telegram wake override missing after guard");
-    }
-    syncPluginWakeInner.register(TELEGRAM_PLUGIN_ID, override);
-  } else {
-    armTelegramWake(false);
-  }
-
-  const syncPluginWake: SyncPluginWakeController = {
-    register: (pluginId, policy) =>
-      syncPluginWakeInner.register(pluginId, policy),
-    dispose: () => syncPluginWakeInner.dispose(),
-    async notifyVaultReady() {
-      await refreshTelegramWakeFromConfig();
-      await syncPluginWakeInner.notifyVaultReady();
-    },
-  };
-
-  const telegramSync: TelegramSyncPort = {
-    getTelegramSyncSettings: () => telegramSyncBase.getTelegramSyncSettings(),
-    validateTelegramBotToken: (input) =>
-      telegramSyncBase.validateTelegramBotToken(input),
-    async updateTelegramSyncSettings(patch) {
-      const settings =
-        await telegramSyncBase.updateTelegramSyncSettings(patch);
-      armTelegramWake(settings.enabled, settings.sync_interval_ms);
-      return settings;
-    },
-  };
 
   return {
     dataDir,
@@ -887,7 +398,7 @@ export function createServiceDomainRuntime(
       runtimeClosed = true;
       vaultLayoutGuard.dispose();
       syncPluginWake.dispose();
-      await Promise.allSettled([...vaultSyncPromises.values()]);
+      await Promise.allSettled([...vaultIndexSync.vaultSyncPromises.values()]);
       await vaultFsWatcher.stop();
       if (jobsQueue) {
         await jobsQueue.stop();
