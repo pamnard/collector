@@ -33,11 +33,7 @@ export function textLinkResolveContextFromIndexes(
   sourceItemId: string,
   indexes: TextLinkCatalogIndexes,
 ): TextLinkResolveContext {
-  return {
-    sourceItemId,
-    idExists: indexes.idExists,
-    idsByTitle: indexes.idsByTitle,
-  };
+  return { sourceItemId, ...indexes };
 }
 
 /** Build resolve maps from a light id/title catalog (no full ItemFile load). */

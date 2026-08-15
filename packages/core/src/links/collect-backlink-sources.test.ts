@@ -1,9 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, afterEach } from "vitest";
 import {
   buildBacklinkReverseMap,
   collectBacklinkSources,
 } from "./collect-backlink-sources.js";
 import * as textLinksReindex from "./text-links-reindex.js";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("collectBacklinkSources (#410)", () => {
   const catalog = [
@@ -74,7 +78,6 @@ describe("catalog index reuse (#708)", () => {
     collectBacklinkSources("Inbox/target.md", catalog, bodies);
     expect(spy).toHaveBeenCalledTimes(1);
     expect(spy).toHaveBeenCalledWith(catalog);
-    spy.mockRestore();
   });
 
   it("builds catalog id/title indexes once for buildBacklinkReverseMap", () => {
@@ -86,6 +89,5 @@ describe("catalog index reuse (#708)", () => {
       { id: "Notes/a.md", title: "Note A" },
       { id: "Notes/b.md", title: "Note B" },
     ]);
-    spy.mockRestore();
   });
 });
