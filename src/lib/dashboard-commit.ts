@@ -233,7 +233,7 @@ export type DashboardListPruneInput = DashboardListSnapshotPruneInput & {
 
 /**
  * Full working + committed list window for dashboard paint (#655).
- * Shared list fields come from {@link DashboardListSharedFields}; applied atomically
+ * Shared list fields are composed from `dashboard-list-snapshot`; applied atomically
  * via {@link applyDashboardListSnapshot} so setters and refs stay aligned.
  */
 export type DashboardListSnapshot = DashboardListSharedFields & {
@@ -318,14 +318,23 @@ export function pruneItemIdFromDashboardLists(
     };
   }
 
-  // Present only in committed paint — clone snapshot fields for new refs.
+  // Present only in committed paint — clone snapshot fields and drop orphan keys
+  // (stamps/paths may still hold the id even when itemIds/itemsById do not).
+  const itemsById = new Map(input.itemsById);
+  itemsById.delete(itemId);
+  const bodyStamps = new Map(input.bodyStamps);
+  bodyStamps.delete(itemId);
+  const thumbnailPaths = new Map(input.thumbnailPaths);
+  thumbnailPaths.delete(itemId);
+  const thumbnailStamps = new Map(input.thumbnailStamps);
+  thumbnailStamps.delete(itemId);
   return {
     removed: true,
     itemIds: [...input.itemIds],
-    itemsById: new Map(input.itemsById),
-    bodyStamps: new Map(input.bodyStamps),
-    thumbnailPaths: new Map(input.thumbnailPaths),
-    thumbnailStamps: new Map(input.thumbnailStamps),
+    itemsById,
+    bodyStamps,
+    thumbnailPaths,
+    thumbnailStamps,
     streamEndOffset: Math.min(input.streamEndOffset, input.itemIds.length),
     totalCount: input.totalCount,
     committedItems,

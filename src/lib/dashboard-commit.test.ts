@@ -463,9 +463,18 @@ describe("pruneItemIdFromDashboardLists", () => {
     const input = {
       itemIds: ["a"],
       itemsById: new Map([["a", stubItem("a")]]),
-      bodyStamps: new Map([["a", "1"]]),
-      thumbnailPaths: new Map<string, string | null>([["a", "/a"]]),
-      thumbnailStamps: new Map([["a", "sa"]]),
+      bodyStamps: new Map([
+        ["a", "1"],
+        ["orphan", "orphan-body"],
+      ]),
+      thumbnailPaths: new Map<string, string | null>([
+        ["a", "/a"],
+        ["orphan", "/orphan"],
+      ]),
+      thumbnailStamps: new Map([
+        ["a", "sa"],
+        ["orphan", "so"],
+      ]),
       streamEndOffset: 1,
       totalCount: 1,
       committedItems: [stubItem("a"), stubItem("orphan")],
@@ -478,6 +487,10 @@ describe("pruneItemIdFromDashboardLists", () => {
     }
     assert.deepEqual(result.itemIds, ["a"]);
     assert.equal(result.totalCount, 1);
+    assert.equal(result.itemsById.has("orphan"), false);
+    assert.equal(result.bodyStamps.has("orphan"), false);
+    assert.equal(result.thumbnailPaths.has("orphan"), false);
+    assert.equal(result.thumbnailStamps.has("orphan"), false);
     assert.deepEqual(
       result.committedItems.map((item) => item.id),
       ["a"],
