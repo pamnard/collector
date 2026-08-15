@@ -166,6 +166,7 @@ function createSearchService(
       overrides.buildSearchFtsQuery ?? (() => null),
     addVaultSyncListener: () => () => {},
     findSimilarItems: async () => [],
+    normalizeMarkdown: (raw) => ({ text: raw, changed: false }),
   });
 }
 

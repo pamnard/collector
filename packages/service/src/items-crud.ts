@@ -28,7 +28,6 @@ import {
   writeItemRawMarkdown,
   type AdjacentItemAnchor,
 } from "@collector/core";
-import { normalizeMarkdown } from "@collector/core/node";
 import type { ItemsSearchServiceDeps } from "./items-search.js";
 
 export type ItemsCrud = {
@@ -121,7 +120,7 @@ export function createItemsCrud(
   ): Promise<{ item: ItemFile; wrote: boolean }> => {
     const { vault, path } = await deps.resolveActiveVault();
     const ctx = deps.getContext();
-    const { text } = normalizeMarkdown(rawMarkdown);
+    const { text } = deps.normalizeMarkdown(rawMarkdown);
     const existing = await readItemRawMarkdown(ctx.fs, path, itemId);
     if (text === existing) {
       return {

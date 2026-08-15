@@ -18,6 +18,7 @@ describe("resolveContentTextLinks (#409)", () => {
         getIndex: () => ({
           listItemIdTitles,
         }),
+        normalizeMarkdown: (raw) => ({ text: raw, changed: false }),
       } as never,
       () => "n",
     );

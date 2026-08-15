@@ -5,6 +5,7 @@ import {
   type SqlVaultIndexStore,
   type IndexSyncProgress,
 } from "@collector/core";
+import { normalizeMarkdown } from "@collector/core/node";
 import type { createAppSettingsService } from "../../app-settings.js";
 import type { createDashboardSnapshotService } from "../../dashboard-snapshot.js";
 import type { createVaultPresentationChangedStore } from "../../vault-presentation-changed.js";
@@ -90,6 +91,7 @@ export function createDomainServices(deps: DomainServicesDeps): DomainServices {
       deps.vaultPresentationChanged.notify(vaultId),
     findSimilarItems: (itemId, limit) =>
       deps.itemEmbeddings.findSimilarItems(itemId, limit),
+    normalizeMarkdown,
   });
 
   const tagsFolders = createTagsFoldersService({

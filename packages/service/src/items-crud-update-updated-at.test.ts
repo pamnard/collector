@@ -73,6 +73,7 @@ describe("createItemsCrud updateItem updated_at (#652)", () => {
         resolveActiveVault: async () => ({ path, vault: meta }),
         getContext: () => ctx,
         getIndex: () => index,
+        normalizeMarkdown: (raw) => ({ text: raw, changed: false }),
       } as never,
       () => "unused",
     );
