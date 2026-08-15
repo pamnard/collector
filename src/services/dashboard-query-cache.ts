@@ -1,16 +1,12 @@
-import type { ItemFile } from "@collector/shared";
+import {
+  pruneItemIdFromDashboardListSnapshot,
+  type DashboardListSnapshot,
+} from "../lib/dashboard-list-snapshot.ts";
 
 export const DASHBOARD_QUERY_CACHE_MAX = 16;
 
-export interface DashboardQueryCacheEntry {
-  itemIds: string[];
-  itemsById: Map<string, ItemFile>;
-  /** Index presentation stamps (file_mtime_ms) keyed by item id (#623). */
-  bodyStamps: Map<string, string>;
-  streamEndOffset: number;
-  totalCount: number;
-  thumbnailPaths: Map<string, string | null>;
-  thumbnailStamps: Map<string, string>;
+/** Cached dashboard list page; `bodyStamps` are index file_mtime_ms (#623). */
+export interface DashboardQueryCacheEntry extends DashboardListSnapshot {
   updatedAt: number;
 }
 
@@ -71,27 +67,18 @@ export function setDashboardQueryCache(
 
 export function removeItemIdFromDashboardQueryCache(itemId: string): void {
   for (const [key, entry] of entries) {
-    if (!entry.itemIds.includes(itemId) && !entry.itemsById.has(itemId)) {
+    const pruned = pruneItemIdFromDashboardListSnapshot(itemId, entry);
+    if (!pruned.removed) {
       continue;
     }
-    const itemIds = entry.itemIds.filter((id) => id !== itemId);
-    const itemsById = new Map(entry.itemsById);
-    itemsById.delete(itemId);
-    const bodyStamps = new Map(entry.bodyStamps);
-    bodyStamps.delete(itemId);
-    const thumbnailPaths = new Map(entry.thumbnailPaths);
-    thumbnailPaths.delete(itemId);
-    const thumbnailStamps = new Map(entry.thumbnailStamps);
-    thumbnailStamps.delete(itemId);
-    const removedCount = entry.itemIds.length - itemIds.length;
     touch(key, {
-      itemIds,
-      itemsById,
-      bodyStamps,
-      thumbnailPaths,
-      thumbnailStamps,
-      streamEndOffset: Math.min(entry.streamEndOffset, itemIds.length),
-      totalCount: Math.max(0, entry.totalCount - removedCount),
+      itemIds: pruned.itemIds,
+      itemsById: pruned.itemsById,
+      bodyStamps: pruned.bodyStamps,
+      thumbnailPaths: pruned.thumbnailPaths,
+      thumbnailStamps: pruned.thumbnailStamps,
+      streamEndOffset: pruned.streamEndOffset,
+      totalCount: pruned.totalCount,
       updatedAt: Date.now(),
     });
   }
