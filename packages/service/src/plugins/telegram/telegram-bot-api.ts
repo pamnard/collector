@@ -62,12 +62,21 @@ export interface TelegramFileAttachment {
   mime_type?: string;
 }
 
+export interface TelegramMessageEntity {
+  type: string;
+  offset: number;
+  length: number;
+  url?: string;
+}
+
 export interface TelegramMessage {
   message_id: number;
   date: number;
   chat: TelegramChat;
   text?: string;
   caption?: string;
+  entities?: TelegramMessageEntity[];
+  caption_entities?: TelegramMessageEntity[];
   media_group_id?: string;
   photo?: TelegramPhotoSize[];
   document?: TelegramDocument;

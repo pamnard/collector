@@ -149,6 +149,28 @@ describe("telegram-config / map (#415 / #433)", () => {
     expect(item.folder_path).toBe("Inbox");
   });
 
+  it("mapTelegramMessageToItem preserves text_link as markdown body; title stays plain", () => {
+    const item = mapTelegramMessageToItem(
+      {
+        message_id: 3,
+        date: 0,
+        chat: { id: 9, type: "private" },
+        text: "Try Product today",
+        entities: [
+          {
+            type: "text_link",
+            offset: 4,
+            length: 7,
+            url: "https://example.com/p",
+          },
+        ],
+      },
+      "Inbox",
+    );
+    expect(item.body).toBe("Try [Product](https://example.com/p) today");
+    expect(item.title).toBe("Try Product today");
+  });
+
   it("selectAlbumsToClose settles idle pending albums", () => {
     const albums = new Map([
       [

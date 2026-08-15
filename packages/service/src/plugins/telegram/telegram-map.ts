@@ -9,6 +9,7 @@ import {
   telegramAlbumRemoteId,
   telegramRemoteId,
 } from "./telegram-config.js";
+import { telegramMessageFormattedBody } from "./telegram-entities.js";
 
 export interface TelegramDownloadTarget {
   fileId: string;
@@ -203,7 +204,7 @@ export function mapTelegramMessageToItem(
   folderPath: string,
   media?: Array<{ name: string; bytes: Uint8Array }>,
 ): NormalizedSyncItem {
-  const body = (message.text ?? message.caption ?? "").trim() || undefined;
+  const body = telegramMessageFormattedBody(message);
   return {
     remoteId: telegramRemoteId(message.chat.id, message.message_id),
     title: deriveTelegramTitle(message),
@@ -229,9 +230,9 @@ export function mapTelegramAlbumToItem(
   }
   let body: string | undefined;
   for (const message of messages) {
-    const text = (message.text ?? message.caption ?? "").trim();
-    if (text) {
-      body = text;
+    const formatted = telegramMessageFormattedBody(message);
+    if (formatted) {
+      body = formatted;
       break;
     }
   }
