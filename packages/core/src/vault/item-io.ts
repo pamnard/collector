@@ -194,10 +194,16 @@ export async function itemFileFromDocumentMarkdown(
     return first.item;
   }
   if (tagMaps) {
-    maps = await enqueueTagEnsure(tagMaps, () =>
-      ensureTagsByName(fs, vaultPath, first.missingTagNames, tagMaps.maps),
-    );
-    tagMaps.maps = maps;
+    maps = await enqueueTagEnsure(tagMaps, async () => {
+      const next = await ensureTagsByName(
+        fs,
+        vaultPath,
+        first.missingTagNames,
+        tagMaps.maps,
+      );
+      tagMaps.maps = next;
+      return next;
+    });
   } else {
     maps = await ensureTagsByName(fs, vaultPath, first.missingTagNames, maps);
   }

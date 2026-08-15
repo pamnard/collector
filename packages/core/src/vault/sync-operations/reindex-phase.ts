@@ -19,27 +19,22 @@ export async function hydrateReindexQueue(
   tagMaps: TagMapsHolder,
   reindexQueue: ReindexWork[],
 ): Promise<void> {
-  const reindexIdsNeedingRead = reindexQueue
-    .filter((work) => !work.item)
-    .map((work) => work.itemId);
-  if (reindexIdsNeedingRead.length === 0) {
+  const needingRead = reindexQueue.filter((work) => !work.item);
+  if (needingRead.length === 0) {
     return;
   }
 
   const reindexReads = await readVaultItemMetaBatch(
     ctx.fs,
     vaultPath,
-    reindexIdsNeedingRead,
+    needingRead.map((work) => work.itemId),
   );
   const reindexMdById = new Map(
     reindexReads.map((read) => [read.id, read.documentMarkdown]),
   );
 
   const pending: Array<{ work: ReindexWork; documentMarkdown: string }> = [];
-  for (const work of reindexQueue) {
-    if (work.item) {
-      continue;
-    }
+  for (const work of needingRead) {
     const documentMarkdown = reindexMdById.get(work.itemId);
     if (!documentMarkdown) {
       continue;
