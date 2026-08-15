@@ -1279,6 +1279,7 @@ describe("rewriteItemIds", () => {
         folderPath: "New",
         phrase: `batchphrase${i}`,
         mediaId: createId(),
+        sourceExternalId: `ext-${i}`,
       };
     });
 
@@ -1301,6 +1302,12 @@ describe("rewriteItemIds", () => {
           updated_at: timestamp,
         },
         content: `fts body ${mapping.phrase}`,
+        sourceRef: {
+          plugin_id: "test-plugin",
+          external_id: mapping.sourceExternalId,
+          synced_at: timestamp,
+          metadata: { n: mapping.sourceExternalId },
+        },
       });
       await index.upsertMedia({
         id: mapping.mediaId,
@@ -1364,6 +1371,28 @@ describe("rewriteItemIds", () => {
       );
       expect(collectionRows).toEqual([{ collection_id: collectionId }]);
 
+      const sourceRows = await db.select<{
+        item_id: string;
+        plugin_id: string;
+        external_id: string;
+      }>(
+        `SELECT item_id, plugin_id, external_id FROM source_refs
+         WHERE item_id = ?`,
+        [mapping.newId],
+      );
+      expect(sourceRows).toEqual([
+        {
+          item_id: mapping.newId,
+          plugin_id: "test-plugin",
+          external_id: mapping.sourceExternalId,
+        },
+      ]);
+      const staleSource = await db.select<{ item_id: string }>(
+        "SELECT item_id FROM source_refs WHERE item_id = ?",
+        [mapping.oldId],
+      );
+      expect(staleSource).toEqual([]);
+
       expect(
         await index.searchItemIds(meta.id, mapping.phrase, "all"),
       ).toEqual([mapping.newId]);
@@ -1374,6 +1403,53 @@ describe("rewriteItemIds", () => {
       expect(embedding!.inputFingerprint).toBe(`fp-${mapping.oldId}`);
       expect(embedding!.contentRevision).toBe(3);
     }
+  });
+
+  it("falls back to per-item rewrite when old/new ids overlap (chain)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-rewrite-overlap-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    const ctx = { fs, index };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const timestamp = new Date().toISOString();
+
+    // Chain A→B, B→C with leaf-first order so per-item path never inserts a live PK.
+    const idA = `notes/${createId()}.md`;
+    const idB = `notes/${createId()}.md`;
+    const idC = `notes/${createId()}.md`;
+
+    for (const id of [idA, idB]) {
+      await upsertItem(ctx, path, meta.id, {
+        item: {
+          id,
+          vault_id: meta.id,
+          title: id,
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          properties: {},
+          tag_ids: [],
+          collection_ids: [],
+          folder_path: "notes",
+          content_revision: 1,
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+        content: `body-${id}`,
+      });
+    }
+
+    await index.rewriteItemIds([
+      { oldId: idB, newId: idC, folderPath: "notes" },
+      { oldId: idA, newId: idB, folderPath: "notes" },
+    ]);
+
+    expect((await index.listVaultItemIds(meta.id)).sort()).toEqual(
+      [idB, idC].sort(),
+    );
+    expect(await index.listVaultItemIds(meta.id)).not.toContain(idA);
   });
 });
 

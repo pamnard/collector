@@ -8,6 +8,7 @@ import {
   INDEX_SYNC_YIELD_MS,
   yieldToEventLoop,
 } from "../util/concurrency.js";
+import { mappingsHaveOverlappingIds } from "../util/id-rewrite-mappings.js";
 import {
   SQL_INSERT_CHUNK,
   sqlInPlaceholders,
@@ -71,24 +72,15 @@ const ITEM_INSERT_CHUNK = Math.min(
   Math.floor(999 / ITEM_INSERT_COLUMNS),
 );
 
-function mappingsHaveOverlappingIds(
-  mappings: ItemIdRewriteMapping[],
-): boolean {
-  const oldIds = new Set<string>();
-  const newIds = new Set<string>();
-  for (const mapping of mappings) {
-    if (oldIds.has(mapping.oldId) || newIds.has(mapping.newId)) {
-      return true;
-    }
-    oldIds.add(mapping.oldId);
-    newIds.add(mapping.newId);
+function requireMapping(
+  oldToMapping: Map<string, ItemIdRewriteMapping>,
+  itemId: string,
+): ItemIdRewriteMapping {
+  const mapping = oldToMapping.get(itemId);
+  if (!mapping) {
+    throw new Error(`rewriteItemIds: missing mapping for ${itemId}`);
   }
-  for (const oldId of oldIds) {
-    if (newIds.has(oldId)) {
-      return true;
-    }
-  }
-  return false;
+  return mapping;
 }
 
 export async function rewriteOneItemId(
@@ -271,6 +263,8 @@ async function rewriteItemIdsChunk(
   }
 
   if (mappingsHaveOverlappingIds(active)) {
+    // Batch multi-row INSERT collides when old/new id sets overlap; per-item
+    // rewrite avoids that for orderings that never insert an id still present.
     for (const mapping of active) {
       await rewriteOneItemId(selector, mapping);
     }
@@ -302,7 +296,7 @@ async function rewriteItemIdsChunk(
     const chunk = rows.slice(offset, offset + ITEM_INSERT_CHUNK);
     const binds: unknown[] = [];
     for (const row of chunk) {
-      const mapping = oldToMapping.get(row.id)!;
+      const mapping = requireMapping(oldToMapping, row.id);
       binds.push(...itemInsertBinds(row, mapping.newId, mapping.folderPath));
     }
     await selector.execute(
@@ -328,7 +322,7 @@ async function rewriteItemIdsChunk(
       const chunk = tagRows.slice(offset, offset + SQL_INSERT_CHUNK);
       const binds: unknown[] = [];
       for (const tagRow of chunk) {
-        const mapping = oldToMapping.get(tagRow.item_id)!;
+        const mapping = requireMapping(oldToMapping, tagRow.item_id);
         binds.push(mapping.newId, tagRow.tag_id);
       }
       await selector.execute(
@@ -358,7 +352,7 @@ async function rewriteItemIdsChunk(
       const chunk = collectionRows.slice(offset, offset + SQL_INSERT_CHUNK);
       const binds: unknown[] = [];
       for (const collectionRow of chunk) {
-        const mapping = oldToMapping.get(collectionRow.item_id)!;
+        const mapping = requireMapping(oldToMapping, collectionRow.item_id);
         binds.push(mapping.newId, collectionRow.collection_id);
       }
       await selector.execute(
@@ -388,7 +382,7 @@ async function rewriteItemIdsChunk(
       const chunk = mediaRows.slice(offset, offset + SQL_INSERT_CHUNK);
       const binds: unknown[] = [];
       for (const media of chunk) {
-        const mapping = oldToMapping.get(media.item_id)!;
+        const mapping = requireMapping(oldToMapping, media.item_id);
         binds.push(
           media.id,
           mapping.newId,
@@ -430,7 +424,7 @@ async function rewriteItemIdsChunk(
       const chunk = sourceRows.slice(offset, offset + SQL_INSERT_CHUNK);
       const binds: unknown[] = [];
       for (const source of chunk) {
-        const mapping = oldToMapping.get(source.item_id)!;
+        const mapping = requireMapping(oldToMapping, source.item_id);
         binds.push(
           source.id,
           mapping.newId,
@@ -468,7 +462,7 @@ async function rewriteItemIdsChunk(
       const chunk = ftsRows.slice(offset, offset + SQL_INSERT_CHUNK);
       const binds: unknown[] = [];
       for (const fts of chunk) {
-        const mapping = oldToMapping.get(fts.item_id)!;
+        const mapping = requireMapping(oldToMapping, fts.item_id);
         binds.push(mapping.newId, fts.title, fts.description, fts.content);
       }
       await selector.execute(

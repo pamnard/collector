@@ -1,4 +1,5 @@
 import type { SqlExecutor, SqlReader } from "@collector/db";
+import { mappingsHaveOverlappingIds } from "../util/id-rewrite-mappings.js";
 import type { ItemEmbeddingPut, ItemEmbeddingRow } from "./types.js";
 import { blobToVector, vectorToBlob } from "./vector-blob.js";
 
@@ -105,7 +106,11 @@ export async function rewriteItemEmbeddingId(
   await rewriteItemEmbeddingIds(db, [{ oldId, newId }]);
 }
 
-/** Rebind embedding PKs for many items in shared SELECT/DELETE/INSERT round-trips. */
+/**
+ * Rebind embedding PKs for many items in shared SELECT/DELETE/INSERT round-trips.
+ * Requires disjoint old/new id sets (no swap/chain/duplicate targets). Callers with
+ * overlapping mappings must rewrite one item at a time via rewriteItemEmbeddingId.
+ */
 export async function rewriteItemEmbeddingIds(
   db: SqlEmbeddingDb,
   mappings: Array<{ oldId: string; newId: string }>,
@@ -113,6 +118,11 @@ export async function rewriteItemEmbeddingIds(
   const active = mappings.filter((mapping) => mapping.oldId !== mapping.newId);
   if (active.length === 0) {
     return;
+  }
+  if (mappingsHaveOverlappingIds(active)) {
+    throw new Error(
+      "rewriteItemEmbeddingIds: overlapping old/new ids; use rewriteItemEmbeddingId per item",
+    );
   }
 
   const oldIds = active.map((mapping) => mapping.oldId);
