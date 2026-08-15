@@ -10,6 +10,20 @@ import {
 } from "./telegram-bot-api.js";
 
 describe("createTelegramBotApi (#415 / #433)", () => {
+  it("exposes identity, updates, message, and file methods", () => {
+    const api = createTelegramBotApi({ fetchFn: vi.fn() });
+    expect(Object.keys(api)).toEqual([
+      "getMe",
+      "getWebhookInfo",
+      "deleteWebhook",
+      "ensurePollingClearsWebhook",
+      "getUpdates",
+      "deleteMessage",
+      "getFile",
+      "downloadFile",
+    ]);
+  });
+
   it("getMe returns user on ok response", async () => {
     const fetchFn = vi.fn(async () =>
       Response.json({
