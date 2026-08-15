@@ -3,6 +3,7 @@ import { describe, it, beforeEach } from "node:test";
 import type { ItemFile } from "@collector/shared";
 import {
   DASHBOARD_QUERY_CACHE_MAX,
+  applyDashboardQueryCacheCoverFlightPatch,
   clearDashboardQueryCache,
   dashboardQueryCacheKey,
   dashboardQueryCacheKeysForTests,
@@ -67,6 +68,30 @@ describe("dashboard query cache LRU", () => {
     assert.equal(first.thumbnailStamps, second.thumbnailStamps);
   });
 
+  it("sealed maps from get support size, get, and has", () => {
+    const key = dashboardQueryCacheKey("folder:a", "");
+    setDashboardQueryCache(
+      key,
+      entry({
+        itemIds: ["1", "2"],
+        bodyStamps: new Map([["1", "s1"]]),
+        thumbnailPaths: new Map([["1", "/a"]]),
+        thumbnailStamps: new Map([["1", "t:a"]]),
+      }),
+    );
+    const got = getDashboardQueryCache(key);
+    assert.ok(got);
+    assert.equal(got.itemsById.size, 2);
+    assert.equal(got.itemsById.get("1")?.id, "1");
+    assert.equal(got.itemsById.has("2"), true);
+    assert.equal(got.itemsById.has("missing"), false);
+    assert.equal(got.bodyStamps.size, 1);
+    assert.equal(got.bodyStamps.get("1"), "s1");
+    assert.equal(got.thumbnailPaths.size, 1);
+    assert.equal(got.thumbnailPaths.get("1"), "/a");
+    assert.equal(got.thumbnailStamps.has("1"), true);
+  });
+
   it("mutating a returned entry does not corrupt the store", () => {
     const key = dashboardQueryCacheKey("folder:a", "");
     setDashboardQueryCache(key, entry({ itemIds: ["1", "2"] }));
@@ -110,16 +135,19 @@ describe("dashboard query cache LRU", () => {
     const before = getDashboardQueryCache(key);
     assert.ok(before);
 
-    patchDashboardQueryCacheCovers(
-      key,
-      new Map([
-        ["1", "/new"],
-        ["2", "/two"],
-      ]),
-      new Map([
-        ["1", "t:new"],
-        ["2", "t:two"],
-      ]),
+    assert.equal(
+      patchDashboardQueryCacheCovers(
+        key,
+        new Map([
+          ["1", "/new"],
+          ["2", "/two"],
+        ]),
+        new Map([
+          ["1", "t:new"],
+          ["2", "t:two"],
+        ]),
+      ),
+      true,
     );
 
     const after = getDashboardQueryCache(key);
@@ -134,6 +162,87 @@ describe("dashboard query cache LRU", () => {
     assert.equal(after.thumbnailStamps.get("1"), "t:new");
     assert.equal(after.streamEndOffset, before.streamEndOffset);
     assert.equal(after.totalCount, before.totalCount);
+  });
+
+  it("patchDashboardQueryCacheCovers returns false when key is absent", () => {
+    assert.equal(
+      patchDashboardQueryCacheCovers(
+        "missing|",
+        new Map([["1", "/a"]]),
+        new Map([["1", "t:a"]]),
+      ),
+      false,
+    );
+  });
+
+  it("applyDashboardQueryCacheCoverFlightPatch skips foreign key after live key changes", () => {
+    const flightKey = dashboardQueryCacheKey("folder:old", "");
+    const foreignKey = dashboardQueryCacheKey("folder:new", "");
+    setDashboardQueryCache(
+      flightKey,
+      entry({
+        itemIds: ["old"],
+        thumbnailPaths: new Map([["old", "/old"]]),
+      }),
+    );
+    setDashboardQueryCache(
+      foreignKey,
+      entry({
+        itemIds: ["new"],
+        thumbnailPaths: new Map([["new", "/new-before"]]),
+      }),
+    );
+
+    let liveKey = foreignKey;
+    const result = applyDashboardQueryCacheCoverFlightPatch({
+      flightKey,
+      flightVersion: 1,
+      getLiveKey: () => liveKey,
+      getLiveVersion: () => 1,
+      thumbnailPaths: new Map([["old", "/poison"]]),
+      thumbnailStamps: new Map([["old", "t:poison"]]),
+      rewriteFull: () => {
+        throw new Error("rewriteFull must not run when live key diverged");
+      },
+    });
+
+    assert.equal(result, "skipped");
+    assert.equal(
+      getDashboardQueryCache(foreignKey)?.thumbnailPaths.get("new"),
+      "/new-before",
+    );
+    assert.equal(
+      getDashboardQueryCache(flightKey)?.thumbnailPaths.get("old"),
+      "/old",
+    );
+  });
+
+  it("applyDashboardQueryCacheCoverFlightPatch rewrites when flight key was LRU-evicted", () => {
+    const flightKey = dashboardQueryCacheKey("folder:a", "");
+    const result = applyDashboardQueryCacheCoverFlightPatch({
+      flightKey,
+      flightVersion: 3,
+      getLiveKey: () => flightKey,
+      getLiveVersion: () => 3,
+      thumbnailPaths: new Map([["1", "/rewritten"]]),
+      thumbnailStamps: new Map([["1", "t:rewritten"]]),
+      rewriteFull: () => {
+        setDashboardQueryCache(
+          flightKey,
+          entry({
+            itemIds: ["1"],
+            thumbnailPaths: new Map([["1", "/rewritten"]]),
+            thumbnailStamps: new Map([["1", "t:rewritten"]]),
+          }),
+        );
+      },
+    });
+
+    assert.equal(result, "rewritten");
+    assert.equal(
+      getDashboardQueryCache(flightKey)?.thumbnailPaths.get("1"),
+      "/rewritten",
+    );
   });
 
   it("evicts oldest when over max", () => {

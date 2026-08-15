@@ -44,26 +44,26 @@ export type CacheEntryAppliedState = {
   hasMore: boolean;
 };
 
-/** Derive working + committed paint fields from a cache entry (no React). */
+/** Working + committed paint from a cache entry; always mutable copies. */
 export function stateFromDashboardCacheEntry(
   entry: DashboardQueryCacheEntry,
 ): CacheEntryAppliedState {
-  const paths = new Map(entry.thumbnailPaths);
-  const stamps = new Map(entry.thumbnailStamps);
+  const itemIds = [...entry.itemIds];
+  const itemsById = new Map(entry.itemsById);
   const ordered = orderDashboardItems(
-    entry.itemIds,
-    entry.itemsById,
+    itemIds,
+    itemsById,
     entry.streamEndOffset,
   );
   return {
-    itemIds: entry.itemIds,
-    itemsById: entry.itemsById,
+    itemIds,
+    itemsById,
     bodyStamps: new Map(entry.bodyStamps),
     streamEndOffset: entry.streamEndOffset,
     totalCount: entry.totalCount,
     ordered,
-    thumbnailPaths: paths,
-    thumbnailStamps: stamps,
+    thumbnailPaths: new Map(entry.thumbnailPaths),
+    thumbnailStamps: new Map(entry.thumbnailStamps),
     hasMore: entry.streamEndOffset < entry.totalCount,
   };
 }

@@ -134,7 +134,7 @@ describe("readInitialDashboardCacheEntry", () => {
 });
 
 describe("stateFromDashboardCacheEntry", () => {
-  it("orders committed items and clones thumbnail maps", () => {
+  it("orders committed items and materializes working copies of list containers", () => {
     const item = stubItem("a");
     const entry: DashboardQueryCacheEntry = {
       itemIds: ["a"],
@@ -149,7 +149,14 @@ describe("stateFromDashboardCacheEntry", () => {
     const state = stateFromDashboardCacheEntry(entry);
     assert.equal(state.ordered[0]?.id, "a");
     assert.equal(state.hasMore, true);
+    assert.notEqual(state.itemIds, entry.itemIds);
+    assert.notEqual(state.itemsById, entry.itemsById);
+    assert.notEqual(state.bodyStamps, entry.bodyStamps);
+    state.itemIds.push("b");
+    state.itemsById.set("b", stubItem("b"));
     state.thumbnailPaths.set("b", "/b");
+    assert.deepEqual(entry.itemIds, ["a"]);
+    assert.equal(entry.itemsById.has("b"), false);
     assert.equal(entry.thumbnailPaths.has("b"), false);
   });
 });
