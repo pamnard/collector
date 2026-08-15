@@ -7,6 +7,7 @@ import {
   dashboardQueryCacheKey,
   dashboardQueryCacheKeysForTests,
   getDashboardQueryCache,
+  patchDashboardQueryCacheCovers,
   removeItemIdFromDashboardQueryCache,
   setDashboardQueryCache,
   type DashboardQueryCacheEntry,
@@ -52,14 +53,87 @@ describe("dashboard query cache LRU", () => {
     clearDashboardQueryCache();
   });
 
-  it("stores and returns a clone on get", () => {
+  it("get returns the sealed store entry without cloning containers", () => {
+    const key = dashboardQueryCacheKey("folder:a", "");
+    setDashboardQueryCache(key, entry({ itemIds: ["1", "2"] }));
+    const first = getDashboardQueryCache(key);
+    const second = getDashboardQueryCache(key);
+    assert.ok(first);
+    assert.equal(first, second);
+    assert.equal(first.itemIds, second.itemIds);
+    assert.equal(first.itemsById, second.itemsById);
+    assert.equal(first.bodyStamps, second.bodyStamps);
+    assert.equal(first.thumbnailPaths, second.thumbnailPaths);
+    assert.equal(first.thumbnailStamps, second.thumbnailStamps);
+  });
+
+  it("mutating a returned entry does not corrupt the store", () => {
     const key = dashboardQueryCacheKey("folder:a", "");
     setDashboardQueryCache(key, entry({ itemIds: ["1", "2"] }));
     const got = getDashboardQueryCache(key);
     assert.ok(got);
-    assert.deepEqual(got.itemIds, ["1", "2"]);
-    got.itemIds.push("3");
+    assert.throws(() => {
+      got.itemIds.push("3");
+    });
+    assert.throws(() => {
+      got.thumbnailPaths.set("1", "/poison");
+    });
     assert.deepEqual(getDashboardQueryCache(key)?.itemIds, ["1", "2"]);
+    assert.equal(getDashboardQueryCache(key)?.thumbnailPaths.has("1"), false);
+  });
+
+  it("set clones caller input so later mutation does not poison the store", () => {
+    const key = dashboardQueryCacheKey("folder:a", "");
+    const input = entry({
+      itemIds: ["1"],
+      thumbnailPaths: new Map([["1", "/a"]]),
+    });
+    setDashboardQueryCache(key, input);
+    input.itemIds.push("2");
+    input.thumbnailPaths.set("1", "/poison");
+    const stored = getDashboardQueryCache(key);
+    assert.deepEqual(stored?.itemIds, ["1"]);
+    assert.equal(stored?.thumbnailPaths.get("1"), "/a");
+  });
+
+  it("patchDashboardQueryCacheCovers shares list containers and replaces only covers", () => {
+    const key = dashboardQueryCacheKey("folder:a", "");
+    setDashboardQueryCache(
+      key,
+      entry({
+        itemIds: ["1", "2", "3"],
+        bodyStamps: new Map([["1", "s1"], ["2", "s2"]]),
+        thumbnailPaths: new Map([["1", "/old"]]),
+        thumbnailStamps: new Map([["1", "t:old"]]),
+      }),
+    );
+    const before = getDashboardQueryCache(key);
+    assert.ok(before);
+
+    patchDashboardQueryCacheCovers(
+      key,
+      new Map([
+        ["1", "/new"],
+        ["2", "/two"],
+      ]),
+      new Map([
+        ["1", "t:new"],
+        ["2", "t:two"],
+      ]),
+    );
+
+    const after = getDashboardQueryCache(key);
+    assert.ok(after);
+    assert.equal(after.itemIds, before.itemIds);
+    assert.equal(after.itemsById, before.itemsById);
+    assert.equal(after.bodyStamps, before.bodyStamps);
+    assert.notEqual(after.thumbnailPaths, before.thumbnailPaths);
+    assert.notEqual(after.thumbnailStamps, before.thumbnailStamps);
+    assert.equal(after.thumbnailPaths.get("1"), "/new");
+    assert.equal(after.thumbnailPaths.get("2"), "/two");
+    assert.equal(after.thumbnailStamps.get("1"), "t:new");
+    assert.equal(after.streamEndOffset, before.streamEndOffset);
+    assert.equal(after.totalCount, before.totalCount);
   });
 
   it("evicts oldest when over max", () => {

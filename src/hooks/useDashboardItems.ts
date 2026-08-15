@@ -55,6 +55,7 @@ import {
 import {
   dashboardQueryCacheKey,
   getDashboardQueryCache,
+  patchDashboardQueryCacheCovers,
   removeItemIdFromDashboardQueryCache,
   setDashboardQueryCache,
   type DashboardQueryCacheEntry,
@@ -404,6 +405,11 @@ export function useDashboardItems(
           setCommittedThumbnailStamps(mergedStamps);
           committedThumbnailPathsRef.current = mergedPaths;
           committedThumbnailStampsRef.current = mergedStamps;
+          patchDashboardQueryCacheCovers(
+            queryKeyRef.current,
+            mergedPaths,
+            mergedStamps,
+          );
         },
         getFlight: () => coverFlightRef.current,
         setFlight: (next) => {
@@ -411,12 +417,6 @@ export function useDashboardItems(
         },
         resolveProgressive: resolveDashboardCoverPathsProgressive,
       });
-
-      if (requestVersionRef.current !== requestVersion) {
-        return;
-      }
-
-      writeQueryCache(ids, byId, end, nextTotal);
     },
     [writeQueryCache],
   );
