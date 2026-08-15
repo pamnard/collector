@@ -5,6 +5,8 @@
 
 import {
   DASHBOARD_PREFETCH_SIZE,
+  SEARCH_PAGE_SIZE,
+  assertSearchItemsPage,
   type AdjacentItemsResult,
   type CreateItemInput,
   type DashboardIndexPage,
@@ -15,13 +17,13 @@ import {
   type IndexQueryResult,
   type NavFilter,
   type ResolvedTextLink,
+  type SearchItemsResult,
   type SimilarItemHit,
   type Subscription,
   type UpdateItemInput,
 } from "@collector/api";
 import type { ItemFile, VaultMeta } from "@collector/shared";
 import {
-  listItemsByIds,
   type AdjacentItemAnchor,
   type IndexSyncProgress,
   type VaultContext,
@@ -33,8 +35,8 @@ import {
 import { createItemsCrud } from "./items-crud.js";
 import { subscribeDashboardLoad as subscribeDashboardLoadImpl } from "./items-dashboard-subscribe.js";
 
-export { DASHBOARD_PREFETCH_SIZE };
-export type { DashboardIndexPage, DashboardItemIdsResult, DashboardItemSort };
+export { DASHBOARD_PREFETCH_SIZE, SEARCH_PAGE_SIZE };
+export type { DashboardIndexPage, DashboardItemIdsResult, DashboardItemSort, SearchItemsResult };
 export {
   assertDashboardItemSort,
   queryDashboardIndexPage,
@@ -101,7 +103,11 @@ export interface ItemsSearchServiceDeps {
 }
 
 export interface ItemsSearchService {
-  searchItems(query: string, filter: NavFilter): Promise<ItemFile[]>;
+  searchItems(
+    query: string,
+    filter: NavFilter,
+    page?: { limit: number; offset: number },
+  ): Promise<SearchItemsResult>;
   queryIndex(
     filter: NavFilter,
     query: string | undefined,
@@ -169,22 +175,28 @@ export function createItemsSearchService(
   const searchItems = async (
     query: string,
     filter: NavFilter,
-  ): Promise<ItemFile[]> => {
+    page: { limit: number; offset: number } = {
+      limit: SEARCH_PAGE_SIZE,
+      offset: 0,
+    },
+  ): Promise<SearchItemsResult> => {
+    assertSearchItemsPage(page);
     const { vault, path } = await deps.resolveActiveVault();
     deps.kickoffVaultIndexSync(vault.id, path);
 
     const ftsQuery = deps.buildSearchFtsQuery(query, vault.id);
-    if (!ftsQuery) {
-      const itemIds = await deps
-        .getIndex()
-        .listItemIdsByNavFilter(vault.id, filter);
-      return listItemsByIds(deps.getContext(), path, itemIds);
-    }
-
-    const itemIds = await deps
-      .getIndex()
-      .searchItemIds(vault.id, ftsQuery, filter);
-    return listItemsByIds(deps.getContext(), path, itemIds);
+    const [itemIds, total] = ftsQuery
+      ? await Promise.all([
+          deps.getIndex().searchItemIds(vault.id, ftsQuery, filter, page),
+          deps.getIndex().countSearchItemIds(vault.id, ftsQuery, filter),
+        ])
+      : await Promise.all([
+          deps.getIndex().listItemIdsByNavFilter(vault.id, filter, page),
+          deps.getIndex().countItemIdsByNavFilter(vault.id, filter),
+        ]);
+    // Index card fields (title/description/cover meta) — not full markdown (#658).
+    const items = await deps.getIndex().listItemFilesByIds(vault.id, itemIds);
+    return { items, total, offset: page.offset };
   };
 
   const fetchDashboardIndexPage = async (

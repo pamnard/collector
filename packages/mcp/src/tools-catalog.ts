@@ -54,7 +54,9 @@ export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] = [
       "Full-text search over the full on-disk note markdown (YAML/TOML/JSON frontmatter + body), " +
       "plus title and description columns, in the active vault. " +
       "Does not look up by item id or path (item_id is unindexed in FTS). " +
-      "Returns full ItemFile[] (same fields as collector_get_item metadata); pass `id` unchanged as itemId to get/update/delete/move.",
+      "Returns { items: ItemFile[], total, offset } capped to one page (default 60). " +
+      "When items.length < total the result is truncated — page with a later offset or tell the user more matches exist. " +
+      "Pass each item `id` unchanged as itemId to get/update/delete/move.",
     params: [
       {
         name: "query",

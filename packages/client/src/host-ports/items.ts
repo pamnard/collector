@@ -11,6 +11,7 @@ import type {
   IndexQueryResult,
   ItemsPort,
   NavFilter,
+  SearchItemsResult,
   Subscription,
   UpdateItemInput,
 } from "@collector/api";
@@ -31,11 +32,13 @@ export function createHostItemsPort(ctx: HostSessionCtx): ItemsPort {
     searchItems: async (
       query: string,
       filter: NavFilter,
-    ): Promise<ItemFile[]> =>
+      page?: { limit: number; offset: number },
+    ): Promise<SearchItemsResult> =>
       transport.request("searchItems", {
         query,
         filter,
-      }) as Promise<ItemFile[]>,
+        ...(page === undefined ? {} : { page }),
+      }) as Promise<SearchItemsResult>,
     queryIndex: async (
       filter: NavFilter,
       query: string | undefined,

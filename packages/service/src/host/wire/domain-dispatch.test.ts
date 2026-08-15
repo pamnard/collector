@@ -168,7 +168,11 @@ describe("createDomainWireRequestHandler (#330)", () => {
   });
 
   it("searchItems and getItemById forward after ensureInitialized", async () => {
-    const searchItems = vi.fn(async () => [{ id: "a.md" }]);
+    const searchItems = vi.fn(async () => ({
+      items: [{ id: "a.md" }],
+      total: 1,
+      offset: 0,
+    }));
     const getItemById = vi.fn(async () => ({ id: "a.md" }));
     const { runtime, ensureInitialized } = stubRuntime({
       itemsSearch: { searchItems, getItemById },
@@ -177,14 +181,75 @@ describe("createDomainWireRequestHandler (#330)", () => {
 
     await expect(
       dispatch(M.searchItems, { query: "hello", filter: "all" }),
-    ).resolves.toEqual([{ id: "a.md" }]);
-    expect(searchItems).toHaveBeenCalledWith("hello", "all");
+    ).resolves.toEqual({ items: [{ id: "a.md" }], total: 1, offset: 0 });
+    expect(searchItems).toHaveBeenCalledWith("hello", "all", undefined);
 
     await expect(dispatch(M.getItemById, { itemId: "a.md" })).resolves.toEqual({
       id: "a.md",
     });
     expect(getItemById).toHaveBeenCalledWith("a.md");
     expect(ensureInitialized).toHaveBeenCalledTimes(2);
+  });
+
+  it("searchItems forwards optional page (#658)", async () => {
+    const searchItems = vi.fn(async () => ({
+      items: [{ id: "a.md" }],
+      total: 1,
+      offset: 20,
+    }));
+    const { runtime } = stubRuntime({
+      itemsSearch: { searchItems },
+    });
+    const dispatch = createDomainWireRequestHandler(runtime);
+
+    await dispatch(M.searchItems, {
+      query: "hello",
+      filter: "all",
+      page: { limit: 10, offset: 20 },
+    });
+    expect(searchItems).toHaveBeenCalledWith("hello", "all", {
+      limit: 10,
+      offset: 20,
+    });
+  });
+
+  it("rejects invalid searchItems page before ensureInitialized (#658)", async () => {
+    const searchItems = vi.fn(async () => ({ items: [], total: 0, offset: 0 }));
+    const { runtime, ensureInitialized } = stubRuntime({
+      itemsSearch: { searchItems },
+    });
+    const dispatch = createDomainWireRequestHandler(runtime);
+
+    await expectBadRequest(() =>
+      dispatch(M.searchItems, {
+        query: "hello",
+        filter: "all",
+        page: { limit: Number.NaN, offset: 0 },
+      }),
+    );
+    await expectBadRequest(() =>
+      dispatch(M.searchItems, {
+        query: "hello",
+        filter: "all",
+        page: { limit: 0, offset: 0 },
+      }),
+    );
+    await expectBadRequest(() =>
+      dispatch(M.searchItems, {
+        query: "hello",
+        filter: "all",
+        page: { limit: 10_000, offset: 0 },
+      }),
+    );
+    await expectBadRequest(() =>
+      dispatch(M.searchItems, {
+        query: "hello",
+        filter: "all",
+        page: { limit: 10, offset: -1 },
+      }),
+    );
+    expect(ensureInitialized).not.toHaveBeenCalled();
+    expect(searchItems).not.toHaveBeenCalled();
   });
 
   it("rejects bad createItem / updateItem before ensureInitialized", async () => {

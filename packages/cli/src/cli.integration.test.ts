@@ -64,7 +64,11 @@ describe("collector CLI HTTP (#172 / #550 G)", () => {
       },
     );
     expect(searchCode).toBe(0);
-    expect(JSON.parse(out.join("\n"))).toEqual([]);
+    expect(JSON.parse(out.join("\n"))).toEqual({
+      items: [],
+      total: 0,
+      offset: 0,
+    });
 
     const missing: string[] = [];
     const getCode = await runCollectorCli(

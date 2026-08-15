@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { ItemFile } from "@collector/shared";
@@ -6,6 +6,12 @@ import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useItemPruneEffect } from "../../hooks/useItemPruneEffect";
 import { filterOutItemId } from "../../lib/dashboard-commit";
 import { sidebarSearchCacheKey } from "../../lib/sidebar-search-cache-key";
+import {
+  SIDEBAR_SEARCH_PAGE_SIZE,
+  fetchSidebarSearchPage,
+  nextSidebarSearchPage,
+  sidebarSearchHasMore,
+} from "../../lib/sidebar-search-page";
 import { getCollectorService } from "../../services/collector-client";
 import { useShell } from "./AppLayout";
 import { Input } from "../ui/input";
@@ -27,33 +33,54 @@ export function SidebarSearchPanel({
   const { itemPruneSignal } = useShell();
   const debouncedQuery = useDebouncedValue(searchQuery, 300);
   const [results, setResults] = useState<ItemFile[]>([]);
+  const [loadedIdCount, setLoadedIdCount] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const loadMoreAbortRef = useRef<AbortController | null>(null);
   const resultsCacheKey = sidebarSearchCacheKey(
     debouncedQuery.trim(),
     vaultRevision,
   );
+  const hasMore = sidebarSearchHasMore(loadedIdCount, totalCount);
 
   useEffect(() => {
     const query = debouncedQuery.trim();
+    loadMoreAbortRef.current?.abort();
+    loadMoreAbortRef.current = null;
+
     if (!query) {
       setResults([]);
+      setLoadedIdCount(0);
+      setTotalCount(0);
       setError(null);
       setIsLoading(false);
+      setIsLoadingMore(false);
       return;
     }
 
     const controller = new AbortController();
     setIsLoading(true);
+    setIsLoadingMore(false);
     setError(null);
+    setResults([]);
+    setLoadedIdCount(0);
+    setTotalCount(0);
 
-    void getCollectorService().items
-      .searchItems(query, "all")
-      .then((items) => {
+    void fetchSidebarSearchPage(
+      getCollectorService().items,
+      query,
+      nextSidebarSearchPage(0, SIDEBAR_SEARCH_PAGE_SIZE),
+      { signal: controller.signal },
+    )
+      .then((page) => {
         if (controller.signal.aborted) {
           return;
         }
-        setResults(items);
+        setResults(page.items);
+        setLoadedIdCount(page.fetchedIdCount);
+        setTotalCount(page.totalCount);
         setIsLoading(false);
       })
       .catch((err: unknown) => {
@@ -61,6 +88,8 @@ export function SidebarSearchPanel({
           return;
         }
         setResults([]);
+        setLoadedIdCount(0);
+        setTotalCount(0);
         setIsLoading(false);
         setError(err instanceof Error ? err.message : String(err));
       });
@@ -74,9 +103,50 @@ export function SidebarSearchPanel({
   useItemPruneEffect(itemPruneSignal, (itemId) => {
     setResults((previous) => {
       const next = filterOutItemId(previous, itemId);
-      return next.length === previous.length ? previous : next;
+      if (next.length === previous.length) {
+        return previous;
+      }
+      // loadedIdCount is the high-water mark / nextOffset for the already-fetched
+      // id window — do not decrease on prune (avoids overlapping Load more).
+      setTotalCount((total) => Math.max(0, total - 1));
+      return next;
     });
   });
+
+  const loadMore = () => {
+    const query = debouncedQuery.trim();
+    if (!query || isLoading || isLoadingMore || !hasMore) {
+      return;
+    }
+    loadMoreAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadMoreAbortRef.current = controller;
+    setIsLoadingMore(true);
+    setError(null);
+
+    void fetchSidebarSearchPage(
+      getCollectorService().items,
+      query,
+      nextSidebarSearchPage(loadedIdCount, SIDEBAR_SEARCH_PAGE_SIZE),
+      { signal: controller.signal },
+    )
+      .then((page) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setResults((previous) => [...previous, ...page.items]);
+        setLoadedIdCount((count) => count + page.fetchedIdCount);
+        setTotalCount(page.totalCount);
+        setIsLoadingMore(false);
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setIsLoadingMore(false);
+        setError(err instanceof Error ? err.message : String(err));
+      });
+  };
 
   const placeholder = searchIndexBuilding
     ? "Поиск по названию… (индекс строится)"
@@ -158,6 +228,18 @@ export function SidebarSearchPanel({
             </li>
           ))}
         </ul>
+        {!isLoading && hasMore ? (
+          <div className="px-4 py-3">
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={isLoadingMore}
+              className="w-full rounded-lg px-3 py-2 text-sm text-neutral-700 dark:text-neutral-200 transition-colors hover:bg-neutral-100/65 dark:hover:bg-neutral-700/65 disabled:opacity-60"
+            >
+              {isLoadingMore ? "Загрузка…" : "Загрузить ещё"}
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );
