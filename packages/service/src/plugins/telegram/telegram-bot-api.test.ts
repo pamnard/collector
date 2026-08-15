@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createTelegramBotApi,
   formatTelegramSyncError,
+  isTelegramConnectivityError,
+  isTelegramConnectivityErrorMessage,
   TELEGRAM_WEBHOOK_BLOCKS_POLLING_MESSAGE,
   TelegramBotApiError,
   TELEGRAM_REQUEST_TIMEOUT_MS,
@@ -191,5 +193,84 @@ describe("createTelegramBotApi (#415 / #433)", () => {
     expect(formatTelegramSyncError(webhookErr)).toBe(
       TELEGRAM_WEBHOOK_BLOCKS_POLLING_MESSAGE,
     );
+  });
+
+  it("marks network and timeout errors as connectivity", async () => {
+    const networkApi = createTelegramBotApi({
+      fetchFn: vi.fn(async () => {
+        throw new Error("fetch failed");
+      }),
+    });
+    await expect(networkApi.getMe("tok")).rejects.toMatchObject({
+      connectivity: true,
+      message: expect.stringContaining("network error"),
+    });
+
+    const timeoutApi = createTelegramBotApi({
+      fetchFn: vi.fn(
+        (_url: string, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            const signal = init?.signal;
+            if (!signal) {
+              reject(new Error("missing signal"));
+              return;
+            }
+            signal.addEventListener("abort", () => {
+              const err = new Error("aborted");
+              err.name = "AbortError";
+              reject(err);
+            });
+          }),
+      ),
+      requestTimeoutMs: 20,
+    });
+    await expect(timeoutApi.getMe("tok")).rejects.toMatchObject({
+      connectivity: true,
+      message: expect.stringContaining("timed out"),
+    });
+  });
+
+  it("does not mark API failures as connectivity", async () => {
+    const fetchFn = vi.fn(async () =>
+      Response.json({ ok: false, description: "Unauthorized" }, { status: 401 }),
+    );
+    const api = createTelegramBotApi({ fetchFn });
+    await expect(api.getMe("bad")).rejects.toMatchObject({
+      connectivity: false,
+    });
+  });
+});
+
+describe("isTelegramConnectivityError", () => {
+  it("detects connectivity flag and stable message shapes", () => {
+    expect(
+      isTelegramConnectivityError(
+        new TelegramBotApiError("telegram: getMe network error: fetch failed", {
+          connectivity: true,
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isTelegramConnectivityError(
+        new TelegramBotApiError("telegram: getMe failed: Unauthorized"),
+      ),
+    ).toBe(false);
+    expect(isTelegramConnectivityError(new Error("other"))).toBe(false);
+
+    expect(
+      isTelegramConnectivityErrorMessage(
+        "telegram: getMe network error: fetch failed",
+      ),
+    ).toBe(true);
+    expect(
+      isTelegramConnectivityErrorMessage(
+        "telegram: getMe timed out after 15000ms",
+      ),
+    ).toBe(true);
+    expect(
+      isTelegramConnectivityErrorMessage(
+        "telegram: getMe failed: Unauthorized",
+      ),
+    ).toBe(false);
   });
 });

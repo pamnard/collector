@@ -11,6 +11,8 @@ export {
   TelegramBotApiError,
   createTelegramBotApi,
   formatTelegramSyncError,
+  isTelegramConnectivityError,
+  isTelegramConnectivityErrorMessage,
   isTelegramDownloadLimitError,
   isTelegramWebhookConflictError,
   type TelegramBotApi,
