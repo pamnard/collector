@@ -10,6 +10,8 @@ import {
   listItemEmbeddingsForModel,
   listItemEmbeddingsForModelInFolders,
   putItemEmbedding,
+  rewriteItemEmbeddingId,
+  rewriteItemEmbeddingIds,
 } from "./embedding-store.js";
 import { EMBEDDING_DIMS, EMBEDDING_MODEL_ID } from "./constants.js";
 
@@ -149,5 +151,52 @@ describe("item embedding store", () => {
 
     await sql.execute("DELETE FROM items WHERE id = ?", ["gone.md"]);
     expect(await getItemEmbedding(sql, "gone.md")).toBeNull();
+  });
+
+  it("rewrites a single embedding id", async () => {
+    const sql = await openDb();
+    await sql.execute(
+      `INSERT INTO vaults (id, path, name, description, is_default, created_at, updated_at)
+       VALUES (?, ?, ?, '', 1, ?, ?)`,
+      ["v1", dataDir, "V", "t", "t"],
+    );
+    for (const id of ["old.md", "new.md"]) {
+      await sql.execute(
+        `INSERT INTO items (
+          id, vault_id, title, description, content_type, source_type,
+          metadata_json, properties_json, has_content_file, folder_path,
+          created_at, updated_at, content_revision
+        ) VALUES (?, ?, 'T', '', 'note', 'manual', '{}', '{}', 0, '', ?, ?, 1)`,
+        [id, "v1", "t", "t"],
+      );
+    }
+
+    const vector = new Float32Array(EMBEDDING_DIMS);
+    vector[0] = 0.5;
+    await putItemEmbedding(sql, {
+      itemId: "old.md",
+      modelId: EMBEDDING_MODEL_ID,
+      contentRevision: 2,
+      inputFingerprint: "fp-old",
+      vector,
+      updatedAt: "t",
+    });
+
+    await rewriteItemEmbeddingId(sql, "old.md", "new.md");
+    expect(await getItemEmbedding(sql, "old.md")).toBeNull();
+    const got = await getItemEmbedding(sql, "new.md");
+    expect(got).not.toBeNull();
+    expect(got!.inputFingerprint).toBe("fp-old");
+    expect(got!.contentRevision).toBe(2);
+  });
+
+  it("rejects overlapping old/new ids in batch rewrite", async () => {
+    const sql = await openDb();
+    await expect(
+      rewriteItemEmbeddingIds(sql, [
+        { oldId: "A", newId: "B" },
+        { oldId: "B", newId: "C" },
+      ]),
+    ).rejects.toThrow(/overlapping old\/new ids/);
   });
 });
