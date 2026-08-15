@@ -1,5 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { collectBacklinkSources } from "./collect-backlink-sources.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  buildBacklinkReverseMap,
+  collectBacklinkSources,
+} from "./collect-backlink-sources.js";
+import * as textLinksReindex from "./text-links-reindex.js";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("collectBacklinkSources (#410)", () => {
   const catalog = [
@@ -48,5 +56,38 @@ describe("collectBacklinkSources (#410)", () => {
       { id: "Notes/self.md", title: "Self", body: "[[Self]]\n" },
     ]);
     expect(sources).toEqual([]);
+  });
+});
+
+describe("catalog index reuse (#708)", () => {
+  const catalog = [
+    { id: "Inbox/target.md", title: "Target" },
+    { id: "Notes/a.md", title: "Note A" },
+    { id: "Notes/b.md", title: "Note B" },
+    { id: "Notes/c.md", title: "Note C" },
+  ];
+
+  const bodies = [
+    { id: "Notes/a.md", title: "Note A", body: "[[Target]]\n" },
+    { id: "Notes/b.md", title: "Note B", body: "[[Target]]\n" },
+    { id: "Notes/c.md", title: "Note C", body: "no links\n" },
+  ];
+
+  it("builds catalog id/title indexes once for collectBacklinkSources", () => {
+    const spy = vi.spyOn(textLinksReindex, "textLinkCatalogIndexesFromItems");
+    collectBacklinkSources("Inbox/target.md", catalog, bodies);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith(catalog);
+  });
+
+  it("builds catalog id/title indexes once for buildBacklinkReverseMap", () => {
+    const spy = vi.spyOn(textLinksReindex, "textLinkCatalogIndexesFromItems");
+    const reverse = buildBacklinkReverseMap(catalog, bodies);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith(catalog);
+    expect(reverse.get("Inbox/target.md")).toEqual([
+      { id: "Notes/a.md", title: "Note A" },
+      { id: "Notes/b.md", title: "Note B" },
+    ]);
   });
 });

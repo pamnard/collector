@@ -6,6 +6,8 @@ import { runMigrations } from "@collector/db";
 import { BetterSqliteMigrator } from "../../../db/src/testing/better-sqlite.js";
 import {
   buildTextLinkResolveContext,
+  textLinkCatalogIndexesFromItems,
+  textLinkResolveContextFromIndexes,
   textLinkResolveContextFromItems,
 } from "./text-links-reindex.js";
 import { parseAndResolveTextLinks } from "./parse-text-links.js";
@@ -41,6 +43,40 @@ describe("textLinkResolveContextFromItems", () => {
     ]);
     expect(context.idsByTitle("Target")).toEqual(["Inbox/target.md"]);
     expect(context.idExists("Inbox/target.md")).toBe(true);
+  });
+});
+
+describe("textLinkCatalogIndexesFromItems (#708)", () => {
+  const items = [
+    { id: "Inbox/source.md", title: "Source" },
+    { id: "Inbox/target.md", title: "Target" },
+    { id: "Notes/dup-a.md", title: "Dup" },
+    { id: "Notes/dup-b.md", title: "Dup" },
+  ];
+
+  it("builds shared id/title lookups reusable across sourceItemId", () => {
+    const indexes = textLinkCatalogIndexesFromItems(items);
+    const fromA = textLinkResolveContextFromIndexes("Inbox/source.md", indexes);
+    const fromB = textLinkResolveContextFromIndexes("Notes/dup-a.md", indexes);
+
+    expect(fromA.idExists).toBe(indexes.idExists);
+    expect(fromB.idsByTitle).toBe(indexes.idsByTitle);
+    expect(fromA.sourceItemId).toBe("Inbox/source.md");
+    expect(fromB.sourceItemId).toBe("Notes/dup-a.md");
+    expect(indexes.idsByTitle("Dup")).toEqual([
+      "Notes/dup-a.md",
+      "Notes/dup-b.md",
+    ]);
+  });
+
+  it("matches textLinkResolveContextFromItems resolve results", () => {
+    const indexes = textLinkCatalogIndexesFromItems(items);
+    const shared = textLinkResolveContextFromIndexes("Inbox/source.md", indexes);
+    const rebuilt = textLinkResolveContextFromItems("Inbox/source.md", items);
+    const body = "See [[Target]] and [[Dup]]\n";
+    expect(parseAndResolveTextLinks(body, shared)).toEqual(
+      parseAndResolveTextLinks(body, rebuilt),
+    );
   });
 });
 

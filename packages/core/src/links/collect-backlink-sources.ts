@@ -1,5 +1,9 @@
 import { parseAndResolveTextLinks } from "./parse-text-links.js";
-import { textLinkResolveContextFromItems } from "./text-links-reindex.js";
+import {
+  textLinkCatalogIndexesFromItems,
+  textLinkResolveContextFromIndexes,
+  type TextLinkCatalogIndexes,
+} from "./text-links-reindex.js";
 
 export type BacklinkSource = {
   id: string;
@@ -9,6 +13,16 @@ export type BacklinkSource = {
 export type BacklinkSourceBody = BacklinkSource & {
   body: string;
 };
+
+function parseResolvedLinks(
+  source: BacklinkSourceBody,
+  indexes: TextLinkCatalogIndexes,
+) {
+  return parseAndResolveTextLinks(
+    source.body,
+    textLinkResolveContextFromIndexes(source.id, indexes),
+  );
+}
 
 /**
  * Collect unique items that contain at least one resolved text-link to
@@ -21,16 +35,13 @@ export function collectBacklinkSources(
 ): BacklinkSource[] {
   const out: BacklinkSource[] = [];
   const seen = new Set<string>();
+  const indexes = textLinkCatalogIndexesFromItems(catalog);
 
   for (const source of sources) {
     if (source.id === targetItemId) {
       continue;
     }
-    const links = parseAndResolveTextLinks(
-      source.body,
-      textLinkResolveContextFromItems(source.id, catalog),
-    );
-    const hitsTarget = links.some(
+    const hitsTarget = parseResolvedLinks(source, indexes).some(
       (link) => link.resolvedItemId === targetItemId,
     );
     if (!hitsTarget || seen.has(source.id)) {
@@ -53,13 +64,10 @@ export function buildBacklinkReverseMap(
 ): Map<string, BacklinkSource[]> {
   const reverse = new Map<string, BacklinkSource[]>();
   const seenByTarget = new Map<string, Set<string>>();
+  const indexes = textLinkCatalogIndexesFromItems(catalog);
 
   for (const source of sources) {
-    const links = parseAndResolveTextLinks(
-      source.body,
-      textLinkResolveContextFromItems(source.id, catalog),
-    );
-    for (const link of links) {
+    for (const link of parseResolvedLinks(source, indexes)) {
       const targetId = link.resolvedItemId;
       if (targetId === null || targetId === source.id) {
         continue;
@@ -73,13 +81,12 @@ export function buildBacklinkReverseMap(
         continue;
       }
       seen.add(source.id);
-      const list = reverse.get(targetId);
-      const entry = { id: source.id, title: source.title };
-      if (list) {
-        list.push(entry);
-      } else {
-        reverse.set(targetId, [entry]);
+      let list = reverse.get(targetId);
+      if (!list) {
+        list = [];
+        reverse.set(targetId, list);
       }
+      list.push({ id: source.id, title: source.title });
     }
   }
 

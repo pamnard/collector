@@ -2,11 +2,16 @@ import type { SqlSelector } from "../index/sql-index.js";
 import type { TextLinkResolveContext } from "./resolve-text-links.js";
 import { loadVaultIdTitleCatalog } from "./vault-id-title-catalog.js";
 
-/** Build resolve maps from a light id/title catalog (no full ItemFile load). */
-export function textLinkResolveContextFromItems(
-  sourceItemId: string,
+/** Shared vault id/title lookups for text-link resolve (#708). */
+export type TextLinkCatalogIndexes = {
+  idExists: (itemId: string) => boolean;
+  idsByTitle: (title: string) => string[];
+};
+
+/** Build catalog id/title indexes once; reuse across sourceItemId values. */
+export function textLinkCatalogIndexesFromItems(
   items: ReadonlyArray<{ id: string; title: string }>,
-): TextLinkResolveContext {
+): TextLinkCatalogIndexes {
   const idSet = new Set(items.map((item) => item.id));
   const titleToIds = new Map<string, string[]>();
   for (const item of items) {
@@ -18,10 +23,28 @@ export function textLinkResolveContextFromItems(
     }
   }
   return {
-    sourceItemId,
     idExists: (id) => idSet.has(id),
     idsByTitle: (title) => titleToIds.get(title) ?? [],
   };
+}
+
+/** Bind a source item id onto shared catalog indexes. */
+export function textLinkResolveContextFromIndexes(
+  sourceItemId: string,
+  indexes: TextLinkCatalogIndexes,
+): TextLinkResolveContext {
+  return { sourceItemId, ...indexes };
+}
+
+/** Build resolve maps from a light id/title catalog (no full ItemFile load). */
+export function textLinkResolveContextFromItems(
+  sourceItemId: string,
+  items: ReadonlyArray<{ id: string; title: string }>,
+): TextLinkResolveContext {
+  return textLinkResolveContextFromIndexes(
+    sourceItemId,
+    textLinkCatalogIndexesFromItems(items),
+  );
 }
 
 export async function buildTextLinkResolveContext(
