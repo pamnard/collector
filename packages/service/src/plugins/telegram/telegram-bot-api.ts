@@ -1,6 +1,7 @@
 /**
  * Telegram Bot API client for Path C sync (#415 / #433).
  * Thin façade: methods live in `telegram-bot-api/` grouped by concern.
+ * All requests use a hard AbortSignal timeout — no hanging fetch.
  */
 
 import { createTelegramBotApiClient } from "./telegram-bot-api/client.js";

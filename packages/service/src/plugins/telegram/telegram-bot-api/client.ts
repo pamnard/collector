@@ -33,6 +33,7 @@ export interface TelegramBotApiClient {
   ) => Promise<T>;
 }
 
+/** Hard AbortSignal timeout so Bot API calls cannot hang. */
 export function abortAfter(ms: number): { signal: AbortSignal; cancel: () => void } {
   const controller = new AbortController();
   const timer = setTimeout(() => {
