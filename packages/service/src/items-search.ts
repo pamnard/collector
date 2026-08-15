@@ -100,6 +100,11 @@ export interface ItemsSearchServiceDeps {
     itemId: string,
     limit: number,
   ) => Promise<SimilarItemHit[]>;
+  /**
+   * Host injects Node markdownlint normalize. Keep out of the static import
+   * graph of this module so the Vite UI never pulls `node:fs` via `@collector/core/node`.
+   */
+  normalizeMarkdown: (raw: string) => { text: string; changed: boolean };
 }
 
 export interface ItemsSearchService {

@@ -20,16 +20,14 @@ vi.mock("@collector/core", async () => {
   };
 });
 
-vi.mock("@collector/core/node", () => ({
-  normalizeMarkdown: (raw: string) => {
-    if (raw.includes("DIRTY")) {
-      return { text: raw.replace("DIRTY", "clean"), changed: true };
-    }
-    return { text: raw, changed: false };
-  },
-}));
-
 import { createItemsCrud } from "./items-crud.js";
+
+function testNormalizeMarkdown(raw: string): { text: string; changed: boolean } {
+  if (raw.includes("DIRTY")) {
+    return { text: raw.replace("DIRTY", "clean"), changed: true };
+  }
+  return { text: raw, changed: false };
+}
 
 describe("createItemsCrud createItem sourceRef (#28)", () => {
   beforeEach(() => {
@@ -52,6 +50,7 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
         }),
         getContext: () => ({ fs: {}, index: {} }),
         getIndex: () => ({}),
+        normalizeMarkdown: testNormalizeMarkdown,
       } as never,
       () => "n",
     );
@@ -87,6 +86,7 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
         getContext: () => ({ fs: {}, index: {} }),
         getIndex: () => ({}),
         onVaultPresentationChanged,
+        normalizeMarkdown: testNormalizeMarkdown,
       } as never,
       () => "n",
     );
@@ -115,6 +115,7 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
         getContext: () => ({ fs: {}, index: {} }),
         getIndex: () => ({}),
         onVaultPresentationChanged,
+        normalizeMarkdown: testNormalizeMarkdown,
       } as never,
       () => "n",
     );
