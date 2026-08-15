@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import {
   SIDEBAR_WIDTH_MIN,
   clampSidebarWidthPx,
@@ -19,6 +25,10 @@ export type UseSidebarShellResult = {
   sidebarMode: SidebarMode;
   setSidebarMode: (mode: SidebarMode) => void;
   persistSidebarWidth: (inPixels: number) => void;
+  isSidebarResizing: boolean;
+  handleSidebarResizePointerDown: (
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => void;
   handleToggleSidebarPin: () => void;
   handleExpandSidebar: () => void;
   handleCollapseAfterUse: () => void;
@@ -44,6 +54,10 @@ export function useSidebarShell(
   );
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(() =>
     pathname === "/settings" ? "settings" : "collections",
+  );
+  const [isSidebarResizing, setIsSidebarResizing] = useState(false);
+  const sidebarResizeStartRef = useRef<{ x: number; width: number } | null>(
+    null,
   );
 
   const pinnedRef = useRef(sidebarPinned);
@@ -108,6 +122,54 @@ export function useSidebarShell(
     skipNavCollapseRef.current = true;
   }, []);
 
+  const handleSidebarResizePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (sidebarCollapsed) {
+        return;
+      }
+      event.preventDefault();
+      sidebarResizeStartRef.current = {
+        x: event.clientX,
+        width: sidebarWidthPx,
+      };
+      setIsSidebarResizing(true);
+      const target = event.currentTarget;
+      target.setPointerCapture(event.pointerId);
+
+      const onMove = (moveEvent: PointerEvent) => {
+        const start = sidebarResizeStartRef.current;
+        if (!start) {
+          return;
+        }
+        setSidebarWidthPx(start.width + (moveEvent.clientX - start.x));
+      };
+
+      const onUp = (upEvent: PointerEvent) => {
+        const start = sidebarResizeStartRef.current;
+        sidebarResizeStartRef.current = null;
+        setIsSidebarResizing(false);
+        target.releasePointerCapture(upEvent.pointerId);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        if (!start) {
+          return;
+        }
+        persistSidebarWidth(
+          clampSidebarWidthPx(start.width + (upEvent.clientX - start.x)),
+        );
+      };
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [
+      persistSidebarWidth,
+      setSidebarWidthPx,
+      sidebarCollapsed,
+      sidebarWidthPx,
+    ],
+  );
+
   // Unpinned + expanded: every router navigation collapses (any link / adjacent / search hit).
   useEffect(() => {
     if (isFirstLocationEffectRef.current) {
@@ -134,6 +196,8 @@ export function useSidebarShell(
     sidebarMode,
     setSidebarMode,
     persistSidebarWidth,
+    isSidebarResizing,
+    handleSidebarResizePointerDown,
     handleToggleSidebarPin,
     handleExpandSidebar,
     handleCollapseAfterUse,

@@ -2,10 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
-  useRef,
-  useState,
-  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Menu } from "lucide-react";
@@ -13,32 +10,23 @@ import { CreateItemDialog } from "../items/CreateItemDialog";
 import { useNavState } from "../../hooks/useNavState";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useTheme } from "../../hooks/useTheme";
-import {
-  useCheckUpdatesOnStart,
-  useStartupUpdateCheck,
-} from "../../hooks/useUpdaterSettings";
 import { useViewMode } from "../../hooks/useViewMode";
 import { useDashboardItems } from "../../hooks/useDashboardItems";
 import { useSidebarShell } from "../../hooks/useSidebarShell";
 import { useDashboardShellSort } from "../../hooks/useDashboardShellSort";
 import { useCreateItemShell } from "../../hooks/useCreateItemShell";
+import { useVaultShell } from "../../hooks/useVaultShell";
+import { useShellLayoutAlerts } from "../../hooks/useShellLayoutAlerts";
 import type { DashboardItemSort } from "@collector/api";
 import { useAppSettings } from "../../context/AppSettingsContext";
-import { useVaultIndexSyncStatus } from "../../hooks/useVaultIndexSyncStatus";
 import { useJobPermanentFailureAlerts } from "../../hooks/useJobPermanentFailureAlerts";
-import {
-  getCollectorService,
-  getUiSession,
-} from "../../services/collector-client";
+import { useVaultIndexSyncStatus } from "../../hooks/useVaultIndexSyncStatus";
 import {
   SIDEBAR_RAIL_WIDTH_PX,
-  clampSidebarWidthPx,
 } from "../../lib/sidebar-width";
 import {
-  nextItemPruneSignal,
   type ItemPruneSignal,
 } from "../../hooks/useItemPruneEffect";
-import { formatIndexingBannerLabel } from "@collector/core";
 import {
   isFolderFilter,
   navFilterKey,
@@ -47,19 +35,17 @@ import {
 } from "../../types/ui";
 import { parseSettingsSection } from "../../types/sidebar-mode";
 import { cn } from "../../lib/utils";
-import { AlertBusProvider, useAlerts } from "../alerts/AlertBusProvider";
+import { AlertBusProvider } from "../alerts/AlertBusProvider";
 import { AlertHost } from "../alerts/AlertHost";
 import { TooltipProvider } from "../ui/tooltip";
 import { SmokeUiReadyBeacon } from "../startup/SmokeUiReadyBeacon";
 import { Header } from "./Header";
-import { IndexingStatusMessage } from "../alerts/IndexingStatusMessage";
 import { MainScrollArea } from "./MainScrollArea";
 import {
   ItemChromeItemFooter,
   ItemChromeProvider,
 } from "./item-chrome";
 import { Sidebar } from "./Sidebar";
-import { invalidateItemPresentationCache } from "../../services/item-presentation-cache";
 
 interface ShellContextValue {
   viewMode: ViewMode;
@@ -98,93 +84,30 @@ function AppLayoutInner() {
   const { pathname, key: locationKey } = useLocation();
   const [searchParams] = useSearchParams();
   const isDesktop = useMediaQuery("(min-width: 768px)");
-  const [vaultRevision, setVaultRevision] = useState(0);
-  const [itemPruneSignal, setItemPruneSignal] =
-    useState<ItemPruneSignal | null>(null);
-  const bumpVaultRevision = useCallback(() => {
-    invalidateItemPresentationCache();
-    void getUiSession().snapshot.clearDashboardSnapshot();
-    setVaultRevision((value) => value + 1);
-  }, []);
 
-  useEffect(() => {
-    const service = getCollectorService();
-    const sub = service.index.subscribeVaultPresentationChanged(() => {
-      bumpVaultRevision();
-    });
-    return () => {
-      sub.unsubscribe();
-    };
-  }, [bumpVaultRevision]);
+  const {
+    vaultRevision,
+    bumpVaultRevision,
+    itemPruneSignal,
+    setDashboardPrune,
+    pruneItem,
+  } = useVaultShell();
 
   const {
     isSidebarOpen,
     setIsSidebarOpen,
     sidebarWidthPx,
-    setSidebarWidthPx,
     sidebarCollapsed,
     sidebarPinned,
     sidebarMode,
     setSidebarMode,
-    persistSidebarWidth,
+    isSidebarResizing,
+    handleSidebarResizePointerDown,
     handleToggleSidebarPin,
     handleExpandSidebar,
     handleCollapseAfterUse,
     markSidebarModeNavigation,
   } = useSidebarShell(pathname, locationKey);
-
-  const [isSidebarResizing, setIsSidebarResizing] = useState(false);
-  const sidebarResizeStartRef = useRef<{ x: number; width: number } | null>(
-    null,
-  );
-
-  const handleSidebarResizePointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (sidebarCollapsed) {
-        return;
-      }
-      event.preventDefault();
-      sidebarResizeStartRef.current = {
-        x: event.clientX,
-        width: sidebarWidthPx,
-      };
-      setIsSidebarResizing(true);
-      const target = event.currentTarget;
-      target.setPointerCapture(event.pointerId);
-
-      const onMove = (moveEvent: PointerEvent) => {
-        const start = sidebarResizeStartRef.current;
-        if (!start) {
-          return;
-        }
-        setSidebarWidthPx(start.width + (moveEvent.clientX - start.x));
-      };
-
-      const onUp = (upEvent: PointerEvent) => {
-        const start = sidebarResizeStartRef.current;
-        sidebarResizeStartRef.current = null;
-        setIsSidebarResizing(false);
-        target.releasePointerCapture(upEvent.pointerId);
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        if (!start) {
-          return;
-        }
-        persistSidebarWidth(
-          clampSidebarWidthPx(start.width + (upEvent.clientX - start.x)),
-        );
-      };
-
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
-    },
-    [
-      persistSidebarWidth,
-      setSidebarWidthPx,
-      sidebarCollapsed,
-      sidebarWidthPx,
-    ],
-  );
 
   const {
     activeFilter,
@@ -206,25 +129,10 @@ function AppLayoutInner() {
     handleCreated,
   } = useCreateItemShell({ bumpVaultRevision, navigate });
 
-  const { enabled: checkUpdatesOnStart } = useCheckUpdatesOnStart();
-  const [startupUpdateVersion, setStartupUpdateVersion] = useState<string | null>(
-    null,
-  );
-  /** Dismissed dashboard error message; new/different errors show again. */
-  const [dismissedError, setDismissedError] = useState<string | null>(null);
   const indexSync = useVaultIndexSyncStatus();
-  const isMetadataIndexing =
-    indexSync.status === "rebuilding" ||
-    (indexSync.status === "running" && !indexSync.metadataReady);
   const searchIndexBuilding =
     !indexSync.ftsReady &&
     (indexSync.status === "running" || indexSync.status === "rebuilding");
-
-  const handleStartupUpdateFound = useCallback((version: string) => {
-    setStartupUpdateVersion(version);
-  }, []);
-
-  useStartupUpdateCheck(checkUpdatesOnStart, handleStartupUpdateFound);
 
   // Cache dashboard items across navigation to prevent flashing empty grid.
   // Text search lives in the sidebar panel (not the main grid).
@@ -235,81 +143,15 @@ function AppLayoutInner() {
     dashboardSort,
   );
 
-  const pruneItem = useCallback(
-    (itemId: string) => {
-      dashboardCache.pruneItem(itemId);
-      setItemPruneSignal((previous) => nextItemPruneSignal(previous, itemId));
-    },
-    [dashboardCache.pruneItem],
-  );
+  setDashboardPrune(dashboardCache.pruneItem);
 
-  const indexingLabel = formatIndexingBannerLabel(indexSync);
-  const dashboardError = dashboardCache.error;
-  const showErrorAlert =
-    dashboardError !== null && dashboardError !== dismissedError;
-  const showDashboardLoading = dashboardCache.isLoading;
-  const showUpdateAlert = startupUpdateVersion !== null;
-  const alerts = useAlerts();
+  useShellLayoutAlerts({
+    dashboardLoading: dashboardCache.isLoading,
+    dashboardError: dashboardCache.error,
+    indexSync,
+    navigate,
+  });
   useJobPermanentFailureAlerts();
-
-  useEffect(() => {
-    if (showDashboardLoading) {
-      alerts.upsert("layout-dashboard-loading", {
-        tone: "warning",
-        dismissible: false,
-        message: <IndexingStatusMessage label="Загрузка…" />,
-      });
-    } else {
-      alerts.dismiss("layout-dashboard-loading");
-    }
-  }, [alerts, showDashboardLoading]);
-
-  useEffect(() => {
-    if (isMetadataIndexing) {
-      alerts.upsert("layout-indexing", {
-        tone: "warning",
-        dismissible: false,
-        message: <IndexingStatusMessage label={indexingLabel} />,
-      });
-    } else {
-      alerts.dismiss("layout-indexing");
-    }
-  }, [alerts, indexingLabel, isMetadataIndexing]);
-
-  useEffect(() => {
-    if (showErrorAlert && dashboardError !== null) {
-      alerts.upsert("layout-dashboard-error", {
-        tone: "danger",
-        message: dashboardError,
-        onDismiss: () => setDismissedError(dashboardError),
-      });
-    } else {
-      alerts.dismiss("layout-dashboard-error");
-    }
-  }, [alerts, dashboardError, showErrorAlert]);
-
-  useEffect(() => {
-    if (!showUpdateAlert || startupUpdateVersion === null) {
-      alerts.dismiss("layout-update");
-      return;
-    }
-    alerts.upsert("layout-update", {
-      tone: "info",
-      message: (
-        <div className="flex flex-wrap items-center gap-2">
-          <span>Доступно обновление {startupUpdateVersion}.</span>
-          <button
-            type="button"
-            onClick={() => navigate("/settings")}
-            className="rounded-lg border border-indigo-500/40 px-3 py-1 hover:bg-indigo-500/10 transition-colors"
-          >
-            Настройки
-          </button>
-        </div>
-      ),
-      onDismiss: () => setStartupUpdateVersion(null),
-    });
-  }, [alerts, navigate, showUpdateAlert, startupUpdateVersion]);
 
   const sidebarProps = {
     mode: sidebarMode,
@@ -350,7 +192,7 @@ function AppLayoutInner() {
   // combo forced WebKitGTK to recomposite on every wheel frame (#541 / #806d74c).
   // min-h-full + flex + footer mt-auto keeps the adjacent nav at the bottom
   // when the page is short.
-  const mainColumn = (
+  const mainColumn: ReactNode = (
     <main className="relative flex min-h-0 h-full flex-1 flex-col overflow-hidden">
       <MainScrollArea resetKey={`${locationKey}|${navFilterKey(activeFilter)}`}>
         <div className="box-border flex min-h-full flex-col p-2">
