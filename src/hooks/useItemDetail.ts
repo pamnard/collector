@@ -24,6 +24,57 @@ import { errorMessage } from "../services/runtime-error";
 
 export const ITEM_DETAIL_ERROR_ID = "item-detail-error";
 
+/** Gates vault-triggered reloads while the detail page is leaving after delete. */
+export type ItemDetailReloadGate = {
+  markLeavingAfterDelete: () => void;
+  clearLeavingAfterDelete: () => void;
+  shouldStartReload: () => boolean;
+  shouldReportLoadError: (cancelled: boolean) => boolean;
+};
+
+export function createItemDetailReloadGate(): ItemDetailReloadGate {
+  let leavingAfterDelete = false;
+  return {
+    markLeavingAfterDelete() {
+      leavingAfterDelete = true;
+    },
+    clearLeavingAfterDelete() {
+      leavingAfterDelete = false;
+    },
+    shouldStartReload() {
+      return !leavingAfterDelete;
+    },
+    shouldReportLoadError(cancelled: boolean) {
+      return !cancelled && !leavingAfterDelete;
+    },
+  };
+}
+
+/**
+ * Runs a detail reload unless the page is leaving after delete.
+ * Returns whether a reload was started. Late failures are ignored when
+ * cancelled or when delete has begun leaving.
+ */
+export async function runItemDetailVaultReload(options: {
+  gate: ItemDetailReloadGate;
+  isCancelled: () => boolean;
+  reload: () => Promise<void>;
+  onError: (message: string) => void;
+}): Promise<boolean> {
+  if (!options.gate.shouldStartReload()) {
+    return false;
+  }
+  try {
+    await options.reload();
+  } catch (err: unknown) {
+    if (!options.gate.shouldReportLoadError(options.isCancelled())) {
+      return true;
+    }
+    options.onError(errorMessage(err));
+  }
+  return true;
+}
+
 export type UseItemDetailResult = {
   id: string | undefined;
   item: ItemFile | null;
@@ -109,6 +160,7 @@ export function useItemDetail(): UseItemDetailResult {
   };
 
   const loadedIdRef = useRef<string | undefined>(undefined);
+  const reloadGateRef = useRef(createItemDetailReloadGate());
 
   useEffect(() => {
     if (!id) {
@@ -122,9 +174,20 @@ export function useItemDetail(): UseItemDetailResult {
       setItem(null);
     }
 
-    reloadItem(id).catch((err: unknown) => {
-      setError(errorMessage(err));
+    let cancelled = false;
+    void runItemDetailVaultReload({
+      gate: reloadGateRef.current,
+      isCancelled: () => cancelled,
+      reload: async () => {
+        await reloadItem(id);
+      },
+      onError: (message) => {
+        setError(message);
+      },
     });
+    return () => {
+      cancelled = true;
+    };
   }, [id, vaultRevision, setError]);
 
   const handleSave = async (): Promise<boolean> => {
@@ -207,12 +270,15 @@ export function useItemDetail(): UseItemDetailResult {
 
     setIsDeleting(true);
     setError(null);
+    // Before deleteItem: host emits vaultPresentationChanged mid-await.
+    reloadGateRef.current.markLeavingAfterDelete();
 
     try {
       await getCollectorService().items.deleteItem(id);
       refreshVault();
       navigate("/");
     } catch (err: unknown) {
+      reloadGateRef.current.clearLeavingAfterDelete();
       setError(errorMessage(err));
       throw err;
     } finally {
