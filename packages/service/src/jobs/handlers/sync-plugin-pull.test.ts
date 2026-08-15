@@ -8,7 +8,9 @@ import { createJobRegistry } from "../job-registry.js";
 import {
   createSyncPluginPullHandler,
   enqueueSyncPluginPull,
+  takeSyncPluginPullResult,
 } from "./sync-plugin-pull.js";
+import { TelegramBotApiError } from "../../plugins/telegram/telegram-bot-api.js";
 
 async function waitFor(
   predicate: () => Promise<boolean>,
@@ -60,6 +62,51 @@ describe("createSyncPluginPullHandler (#634)", () => {
         attempts: 1,
       }),
     ).rejects.toBe(error);
+  });
+
+  it("treats telegram connectivity as a successful empty cycle", async () => {
+    const handler = createSyncPluginPullHandler({
+      syncNow: vi.fn(async () => {
+        throw new TelegramBotApiError(
+          "telegram: getMe network error: fetch failed",
+          { connectivity: true },
+        );
+      }),
+    });
+
+    const result = await handler({
+      id: "job-conn",
+      type: "syncPluginPull",
+      payload: { pluginId: "telegram" },
+      attempts: 1,
+    });
+
+    expect(result).toEqual({ status: "ok" });
+    expect(takeSyncPluginPullResult("job-conn")).toEqual({
+      importedCount: 0,
+      itemIds: [],
+    });
+  });
+
+  it("treats wrapped connectivity messages as a successful empty cycle", async () => {
+    const handler = createSyncPluginPullHandler({
+      syncNow: vi.fn(async () => {
+        throw new Error("telegram: getUpdates timed out after 15000ms");
+      }),
+    });
+
+    const result = await handler({
+      id: "job-timeout",
+      type: "syncPluginPull",
+      payload: { pluginId: "telegram" },
+      attempts: 1,
+    });
+
+    expect(result).toEqual({ status: "ok" });
+    expect(takeSyncPluginPullResult("job-timeout")).toEqual({
+      importedCount: 0,
+      itemIds: [],
+    });
   });
 });
 

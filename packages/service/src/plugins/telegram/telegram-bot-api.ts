@@ -114,16 +114,34 @@ interface TelegramApiResponse<T> {
 export class TelegramBotApiError extends Error {
   readonly statusCode?: number;
   readonly telegramDescription?: string;
+  /** True when Telegram API host was unreachable or the request timed out. */
+  readonly connectivity: boolean;
 
   constructor(
     message: string,
-    options?: { statusCode?: number; telegramDescription?: string },
+    options?: {
+      statusCode?: number;
+      telegramDescription?: string;
+      connectivity?: boolean;
+    },
   ) {
     super(message);
     this.name = "TelegramBotApiError";
     this.statusCode = options?.statusCode;
     this.telegramDescription = options?.telegramDescription;
+    this.connectivity = options?.connectivity === true;
   }
+}
+
+export function isTelegramConnectivityError(error: unknown): boolean {
+  return error instanceof TelegramBotApiError && error.connectivity;
+}
+
+/** For wrapped `new Error(formatTelegramSyncError(...))` where the class is lost. */
+export function isTelegramConnectivityErrorMessage(message: string): boolean {
+  return (
+    /network error:/i.test(message) || /timed out after \d+ms/i.test(message)
+  );
 }
 
 export function isTelegramDownloadLimitError(error: unknown): boolean {
@@ -193,10 +211,12 @@ export function createTelegramBotApi(deps: TelegramBotApiDeps = {}) {
       if (error instanceof Error && error.name === "AbortError") {
         throw new TelegramBotApiError(
           `telegram: ${method} timed out after ${requestTimeoutMs}ms`,
+          { connectivity: true },
         );
       }
       throw new TelegramBotApiError(
         `telegram: ${method} network error: ${error instanceof Error ? error.message : String(error)}`,
+        { connectivity: true },
       );
     } finally {
       cancel();
@@ -307,10 +327,12 @@ export function createTelegramBotApi(deps: TelegramBotApiDeps = {}) {
         if (error instanceof Error && error.name === "AbortError") {
           throw new TelegramBotApiError(
             `telegram: download timed out after ${downloadTimeoutMs}ms`,
+            { connectivity: true },
           );
         }
         throw new TelegramBotApiError(
           `telegram: download network error: ${error instanceof Error ? error.message : String(error)}`,
+          { connectivity: true },
         );
       } finally {
         cancel();
