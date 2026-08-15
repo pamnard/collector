@@ -184,17 +184,22 @@ export async function rewriteOneItemId(
     await selector.execute("DELETE FROM media WHERE item_id = ?", [
       oldId,
     ]);
-    for (const media of mediaRows) {
-      await selector.execute(
-        `INSERT INTO media (id, item_id, filename, media_type, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
-        [
+    for (let offset = 0; offset < mediaRows.length; offset += SQL_INSERT_CHUNK) {
+      const chunk = mediaRows.slice(offset, offset + SQL_INSERT_CHUNK);
+      const binds: unknown[] = [];
+      for (const media of chunk) {
+        binds.push(
           media.id,
           newId,
           media.filename,
           media.media_type,
           media.created_at,
-        ],
+        );
+      }
+      await selector.execute(
+        `INSERT INTO media (id, item_id, filename, media_type, created_at)
+         VALUES ${sqlRowPlaceholders(chunk.length, 5)}`,
+        binds,
       );
     }
   }
@@ -214,19 +219,28 @@ export async function rewriteOneItemId(
     await selector.execute("DELETE FROM source_refs WHERE item_id = ?", [
       oldId,
     ]);
-    for (const source of sourceRows) {
-      await selector.execute(
-        `INSERT INTO source_refs (
-          id, item_id, plugin_id, external_id, synced_at, metadata_json
-        ) VALUES (?, ?, ?, ?, ?, ?)`,
-        [
+    for (
+      let offset = 0;
+      offset < sourceRows.length;
+      offset += SQL_INSERT_CHUNK
+    ) {
+      const chunk = sourceRows.slice(offset, offset + SQL_INSERT_CHUNK);
+      const binds: unknown[] = [];
+      for (const source of chunk) {
+        binds.push(
           source.id,
           newId,
           source.plugin_id,
           source.external_id,
           source.synced_at,
           source.metadata_json,
-        ],
+        );
+      }
+      await selector.execute(
+        `INSERT INTO source_refs (
+          id, item_id, plugin_id, external_id, synced_at, metadata_json
+        ) VALUES ${sqlRowPlaceholders(chunk.length, 6)}`,
+        binds,
       );
     }
   }
