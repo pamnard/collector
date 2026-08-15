@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  createAsyncQueue,
   createSingleFlight,
   INDEX_SYNC_YIELD_MS,
   runWithConcurrencyYielding,
@@ -71,5 +72,29 @@ describe("concurrency backpressure", () => {
 
     await expect(shared()).resolves.toBe("ok");
     expect(runs).toBe(2);
+  });
+
+  it("createAsyncQueue runs enqueued work serially", async () => {
+    const queue = createAsyncQueue();
+    const order: number[] = [];
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+
+    const first = queue.enqueue(async () => {
+      await firstGate;
+      order.push(1);
+      return "a";
+    });
+    const second = queue.enqueue(async () => {
+      order.push(2);
+      return "b";
+    });
+
+    expect(order).toEqual([]);
+    releaseFirst();
+    await expect(Promise.all([first, second])).resolves.toEqual(["a", "b"]);
+    expect(order).toEqual([1, 2]);
   });
 });

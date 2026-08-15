@@ -3,8 +3,10 @@ import type { SyncReport } from "../../adapters/types.js";
 import { ftsFieldsFromDocumentMarkdown } from "../frontmatter.js";
 import { itemFileFromDocumentMarkdown, type TagMapsHolder } from "../item-io.js";
 import {
+  DISK_ITEM_READ_CONCURRENCY,
   INDEX_SYNC_WRITE_BATCH,
   INDEX_SYNC_YIELD_MS,
+  runWithConcurrencyYielding,
   yieldToEventLoop,
 } from "../../util/concurrency.js";
 import { readVaultItemMetaBatch } from "../vault-fs-batch.js";
@@ -32,6 +34,8 @@ export async function hydrateReindexQueue(
   const reindexMdById = new Map(
     reindexReads.map((read) => [read.id, read.documentMarkdown]),
   );
+
+  const pending: Array<{ work: ReindexWork; documentMarkdown: string }> = [];
   for (const work of reindexQueue) {
     if (work.item) {
       continue;
@@ -40,19 +44,32 @@ export async function hydrateReindexQueue(
     if (!documentMarkdown) {
       continue;
     }
-    work.item = await itemFileFromDocumentMarkdown(
-      ctx.fs,
-      vaultPath,
-      vaultId,
-      work.itemId,
-      documentMarkdown,
-      work.diskMtimeMs,
-      tagMaps,
-    );
-    const fts = ftsFieldsFromDocumentMarkdown(documentMarkdown);
-    work.content = fts.content;
-    work.hasContentFile = fts.hasContentFile;
+    pending.push({ work, documentMarkdown });
   }
+  if (pending.length === 0) {
+    return;
+  }
+
+  await runWithConcurrencyYielding(
+    pending.length,
+    DISK_ITEM_READ_CONCURRENCY,
+    async (index) => {
+      const { work, documentMarkdown } = pending[index]!;
+      work.item = await itemFileFromDocumentMarkdown(
+        ctx.fs,
+        vaultPath,
+        vaultId,
+        work.itemId,
+        documentMarkdown,
+        work.diskMtimeMs,
+        tagMaps,
+      );
+      const fts = ftsFieldsFromDocumentMarkdown(documentMarkdown);
+      work.content = fts.content;
+      work.hasContentFile = fts.hasContentFile;
+    },
+    { yieldEvery: INDEX_SYNC_WRITE_BATCH, yieldMs: INDEX_SYNC_YIELD_MS },
+  );
 }
 
 export async function runReindexMetadataPhase(
