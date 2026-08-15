@@ -15,6 +15,25 @@ describe("cosineSimilarity", () => {
   });
 });
 
+function fullSortRank(
+  query: Float32Array,
+  candidates: Array<{ id: string; vector: Float32Array }>,
+  k: number,
+) {
+  return [...candidates]
+    .map((candidate) => ({
+      id: candidate.id,
+      score: cosineSimilarity(query, candidate.vector),
+    }))
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+      return left.id.localeCompare(right.id);
+    })
+    .slice(0, k);
+}
+
 describe("rankByCosine", () => {
   it("returns top-k by descending score", () => {
     const query = new Float32Array([1, 0]);
@@ -30,6 +49,11 @@ describe("rankByCosine", () => {
     expect(hits.map((hit) => hit.id)).toEqual(["near.md", "mid.md"]);
   });
 
+  it("returns empty list for empty candidates", () => {
+    const query = new Float32Array([1, 0]);
+    expect(rankByCosine(query, [], 3)).toEqual([]);
+  });
+
   it("matches full-sort top-k on small fixtures", () => {
     const query = new Float32Array([1, 0, 0]);
     const candidates = [
@@ -39,19 +63,21 @@ describe("rankByCosine", () => {
       { id: "b", vector: new Float32Array([0.6, 0.4, 0]) },
       { id: "e", vector: new Float32Array([0.05, 0.95, 0]) },
     ];
-    const fullSort = [...candidates]
-      .map((candidate) => ({
-        id: candidate.id,
-        score: cosineSimilarity(query, candidate.vector),
-      }))
-      .sort((left, right) => {
-        if (right.score !== left.score) {
-          return right.score - left.score;
-        }
-        return left.id.localeCompare(right.id);
-      })
-      .slice(0, 3);
-    expect(rankByCosine(query, candidates, 3)).toEqual(fullSort);
+    expect(rankByCosine(query, candidates, 3)).toEqual(
+      fullSortRank(query, candidates, 3),
+    );
+  });
+
+  it("matches full-sort when k exceeds candidate count", () => {
+    const query = new Float32Array([1, 0]);
+    const candidates = [
+      { id: "far.md", vector: new Float32Array([0, 1]) },
+      { id: "near.md", vector: new Float32Array([0.9, 0.1]) },
+      { id: "mid.md", vector: new Float32Array([0.5, 0.5]) },
+    ];
+    expect(rankByCosine(query, candidates, 10)).toEqual(
+      fullSortRank(query, candidates, 10),
+    );
   });
 
   it("breaks score ties with stable ascending id order", () => {
