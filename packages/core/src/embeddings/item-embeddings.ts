@@ -7,49 +7,15 @@ import { rankByCosine } from "./cosine.js";
 import {
   deleteItemEmbedding,
   getItemEmbedding,
-  listItemEmbeddingsForModel,
+  listItemEmbeddingsForModelInFolders,
   putItemEmbedding,
 } from "./embedding-store.js";
 import { fingerprintEmbedText, needsRecompute } from "./invalidation.js";
-import type {
-  EmbeddingEngine,
-  ItemEmbeddingRow,
-  SimilarItemHit,
-} from "./types.js";
+import type { EmbeddingEngine, SimilarItemHit } from "./types.js";
 
 type SqlEmbeddingDb = SqlExecutor & SqlReader;
 
 export type ItemEmbeddingSource = ItemEmbeddingRefreshInput;
-
-async function loadItemFolderPaths(
-  db: SqlReader,
-  itemIds: string[],
-): Promise<Map<string, string>> {
-  if (itemIds.length === 0) {
-    return new Map();
-  }
-  const placeholders = itemIds.map(() => "?").join(", ");
-  const rows = await db.select<{ id: string; folder_path: string }>(
-    `SELECT id, folder_path FROM items WHERE id IN (${placeholders})`,
-    itemIds,
-  );
-  const map = new Map<string, string>();
-  for (const row of rows) {
-    map.set(row.id, row.folder_path);
-  }
-  return map;
-}
-
-function filterEmbeddingsByFolderChain(
-  rows: ItemEmbeddingRow[],
-  folderByItemId: Map<string, string>,
-  allowedFolders: ReadonlySet<string>,
-): ItemEmbeddingRow[] {
-  return rows.filter((row) => {
-    const folderPath = folderByItemId.get(row.itemId);
-    return folderPath !== undefined && allowedFolders.has(folderPath);
-  });
-}
 
 /**
  * Recompute or clear the embedding for one item.
@@ -108,6 +74,9 @@ export async function recomputeItemEmbedding(
 /**
  * Rank neighbors by cosine within the query item's folder ancestor chain
  * (same folder → parents → root), matching related fallback scope (#603/#414).
+ *
+ * Candidate embeddings are loaded already scoped in SQL (C ≪ E); ranking uses
+ * bounded top-k rather than a full sort.
  */
 export async function findSimilarItemIds(
   db: SqlEmbeddingDb,
@@ -132,19 +101,13 @@ export async function findSimilarItemIds(
   if (queryFolder === undefined) {
     return [];
   }
-  const allowedFolders = new Set(folderPathAncestorChain(queryFolder));
+  const allowedFolders = folderPathAncestorChain(queryFolder);
 
-  const others = (await listItemEmbeddingsForModel(db, engine.modelId)).filter(
-    (row) => row.itemId !== itemId,
-  );
-  const folderByItemId = await loadItemFolderPaths(
+  const candidates = await listItemEmbeddingsForModelInFolders(
     db,
-    others.map((row) => row.itemId),
-  );
-  const candidates = filterEmbeddingsByFolderChain(
-    others,
-    folderByItemId,
+    engine.modelId,
     allowedFolders,
+    itemId,
   );
 
   return rankByCosine(

@@ -93,9 +93,35 @@ describe("item embedding orchestration", () => {
       });
     }
 
+    const selectCalls: Array<{ sql: string; params: unknown[] }> = [];
+    const originalSelect = sql.select.bind(sql);
+    sql.select = (async <T>(query: string, params: unknown[] = []) => {
+      selectCalls.push({ sql: query, params });
+      return originalSelect<T>(query, params);
+    }) as typeof sql.select;
+
     const hits = await findSimilarItemIds(sql, engine, "Design/a.md", 8);
     expect(hits.map((h) => h.id)).toEqual(["Design/b.md"]);
     expect(hits.every((h) => h.id !== "Other/c.md")).toBe(true);
+
+    const embeddingLoads = selectCalls.filter((call) =>
+      call.sql.includes("FROM item_embeddings"),
+    );
+    expect(embeddingLoads.length).toBeGreaterThanOrEqual(1);
+    const candidateLoad = embeddingLoads.find((call) =>
+      call.sql.includes("folder_path"),
+    );
+    expect(candidateLoad).toBeDefined();
+    expect(candidateLoad!.sql).toMatch(/folder_path\s+IN/i);
+    expect(candidateLoad!.params).not.toContain("Other");
+    // Out-of-scope folder never appears in the scoped candidate load params.
+    expect(
+      embeddingLoads.some(
+        (call) =>
+          call.sql.includes("folder_path") &&
+          call.params.includes("Other"),
+      ),
+    ).toBe(false);
   });
 
   it("writes vectors and ranks similar items; clears when signal disappears", async () => {

@@ -94,6 +94,35 @@ export async function listItemEmbeddingsForModel(
   return rows.map(rowToEmbedding);
 }
 
+/**
+ * Load embeddings for a model whose items sit in one of `folderPaths`
+ * (typically a folder ancestor chain). Excludes `excludeItemId`.
+ */
+export async function listItemEmbeddingsForModelInFolders(
+  db: SqlReader,
+  modelId: string,
+  folderPaths: readonly string[],
+  excludeItemId: string,
+): Promise<ItemEmbeddingRow[]> {
+  if (folderPaths.length === 0) {
+    throw new Error(
+      "listItemEmbeddingsForModelInFolders folderPaths must be non-empty",
+    );
+  }
+  const folderPlaceholders = folderPaths.map(() => "?").join(", ");
+  const rows = await db.select<EmbeddingSqlRow>(
+    `SELECT e.item_id, e.model_id, e.content_revision, e.input_fingerprint,
+            e.dims, e.vector, e.updated_at
+     FROM item_embeddings e
+     INNER JOIN items i ON i.id = e.item_id
+     WHERE e.model_id = ?
+       AND e.item_id != ?
+       AND i.folder_path IN (${folderPlaceholders})`,
+    [modelId, excludeItemId, ...folderPaths],
+  );
+  return rows.map(rowToEmbedding);
+}
+
 export async function rewriteItemEmbeddingId(
   db: SqlEmbeddingDb,
   oldId: string,

@@ -29,11 +29,84 @@ export type CosineCandidate = {
   vector: Float32Array;
 };
 
+export type CosineHit = {
+  id: string;
+  score: number;
+};
+
+/** Higher score ranks first; equal scores break ties by ascending id. */
+function compareHitsDesc(left: CosineHit, right: CosineHit): number {
+  if (right.score !== left.score) {
+    return right.score - left.score;
+  }
+  return left.id.localeCompare(right.id);
+}
+
+/** `a` is strictly worse than `b` under desc ranking (comes later in the result). */
+function isWorseThan(a: CosineHit, b: CosineHit): boolean {
+  return compareHitsDesc(a, b) > 0;
+}
+
+/**
+ * Min-heap keyed by "worseness": the worst of the current top-k sits at index 0.
+ * Avoids sorting the full scored set when k ≪ n.
+ */
+function siftUp(heap: CosineHit[], index: number): void {
+  let i = index;
+  while (i > 0) {
+    const parent = (i - 1) >> 1;
+    if (!isWorseThan(heap[i]!, heap[parent]!)) {
+      break;
+    }
+    const tmp = heap[i]!;
+    heap[i] = heap[parent]!;
+    heap[parent] = tmp;
+    i = parent;
+  }
+}
+
+function siftDown(heap: CosineHit[], index: number): void {
+  const n = heap.length;
+  let i = index;
+  for (;;) {
+    const left = i * 2 + 1;
+    const right = left + 1;
+    let worst = i;
+    if (left < n && isWorseThan(heap[left]!, heap[worst]!)) {
+      worst = left;
+    }
+    if (right < n && isWorseThan(heap[right]!, heap[worst]!)) {
+      worst = right;
+    }
+    if (worst === i) {
+      break;
+    }
+    const tmp = heap[i]!;
+    heap[i] = heap[worst]!;
+    heap[worst] = tmp;
+    i = worst;
+  }
+}
+
+function pushTopK(heap: CosineHit[], hit: CosineHit, k: number): void {
+  if (heap.length < k) {
+    heap.push(hit);
+    siftUp(heap, heap.length - 1);
+    return;
+  }
+  // Keep only if strictly better than the current worst of the top-k.
+  if (compareHitsDesc(hit, heap[0]!) >= 0) {
+    return;
+  }
+  heap[0] = hit;
+  siftDown(heap, 0);
+}
+
 export function rankByCosine(
   query: Float32Array,
   candidates: CosineCandidate[],
   k: number,
-): Array<{ id: string; score: number }> {
+): CosineHit[] {
   if (k <= 0) {
     throw new Error("rankByCosine k must be positive");
   }
@@ -46,7 +119,8 @@ export function rankByCosine(
   }
   const queryNormSqrt = Math.sqrt(queryNorm);
 
-  const scored = candidates.map((candidate) => {
+  const topK: CosineHit[] = [];
+  for (const candidate of candidates) {
     if (candidate.vector.length !== query.length) {
       throw new Error(
         `cosineSimilarity length mismatch: ${query.length} vs ${candidate.vector.length}`,
@@ -62,16 +136,16 @@ export function rankByCosine(
     if (normB === 0) {
       throw new Error("cosineSimilarity zero-norm vector");
     }
-    return {
-      id: candidate.id,
-      score: dot / (queryNormSqrt * Math.sqrt(normB)),
-    };
-  });
-  scored.sort((left, right) => {
-    if (right.score !== left.score) {
-      return right.score - left.score;
-    }
-    return left.id.localeCompare(right.id);
-  });
-  return scored.slice(0, k);
+    pushTopK(
+      topK,
+      {
+        id: candidate.id,
+        score: dot / (queryNormSqrt * Math.sqrt(normB)),
+      },
+      k,
+    );
+  }
+
+  topK.sort(compareHitsDesc);
+  return topK;
 }
