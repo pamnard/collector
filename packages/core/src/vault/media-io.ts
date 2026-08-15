@@ -156,3 +156,43 @@ export async function listMediaFiles(
 
   return files.sort((a, b) => a.created_at.localeCompare(b.created_at));
 }
+
+/**
+ * Absolute path of the gallery image used for thumbnail fallback (#711).
+ *
+ * Contract: among non-skipped file entries whose stored name is an image,
+ * pick the **lexicographic minimum** of the directory entry name. This is
+ * intentional and deterministic — not `readDirEntries` order and not
+ * `created_at`/mtime order from {@link listMediaFiles}.
+ *
+ * Cost: one `exists(root)` + one `readDirEntries`; trusts the listing (no
+ * per-candidate `exists`/`stat`). Non-images are skipped in memory only.
+ */
+export async function findFirstGalleryImagePath(
+  fs: FileSystemAdapter,
+  vaultRootPath: string,
+  itemRelativePath: string,
+): Promise<string | null> {
+  const root = itemMediaRoot(vaultRootPath, itemRelativePath);
+  if (!(await fs.exists(root))) {
+    return null;
+  }
+
+  const entries = await fs.readDirEntries(root);
+  let bestName: string | null = null;
+  for (const entry of entries) {
+    const name = entry.name;
+    if (shouldSkipMediaDirEntry(name) || entry.isDirectory) {
+      continue;
+    }
+    // Stored names keep the original extension (bare or `{id}-{filename}`).
+    if (inferMediaType(name) !== "image") {
+      continue;
+    }
+    if (bestName === null || name < bestName) {
+      bestName = name;
+    }
+  }
+
+  return bestName === null ? null : joinSegments(root, bestName);
+}

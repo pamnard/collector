@@ -3,15 +3,18 @@
  * host thumbnail resolve / cover paths).
  *
  * Cover membership is on disk (#276): `media/<noteUuid>/cover.webp`, then
- * first image in the gallery folder. Frontmatter paths are not the SoT.
+ * gallery image. Frontmatter paths are not the SoT.
  *
  * Issue #255: domain host must not stub this to null.
  * Issue #544: progressive emit + bounded parallel resolve.
+ * Issue #711: gallery fallback without O(g) exists probes.
+ *   “First” gallery image = lexicographic min of image entry names
+ *   (not readdir order, not `listMediaFiles` created_at/mtime order).
  */
 
 import type { FileSystemAdapter } from "../adapters/types.js";
 import { DISK_ITEM_READ_CONCURRENCY } from "../util/concurrency.js";
-import { listMediaFiles, mediaFilePath } from "./media-io.js";
+import { findFirstGalleryImagePath } from "./media-io.js";
 import { itemCoverPath } from "./paths.js";
 
 export interface ThumbnailResolveItem {
@@ -41,20 +44,10 @@ async function resolveOneThumbnail(
     return cover;
   }
 
-  const media = await listMediaFiles(fs, vaultPath, item.id);
-  for (const file of media) {
-    if (file.media_type !== "image") {
-      continue;
-    }
-    const candidate = mediaFilePath(
-      vaultPath,
-      item.id,
-      file.id,
-      file.filename,
-    );
-    if (await fs.exists(candidate)) {
-      return candidate;
-    }
+  // Gallery “first” = lex-min image entry name (#711); see findFirstGalleryImagePath.
+  const galleryImage = await findFirstGalleryImagePath(fs, vaultPath, item.id);
+  if (galleryImage !== null) {
+    return galleryImage;
   }
 
   // Remote URL only — not a vault file path (#276: no FM attachment addresses).

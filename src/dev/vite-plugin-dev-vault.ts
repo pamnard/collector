@@ -6,7 +6,7 @@ import type { ItemFile } from "@collector/shared";
 import {
   buildFolderTreeFromSources,
   ensureInboxLayout,
-  remediateVaultLayout,
+  findFirstGalleryImagePath,
   joinSegments,
   listFolderRelativePaths,
   listItemRelativePaths,
@@ -16,6 +16,7 @@ import {
   mediaFilePath,
   readItemFile,
   readVaultMeta,
+  remediateVaultLayout,
   type TagWithCount,
   type VaultContext,
 } from "@collector/core";
@@ -116,7 +117,10 @@ function vaultFsUrl(...parts: string[]): string {
   return `${DEV_VAULT_FS_PREFIX}/${joinSegments(...parts)}`;
 }
 
-/** Same rules as core/Tauri: cover.webp on disk, else first image; no FM vault paths. */
+/**
+ * Same rules as core (#711): cover.webp on disk, else lex-min gallery image
+ * entry name (not listMediaFiles created_at order); no FM vault paths.
+ */
 async function resolveThumbnailUrl(
   fs: NodeFileSystemAdapter,
   vaultRoot: string,
@@ -127,16 +131,9 @@ async function resolveThumbnailUrl(
     return vaultFsUrl(itemCoverRelativePath(item.id));
   }
 
-  const mediaFiles = await listMediaFiles(fs, vaultRoot, item.id);
-  for (const file of mediaFiles) {
-    if (file.media_type !== "image") {
-      continue;
-    }
-    const onDisk = mediaFilePath(vaultRoot, item.id, file.id, file.filename);
-    if (!(await fs.exists(onDisk))) {
-      continue;
-    }
-    return vaultFsUrl(mediaFilePath("", item.id, file.id, file.filename));
+  const galleryAbs = await findFirstGalleryImagePath(fs, vaultRoot, item.id);
+  if (galleryAbs !== null) {
+    return vaultFsUrl(relative(vaultRoot, galleryAbs).replace(/\\/g, "/"));
   }
 
   if (

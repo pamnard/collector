@@ -11,7 +11,7 @@ import { applyItemCover } from "./cover-operations.js";
 import { attachMediaFile } from "./media-operations.js";
 import { createVault } from "./vault-operations.js";
 import { upsertItem } from "./item-operations.js";
-import { itemCoverPath } from "./paths.js";
+import { itemCoverPath, itemMediaRoot, joinSegments } from "./paths.js";
 import {
   resolveItemThumbnailPathsBatch,
   resolveItemThumbnailPathsProgressive,
@@ -55,6 +55,39 @@ describe("resolveItemThumbnailPathsBatch", () => {
       },
     });
     return { ctx, path, vaultId: meta.id, itemId };
+  }
+
+  /** FS that lists a fixed media dir and forbids per-candidate exists/stat. */
+  function galleryListingFs(options: {
+    cover: string;
+    mediaRoot: string;
+    mediaNames: string[];
+    existsPaths?: string[];
+  }): FileSystemAdapter {
+    const base = new NodeFileSystemAdapter();
+    return {
+      ...base,
+      async exists(path: string): Promise<boolean> {
+        options.existsPaths?.push(path);
+        if (path === options.cover) {
+          return false;
+        }
+        if (path === options.mediaRoot) {
+          return true;
+        }
+        throw new Error(`unexpected exists probe: ${path}`);
+      },
+      async readDirEntries(path: string) {
+        expect(path).toBe(options.mediaRoot);
+        return options.mediaNames.map((name) => ({
+          name,
+          isDirectory: false,
+        }));
+      },
+      async stat(): Promise<{ mtimeMs: number | null }> {
+        throw new Error("unexpected stat probe");
+      },
+    };
   }
 
   it("returns cover path when cover.webp exists on disk", async () => {
@@ -129,6 +162,63 @@ describe("resolveItemThumbnailPathsBatch", () => {
     ]);
 
     expect(rows).toEqual([{ id: itemId, path: remote }]);
+  });
+
+  it("gallery fallback does not exists-probe every media candidate (#711)", async () => {
+    const itemId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.md";
+    const vaultPath = "/vault";
+    const mediaRoot = itemMediaRoot(vaultPath, itemId);
+    const cover = itemCoverPath(vaultPath, itemId);
+    const imageName = "zzzzzzzz-zzzz-4zzz-8zzz-zzzzzzzzzzzz-shot.png";
+    const imagePath = joinSegments(mediaRoot, imageName);
+    const existsPaths: string[] = [];
+
+    const rows = await resolveItemThumbnailPathsBatch(
+      galleryListingFs({
+        cover,
+        mediaRoot,
+        existsPaths,
+        mediaNames: [
+          ...Array.from({ length: 20 }, (_, i) => `clip-${i}.mp4`),
+          ...Array.from({ length: 20 }, (_, i) => `note-${i}.pdf`),
+          imageName,
+        ],
+      }),
+      vaultPath,
+      [{ id: itemId, thumbnail: null }],
+    );
+
+    expect(rows).toEqual([{ id: itemId, path: imagePath }]);
+    expect(existsPaths).toEqual([cover, mediaRoot]);
+  });
+
+  it("gallery fallback picks lexicographic min image name, not listing or mtime order (#711)", async () => {
+    const itemId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.md";
+    const vaultPath = "/vault";
+    const mediaRoot = itemMediaRoot(vaultPath, itemId);
+    const cover = itemCoverPath(vaultPath, itemId);
+    // Listing order puts zebra first; lex-min among images is apple.
+    const expectedName = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa-apple.webp";
+
+    const rows = await resolveItemThumbnailPathsBatch(
+      galleryListingFs({
+        cover,
+        mediaRoot,
+        mediaNames: [
+          "zzzzzzzz-zzzz-4zzz-8zzz-zzzzzzzzzzzz-zebra.png",
+          "clip.mp4",
+          "mmmmmmmm-mmmm-4mmm-8mmm-mmmmmmmmmmmm-mango.jpg",
+          expectedName,
+          "note.pdf",
+        ],
+      }),
+      vaultPath,
+      [{ id: itemId, thumbnail: null }],
+    );
+
+    expect(rows).toEqual([
+      { id: itemId, path: joinSegments(mediaRoot, expectedName) },
+    ]);
   });
 });
 
