@@ -17,14 +17,13 @@ import type {
 } from "@collector/api";
 import {
   asCollectorApiError,
-  DASHBOARD_HYDRATE_CHUNK_SIZE,
-  DASHBOARD_HYDRATE_MAX_IDS,
   DASHBOARD_PREFETCH_SIZE,
   subscriptionFromTeardown,
 } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
 import { bytesToBase64 } from "../bytes-to-base64.js";
 import type { HostSessionCtx } from "../host-session-ctx.js";
+import { hydrateHostItems } from "./items-hydrate.js";
 
 export function createHostItemsPort(ctx: HostSessionCtx): ItemsPort {
   const { transport } = ctx;
@@ -51,40 +50,7 @@ export function createHostItemsPort(ctx: HostSessionCtx): ItemsPort {
         page,
         sort,
       }) as Promise<IndexQueryResult>,
-    async *hydrate(
-      ids: string[],
-      options?: { signal?: AbortSignal },
-    ): AsyncIterable<ItemFile> {
-      if (!ids.length || options?.signal?.aborted) {
-        return;
-      }
-      if (ids.length > DASHBOARD_HYDRATE_MAX_IDS) {
-        throw new Error(
-          `hydrate: id list length ${ids.length} exceeds max ${DASHBOARD_HYDRATE_MAX_IDS}`,
-        );
-      }
-      for (
-        let offset = 0;
-        offset < ids.length;
-        offset += DASHBOARD_HYDRATE_CHUNK_SIZE
-      ) {
-        if (options?.signal?.aborted) {
-          return;
-        }
-        const chunk = ids.slice(offset, offset + DASHBOARD_HYDRATE_CHUNK_SIZE);
-        const items = (await transport.request("loadDashboardItems", {
-          itemIds: chunk,
-          offset: 0,
-          limit: chunk.length,
-        })) as ItemFile[];
-        for (const item of items) {
-          if (options?.signal?.aborted) {
-            return;
-          }
-          yield item;
-        }
-      }
-    },
+    hydrate: (ids, options) => hydrateHostItems(transport, ids, options),
     fetchDashboardIndexPage: async (
       filter: NavFilter,
       query: string | undefined,
