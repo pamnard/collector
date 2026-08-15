@@ -43,6 +43,7 @@ export function mapDomainToActions(
     onSource: domain.onSource,
     onMove: domain.onMove,
     onRename: domain.onRename,
+    onLint: domain.onLint,
     onDelete: domain.onDelete,
   };
 }

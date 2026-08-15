@@ -5,15 +5,12 @@ import {
 } from "react";
 import type { NavigateFunction } from "react-router-dom";
 import type { ItemFile } from "@collector/shared";
-import {
-  isFormDirty,
-  toFormValues,
-} from "../../components/items/item-detail-form";
+import { isFormDirty } from "../../components/items/item-detail-form";
 import type { ItemFormValues } from "../../types/item";
 import type { ItemDetailMode } from "../../components/layout/item-chrome";
 import { getCollectorService } from "../../services/collector-client";
 import { errorMessage } from "../../services/runtime-error";
-import { reloadItemDetail, resolveTagNames } from "./item-detail-load";
+import { reloadItemDetail } from "./item-detail-load";
 
 export function useItemDetailSaves(options: {
   id: string | undefined;
@@ -93,12 +90,14 @@ export function useItemDetailSaves(options: {
         folder_path: formValues.folder_path,
         properties: formValues.properties,
       });
-      const updatedContent = formValues.content.trim() || null;
-      const tagNames = await resolveTagNames(updated);
-      setItem(updated);
-      setContent(updatedContent);
-      setItemTagNames(tagNames);
-      setFormValues(toFormValues(updated, updatedContent, tagNames));
+      // Reload from disk so UI matches autofixed markdown (same as source-save).
+      await reloadItemDetail({
+        itemId: updated.id,
+        setItem,
+        setContent,
+        setItemTagNames,
+        setFormValues,
+      });
       setMode("view");
       refreshVault();
       if (updated.id !== id) {

@@ -1,4 +1,5 @@
 import {
+  FileCheck,
   FolderInput,
   MoreVertical,
   Pencil,
@@ -24,6 +25,7 @@ import {
 const ITEM_ACTION_ICONS: Record<ItemActionId, LucideIcon> = {
   move: FolderInput,
   rename: Pencil,
+  lint: FileCheck,
   delete: Trash2,
 };
 

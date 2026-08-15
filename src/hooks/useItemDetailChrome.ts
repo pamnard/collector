@@ -8,6 +8,7 @@ import {
   useItemChrome,
   type ItemDetailMode,
 } from "../components/layout/item-chrome";
+import { lintItemFile } from "../lib/item-actions";
 import { liveCallback } from "../lib/live-callback";
 
 export const ITEM_COPY_ALERT_ID = "item-copy-feedback";
@@ -21,6 +22,7 @@ export type UseItemDetailChromeInput = {
   onView: () => void;
   onForm: () => void;
   onSource: () => void;
+  onLinted?: () => void;
 };
 
 export type UseItemDetailChromeResult = {
@@ -56,6 +58,7 @@ export function useItemDetailChrome(
     onView,
     onForm,
     onSource,
+    onLinted,
   } = input;
 
   // Header chrome republishes only when status fields change — not on every
@@ -63,9 +66,11 @@ export function useItemDetailChrome(
   const onViewRef = useRef(onView);
   const onFormRef = useRef(onForm);
   const onSourceRef = useRef(onSource);
+  const onLintedRef = useRef(onLinted);
   onViewRef.current = onView;
   onFormRef.current = onForm;
   onSourceRef.current = onSource;
+  onLintedRef.current = onLinted;
   const onViewLive = useRef(liveCallback(() => onViewRef.current)).current;
   const onFormLive = useRef(liveCallback(() => onFormRef.current)).current;
   const onSourceLive = useRef(liveCallback(() => onSourceRef.current)).current;
@@ -87,8 +92,8 @@ export function useItemDetailChrome(
   const dismissIdCopyFeedback = () => {
     if (idCopyFeedbackTimer.current !== null) {
       window.clearTimeout(idCopyFeedbackTimer.current);
-      idCopyFeedbackTimer.current = null;
     }
+    idCopyFeedbackTimer.current = null;
     setIdCopyFeedback(null);
     alerts.dismiss(ITEM_COPY_ALERT_ID);
   };
@@ -125,6 +130,17 @@ export function useItemDetailChrome(
     }
   };
 
+  const handleLint = async () => {
+    if (!item) {
+      return;
+    }
+    const updated = await lintItemFile(alerts, item.id);
+    if (updated === undefined) {
+      return;
+    }
+    onLintedRef.current?.();
+  };
+
   useEffect(() => {
     const status = item ? "ready" : error ? "error" : "loading";
     publish({
@@ -151,6 +167,9 @@ export function useItemDetailChrome(
       },
       onRename: () => {
         setRenameOpen(true);
+      },
+      onLint: () => {
+        void handleLint();
       },
       onDelete: () => {
         setDeleteConfirmOpen(true);

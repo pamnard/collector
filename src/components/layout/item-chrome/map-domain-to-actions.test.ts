@@ -22,6 +22,7 @@ function domain(
     onSource: () => {},
     onMove: () => {},
     onRename: () => {},
+    onLint: () => {},
     onDelete: () => {},
     ...overrides,
   };
@@ -101,6 +102,7 @@ describe("mapDomainToActions", () => {
     const onSource = () => {};
     const onMove = () => {};
     const onRename = () => {};
+    const onLint = () => {};
     const onDelete = () => {};
     const actions = mapDomainToActions(
       domain({
@@ -112,6 +114,7 @@ describe("mapDomainToActions", () => {
         onSource,
         onMove,
         onRename,
+        onLint,
         onDelete,
       }),
     );
@@ -126,6 +129,7 @@ describe("mapDomainToActions", () => {
         onSource: actions?.onSource,
         onMove: actions?.onMove,
         onRename: actions?.onRename,
+        onLint: actions?.onLint,
         onDelete: actions?.onDelete,
       },
       {
@@ -138,6 +142,7 @@ describe("mapDomainToActions", () => {
         onSource,
         onMove,
         onRename,
+        onLint,
         onDelete,
       },
     );
