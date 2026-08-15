@@ -60,6 +60,12 @@ export async function statVaultItemMetaBatch(
         return null;
       }
       const fileStat = await fs.stat(docPath);
+      // TOCTOU: NodeFileSystemAdapter maps ENOENT (and other errors) to null
+      // mtime. Re-check so a deleted path is omitted (caller deletes index row)
+      // instead of "present + null mtime" → Missing document.
+      if (fileStat.mtimeMs === null && !(await fs.exists(docPath))) {
+        return null;
+      }
       return { id: itemId, mtimeMs: fileStat.mtimeMs };
     },
     { yieldEvery: VAULT_ITEM_READ_META_BATCH, yieldMs: INDEX_SYNC_YIELD_MS },

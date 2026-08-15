@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
 import { createId } from "../util/ids.js";
+import { DISK_ITEM_READ_CONCURRENCY } from "../util/concurrency.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import { createVault } from "./vault-operations.js";
 import { upsertItem } from "./item-operations.js";
@@ -12,6 +13,7 @@ import { syncIndexFromFilesystem } from "./sync-operations.js";
 import { syncIndexItemsFromFilesystem } from "./item-index-sync.js";
 import { itemMarkdownPath } from "./paths.js";
 import { writeItemFile } from "./item-io.js";
+import { statVaultItemMetaBatch } from "./vault-fs-batch.js";
 
 describe("syncIndexItemsFromFilesystem", () => {
   let dataDir = "";
@@ -204,9 +206,78 @@ describe("syncIndexItemsFromFilesystem", () => {
       const report = await syncIndexItemsFromFilesystem(ctx, path, meta.id, itemIds);
       expect(report.errors).toHaveLength(0);
       expect(peakInFlight).toBeGreaterThan(1);
-      expect(peakInFlight).toBeLessThanOrEqual(4);
+      expect(peakInFlight).toBeLessThanOrEqual(DISK_ITEM_READ_CONCURRENCY);
     } finally {
       fs.exists = originalExists;
+    }
+  });
+
+  it("TOCTOU: exists then delete then null mtime omits id and sync removes index row", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-watch-toctou-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemId = `${createId()}.md`;
+    const timestamp = new Date().toISOString();
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Race delete",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      content: "body",
+    });
+    await syncIndexFromFilesystem(ctx, path, meta.id);
+    expect(await ctx.index.listVaultItemIds(meta.id)).toEqual([itemId]);
+
+    const docPath = itemMarkdownPath(path, itemId);
+    const originalExists = fs.exists.bind(fs);
+    const originalStat = fs.stat.bind(fs);
+    let deletedAfterExists = false;
+
+    fs.exists = async (filePath: string) => {
+      if (filePath !== docPath) {
+        return originalExists(filePath);
+      }
+      if (!deletedAfterExists) {
+        return true;
+      }
+      return false;
+    };
+    fs.stat = async (filePath: string) => {
+      if (filePath === docPath) {
+        deletedAfterExists = true;
+        return { mtimeMs: null };
+      }
+      return originalStat(filePath);
+    };
+
+    try {
+      const batchStats = await statVaultItemMetaBatch(fs, path, [itemId]);
+      expect(batchStats).toEqual([]);
+
+      deletedAfterExists = false;
+      const report = await syncIndexItemsFromFilesystem(ctx, path, meta.id, [
+        itemId,
+      ]);
+      expect(report.removed).toBe(1);
+      expect(report.errors).toHaveLength(0);
+      expect(await ctx.index.listVaultItemIds(meta.id)).toEqual([]);
+    } finally {
+      fs.exists = originalExists;
+      fs.stat = originalStat;
     }
   });
 
