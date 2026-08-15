@@ -60,6 +60,9 @@ export function useItemDetail(): UseItemDetailResult {
     setContent,
     setItemTagNames,
     setFormValues,
+    setMode,
+    setSourceText,
+    setSourceBaseline,
   });
 
   const { switchToView, switchToForm, switchToSource } = useItemDetailSaves({
