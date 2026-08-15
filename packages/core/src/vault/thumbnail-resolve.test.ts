@@ -11,7 +11,7 @@ import { applyItemCover } from "./cover-operations.js";
 import { attachMediaFile } from "./media-operations.js";
 import { createVault } from "./vault-operations.js";
 import { upsertItem } from "./item-operations.js";
-import { itemCoverPath } from "./paths.js";
+import { itemCoverPath, itemMediaRoot, joinSegments } from "./paths.js";
 import {
   resolveItemThumbnailPathsBatch,
   resolveItemThumbnailPathsProgressive,
@@ -129,6 +129,52 @@ describe("resolveItemThumbnailPathsBatch", () => {
     ]);
 
     expect(rows).toEqual([{ id: itemId, path: remote }]);
+  });
+
+  it("gallery fallback does not exists-probe every media candidate (#711)", async () => {
+    const itemId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.md";
+    const vaultPath = "/vault";
+    const mediaRoot = itemMediaRoot(vaultPath, itemId);
+    const cover = itemCoverPath(vaultPath, itemId);
+    const imageName = "zzzzzzzz-zzzz-4zzz-8zzz-zzzzzzzzzzzz-shot.png";
+    const imagePath = joinSegments(mediaRoot, imageName);
+
+    const mediaNames = [
+      ...Array.from({ length: 40 }, (_, i) => `clip-${String(i).padStart(2, "0")}.mp4`),
+      ...Array.from({ length: 40 }, (_, i) => `note-${String(i).padStart(2, "0")}.pdf`),
+      imageName,
+    ];
+
+    const existsPaths: string[] = [];
+    const base = new NodeFileSystemAdapter();
+    const countingFs: FileSystemAdapter = {
+      ...base,
+      async exists(path: string): Promise<boolean> {
+        existsPaths.push(path);
+        if (path === cover) {
+          return false;
+        }
+        if (path === mediaRoot) {
+          return true;
+        }
+        // Candidates from a directory listing must not be re-probed.
+        throw new Error(`unexpected exists probe: ${path}`);
+      },
+      async readDirEntries(path: string) {
+        expect(path).toBe(mediaRoot);
+        return mediaNames.map((name) => ({ name, isDirectory: false }));
+      },
+      async stat(path: string): Promise<{ mtimeMs: number | null }> {
+        throw new Error(`unexpected stat probe: ${path}`);
+      },
+    };
+
+    const rows = await resolveItemThumbnailPathsBatch(countingFs, vaultPath, [
+      { id: itemId, thumbnail: null },
+    ]);
+
+    expect(rows).toEqual([{ id: itemId, path: imagePath }]);
+    expect(existsPaths).toEqual([cover, mediaRoot]);
   });
 });
 

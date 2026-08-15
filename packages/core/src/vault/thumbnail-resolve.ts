@@ -11,7 +11,7 @@
 
 import type { FileSystemAdapter } from "../adapters/types.js";
 import { DISK_ITEM_READ_CONCURRENCY } from "../util/concurrency.js";
-import { listMediaFiles, mediaFilePath } from "./media-io.js";
+import { findFirstGalleryImagePath } from "./media-io.js";
 import { itemCoverPath } from "./paths.js";
 
 export interface ThumbnailResolveItem {
@@ -41,20 +41,9 @@ async function resolveOneThumbnail(
     return cover;
   }
 
-  const media = await listMediaFiles(fs, vaultPath, item.id);
-  for (const file of media) {
-    if (file.media_type !== "image") {
-      continue;
-    }
-    const candidate = mediaFilePath(
-      vaultPath,
-      item.id,
-      file.id,
-      file.filename,
-    );
-    if (await fs.exists(candidate)) {
-      return candidate;
-    }
+  const galleryImage = await findFirstGalleryImagePath(fs, vaultPath, item.id);
+  if (galleryImage) {
+    return galleryImage;
   }
 
   // Remote URL only — not a vault file path (#276: no FM attachment addresses).

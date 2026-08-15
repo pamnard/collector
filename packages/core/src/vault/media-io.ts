@@ -156,3 +156,37 @@ export async function listMediaFiles(
 
   return files.sort((a, b) => a.created_at.localeCompare(b.created_at));
 }
+
+/**
+ * Absolute path of the first gallery image for thumbnail fallback (#711).
+ * Trusts the directory listing — no per-candidate `exists`/`stat`.
+ * Non-image entries are skipped without filesystem probes.
+ */
+export async function findFirstGalleryImagePath(
+  fs: FileSystemAdapter,
+  vaultRootPath: string,
+  itemRelativePath: string,
+): Promise<string | null> {
+  const root = itemMediaRoot(vaultRootPath, itemRelativePath);
+  if (!(await fs.exists(root))) {
+    return null;
+  }
+
+  const entries = await fs.readDirEntries(root);
+  for (const entry of entries) {
+    const name = entry.name;
+    if (shouldSkipMediaDirEntry(name) || entry.isDirectory) {
+      continue;
+    }
+
+    const attached = name.match(ATTACHED_MEDIA_FILENAME_RE);
+    const filename = attached ? attached[2]! : name;
+    if (inferMediaType(filename) !== "image") {
+      continue;
+    }
+
+    return joinSegments(root, name);
+  }
+
+  return null;
+}
