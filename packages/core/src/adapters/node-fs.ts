@@ -18,6 +18,12 @@ import type {
   VaultItemSourceRefRead,
   VaultItemStatMeta,
 } from "./types.js";
+import {
+  DISK_ITEM_READ_CONCURRENCY,
+  INDEX_SYNC_WRITE_BATCH,
+  INDEX_SYNC_YIELD_MS,
+  runWithConcurrencyYielding,
+} from "../util/concurrency.js";
 import { itemMarkdownPath, itemSourcePath } from "../vault/paths.js";
 import { listItemRelativePaths } from "../vault/scan.js";
 
@@ -96,12 +102,16 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
 
   async statVaultItemsMeta(vaultPath: string): Promise<VaultItemStatMeta[]> {
     const itemIds = await listItemRelativePaths(this, vaultPath);
-    const results: VaultItemStatMeta[] = [];
-    for (const itemId of itemIds) {
-      const fileStat = await this.stat(itemMarkdownPath(vaultPath, itemId));
-      results.push({ id: itemId, mtimeMs: fileStat.mtimeMs });
-    }
-    return results;
+    return runWithConcurrencyYielding(
+      itemIds.length,
+      DISK_ITEM_READ_CONCURRENCY,
+      async (index) => {
+        const itemId = itemIds[index]!;
+        const fileStat = await this.stat(itemMarkdownPath(vaultPath, itemId));
+        return { id: itemId, mtimeMs: fileStat.mtimeMs };
+      },
+      { yieldEvery: INDEX_SYNC_WRITE_BATCH, yieldMs: INDEX_SYNC_YIELD_MS },
+    );
   }
 
   async readVaultItemsMeta(
@@ -109,18 +119,29 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
     itemIds: string[],
   ): Promise<VaultItemMetaRead[]> {
     const results: VaultItemMetaRead[] = [];
-    for (const itemId of itemIds) {
-      const docPath = itemMarkdownPath(vaultPath, itemId);
-      if (!(await this.exists(docPath))) {
-        continue;
+    const reads = await runWithConcurrencyYielding(
+      itemIds.length,
+      DISK_ITEM_READ_CONCURRENCY,
+      async (index) => {
+        const itemId = itemIds[index]!;
+        const docPath = itemMarkdownPath(vaultPath, itemId);
+        if (!(await this.exists(docPath))) {
+          return null;
+        }
+        const documentMarkdown = await this.readText(docPath);
+        const fileStat = await this.stat(docPath);
+        return {
+          id: itemId,
+          documentMarkdown,
+          mtimeMs: fileStat.mtimeMs,
+        };
+      },
+      { yieldEvery: INDEX_SYNC_WRITE_BATCH, yieldMs: INDEX_SYNC_YIELD_MS },
+    );
+    for (const entry of reads) {
+      if (entry) {
+        results.push(entry);
       }
-      const documentMarkdown = await this.readText(docPath);
-      const fileStat = await this.stat(docPath);
-      results.push({
-        id: itemId,
-        documentMarkdown,
-        mtimeMs: fileStat.mtimeMs,
-      });
     }
     return results;
   }
@@ -129,14 +150,18 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
     vaultPath: string,
     itemIds: string[],
   ): Promise<VaultItemSourceRefRead[]> {
-    const results: VaultItemSourceRefRead[] = [];
-    for (const itemId of itemIds) {
-      const sourcePath = itemSourcePath(vaultPath, itemId);
-      const sourceJson = (await this.exists(sourcePath))
-        ? await this.readText(sourcePath)
-        : null;
-      results.push({ id: itemId, sourceJson });
-    }
-    return results;
+    return runWithConcurrencyYielding(
+      itemIds.length,
+      DISK_ITEM_READ_CONCURRENCY,
+      async (index) => {
+        const itemId = itemIds[index]!;
+        const sourcePath = itemSourcePath(vaultPath, itemId);
+        const sourceJson = (await this.exists(sourcePath))
+          ? await this.readText(sourcePath)
+          : null;
+        return { id: itemId, sourceJson };
+      },
+      { yieldEvery: INDEX_SYNC_WRITE_BATCH, yieldMs: INDEX_SYNC_YIELD_MS },
+    );
   }
 }

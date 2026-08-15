@@ -1,9 +1,11 @@
 import type { ItemFile } from "@collector/shared";
 import type { SyncReport, VaultContext } from "../adapters/types.js";
 import {
+  DISK_ITEM_READ_CONCURRENCY,
   INDEX_SYNC_CONTENT_YIELD_MS,
   INDEX_SYNC_WRITE_BATCH,
   INDEX_SYNC_YIELD_MS,
+  runWithConcurrencyYielding,
   yieldToEventLoop,
 } from "../util/concurrency.js";
 import { classifyItemSyncAction } from "./sync-classifier.js";
@@ -23,6 +25,7 @@ import { listItemRelativePaths } from "./scan.js";
 import {
   readVaultItemMetaBatch,
   readVaultItemSourceRefBatch,
+  statVaultItemMetaBatch,
 } from "./vault-fs-batch.js";
 import {
   embeddingRefreshInputFromItem,
@@ -63,27 +66,34 @@ export async function syncIndexItemsFromFilesystem(
     maps: await loadTagMaps(ctx.fs, vaultPath),
   };
 
-  const existingIds: string[] = [];
-  const removedIds: string[] = [];
+  const diskStats = await statVaultItemMetaBatch(
+    ctx.fs,
+    vaultPath,
+    uniqueItemIds,
+  );
+  const presentIds = new Set(diskStats.map((entry) => entry.id));
+  const mtimeById = new Map(
+    diskStats.map((entry) => [entry.id, entry.mtimeMs] as const),
+  );
 
-  for (const itemId of uniqueItemIds) {
-    const docPath = itemMarkdownPath(vaultPath, itemId);
-    if (await ctx.fs.exists(docPath)) {
-      existingIds.push(itemId);
-    } else if (indexMeta.has(itemId)) {
-      removedIds.push(itemId);
-    }
-  }
+  const removedIds = uniqueItemIds.filter(
+    (itemId) => !presentIds.has(itemId) && indexMeta.has(itemId),
+  );
 
-  for (let i = 0; i < removedIds.length; i += 1) {
-    const itemId = removedIds[i]!;
-    await ctx.index.deleteItem(itemId);
-    report.removed += 1;
-    if ((i + 1) % INDEX_SYNC_WRITE_BATCH === 0) {
+  for (
+    let offset = 0;
+    offset < removedIds.length;
+    offset += INDEX_SYNC_WRITE_BATCH
+  ) {
+    const chunk = removedIds.slice(offset, offset + INDEX_SYNC_WRITE_BATCH);
+    await ctx.index.deleteItemsBatch(chunk);
+    report.removed += chunk.length;
+    if (offset + chunk.length < removedIds.length) {
       await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
     }
   }
 
+  const existingIds = uniqueItemIds.filter((itemId) => presentIds.has(itemId));
   const metadataReadQueue: Array<{ itemId: string; diskMtimeMs: number }> = [];
   const reindexQueue: Array<{
     itemId: string;
@@ -94,31 +104,63 @@ export async function syncIndexItemsFromFilesystem(
   }> = [];
   const mtimeHealFromContentIds: string[] = [];
 
+  const resolvedMtimes = new Map<string, number>();
+  const nullMtimeIds: string[] = [];
   for (const itemId of existingIds) {
-    const docPath = itemMarkdownPath(vaultPath, itemId);
-    let diskMtimeMs: number | null;
-    try {
-      diskMtimeMs = await recoverItemDiskMtimeMs(ctx.fs, docPath);
-    } catch (error) {
-      report.errors.push({
-        itemId,
-        message: error instanceof Error ? error.message : String(error),
-      });
+    const initialMtime = mtimeById.get(itemId);
+    if (initialMtime === undefined) {
+      throw new Error(`Missing disk stat for ${itemId}`);
+    }
+    if (initialMtime === null) {
+      nullMtimeIds.push(itemId);
       continue;
     }
+    resolvedMtimes.set(itemId, initialMtime);
+  }
 
-    if (diskMtimeMs === null) {
-      mtimeHealFromContentIds.push(itemId);
-      continue;
+  if (nullMtimeIds.length > 0) {
+    const recovered = await runWithConcurrencyYielding(
+      nullMtimeIds.length,
+      DISK_ITEM_READ_CONCURRENCY,
+      async (index) => {
+        const itemId = nullMtimeIds[index]!;
+        const docPath = itemMarkdownPath(vaultPath, itemId);
+        try {
+          return {
+            itemId,
+            diskMtimeMs: await recoverItemDiskMtimeMs(ctx.fs, docPath),
+            error: null as string | null,
+          };
+        } catch (error) {
+          return {
+            itemId,
+            diskMtimeMs: null as number | null,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      },
+      { yieldEvery: INDEX_SYNC_WRITE_BATCH, yieldMs: INDEX_SYNC_YIELD_MS },
+    );
+
+    for (const entry of recovered) {
+      if (entry.error !== null) {
+        report.errors.push({ itemId: entry.itemId, message: entry.error });
+        continue;
+      }
+      if (entry.diskMtimeMs === null) {
+        mtimeHealFromContentIds.push(entry.itemId);
+        continue;
+      }
+      resolvedMtimes.set(entry.itemId, entry.diskMtimeMs);
     }
+  }
 
+  for (const [itemId, diskMtimeMs] of resolvedMtimes) {
     const meta = indexMeta.get(itemId);
-
     if (!meta) {
       reindexQueue.push({ itemId, diskMtimeMs });
       continue;
     }
-
     metadataReadQueue.push({ itemId, diskMtimeMs });
   }
 

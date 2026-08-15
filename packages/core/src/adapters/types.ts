@@ -145,6 +145,8 @@ export interface VaultIndexAdapter {
   upsertItemContent(input: ItemContentUpsert): Promise<void>;
   upsertItemContentBatch(inputs: ItemContentUpsert[]): Promise<void>;
   deleteItem(itemId: string): Promise<void>;
+  /** Batch index row removal (media/source_refs/FTS/embeddings/items). */
+  deleteItemsBatch(itemIds: string[]): Promise<void>;
   /** Copy index rows oldId → newId after a directory rename (no vault FS reads). */
   rewriteItemIds(mappings: ItemIdRewriteMapping[]): Promise<void>;
   upsertMedia(media: MediaFileMeta): Promise<void>;
