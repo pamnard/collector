@@ -243,7 +243,7 @@ function createItemsWriteMethods(
     deleteItem: async (itemId: string): Promise<void> => {
       await transport.request("deleteItem", { itemId });
     },
-    importDroppedFiles: (
+    importDroppedFiles: async (
       input: ImportDroppedFilesInput,
     ): Promise<ImportDroppedFilesResult> =>
       transport.request("importDroppedFiles", {

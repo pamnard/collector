@@ -10,7 +10,7 @@ import type { HostWireClient } from "@collector/service/wire";
  * Kept outside the items port factory so the factory stays thin request wrappers.
  */
 export async function* hydrateHostItems(
-  transport: HostWireClient,
+  transport: Pick<HostWireClient, "request">,
   ids: string[],
   options?: { signal?: AbortSignal },
 ): AsyncIterable<ItemFile> {
