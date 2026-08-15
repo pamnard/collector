@@ -4,6 +4,7 @@ import type { TagWithCount } from "@collector/core";
 import { cn } from "../../lib/utils";
 import { ItemGridCardMeta } from "./ItemGridCardMeta";
 import { textOnlyTeaserChromeClass } from "./text-only-teaser-chrome";
+import { itemGridCoverSlotPending } from "./item-grid-cover-slot";
 import { useItemGridCover } from "./use-item-grid-cover";
 
 interface ItemGridCardProps {
@@ -43,20 +44,15 @@ export function ItemGridCard({
     optimisticPortrait,
   });
 
-  // Only while dashboard paths are unresolved. Once path is known, keep card chrome
-  // mounted — pulse→fade was the second ms-blink on image-heavy folder switches.
-  if (pathUnresolved) {
-    return (
-      <div
-        aria-hidden
-        className="min-h-[280px] animate-pulse rounded-lg border border-black/10 dark:border-white/10 bg-white/50 dark:bg-neutral-800/50"
-      />
-    );
-  }
-
-  const hasCover = showCover || coverPending;
+  // Notes must not show an empty gray teaser while cover paths resolve.
+  const coverSlotPending = itemGridCoverSlotPending({
+    coverPending,
+    pathUnresolved,
+    optimisticPortrait,
+  });
+  const hasCover = showCover || coverSlotPending;
   const overlayLayout = Boolean(
-    (showCover && isPortraitCover) || (coverPending && optimisticPortrait),
+    (showCover && isPortraitCover) || (coverSlotPending && optimisticPortrait),
   );
 
   const meta = (
