@@ -214,6 +214,7 @@ export {
   applyItemCover,
   clearItemCover,
   resolveItemThumbnailAbsolutePath,
+  touchItemUpdatedAt,
 } from "./vault/cover-operations.js";
 export {
   resolveItemThumbnailPathsBatch,
