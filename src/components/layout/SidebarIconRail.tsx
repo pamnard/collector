@@ -1,4 +1,4 @@
-import { Folder, FolderBookmark, Hash, Moon, Search, Settings, Sun } from "lucide-react";
+import { Folder, Hash, Moon, Search, Settings, Sun } from "lucide-react";
 import type { Theme } from "../../hooks/useTheme";
 import type { SidebarMode } from "../../types/sidebar-mode";
 import {
@@ -31,6 +31,22 @@ const NAV_ITEMS: Array<{
 const railButtonClassName =
   "!size-12 max-w-none justify-center rounded-none p-0 text-neutral-500 hover:bg-transparent hover:text-neutral-500 dark:text-neutral-400 dark:hover:bg-transparent dark:hover:text-neutral-400 active:bg-transparent dark:active:bg-transparent data-active:bg-transparent data-active:text-neutral-500 dark:data-active:bg-transparent dark:data-active:text-neutral-400 data-open:hover:bg-transparent dark:data-open:hover:bg-transparent [&_svg]:size-5";
 
+function CollectorMark({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 100 100"
+      className={className}
+      aria-hidden
+    >
+      <path
+        fill="currentColor"
+        d="M 29 0 H 71 V 88 L 50 67 L 29 88 Z"
+      />
+    </svg>
+  );
+}
+
 export function SidebarIconRail({
   mode,
   onModeChange,
@@ -43,13 +59,8 @@ export function SidebarIconRail({
   return (
     <div className="flex h-full shrink-0">
       <div className="flex h-full w-12 flex-col text-neutral-500 dark:text-neutral-400">
-        <div className="flex h-12 shrink-0 items-center justify-center border-b border-black/10 dark:border-white/10">
-          <FolderBookmark
-            size={20}
-            strokeWidth={2.5}
-            className="text-indigo-500"
-            aria-hidden
-          />
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center">
+          <CollectorMark className="size-full text-indigo-500" />
           <span className="sr-only">Collector</span>
         </div>
 

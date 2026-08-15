@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+  <!--
+    Bookmark from the top of the square, inset L/R/bottom.
+    Glyph width 42/100 (~20px in a 48px cell). Notch 90°, corner to corner.
+  -->
+  <path
+    fill="currentColor"
+    d="
+      M 29 0
+      H 71
+      V 88
+      L 50 67
+      L 29 88
+      Z
+    "
+  />
+</svg>
