@@ -26,6 +26,18 @@ Only the domain host mutates the vault and index. MCP and CLI talk to that host 
 - Whole-document edit (frontmatter + body as one blob) → get-source then update-source.
 - Do not rewrite source to change a single title if structured update is available.
 
+## Provenance in body
+
+Canonical page link → item `url`. Do not open the markdown body with `Source: …`, a byline, or a copy of that URL. Body starts with the content. An explicit source line only when the user asks — and then at the **bottom**, not the top.
+
+## Description and tags
+
+Prefer a short `description` and useful `tags` when creating or enriching an item (imports included), if they can be derived from the content. Helps search and browsing; leaving both empty is a weaker default.
+
+## Import and assets
+
+On import, prefer attaching related assets into the item’s local media and pointing the body at those files. Hotlinking remote image hosts leaves the note dependent on the network.
+
 ## Media layout
 
 Sidecar directories (`*.media/`) are host-owned. Attach/replace/delete/set-cover keep layout and cover sync consistent. Manual copies into sidecars desync the index and covers.
