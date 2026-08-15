@@ -41,6 +41,8 @@ export type {
 
 export {
   DASHBOARD_PREFETCH_SIZE,
+  DASHBOARD_HYDRATE_CHUNK_SIZE,
+  DASHBOARD_HYDRATE_MAX_IDS,
   type ActiveVaultResult,
   type AdjacentItemRef,
   type AdjacentItemsResult,

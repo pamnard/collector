@@ -16,6 +16,8 @@ import type {
 } from "@collector/api";
 import {
   asCollectorApiError,
+  DASHBOARD_HYDRATE_CHUNK_SIZE,
+  DASHBOARD_HYDRATE_MAX_IDS,
   DASHBOARD_PREFETCH_SIZE,
   subscriptionFromTeardown,
 } from "@collector/api";
@@ -53,16 +55,31 @@ export function createHostItemsPort(ctx: HostSessionCtx): ItemsPort {
       if (!ids.length || options?.signal?.aborted) {
         return;
       }
-      const items = (await transport.request("loadDashboardItems", {
-        itemIds: ids,
-        offset: 0,
-        limit: ids.length,
-      })) as ItemFile[];
-      for (const item of items) {
+      if (ids.length > DASHBOARD_HYDRATE_MAX_IDS) {
+        throw new Error(
+          `hydrate: id list length ${ids.length} exceeds max ${DASHBOARD_HYDRATE_MAX_IDS}`,
+        );
+      }
+      for (
+        let offset = 0;
+        offset < ids.length;
+        offset += DASHBOARD_HYDRATE_CHUNK_SIZE
+      ) {
         if (options?.signal?.aborted) {
           return;
         }
-        yield item;
+        const chunk = ids.slice(offset, offset + DASHBOARD_HYDRATE_CHUNK_SIZE);
+        const items = (await transport.request("loadDashboardItems", {
+          itemIds: chunk,
+          offset: 0,
+          limit: chunk.length,
+        })) as ItemFile[];
+        for (const item of items) {
+          if (options?.signal?.aborted) {
+            return;
+          }
+          yield item;
+        }
       }
     },
     fetchDashboardIndexPage: async (

@@ -19,6 +19,18 @@ import type { MediaFileMeta } from "@collector/shared";
 /** Matches `collector-service` `DASHBOARD_PREFETCH_SIZE`. */
 export const DASHBOARD_PREFETCH_SIZE = 60;
 
+/**
+ * Client hydrate → `loadDashboardItems` chunk size (#666).
+ * Aligned with core `SQL_IN_LIST_CHUNK` (200–500 band under SQLite bind limits).
+ */
+export const DASHBOARD_HYDRATE_CHUNK_SIZE = 400;
+
+/**
+ * Fail-fast ceiling for hydrate id lists (#666). Never silently truncate.
+ * Aligned with core `SQL_IN_LIST_MAX`.
+ */
+export const DASHBOARD_HYDRATE_MAX_IDS = 100_000;
+
 /** Server-side dashboard ID list sort (#339). Keys must be allowlisted by the index. */
 export type DashboardItemSortDir = "asc" | "desc";
 

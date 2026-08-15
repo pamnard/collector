@@ -81,6 +81,38 @@ export function sqlInPlaceholders(count: number): string {
 /** SQLite bind limit is 999; keep multi-row inserts well under that. */
 export const SQL_INSERT_CHUNK = 100;
 
+/**
+ * Max ids per `IN (...)` select. Stay in the 200–500 band (#666) and leave
+ * headroom under SQLITE_MAX_VARIABLE_NUMBER for extras like `vault_id`.
+ */
+export const SQL_IN_LIST_CHUNK = 400;
+
+/**
+ * Hard ceiling for id IN-lists. Fail fast with a clear error — never silently
+ * truncate required rows (#666).
+ */
+export const SQL_IN_LIST_MAX = 100_000;
+
+export function assertSqlInListSize(count: number, label: string): void {
+  if (count > SQL_IN_LIST_MAX) {
+    throw new Error(
+      `${label}: id list length ${count} exceeds max ${SQL_IN_LIST_MAX}`,
+    );
+  }
+}
+
+/** Split ids into SQL_IN_LIST_CHUNK slices; concatenation preserves order. */
+export function chunkSqlInList<T>(ids: readonly T[]): T[][] {
+  if (ids.length === 0) {
+    return [];
+  }
+  const chunks: T[][] = [];
+  for (let offset = 0; offset < ids.length; offset += SQL_IN_LIST_CHUNK) {
+    chunks.push(ids.slice(offset, offset + SQL_IN_LIST_CHUNK) as T[]);
+  }
+  return chunks;
+}
+
 export function sqlRowPlaceholders(rowCount: number, columnsPerRow: number): string {
   const oneRow = `(${sqlInPlaceholders(columnsPerRow)})`;
   return Array.from({ length: rowCount }, () => oneRow).join(", ");
