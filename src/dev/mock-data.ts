@@ -294,6 +294,8 @@ function buildItems(): ItemFile[] {
       collection_ids: [],
       folder_path: seed.folder_path,
       content_revision: 1,
+      word_count: 0,
+      character_count: 0,
       created_at: createdAt,
       updated_at: createdAt,
     };

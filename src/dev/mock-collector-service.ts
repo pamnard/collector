@@ -78,7 +78,9 @@ function createDevMockSyncPluginsPort(): SyncPluginsPort {
         collection_ids: [],
         folder_path: INBOX_FOLDER_NAME,
         content_revision: 1,
-        created_at: stamp,
+      word_count: 0,
+      character_count: 0,
+      created_at: stamp,
         updated_at: stamp,
       });
       return { importedCount: 1, itemIds: [itemId] };

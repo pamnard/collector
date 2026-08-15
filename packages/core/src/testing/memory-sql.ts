@@ -398,6 +398,8 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
           thumbnail_path: row.thumbnail_path,
           folder_path: row.folder_path,
           content_revision: row.content_revision,
+          word_count: row.word_count,
+          character_count: row.character_count,
           created_at: row.created_at,
           updated_at: row.updated_at,
         })) as T[];
@@ -622,7 +624,7 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
   private upsertItem(bindValues: unknown[]): number {
     const table = this.getTable("items");
     let upserted = 0;
-    for (let i = 0; i < bindValues.length; i += 17) {
+    for (let i = 0; i < bindValues.length; i += 19) {
       const id = String(bindValues[i]);
       const existing = table.get(id);
       table.set(id, {
@@ -643,6 +645,8 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
         updated_at: bindValues[i + 14],
         file_mtime_ms: bindValues[i + 15],
         content_revision: bindValues[i + 16],
+        word_count: bindValues[i + 17],
+        character_count: bindValues[i + 18],
       });
       upserted += 1;
     }

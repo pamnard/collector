@@ -20,6 +20,8 @@ export interface ItemRow {
   thumbnail_path: string | null;
   folder_path: string;
   content_revision: number;
+  word_count: number;
+  character_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -69,6 +71,8 @@ export function itemRowToFile(
     collection_ids: collectionIds,
     folder_path: row.folder_path ?? "",
     content_revision: row.content_revision,
+    word_count: row.word_count,
+    character_count: row.character_count,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };

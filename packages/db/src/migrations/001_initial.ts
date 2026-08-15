@@ -40,7 +40,9 @@ CREATE TABLE IF NOT EXISTS items (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   file_mtime_ms INTEGER,
-  content_revision INTEGER NOT NULL DEFAULT 1
+  content_revision INTEGER NOT NULL DEFAULT 1,
+  word_count INTEGER NOT NULL,
+  character_count INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_items_vault_created ON items(vault_id, created_at DESC);

@@ -48,7 +48,9 @@ describe("resolveItemThumbnailPathsBatch", () => {
         collection_ids: [],
         folder_path: "",
         content_revision: 1,
-        created_at: new Date().toISOString(),
+      word_count: 0,
+      character_count: 0,
+      created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       },
     });

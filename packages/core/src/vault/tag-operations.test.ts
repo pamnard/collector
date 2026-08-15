@@ -120,7 +120,9 @@ describe("tag operations", () => {
         collection_ids: [],
         folder_path: "",
         content_revision: 1,
-        created_at: nowIso(),
+      word_count: 0,
+      character_count: 0,
+      created_at: nowIso(),
         updated_at: nowIso(),
       },
     });

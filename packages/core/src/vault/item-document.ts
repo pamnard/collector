@@ -13,6 +13,7 @@ import {
   serializeDocumentMarkdown,
 } from "./frontmatter.js";
 import { basename, normalizeRelativePath } from "./paths.js";
+import { countTextStats } from "./text-stats.js";
 
 export interface ParseItemDocumentContext {
   itemId: string;
@@ -98,6 +99,7 @@ export function parseItemDocument(
   }
 
   const title = known.title ?? titleFromItemPath(itemId);
+  const textStats = countTextStats(parsed.body);
 
   const item = itemFileSchema.parse({
     id: itemId,
@@ -115,6 +117,8 @@ export function parseItemDocument(
     collection_ids: [],
     folder_path: folderPathFromItemPath(itemId),
     content_revision: known.content_revision ?? 1,
+    word_count: textStats.wordCount,
+    character_count: textStats.characterCount,
     created_at,
     updated_at,
   });

@@ -42,4 +42,6 @@ export const ITEMS_COLUMNS = [
   "updated_at",
   "file_mtime_ms",
   "content_revision",
+  "word_count",
+  "character_count",
 ] as const;

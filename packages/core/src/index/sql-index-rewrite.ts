@@ -35,9 +35,11 @@ interface ItemRewriteRow {
   updated_at: string;
   file_mtime_ms: number | null;
   content_revision: number;
+  word_count: number;
+  character_count: number;
 }
 
-const ITEM_INSERT_COLUMNS = 18;
+const ITEM_INSERT_COLUMNS = 20;
 
 function itemInsertBinds(
   row: ItemRewriteRow,
@@ -63,6 +65,8 @@ function itemInsertBinds(
     row.updated_at,
     row.file_mtime_ms,
     row.content_revision,
+    row.word_count,
+    row.character_count,
   ];
 }
 
@@ -96,7 +100,8 @@ export async function rewriteOneItemId(
     `SELECT
        id, vault_id, title, description, url, content_type, source_type,
        source_id, metadata_json, properties_json, thumbnail_path, has_content_file, sort_order,
-       folder_path, created_at, updated_at, file_mtime_ms, content_revision
+       folder_path, created_at, updated_at, file_mtime_ms, content_revision,
+       word_count, character_count
      FROM items
      WHERE id = ?`,
     [oldId],
@@ -112,8 +117,9 @@ export async function rewriteOneItemId(
     `INSERT INTO items (
       id, vault_id, title, description, url, content_type, source_type, source_id,
       metadata_json, properties_json, thumbnail_path, has_content_file, sort_order,
-      folder_path, created_at, updated_at, file_mtime_ms, content_revision
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      folder_path, created_at, updated_at, file_mtime_ms, content_revision,
+      word_count, character_count
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     itemInsertBinds(row, newId, folderPath),
   );
 
@@ -280,7 +286,8 @@ async function rewriteItemIdsChunk(
     `SELECT
        id, vault_id, title, description, url, content_type, source_type,
        source_id, metadata_json, properties_json, thumbnail_path, has_content_file, sort_order,
-       folder_path, created_at, updated_at, file_mtime_ms, content_revision
+       folder_path, created_at, updated_at, file_mtime_ms, content_revision,
+       word_count, character_count
      FROM items
      WHERE id IN (${sqlInPlaceholders(oldIds.length)})`,
     oldIds,
@@ -303,7 +310,8 @@ async function rewriteItemIdsChunk(
       `INSERT INTO items (
         id, vault_id, title, description, url, content_type, source_type, source_id,
         metadata_json, properties_json, thumbnail_path, has_content_file, sort_order,
-        folder_path, created_at, updated_at, file_mtime_ms, content_revision
+        folder_path, created_at, updated_at, file_mtime_ms, content_revision,
+        word_count, character_count
       ) VALUES ${sqlRowPlaceholders(chunk.length, ITEM_INSERT_COLUMNS)}`,
       binds,
     );

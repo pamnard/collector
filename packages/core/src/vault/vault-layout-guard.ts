@@ -265,6 +265,8 @@ export async function remediateVaultLayout(
       collection_ids: [],
       folder_path: INBOX_FOLDER_NAME,
       content_revision: 1,
+      word_count: 0,
+      character_count: 0,
       created_at: now,
       updated_at: now,
     };

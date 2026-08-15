@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
+  ALargeSmall,
   Braces,
   Calendar,
   FileText,
@@ -9,6 +10,7 @@ import {
   Tags,
   ToggleLeft,
   Type,
+  WholeWord,
 } from "lucide-react";
 import { parseDocumentMarkdown } from "@collector/core";
 import type { ItemFile } from "@collector/shared";
@@ -44,6 +46,9 @@ const KIND_ICON: Record<PropertyKind, typeof Type> = {
 };
 
 const METADATA_LOAD_ERROR_ID = "item-detail-metadata-load-error";
+
+const METADATA_DL_CLASS =
+  "grid grid-cols-1 gap-x-8 gap-y-2.5 text-sm @[280px]:grid-cols-[minmax(0,max-content)_minmax(0,1fr)]";
 
 /** Frontmatter entries in document order (no re-sort). */
 export function frontmatterEntriesFromRaw(
@@ -105,6 +110,28 @@ function PropertyValueContent({
   return text;
 }
 
+function MetadataRow({
+  label,
+  icon: Icon,
+  children,
+}: {
+  label: string;
+  icon: typeof Type;
+  children: ReactNode;
+}) {
+  return (
+    <div className="contents">
+      <dt className="flex min-w-0 items-start gap-1.5 pt-0.5 text-neutral-500 dark:text-neutral-400">
+        <Icon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+        <span title={label}>{label}</span>
+      </dt>
+      <dd className="min-w-0 break-words whitespace-pre-wrap @[280px]:pt-0.5">
+        {children}
+      </dd>
+    </div>
+  );
+}
+
 export function ItemDetailMetadata({ item }: ItemDetailMetadataProps) {
   const alerts = useAlerts();
   useDismissAlertsOnUnmount([METADATA_LOAD_ERROR_ID]);
@@ -151,32 +178,28 @@ export function ItemDetailMetadata({ item }: ItemDetailMetadataProps) {
       {entries === null && (
         <p className="text-sm text-neutral-500 dark:text-neutral-400">…</p>
       )}
-
       {entries !== null && entries.length === 0 && (
         <p className="text-sm text-neutral-500 dark:text-neutral-400">
           Нет свойств во frontmatter.
         </p>
       )}
-
-      {entries !== null && entries.length > 0 && (
-        <dl className="grid grid-cols-1 gap-x-8 gap-y-2.5 text-sm @[280px]:grid-cols-[minmax(0,max-content)_minmax(0,1fr)]">
-          {entries.map(([key, value]) => {
+      <dl className={METADATA_DL_CLASS}>
+        {entries !== null &&
+          entries.map(([key, value]) => {
             const kind = inferPropertyKind(key, value);
-            const Icon = KIND_ICON[kind];
             return (
-              <div key={key} className="contents">
-                <dt className="flex min-w-0 items-start gap-1.5 pt-0.5 text-neutral-500 dark:text-neutral-400">
-                  <Icon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                  <span title={key}>{key}</span>
-                </dt>
-                <dd className="min-w-0 break-words whitespace-pre-wrap @[280px]:pt-0.5">
-                  <PropertyValueContent propertyKey={key} value={value} />
-                </dd>
-              </div>
+              <MetadataRow key={key} label={key} icon={KIND_ICON[kind]}>
+                <PropertyValueContent propertyKey={key} value={value} />
+              </MetadataRow>
             );
           })}
-        </dl>
-      )}
+        <MetadataRow label="Слова" icon={WholeWord}>
+          {item.word_count}
+        </MetadataRow>
+        <MetadataRow label="Символы" icon={ALargeSmall}>
+          {item.character_count}
+        </MetadataRow>
+      </dl>
     </ItemDetailAsideSection>
   );
 }

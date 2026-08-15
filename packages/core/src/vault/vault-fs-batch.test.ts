@@ -242,7 +242,9 @@ describe("vault-fs-batch", () => {
         collection_ids: [],
         folder_path: "",
         content_revision: 1,
-        created_at: timestamp,
+      word_count: 0,
+      character_count: 0,
+      created_at: timestamp,
         updated_at: timestamp,
       });
     }
@@ -385,7 +387,9 @@ describe("vault-fs-batch perf guard", () => {
         collection_ids: [],
         folder_path: "",
         content_revision: 1,
-        created_at: timestamp,
+      word_count: 0,
+      character_count: 0,
+      created_at: timestamp,
         updated_at: timestamp,
       });
     }
@@ -423,7 +427,9 @@ describe("vault-fs-batch perf guard", () => {
         collection_ids: [],
         folder_path: "",
         content_revision: 1,
-        created_at: timestamp,
+      word_count: 0,
+      character_count: 0,
+      created_at: timestamp,
         updated_at: timestamp,
       });
     }

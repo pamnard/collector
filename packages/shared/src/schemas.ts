@@ -39,6 +39,9 @@ export const itemFileSchema = z.object({
   collection_ids: z.array(z.string().uuid()).default([]),
   folder_path: z.string().default(""),
   content_revision: z.number().int().default(1),
+  /** Derived index fields (not frontmatter); queryable for sort/top-N. */
+  word_count: z.number().int().nonnegative().default(0),
+  character_count: z.number().int().nonnegative().default(0),
   created_at: z.string().datetime(),
   updated_at: z.string().datetime(),
 });

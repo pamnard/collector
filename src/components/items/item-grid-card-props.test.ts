@@ -21,7 +21,9 @@ function item(overrides: Partial<ItemFile> = {}): ItemFile {
     collection_ids: [],
     folder_path: "items",
     content_revision: 1,
-    created_at: "2024-01-01T00:00:00.000Z",
+      word_count: 0,
+      character_count: 0,
+      created_at: "2024-01-01T00:00:00.000Z",
     updated_at: "2024-01-02T00:00:00.000Z",
     ...overrides,
   };
