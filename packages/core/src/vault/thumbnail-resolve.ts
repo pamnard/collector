@@ -3,11 +3,13 @@
  * host thumbnail resolve / cover paths).
  *
  * Cover membership is on disk (#276): `media/<noteUuid>/cover.webp`, then
- * first image in the gallery folder. Frontmatter paths are not the SoT.
+ * gallery image. Frontmatter paths are not the SoT.
  *
  * Issue #255: domain host must not stub this to null.
  * Issue #544: progressive emit + bounded parallel resolve.
  * Issue #711: gallery fallback without O(g) exists probes.
+ *   “First” gallery image = lexicographic min of image entry names
+ *   (not readdir order, not `listMediaFiles` created_at/mtime order).
  */
 
 import type { FileSystemAdapter } from "../adapters/types.js";
@@ -42,6 +44,7 @@ async function resolveOneThumbnail(
     return cover;
   }
 
+  // Gallery “first” = lex-min image entry name (#711); see findFirstGalleryImagePath.
   const galleryImage = await findFirstGalleryImagePath(fs, vaultPath, item.id);
   if (galleryImage !== null) {
     return galleryImage;

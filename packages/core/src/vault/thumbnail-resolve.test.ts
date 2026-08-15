@@ -57,6 +57,39 @@ describe("resolveItemThumbnailPathsBatch", () => {
     return { ctx, path, vaultId: meta.id, itemId };
   }
 
+  /** FS that lists a fixed media dir and forbids per-candidate exists/stat. */
+  function galleryListingFs(options: {
+    cover: string;
+    mediaRoot: string;
+    mediaNames: string[];
+    existsPaths?: string[];
+  }): FileSystemAdapter {
+    const base = new NodeFileSystemAdapter();
+    return {
+      ...base,
+      async exists(path: string): Promise<boolean> {
+        options.existsPaths?.push(path);
+        if (path === options.cover) {
+          return false;
+        }
+        if (path === options.mediaRoot) {
+          return true;
+        }
+        throw new Error(`unexpected exists probe: ${path}`);
+      },
+      async readDirEntries(path: string) {
+        expect(path).toBe(options.mediaRoot);
+        return options.mediaNames.map((name) => ({
+          name,
+          isDirectory: false,
+        }));
+      },
+      async stat(): Promise<{ mtimeMs: number | null }> {
+        throw new Error("unexpected stat probe");
+      },
+    };
+  }
+
   it("returns cover path when cover.webp exists on disk", async () => {
     const { ctx, path, vaultId, itemId } = await seedItem("Covered");
     const coverBytes = new TextEncoder().encode("fake-webp");
@@ -138,42 +171,54 @@ describe("resolveItemThumbnailPathsBatch", () => {
     const cover = itemCoverPath(vaultPath, itemId);
     const imageName = "zzzzzzzz-zzzz-4zzz-8zzz-zzzzzzzzzzzz-shot.png";
     const imagePath = joinSegments(mediaRoot, imageName);
-
-    const mediaNames = [
-      ...Array.from({ length: 20 }, (_, i) => `clip-${i}.mp4`),
-      ...Array.from({ length: 20 }, (_, i) => `note-${i}.pdf`),
-      imageName,
-    ];
-
     const existsPaths: string[] = [];
-    const base = new NodeFileSystemAdapter();
-    const countingFs: FileSystemAdapter = {
-      ...base,
-      async exists(path: string): Promise<boolean> {
-        existsPaths.push(path);
-        if (path === cover) {
-          return false;
-        }
-        if (path === mediaRoot) {
-          return true;
-        }
-        throw new Error(`unexpected exists probe: ${path}`);
-      },
-      async readDirEntries(path: string) {
-        expect(path).toBe(mediaRoot);
-        return mediaNames.map((name) => ({ name, isDirectory: false }));
-      },
-      async stat(path: string): Promise<{ mtimeMs: number | null }> {
-        throw new Error(`unexpected stat probe: ${path}`);
-      },
-    };
 
-    const rows = await resolveItemThumbnailPathsBatch(countingFs, vaultPath, [
-      { id: itemId, thumbnail: null },
-    ]);
+    const rows = await resolveItemThumbnailPathsBatch(
+      galleryListingFs({
+        cover,
+        mediaRoot,
+        existsPaths,
+        mediaNames: [
+          ...Array.from({ length: 20 }, (_, i) => `clip-${i}.mp4`),
+          ...Array.from({ length: 20 }, (_, i) => `note-${i}.pdf`),
+          imageName,
+        ],
+      }),
+      vaultPath,
+      [{ id: itemId, thumbnail: null }],
+    );
 
     expect(rows).toEqual([{ id: itemId, path: imagePath }]);
     expect(existsPaths).toEqual([cover, mediaRoot]);
+  });
+
+  it("gallery fallback picks lexicographic min image name, not listing or mtime order (#711)", async () => {
+    const itemId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.md";
+    const vaultPath = "/vault";
+    const mediaRoot = itemMediaRoot(vaultPath, itemId);
+    const cover = itemCoverPath(vaultPath, itemId);
+    // Listing order puts zebra first; lex-min among images is apple.
+    const expectedName = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa-apple.webp";
+
+    const rows = await resolveItemThumbnailPathsBatch(
+      galleryListingFs({
+        cover,
+        mediaRoot,
+        mediaNames: [
+          "zzzzzzzz-zzzz-4zzz-8zzz-zzzzzzzzzzzz-zebra.png",
+          "clip.mp4",
+          "mmmmmmmm-mmmm-4mmm-8mmm-mmmmmmmmmmmm-mango.jpg",
+          expectedName,
+          "note.pdf",
+        ],
+      }),
+      vaultPath,
+      [{ id: itemId, thumbnail: null }],
+    );
+
+    expect(rows).toEqual([
+      { id: itemId, path: joinSegments(mediaRoot, expectedName) },
+    ]);
   });
 });
 

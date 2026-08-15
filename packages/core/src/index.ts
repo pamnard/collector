@@ -207,6 +207,7 @@ export {
 export type { MediaWithPath } from "./vault/media-operations.js";
 export {
   bareMediaFileId,
+  findFirstGalleryImagePath,
   listMediaFiles,
   mediaFilePath,
 } from "./vault/media-io.js";
