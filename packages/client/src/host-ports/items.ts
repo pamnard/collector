@@ -31,7 +31,7 @@ function createItemsQueryMethods(
   transport: HostWireClient,
 ): Pick<ItemsPort, "searchItems" | "queryIndex"> {
   return {
-    searchItems: async (
+    searchItems: (
       query: string,
       filter: NavFilter,
       page?: { limit: number; offset: number },
@@ -41,7 +41,7 @@ function createItemsQueryMethods(
         filter,
         ...(page === undefined ? {} : { page }),
       }) as Promise<SearchItemsResult>,
-    queryIndex: async (
+    queryIndex: (
       filter: NavFilter,
       query: string | undefined,
       page: { limit: number; offset: number },
@@ -73,7 +73,7 @@ function createItemsDashboardMethods(
 > {
   return {
     hydrate: (ids, options) => hydrateHostItems(transport, ids, options),
-    fetchDashboardIndexPage: async (
+    fetchDashboardIndexPage: (
       filter: NavFilter,
       query: string | undefined,
       page: { limit: number; offset: number },
@@ -85,7 +85,7 @@ function createItemsDashboardMethods(
         page,
         sort,
       }) as Promise<DashboardIndexPage>,
-    listDashboardItemIds: async (
+    listDashboardItemIds: (
       filter: NavFilter,
       query?: string,
       sort?: DashboardItemSort,
@@ -156,7 +156,7 @@ function createItemsDashboardMethods(
         onItem(item);
       }
     },
-    loadDashboardItems: async (
+    loadDashboardItems: (
       itemIds: string[],
       offset: number,
       limit?: number,
@@ -182,27 +182,27 @@ function createItemsReadMethods(
   | "getItemSource"
 > {
   return {
-    getItemById: async (itemId: string): Promise<GetItemResult> =>
+    getItemById: (itemId: string): Promise<GetItemResult> =>
       transport.request("getItemById", { itemId }) as Promise<GetItemResult>,
-    getAdjacentItems: async (itemId: string): Promise<AdjacentItemsResult> =>
+    getAdjacentItems: (itemId: string): Promise<AdjacentItemsResult> =>
       transport.request("getAdjacentItems", {
         itemId,
       }) as Promise<AdjacentItemsResult>,
-    findSimilarItems: async (itemId: string, limit: number) =>
+    findSimilarItems: (itemId: string, limit: number) =>
       transport.request("findSimilarItems", {
         itemId,
         limit,
       }) as ReturnType<ItemsPort["findSimilarItems"]>,
-    resolveContentTextLinks: async (itemId: string, body: string) =>
+    resolveContentTextLinks: (itemId: string, body: string) =>
       transport.request("resolveContentTextLinks", {
         itemId,
         body,
       }) as ReturnType<ItemsPort["resolveContentTextLinks"]>,
-    listItemBacklinks: async (itemId: string) =>
+    listItemBacklinks: (itemId: string) =>
       transport.request("listItemBacklinks", {
         itemId,
       }) as ReturnType<ItemsPort["listItemBacklinks"]>,
-    getItemSource: async (itemId: string): Promise<string> =>
+    getItemSource: (itemId: string): Promise<string> =>
       transport.request("getItemSource", { itemId }) as Promise<string>,
   };
 }
@@ -219,7 +219,7 @@ function createItemsWriteMethods(
   | "importDroppedFiles"
 > {
   return {
-    updateItemSource: async (
+    updateItemSource: (
       itemId: string,
       rawMarkdown: string,
     ): Promise<ItemFile> =>
@@ -227,12 +227,12 @@ function createItemsWriteMethods(
         itemId,
         rawMarkdown,
       }) as Promise<ItemFile>,
-    createItem: async (input: CreateItemInput): Promise<ItemFile> =>
+    createItem: (input: CreateItemInput): Promise<ItemFile> =>
       transport.request(
         "createItem",
         input as unknown as Record<string, unknown>,
       ) as Promise<ItemFile>,
-    updateItem: async (
+    updateItem: (
       itemId: string,
       input: UpdateItemInput,
     ): Promise<ItemFile> =>
@@ -243,7 +243,7 @@ function createItemsWriteMethods(
     deleteItem: async (itemId: string): Promise<void> => {
       await transport.request("deleteItem", { itemId });
     },
-    importDroppedFiles: async (
+    importDroppedFiles: (
       input: ImportDroppedFilesInput,
     ): Promise<ImportDroppedFilesResult> =>
       transport.request("importDroppedFiles", {

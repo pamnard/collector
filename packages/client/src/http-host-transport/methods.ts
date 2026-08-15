@@ -4,27 +4,38 @@
  */
 
 import type { CollectorApiError } from "@collector/api";
-import type { ServiceHostHealthResult } from "@collector/service/wire";
+import type {
+  HostWireRequestOptions,
+  ServiceHostHealthResult,
+} from "@collector/service/wire";
 import { hostWireError } from "@collector/service/wire";
 import { nextId, withTimeout } from "./shared.js";
 import type { CollectorHostTransport, HttpMethodContext } from "./types.js";
 
+function runTimed<T>(
+  ctx: HttpMethodContext,
+  label: string,
+  requestOptions: HostWireRequestOptions | undefined,
+  run: () => Promise<T>,
+): Promise<T> {
+  ctx.assertOpen();
+  const timeoutMs = requestOptions?.timeoutMs ?? ctx.defaultRequestTimeoutMs;
+  return withTimeout(run(), timeoutMs, label, requestOptions?.signal);
+}
+
 function buildRpcRequestMethod(
   ctx: HttpMethodContext,
 ): CollectorHostTransport["request"] {
-  const { baseUrl, bearer, defaultRequestTimeoutMs, assertOpen } = ctx;
-  return async (method, params, requestOptions) => {
-    assertOpen();
-    const id = nextId();
-    const timeoutMs = requestOptions?.timeoutMs ?? defaultRequestTimeoutMs;
-    const run = (async () => {
+  const { baseUrl, bearer } = ctx;
+  return async (method, params, requestOptions) =>
+    runTimed(ctx, `RPC ${method}`, requestOptions, async () => {
       const response = await fetch(`${baseUrl}/api/rpc`, {
         method: "POST",
         headers: {
           Authorization: bearer,
           "content-type": "application/json",
         },
-        body: JSON.stringify({ id, method, params }),
+        body: JSON.stringify({ id: nextId(), method, params }),
         signal: requestOptions?.signal,
       });
       if (response.status === 401) {
@@ -50,19 +61,15 @@ function buildRpcRequestMethod(
         throw hostWireError(body.error);
       }
       return body.result;
-    })();
-    return withTimeout(run, timeoutMs, `RPC ${method}`, requestOptions?.signal);
-  };
+    });
 }
 
 function buildPingMethod(
   ctx: HttpMethodContext,
 ): CollectorHostTransport["ping"] {
-  const { baseUrl, defaultRequestTimeoutMs, assertOpen } = ctx;
-  return async (requestOptions) => {
-    assertOpen();
-    const timeoutMs = requestOptions?.timeoutMs ?? defaultRequestTimeoutMs;
-    const run = (async () => {
+  const { baseUrl } = ctx;
+  return async (requestOptions) =>
+    runTimed(ctx, "ping", requestOptions, async () => {
       const response = await fetch(`${baseUrl}/ping`, {
         signal: requestOptions?.signal,
       });
@@ -82,19 +89,15 @@ function buildPingMethod(
         });
       }
       return { ok: true as const, pong: true as const };
-    })();
-    return withTimeout(run, timeoutMs, "ping", requestOptions?.signal);
-  };
+    });
 }
 
 function buildHealthMethod(
   ctx: HttpMethodContext,
 ): CollectorHostTransport["health"] {
-  const { baseUrl, bearer, defaultRequestTimeoutMs, assertOpen } = ctx;
-  return async (requestOptions) => {
-    assertOpen();
-    const timeoutMs = requestOptions?.timeoutMs ?? defaultRequestTimeoutMs;
-    const run = (async () => {
+  const { baseUrl, bearer } = ctx;
+  return async (requestOptions) =>
+    runTimed(ctx, "health", requestOptions, async () => {
       const response = await fetch(`${baseUrl}/health`, {
         headers: { Authorization: bearer },
         signal: requestOptions?.signal,
@@ -114,9 +117,7 @@ function buildHealthMethod(
         });
       }
       return (await response.json()) as ServiceHostHealthResult;
-    })();
-    return withTimeout(run, timeoutMs, "health", requestOptions?.signal);
-  };
+    });
 }
 
 export function buildHttpMethods(args: {
