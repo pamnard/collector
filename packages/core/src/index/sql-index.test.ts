@@ -23,7 +23,7 @@ import {
   getItemEmbedding,
   putItemEmbedding,
 } from "../embeddings/embedding-store.js";
-import { SQL_INSERT_CHUNK } from "./sql-index-helpers.js";
+import { SQL_INSERT_CHUNK, sqlRowPlaceholders } from "./sql-index-helpers.js";
 
 describe("listItemIdsByNavFilter", () => {
   let dataDir = "";
@@ -1598,12 +1598,8 @@ describe("rewriteItemIds", () => {
     const expectedSourceInserts = Math.ceil(sourceCount / SQL_INSERT_CHUNK);
     expect(mediaInsertSql).toHaveLength(expectedMediaInserts);
     expect(sourceInsertSql).toHaveLength(expectedSourceInserts);
-    expect(mediaInsertSql[0]).toContain(
-      "(?, ?, ?, ?, ?), (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)",
-    );
-    expect(sourceInsertSql[0]).toContain(
-      "(?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?)",
-    );
+    expect(mediaInsertSql[0]).toContain(sqlRowPlaceholders(mediaCount, 5));
+    expect(sourceInsertSql[0]).toContain(sqlRowPlaceholders(sourceCount, 6));
 
     const mediaRows = await db.select<{ id: string; item_id: string; filename: string }>(
       `SELECT id, item_id, filename FROM media WHERE item_id = ? ORDER BY filename`,
