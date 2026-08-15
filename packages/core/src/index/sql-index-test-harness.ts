@@ -20,12 +20,7 @@ export type SqlIndexTestEnv = {
   vault: SqlIndexTestVault;
 };
 
-/**
- * Shared disposable-index suite fixture: temp dir + migrated BetterSqlite + vault.
- */
-export function createSqlIndexTestSuite(): {
-  fs: NodeFileSystemAdapter;
-  cleanup: () => Promise<void>;
+export type SqlIndexTestSuite = {
   registerCleanup: () => void;
   openVaultIndex: (
     tempPrefix: string,
@@ -35,7 +30,10 @@ export function createSqlIndexTestSuite(): {
     dataDir: string;
     fs: NodeFileSystemAdapter;
   }>;
-} {
+};
+
+/** Shared disposable-index suite: temp dir + migrated BetterSqlite + vault. */
+export function createSqlIndexTestSuite(): SqlIndexTestSuite {
   let dataDir = "";
   let db: BetterSqliteMigrator | null = null;
   const fs = new NodeFileSystemAdapter();
@@ -49,34 +47,31 @@ export function createSqlIndexTestSuite(): {
     }
   }
 
-  function registerCleanup(): void {
-    afterEach(async () => {
-      await cleanup();
-    });
-  }
+  return {
+    registerCleanup() {
+      afterEach(async () => {
+        await cleanup();
+      });
+    },
 
-  async function openVaultIndex(
-    tempPrefix: string,
-    dbFileName = "collector.db",
-  ): Promise<SqlIndexTestEnv> {
-    dataDir = await mkdtemp(join(tmpdir(), tempPrefix));
-    db = BetterSqliteMigrator.open(join(dataDir, dbFileName));
-    await runMigrations(db);
-    const index = new SqlVaultIndexStore(db);
-    const ctx = { fs, index };
-    const vault = await createVault(ctx, dataDir, { name: "Vault" });
-    return { fs, dataDir, db, index, ctx, vault };
-  }
+    async openVaultIndex(
+      tempPrefix: string,
+      dbFileName = "collector.db",
+    ): Promise<SqlIndexTestEnv> {
+      dataDir = await mkdtemp(join(tmpdir(), tempPrefix));
+      db = BetterSqliteMigrator.open(join(dataDir, dbFileName));
+      await runMigrations(db);
+      const index = new SqlVaultIndexStore(db);
+      const ctx = { fs, index };
+      const vault = await createVault(ctx, dataDir, { name: "Vault" });
+      return { fs, dataDir, db, index, ctx, vault };
+    },
 
-  async function openMemoryDataDir(tempPrefix: string): Promise<{
-    dataDir: string;
-    fs: NodeFileSystemAdapter;
-  }> {
-    dataDir = await mkdtemp(join(tmpdir(), tempPrefix));
-    return { dataDir, fs };
-  }
-
-  return { fs, cleanup, registerCleanup, openVaultIndex, openMemoryDataDir };
+    async openMemoryDataDir(tempPrefix: string) {
+      dataDir = await mkdtemp(join(tmpdir(), tempPrefix));
+      return { dataDir, fs };
+    },
+  };
 }
 
 /** Minimal note ItemFile for index tests; callers override as needed. */

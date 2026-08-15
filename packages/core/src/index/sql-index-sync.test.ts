@@ -6,7 +6,10 @@ import {
 import { createId } from "../util/ids.js";
 import { upsertItem } from "../vault/item-operations.js";
 import { createTag } from "../vault/tag-operations.js";
-import { createSqlIndexTestSuite } from "./sql-index-test-harness.js";
+import {
+  createSqlIndexTestSuite,
+  noteItemFields,
+} from "./sql-index-test-harness.js";
 
 describe("upsertItemMetadata / upsertItemContent", () => {
   const suite = createSqlIndexTestSuite();
@@ -18,24 +21,12 @@ describe("upsertItemMetadata / upsertItemContent", () => {
 
     const itemId = createId();
     const timestamp = new Date().toISOString();
-    const item = {
-      id: itemId,
-      vault_id: meta.id,
+    const item = noteItemFields(meta.id, itemId, {
       title: "MetaTitle",
       description: "MetaDesc",
-      content_type: "note" as const,
-      source_type: "manual" as const,
-      metadata: {},
-        properties: {},
-      tag_ids: [] as string[],
-      collection_ids: [] as string[],
-      folder_path: "",
-      content_revision: 1,
-      word_count: 0,
-      character_count: 0,
       created_at: timestamp,
       updated_at: timestamp,
-    };
+    });
 
     await index.upsertItemMetadata({ item, fileMtimeMs: 42 }, meta.id);
 
@@ -80,24 +71,13 @@ describe("upsertItemMetadata / upsertItemContent", () => {
     const itemId = `${createId()}.md`;
     const timestamp = new Date().toISOString();
     await upsertItem(ctx, path, meta.id, {
-      item: {
-        id: itemId,
-        vault_id: meta.id,
+      item: noteItemFields(meta.id, itemId, {
         title: "Body free title",
         description: "plain desc",
-        content_type: "note",
-        source_type: "manual",
-        metadata: {},
         properties: { foreign_key: fmToken },
-        tag_ids: [],
-        collection_ids: [],
-        folder_path: "",
-        content_revision: 1,
-      word_count: 0,
-      character_count: 0,
-      created_at: timestamp,
+        created_at: timestamp,
         updated_at: timestamp,
-      },
+      }),
       content: "body without the secret token",
     });
 
@@ -118,24 +98,12 @@ describe("upsertItemMetadata / upsertItemContent", () => {
     const { meta } = vault;
     const itemId = createId();
     const timestamp = new Date().toISOString();
-    const item = {
-      id: itemId,
-      vault_id: meta.id,
+    const item = noteItemFields(meta.id, itemId, {
       title: "MetaTitle",
       description: "MetaDesc",
-      content_type: "note" as const,
-      source_type: "manual" as const,
-      metadata: {},
-      properties: {},
-      tag_ids: [] as string[],
-      collection_ids: [] as string[],
-      folder_path: "",
-      content_revision: 1,
-      word_count: 0,
-      character_count: 0,
       created_at: timestamp,
       updated_at: timestamp,
-    };
+    });
     await index.upsertItemMetadata({ item, fileMtimeMs: 42 }, meta.id);
     const fmOnlyDoc = [
       "---",
@@ -164,24 +132,12 @@ describe("upsertItemMetadata / upsertItemContent", () => {
     const { meta } = vault;
     const itemId = createId();
     const timestamp = new Date().toISOString();
-    const item = {
-      id: itemId,
-      vault_id: meta.id,
+    const item = noteItemFields(meta.id, itemId, {
       title: "VisibleTitle",
       description: "VisibleDesc",
-      content_type: "note" as const,
-      source_type: "manual" as const,
-      metadata: {},
-        properties: {},
-      tag_ids: [] as string[],
-      collection_ids: [] as string[],
-      folder_path: "",
-      content_revision: 1,
-      word_count: 0,
-      character_count: 0,
       created_at: timestamp,
       updated_at: timestamp,
-    };
+    });
 
     await index.upsertItemMetadata({ item, fileMtimeMs: 1 }, meta.id);
 
@@ -217,24 +173,11 @@ describe("upsertItemMetadata / upsertItemContent", () => {
     const { meta } = vault;
     const timestamp = new Date().toISOString();
     const records = Array.from({ length: 32 }, () => ({
-      item: {
-        id: createId(),
-        vault_id: meta.id,
+      item: noteItemFields(meta.id, createId(), {
         title: "Batch item",
-        description: "",
-        content_type: "note" as const,
-        source_type: "manual" as const,
-        metadata: {},
-        properties: {},
-        tag_ids: [],
-        collection_ids: [],
-        folder_path: "",
-        content_revision: 1,
-      word_count: 0,
-      character_count: 0,
-      created_at: timestamp,
+        created_at: timestamp,
         updated_at: timestamp,
-      },
+      }),
       fileMtimeMs: 1,
     }));
 
@@ -275,24 +218,13 @@ describe("upsertItemMetadata / upsertItemContent", () => {
 
     await index.upsertItemMetadata(
       {
-        item: {
-          id: itemId,
-          vault_id: meta.id,
+        item: noteItemFields(meta.id, itemId, {
           title: "Batch",
-          description: "",
-          content_type: "note",
-          source_type: "manual",
-          metadata: {},
-        properties: {},
           tag_ids: tags.map((tag) => tag.id),
           collection_ids: collectionIds,
-          folder_path: "",
-          content_revision: 1,
-      word_count: 0,
-      character_count: 0,
-      created_at: timestamp,
+          created_at: timestamp,
           updated_at: timestamp,
-        },
+        }),
         fileMtimeMs: 1,
       },
       meta.id,
@@ -321,24 +253,13 @@ describe("upsertItemMetadata / upsertItemContent", () => {
     executeCalls = 0;
     await index.upsertItemMetadata(
       {
-        item: {
-          id: itemId,
-          vault_id: meta.id,
+        item: noteItemFields(meta.id, itemId, {
           title: "Batch",
-          description: "",
-          content_type: "note",
-          source_type: "manual",
-          metadata: {},
-        properties: {},
           tag_ids: [tags[0]!.id],
           collection_ids: [],
-          folder_path: "",
-          content_revision: 1,
-      word_count: 0,
-      character_count: 0,
-      created_at: timestamp,
+          created_at: timestamp,
           updated_at: timestamp,
-        },
+        }),
         fileMtimeMs: 1,
       },
       meta.id,
@@ -368,28 +289,13 @@ describe("upsertItemMetadata / upsertItemContent", () => {
     const firstCreated = "2020-01-01T00:00:00.000Z";
     const secondCreated = "2024-06-15T12:00:00.000Z";
     const updatedAt = "2024-06-15T12:00:00.000Z";
-    const base = {
-      id: itemId,
-      vault_id: meta.id,
+    const base = noteItemFields(meta.id, itemId, {
       title: "Note",
-      description: "",
-      content_type: "note" as const,
-      source_type: "manual" as const,
-      metadata: {},
-        properties: {},
-      tag_ids: [] as string[],
-      collection_ids: [] as string[],
-      folder_path: "",
-      content_revision: 1,
-      word_count: 0,
-      character_count: 0,
       updated_at: updatedAt,
-    };
+      created_at: firstCreated,
+    });
 
-    await index.upsertItemMetadata(
-      { item: { ...base, created_at: firstCreated }, fileMtimeMs: 1 },
-      meta.id,
-    );
+    await index.upsertItemMetadata({ item: base, fileMtimeMs: 1 }, meta.id);
     await index.upsertItemMetadata(
       { item: { ...base, created_at: secondCreated }, fileMtimeMs: 1 },
       meta.id,

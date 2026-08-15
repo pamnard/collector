@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { createId } from "../util/ids.js";
 import { upsertItem } from "../vault/item-operations.js";
 import { createTag } from "../vault/tag-operations.js";
-import { createSqlIndexTestSuite } from "./sql-index-test-harness.js";
+import {
+  createSqlIndexTestSuite,
+  noteItemFields,
+} from "./sql-index-test-harness.js";
 
 describe("listItemPresentationStampsByIds", () => {
   const suite = createSqlIndexTestSuite();
@@ -16,47 +19,23 @@ describe("listItemPresentationStampsByIds", () => {
     const secondId = `Inbox/${createId()}.md`;
 
     await upsertItem(ctx, path, meta.id, {
-      item: {
-        id: firstId,
-        vault_id: meta.id,
+      item: noteItemFields(meta.id, firstId, {
         title: "First",
-        description: "",
         url: null,
-        content_type: "note",
-        source_type: "manual",
-        metadata: {},
-        properties: {},
-        tag_ids: [],
-        collection_ids: [],
         folder_path: "Inbox",
-        content_revision: 1,
-      word_count: 0,
-      character_count: 0,
-      created_at: timestamp,
+        created_at: timestamp,
         updated_at: timestamp,
-      },
+      }),
       content: "one",
     });
     await upsertItem(ctx, path, meta.id, {
-      item: {
-        id: secondId,
-        vault_id: meta.id,
+      item: noteItemFields(meta.id, secondId, {
         title: "Second",
-        description: "",
         url: null,
-        content_type: "note",
-        source_type: "manual",
-        metadata: {},
-        properties: {},
-        tag_ids: [],
-        collection_ids: [],
         folder_path: "Inbox",
-        content_revision: 1,
-      word_count: 0,
-      character_count: 0,
-      created_at: timestamp,
+        created_at: timestamp,
         updated_at: timestamp,
-      },
+      }),
       content: "two",
     });
 
@@ -91,47 +70,28 @@ describe("listItemFilesByIds", () => {
     const timestamp = new Date().toISOString();
 
     await upsertItem(ctx, path, meta.id, {
-      item: {
-        id: firstId,
-        vault_id: meta.id,
+      item: noteItemFields(meta.id, firstId, {
         title: "First",
         description: "desc",
         url: "https://example.com/a",
         content_type: "bookmark",
-        source_type: "manual",
         metadata: { k: 1 },
-        properties: {},
         thumbnail: "media/cover.webp",
         tag_ids: [tag.id],
         collection_ids: [collectionId],
         folder_path: "work",
         content_revision: 2,
-      word_count: 0,
-      character_count: 0,
-      created_at: timestamp,
+        created_at: timestamp,
         updated_at: timestamp,
-      },
+      }),
     });
 
     await upsertItem(ctx, path, meta.id, {
-      item: {
-        id: secondId,
-        vault_id: meta.id,
+      item: noteItemFields(meta.id, secondId, {
         title: "Second",
-        description: "",
-        content_type: "note",
-        source_type: "manual",
-        metadata: {},
-        properties: {},
-        tag_ids: [],
-        collection_ids: [],
-        folder_path: "",
-        content_revision: 1,
-      word_count: 0,
-      character_count: 0,
-      created_at: timestamp,
+        created_at: timestamp,
         updated_at: timestamp,
-      },
+      }),
     });
 
     const loaded = await index.listItemFilesByIds(meta.id, [
@@ -181,24 +141,12 @@ describe("listItemFilesByIds", () => {
 
     for (const itemId of [firstId, secondId]) {
       await upsertItem(ctx, path, meta.id, {
-        item: {
-          id: itemId,
-          vault_id: meta.id,
+        item: noteItemFields(meta.id, itemId, {
           title: itemId === firstId ? "First" : "Second",
-          description: "",
-          content_type: "note",
-          source_type: "manual",
           metadata: { ok: true },
-          properties: {},
-          tag_ids: [],
-          collection_ids: [],
-          folder_path: "",
-          content_revision: 1,
-      word_count: 0,
-      character_count: 0,
-      created_at: timestamp,
+          created_at: timestamp,
           updated_at: timestamp,
-        },
+        }),
       });
     }
 
@@ -313,23 +261,10 @@ describe("listItemSyncMetaByIds", () => {
 
     for (const itemId of [firstId, secondId, thirdId]) {
       await upsertItem(ctx, path, meta.id, {
-        item: {
-          id: itemId,
-          vault_id: meta.id,
-          title: itemId,
-          description: "",
-          content_type: "note",
-          source_type: "manual",
-          metadata: {},
-        properties: {},
-          tag_ids: [],
-          collection_ids: [],
-          content_revision: 1,
-      word_count: 0,
-      character_count: 0,
-      created_at: timestamp,
+        item: noteItemFields(meta.id, itemId, {
+          created_at: timestamp,
           updated_at: timestamp,
-        },
+        }),
         content: "body",
       });
     }

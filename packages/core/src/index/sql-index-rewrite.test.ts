@@ -10,7 +10,10 @@ import {
 import { createId } from "../util/ids.js";
 import { upsertItem } from "../vault/item-operations.js";
 import { createTag } from "../vault/tag-operations.js";
-import { createSqlIndexTestSuite } from "./sql-index-test-harness.js";
+import {
+  createSqlIndexTestSuite,
+  noteItemFields,
+} from "./sql-index-test-harness.js";
 
 describe("rewriteItemIds", () => {
   const suite = createSqlIndexTestSuite();
@@ -27,24 +30,16 @@ describe("rewriteItemIds", () => {
     const mediaId = createId();
 
     await upsertItem(ctx, path, meta.id, {
-      item: {
-        id: oldId,
-        vault_id: meta.id,
+      item: noteItemFields(meta.id, oldId, {
         title: "Rewrite me",
         description: "desc",
-        content_type: "note",
-        source_type: "manual",
         metadata: { k: 1 },
-        properties: {},
         tag_ids: [tag.id],
-        collection_ids: [],
         folder_path: "Old",
         content_revision: 2,
-      word_count: 0,
-      character_count: 0,
-      created_at: timestamp,
+        created_at: timestamp,
         updated_at: timestamp,
-      },
+      }),
       content: "fts body content uniquephrase",
     });
     await index.upsertMedia({
@@ -107,24 +102,15 @@ describe("rewriteItemIds", () => {
 
     for (const mapping of mappings) {
       await upsertItem(ctx, path, meta.id, {
-        item: {
-          id: mapping.oldId,
-          vault_id: meta.id,
-          title: mapping.oldId,
+        item: noteItemFields(meta.id, mapping.oldId, {
           description: "desc",
-          content_type: "note",
-          source_type: "manual",
-          metadata: {},
-          properties: {},
           tag_ids: [tag.id],
           collection_ids: [collectionId],
           folder_path: "Old",
           content_revision: 3,
-      word_count: 0,
-      character_count: 0,
-      created_at: timestamp,
+          created_at: timestamp,
           updated_at: timestamp,
-        },
+        }),
         content: `fts body ${mapping.phrase}`,
         sourceRef: {
           plugin_id: "test-plugin",
@@ -241,24 +227,11 @@ describe("rewriteItemIds", () => {
 
     for (const id of [idA, idB]) {
       await upsertItem(ctx, path, meta.id, {
-        item: {
-          id,
-          vault_id: meta.id,
-          title: id,
-          description: "",
-          content_type: "note",
-          source_type: "manual",
-          metadata: {},
-          properties: {},
-          tag_ids: [],
-          collection_ids: [],
+        item: noteItemFields(meta.id, id, {
           folder_path: "notes",
-          content_revision: 1,
-      word_count: 0,
-      character_count: 0,
-      created_at: timestamp,
+          created_at: timestamp,
           updated_at: timestamp,
-        },
+        }),
         content: `body-${id}`,
       });
     }

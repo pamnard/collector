@@ -53,45 +53,21 @@ describe("listItemIdsByNavFilter", () => {
     const sharedToken = "ExactFolderToken";
 
     await upsertItem(ctx, path, meta.id, {
-      item: {
-        id: parentId,
-        vault_id: meta.id,
+      item: noteItemFields(meta.id, parentId, {
         title: "Parent note",
-        description: "",
-        content_type: "note",
-        source_type: "manual",
-        metadata: {},
-        properties: {},
-        tag_ids: [],
-        collection_ids: [],
         folder_path: "Parent",
-        content_revision: 1,
-      word_count: 0,
-      character_count: 0,
-      created_at: timestamp,
+        created_at: timestamp,
         updated_at: timestamp,
-      },
+      }),
       content: sharedToken,
     });
     await upsertItem(ctx, path, meta.id, {
-      item: {
-        id: childId,
-        vault_id: meta.id,
+      item: noteItemFields(meta.id, childId, {
         title: "Child note",
-        description: "",
-        content_type: "note",
-        source_type: "manual",
-        metadata: {},
-        properties: {},
-        tag_ids: [],
-        collection_ids: [],
         folder_path: "Parent/Child",
-        content_revision: 1,
-      word_count: 0,
-      character_count: 0,
-      created_at: timestamp,
+        created_at: timestamp,
         updated_at: timestamp,
-      },
+      }),
       content: sharedToken,
     });
 
@@ -138,44 +114,19 @@ describe("listItemIdsByNavFilter sort", () => {
     const appleId = `${createId()}.md`;
 
     await upsertItem(ctx, path, meta.id, {
-      item: {
-        id: bananaId,
-        vault_id: meta.id,
+      item: noteItemFields(meta.id, bananaId, {
         title: "Banana",
-        description: "",
-        content_type: "note",
-        source_type: "manual",
-        metadata: {},
-        properties: {},
-        tag_ids: [],
-        collection_ids: [],
-        folder_path: "",
-        content_revision: 1,
-      word_count: 0,
-      character_count: 0,
-      created_at: newer,
+        created_at: newer,
         updated_at: newer,
-      },
+      }),
     });
     await upsertItem(ctx, path, meta.id, {
-      item: {
-        id: appleId,
-        vault_id: meta.id,
+      item: noteItemFields(meta.id, appleId, {
         title: "Apple",
-        description: "",
         content_type: "bookmark",
-        source_type: "manual",
-        metadata: {},
-        properties: {},
-        tag_ids: [],
-        collection_ids: [],
-        folder_path: "",
-        content_revision: 1,
-      word_count: 0,
-      character_count: 0,
-      created_at: older,
+        created_at: older,
         updated_at: older,
-      },
+      }),
     });
 
     expect(await index.listItemIdsByNavFilter(meta.id, "all")).toEqual([
@@ -241,24 +192,11 @@ describe("dashboard item id pagination", () => {
       const id = `${createId()}.md`;
       ids.push(id);
       await upsertItem(ctx, path, meta.id, {
-        item: {
-          id,
-          vault_id: meta.id,
+        item: noteItemFields(meta.id, id, {
           title: `Item ${i}`,
-          description: "",
-          content_type: "note",
-          source_type: "manual",
-          metadata: {},
-        properties: {},
-          tag_ids: [],
-          collection_ids: [],
-          folder_path: "",
-          content_revision: 1,
-      word_count: 0,
-      character_count: 0,
-      created_at: new Date(Date.now() + i).toISOString(),
+          created_at: new Date(Date.now() + i).toISOString(),
           updated_at: timestamp,
-        },
+        }),
       });
     }
 
@@ -277,31 +215,17 @@ describe("dashboard item id pagination", () => {
   it("paginates FTS search ids and returns total count", async () => {
     const { index, ctx, vault } = await suite.openVaultIndex(
       "collector-search-page-",
-      "collector.db",
     );
     const { meta } = vault;
     const timestamp = new Date().toISOString();
 
     for (const title of ["alpha one", "alpha two", "beta three"]) {
       const id = createId();
-      const item = {
-        id,
-        vault_id: meta.id,
+      const item = noteItemFields(meta.id, id, {
         title,
-        description: "",
-        content_type: "note" as const,
-        source_type: "manual" as const,
-        metadata: {},
-        properties: {},
-        tag_ids: [] as string[],
-        collection_ids: [] as string[],
-        folder_path: "",
-        content_revision: 1,
-      word_count: 0,
-      character_count: 0,
-      created_at: timestamp,
+        created_at: timestamp,
         updated_at: timestamp,
-      };
+      });
       await index.upsertItemMetadata({ item, fileMtimeMs: 1 }, meta.id);
       await index.upsertItemContent({
         itemId: id,
@@ -351,24 +275,12 @@ describe("getAdjacentItems", () => {
       [nestedId, "Nested", t2, "notes/sub"],
     ] as const) {
       await upsertItem(ctx, path, meta.id, {
-        item: {
-          id,
-          vault_id: meta.id,
+        item: noteItemFields(meta.id, id, {
           title,
-          description: "",
-          content_type: "note",
-          source_type: "manual",
-          metadata: {},
-        properties: {},
-          tag_ids: [],
-          collection_ids: [],
           folder_path,
-          content_revision: 1,
-          word_count: 0,
-          character_count: 0,
           created_at,
           updated_at: created_at,
-        },
+        }),
       });
     }
 
