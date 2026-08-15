@@ -10,6 +10,7 @@ import type { ItemFile } from "@collector/shared";
 import type { DashboardItemSort } from "@collector/api";
 import { useAppSettings } from "../context/AppSettingsContext";
 import {
+  applyDashboardListSnapshot,
   coverPathsFromMaps,
   bodyStampsFromMap,
   itemsBodiesEqual,
@@ -20,6 +21,7 @@ import {
   pruneItemIdFromDashboardLists,
   shouldSkipEmptyCommit,
   snapshotToCacheEntry,
+  type DashboardListSnapshot,
 } from "../lib/dashboard-commit";
 import {
   createThrottledPublisher,
@@ -266,27 +268,65 @@ export function useDashboardItems(
     [],
   );
 
-  const applyCacheEntryToState = useCallback((entry: DashboardQueryCacheEntry) => {
-    const next = stateFromDashboardCacheEntry(entry);
-    itemIdsRef.current = next.itemIds;
-    itemsByIdRef.current = next.itemsById;
-    bodyStampsRef.current = next.bodyStamps;
-    streamEndOffsetRef.current = next.streamEndOffset;
-    totalCountRef.current = next.totalCount;
-    setItemIds(next.itemIds);
-    setItemsById(next.itemsById);
-    setStreamEndOffset(next.streamEndOffset);
-    setTotalCount(next.totalCount);
-    setCommittedItems(next.ordered);
-    setCommittedThumbnailPaths(next.thumbnailPaths);
-    setCommittedThumbnailStamps(next.thumbnailStamps);
-    setCommittedTotalCount(next.totalCount);
-    setCommittedHasMore(next.hasMore);
-    committedItemsRef.current = next.ordered;
-    committedThumbnailPathsRef.current = next.thumbnailPaths;
-    committedThumbnailStampsRef.current = next.thumbnailStamps;
-    committedTotalCountRef.current = next.totalCount;
+  /** Single path for working + committed + refs (#655). */
+  const applyListSnapshot = useCallback((snapshot: DashboardListSnapshot) => {
+    applyDashboardListSnapshot(snapshot, {
+      setItemIds: (ids) => {
+        itemIdsRef.current = ids;
+        setItemIds(ids);
+      },
+      setItemsById: (byId) => {
+        itemsByIdRef.current = byId;
+        setItemsById(byId);
+      },
+      setBodyStamps: (stamps) => {
+        bodyStampsRef.current = stamps;
+      },
+      setStreamEndOffset: (end) => {
+        streamEndOffsetRef.current = end;
+        setStreamEndOffset(end);
+      },
+      setTotalCount: (nextTotal) => {
+        totalCountRef.current = nextTotal;
+        setTotalCount(nextTotal);
+      },
+      setCommittedItems: (items) => {
+        committedItemsRef.current = items;
+        setCommittedItems(items);
+      },
+      setCommittedTotalCount: (nextTotal) => {
+        committedTotalCountRef.current = nextTotal;
+        setCommittedTotalCount(nextTotal);
+      },
+      setCommittedHasMore,
+      setCommittedThumbnailPaths: (paths) => {
+        committedThumbnailPathsRef.current = paths;
+        setCommittedThumbnailPaths(paths);
+      },
+      setCommittedThumbnailStamps: (stamps) => {
+        committedThumbnailStampsRef.current = stamps;
+        setCommittedThumbnailStamps(stamps);
+      },
+    });
   }, []);
+
+  const applyCacheEntryToState = useCallback(
+    (entry: DashboardQueryCacheEntry) => {
+      const next = stateFromDashboardCacheEntry(entry);
+      applyListSnapshot({
+        itemIds: next.itemIds,
+        itemsById: next.itemsById,
+        bodyStamps: next.bodyStamps,
+        streamEndOffset: next.streamEndOffset,
+        totalCount: next.totalCount,
+        committedItems: next.ordered,
+        committedTotalCount: next.totalCount,
+        thumbnailPaths: next.thumbnailPaths,
+        thumbnailStamps: next.thumbnailStamps,
+      });
+    },
+    [applyListSnapshot],
+  );
 
   const commitWorkingToDisplay = useCallback(
     async (requestVersion: number) => {
@@ -456,17 +496,17 @@ export function useDashboardItems(
         },
         setStreamWindowEnd,
         clearCommittedEmpty: () => {
-          setCommittedItems([]);
-          committedItemsRef.current = [];
-          setCommittedTotalCount(0);
-          committedTotalCountRef.current = 0;
-          setCommittedHasMore(false);
-          const emptyThumbs = new Map<string, string | null>();
-          const emptyStamps = new Map<string, string>();
-          setCommittedThumbnailPaths(emptyThumbs);
-          setCommittedThumbnailStamps(emptyStamps);
-          committedThumbnailPathsRef.current = emptyThumbs;
-          committedThumbnailStampsRef.current = emptyStamps;
+          applyListSnapshot({
+            itemIds: itemIdsRef.current,
+            itemsById: itemsByIdRef.current,
+            bodyStamps: bodyStampsRef.current,
+            streamEndOffset: streamEndOffsetRef.current,
+            totalCount: totalCountRef.current,
+            committedItems: [],
+            committedTotalCount: 0,
+            thumbnailPaths: new Map(),
+            thumbnailStamps: new Map(),
+          });
         },
         replaceWorkingBodiesKeeping: (idsToKeep) => {
           const kept = new Map<string, ItemFile>();
@@ -485,13 +525,6 @@ export function useDashboardItems(
             pageItemIds,
           );
           const nextCommittedIds = nextCommitted.map((item) => item.id);
-          setCommittedItems(nextCommitted);
-          committedItemsRef.current = nextCommitted;
-          setCommittedTotalCount(totalCountRef.current);
-          committedTotalCountRef.current = totalCountRef.current;
-          setCommittedHasMore(
-            streamEndOffsetRef.current < totalCountRef.current,
-          );
           const prunedPaths = mergeCommittedThumbnailPaths(
             committedThumbnailPathsRef.current,
             new Map(),
@@ -502,15 +535,22 @@ export function useDashboardItems(
             new Map(),
             nextCommittedIds,
           );
-          setCommittedThumbnailPaths(prunedPaths);
-          setCommittedThumbnailStamps(prunedStamps);
-          committedThumbnailPathsRef.current = prunedPaths;
-          committedThumbnailStampsRef.current = prunedStamps;
+          applyListSnapshot({
+            itemIds: itemIdsRef.current,
+            itemsById: itemsByIdRef.current,
+            bodyStamps: bodyStampsRef.current,
+            streamEndOffset: streamEndOffsetRef.current,
+            totalCount: totalCountRef.current,
+            committedItems: nextCommitted,
+            committedTotalCount: totalCountRef.current,
+            thumbnailPaths: prunedPaths,
+            thumbnailStamps: prunedStamps,
+          });
         },
         streamSlice,
       });
     },
-    [setLoadedItemIds, setStreamWindowEnd, streamSlice],
+    [applyListSnapshot, setLoadedItemIds, setStreamWindowEnd, streamSlice],
   );
 
   // Object folder/tag filters are new each render from navFilterFromSetting;
@@ -926,27 +966,7 @@ export function useDashboardItems(
         return;
       }
 
-      itemIdsRef.current = pruned.itemIds;
-      itemsByIdRef.current = pruned.itemsById;
-      bodyStampsRef.current = pruned.bodyStamps;
-      streamEndOffsetRef.current = pruned.streamEndOffset;
-      totalCountRef.current = pruned.totalCount;
-      committedItemsRef.current = pruned.committedItems;
-      committedTotalCountRef.current = pruned.committedTotalCount;
-      committedThumbnailPathsRef.current = pruned.thumbnailPaths;
-      committedThumbnailStampsRef.current = pruned.thumbnailStamps;
-
-      setItemIds(pruned.itemIds);
-      setItemsById(pruned.itemsById);
-      setStreamEndOffset(pruned.streamEndOffset);
-      setTotalCount(pruned.totalCount);
-      setCommittedItems(pruned.committedItems);
-      setCommittedTotalCount(pruned.committedTotalCount);
-      setCommittedHasMore(
-        pruned.streamEndOffset < pruned.committedTotalCount,
-      );
-      setCommittedThumbnailPaths(pruned.thumbnailPaths);
-      setCommittedThumbnailStamps(pruned.thumbnailStamps);
+      applyListSnapshot(pruned);
 
       writeQueryCache(
         pruned.itemIds,
@@ -955,7 +975,7 @@ export function useDashboardItems(
         pruned.totalCount,
       );
     },
-    [writeQueryCache],
+    [applyListSnapshot, writeQueryCache],
   );
 
   return {

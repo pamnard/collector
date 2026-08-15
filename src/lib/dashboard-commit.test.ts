@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { ItemFile } from "@collector/shared";
 import {
+  applyDashboardListSnapshot,
   coverNeedsResolve,
   coverPathsFromMaps,
   filterOutItemId,
@@ -17,6 +18,8 @@ import {
   shouldSkipEmptyCommit,
   snapshotToCacheEntry,
   thumbnailPathsEqual,
+  type DashboardListSnapshot,
+  type DashboardListSnapshotSink,
 } from "./dashboard-commit.ts";
 
 function stubItem(
@@ -454,5 +457,109 @@ describe("pruneItemIdFromDashboardLists", () => {
       committedTotalCount: result.committedTotalCount,
     });
     assert.equal(again.removed, false);
+  });
+});
+
+function recordingSnapshotSink(): {
+  sink: DashboardListSnapshotSink;
+  calls: Partial<Record<keyof DashboardListSnapshotSink, unknown>>;
+} {
+  const calls: Partial<Record<keyof DashboardListSnapshotSink, unknown>> = {};
+  const sink: DashboardListSnapshotSink = {
+    setItemIds: (ids) => {
+      calls.setItemIds = ids;
+    },
+    setItemsById: (byId) => {
+      calls.setItemsById = byId;
+    },
+    setBodyStamps: (stamps) => {
+      calls.setBodyStamps = stamps;
+    },
+    setStreamEndOffset: (end) => {
+      calls.setStreamEndOffset = end;
+    },
+    setTotalCount: (total) => {
+      calls.setTotalCount = total;
+    },
+    setCommittedItems: (items) => {
+      calls.setCommittedItems = items;
+    },
+    setCommittedTotalCount: (total) => {
+      calls.setCommittedTotalCount = total;
+    },
+    setCommittedHasMore: (hasMore) => {
+      calls.setCommittedHasMore = hasMore;
+    },
+    setCommittedThumbnailPaths: (paths) => {
+      calls.setCommittedThumbnailPaths = paths;
+    },
+    setCommittedThumbnailStamps: (stamps) => {
+      calls.setCommittedThumbnailStamps = stamps;
+    },
+  };
+  return { sink, calls };
+}
+
+describe("applyDashboardListSnapshot", () => {
+  it("writes working + committed fields and derives hasMore", () => {
+    const item = stubItem("a");
+    const snapshot: DashboardListSnapshot = {
+      itemIds: ["a"],
+      itemsById: new Map([["a", item]]),
+      bodyStamps: new Map([["a", "s1"]]),
+      streamEndOffset: 1,
+      totalCount: 3,
+      committedItems: [item],
+      committedTotalCount: 3,
+      thumbnailPaths: new Map([["a", "/a"]]),
+      thumbnailStamps: new Map([["a", "ta"]]),
+    };
+    const { sink, calls } = recordingSnapshotSink();
+    applyDashboardListSnapshot(snapshot, sink);
+
+    assert.deepEqual(calls.setItemIds, ["a"]);
+    assert.equal(
+      (calls.setItemsById as Map<string, ItemFile>).get("a")?.id,
+      "a",
+    );
+    assert.equal(
+      (calls.setBodyStamps as Map<string, string>).get("a"),
+      "s1",
+    );
+    assert.equal(calls.setStreamEndOffset, 1);
+    assert.equal(calls.setTotalCount, 3);
+    assert.deepEqual(
+      (calls.setCommittedItems as ItemFile[]).map((row) => row.id),
+      ["a"],
+    );
+    assert.equal(calls.setCommittedTotalCount, 3);
+    assert.equal(calls.setCommittedHasMore, true);
+    assert.equal(
+      (calls.setCommittedThumbnailPaths as Map<string, string | null>).get(
+        "a",
+      ),
+      "/a",
+    );
+    assert.equal(
+      (calls.setCommittedThumbnailStamps as Map<string, string>).get("a"),
+      "ta",
+    );
+  });
+
+  it("sets hasMore false when stream end covers committed total", () => {
+    const snapshot: DashboardListSnapshot = {
+      itemIds: [],
+      itemsById: new Map(),
+      bodyStamps: new Map(),
+      streamEndOffset: 0,
+      totalCount: 0,
+      committedItems: [],
+      committedTotalCount: 0,
+      thumbnailPaths: new Map(),
+      thumbnailStamps: new Map(),
+    };
+    const { sink, calls } = recordingSnapshotSink();
+    applyDashboardListSnapshot(snapshot, sink);
+    assert.equal(calls.setCommittedHasMore, false);
   });
 });

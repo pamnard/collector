@@ -233,20 +233,61 @@ export interface DashboardListPruneInput {
   committedTotalCount: number;
 }
 
+/**
+ * Full working + committed list window for dashboard paint (#655).
+ * Applied atomically via {@link applyDashboardListSnapshot} so setters and refs stay aligned.
+ */
+export type DashboardListSnapshot = {
+  itemIds: string[];
+  itemsById: Map<string, ItemFile>;
+  bodyStamps: Map<string, string>;
+  streamEndOffset: number;
+  totalCount: number;
+  committedItems: ItemFile[];
+  committedTotalCount: number;
+  thumbnailPaths: Map<string, string | null>;
+  thumbnailStamps: Map<string, string>;
+};
+
 export type DashboardListPruneResult =
   | { removed: false }
-  | {
-      removed: true;
-      itemIds: string[];
-      itemsById: Map<string, ItemFile>;
-      bodyStamps: Map<string, string>;
-      thumbnailPaths: Map<string, string | null>;
-      thumbnailStamps: Map<string, string>;
-      streamEndOffset: number;
-      totalCount: number;
-      committedItems: ItemFile[];
-      committedTotalCount: number;
-    };
+  | ({ removed: true } & DashboardListSnapshot);
+
+/** Imperative writers for one list snapshot (hook mirrors each into state + refs). */
+export type DashboardListSnapshotSink = {
+  setItemIds: (ids: string[]) => void;
+  setItemsById: (byId: Map<string, ItemFile>) => void;
+  setBodyStamps: (stamps: Map<string, string>) => void;
+  setStreamEndOffset: (end: number) => void;
+  setTotalCount: (total: number) => void;
+  setCommittedItems: (items: ItemFile[]) => void;
+  setCommittedTotalCount: (total: number) => void;
+  setCommittedHasMore: (hasMore: boolean) => void;
+  setCommittedThumbnailPaths: (paths: Map<string, string | null>) => void;
+  setCommittedThumbnailStamps: (stamps: Map<string, string>) => void;
+};
+
+/**
+ * Push one list snapshot through every working + committed writer.
+ * `hasMore` is derived from stream end vs committed total (display window).
+ */
+export function applyDashboardListSnapshot(
+  snapshot: DashboardListSnapshot,
+  sink: DashboardListSnapshotSink,
+): void {
+  sink.setItemIds(snapshot.itemIds);
+  sink.setItemsById(snapshot.itemsById);
+  sink.setBodyStamps(snapshot.bodyStamps);
+  sink.setStreamEndOffset(snapshot.streamEndOffset);
+  sink.setTotalCount(snapshot.totalCount);
+  sink.setCommittedItems(snapshot.committedItems);
+  sink.setCommittedTotalCount(snapshot.committedTotalCount);
+  sink.setCommittedHasMore(
+    snapshot.streamEndOffset < snapshot.committedTotalCount,
+  );
+  sink.setCommittedThumbnailPaths(snapshot.thumbnailPaths);
+  sink.setCommittedThumbnailStamps(snapshot.thumbnailStamps);
+}
 
 /**
  * Synchronously remove one item id from dashboard working + committed lists.
