@@ -31,6 +31,18 @@ export const DASHBOARD_HYDRATE_CHUNK_SIZE = 400;
  */
 export const DASHBOARD_HYDRATE_MAX_IDS = 100_000;
 
+/**
+ * Default LIMIT for {@link ItemsPort.searchItems} when callers omit `page` (#658).
+ * Same size as dashboard prefetch so CLI/MCP/sidebar share one bound.
+ */
+export const SEARCH_PAGE_SIZE = DASHBOARD_PREFETCH_SIZE;
+
+/**
+ * Hard ceiling for {@link ItemsPort.searchItems} `page.limit` (#658).
+ * Aligned with hydrate chunk size so one page cannot reopen unbounded IN-list hydrate.
+ */
+export const SEARCH_PAGE_MAX_LIMIT = DASHBOARD_HYDRATE_CHUNK_SIZE;
+
 /** Server-side dashboard ID list sort (#339). Keys must be allowlisted by the index. */
 export type DashboardItemSortDir = "asc" | "desc";
 
@@ -63,6 +75,17 @@ export interface IndexQueryResult {
   ids: string[];
   /** Parallel to ids: index file_mtime_ms as string (#623). */
   stamps: string[];
+  total: number;
+  offset: number;
+}
+
+/**
+ * Paged FTS/nav search with honest total for truncation signaling (#658).
+ * `items.length` may be less than `total` when the page is capped.
+ */
+export interface SearchItemsResult {
+  items: ItemFile[];
+  /** Total matching ids in the vault (not just this page). */
   total: number;
   offset: number;
 }
@@ -136,7 +159,16 @@ export interface BootPort {
 
 /** Items / search / dashboard loaders (#361 / #362). */
 export interface ItemsPort {
-  searchItems(query: string, filter: NavFilter): Promise<ItemFile[]>;
+  /**
+   * FTS (or nav-list fallback) capped to a page; hydrates index card fields
+   * only — not full on-disk markdown (#658). Returns `total` so callers can
+   * surface truncation instead of silently cutting at {@link SEARCH_PAGE_SIZE}.
+   */
+  searchItems(
+    query: string,
+    filter: NavFilter,
+    page?: { limit: number; offset: number },
+  ): Promise<SearchItemsResult>;
   /** Canonical index query: ids + total for a page (#362). */
   queryIndex(
     filter: NavFilter,

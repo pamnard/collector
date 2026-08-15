@@ -14,6 +14,7 @@ import type {
   ImportDroppedFilesInput,
   UpdateItemInput,
 } from "@collector/api";
+import { searchItemsPageViolation } from "@collector/api";
 import type { AppSettings, ItemFile } from "@collector/shared";
 import { dashboardSnapshotSchema } from "@collector/shared";
 import type { ServiceDomainRuntime } from "../domain-runtime.js";
@@ -129,8 +130,26 @@ export const DOMAIN_DISPATCH_REGISTRY: Record<
       const p = asObject(params, M.searchItems);
       const query = requireString(p.query, "query", M.searchItems);
       const filter = parseNavFilter(p.filter, M.searchItems);
+      let page: { limit: number; offset: number } | undefined;
+      if (p.page !== undefined) {
+        if (!p.page || typeof p.page !== "object" || Array.isArray(p.page)) {
+          badRequest(`${M.searchItems}: page must be an object`);
+        }
+        const raw = p.page as Record<string, unknown>;
+        if (typeof raw.limit !== "number" || !Number.isFinite(raw.limit)) {
+          badRequest(`${M.searchItems}: page.limit must be a number`);
+        }
+        if (typeof raw.offset !== "number" || !Number.isFinite(raw.offset)) {
+          badRequest(`${M.searchItems}: page.offset must be a number`);
+        }
+        page = { limit: raw.limit, offset: raw.offset };
+        const violation = searchItemsPageViolation(page);
+        if (violation !== null) {
+          badRequest(`${M.searchItems}: ${violation}`);
+        }
+      }
       await runtime.ensureInitialized();
-      return runtime.itemsSearch.searchItems(query, filter);
+      return runtime.itemsSearch.searchItems(query, filter, page);
     },
   },
   [M.fetchDashboardIndexPage]: {

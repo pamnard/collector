@@ -458,6 +458,45 @@ describe("pruneItemIdFromDashboardLists", () => {
     });
     assert.equal(again.removed, false);
   });
+
+  it("removes id present only in committed paint", () => {
+    const input = {
+      itemIds: ["a"],
+      itemsById: new Map([["a", stubItem("a")]]),
+      bodyStamps: new Map([
+        ["a", "1"],
+        ["orphan", "orphan-body"],
+      ]),
+      thumbnailPaths: new Map<string, string | null>([
+        ["a", "/a"],
+        ["orphan", "/orphan"],
+      ]),
+      thumbnailStamps: new Map([
+        ["a", "sa"],
+        ["orphan", "so"],
+      ]),
+      streamEndOffset: 1,
+      totalCount: 1,
+      committedItems: [stubItem("a"), stubItem("orphan")],
+      committedTotalCount: 2,
+    };
+    const result = pruneItemIdFromDashboardLists("orphan", input);
+    assert.equal(result.removed, true);
+    if (!result.removed) {
+      return;
+    }
+    assert.deepEqual(result.itemIds, ["a"]);
+    assert.equal(result.totalCount, 1);
+    assert.equal(result.itemsById.has("orphan"), false);
+    assert.equal(result.bodyStamps.has("orphan"), false);
+    assert.equal(result.thumbnailPaths.has("orphan"), false);
+    assert.equal(result.thumbnailStamps.has("orphan"), false);
+    assert.deepEqual(
+      result.committedItems.map((item) => item.id),
+      ["a"],
+    );
+    assert.equal(result.committedTotalCount, 1);
+  });
 });
 
 function recordingSnapshotSink(): {

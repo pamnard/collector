@@ -1,4 +1,5 @@
 import type { SqlExecutor, SqlReader } from "@collector/db";
+import { mappingsHaveOverlappingIds } from "../util/id-rewrite-mappings.js";
 import type { ItemEmbeddingPut, ItemEmbeddingRow } from "./types.js";
 import { blobToVector, vectorToBlob } from "./vector-blob.js";
 
@@ -94,22 +95,140 @@ export async function listItemEmbeddingsForModel(
   return rows.map(rowToEmbedding);
 }
 
+/**
+ * Load embeddings for a model whose items sit in one of `folderPaths`
+ * (typically a folder ancestor chain). Excludes `excludeItemId`.
+ */
+export async function listItemEmbeddingsForModelInFolders(
+  db: SqlReader,
+  modelId: string,
+  folderPaths: readonly string[],
+  excludeItemId: string,
+): Promise<ItemEmbeddingRow[]> {
+  if (folderPaths.length === 0) {
+    throw new Error(
+      "listItemEmbeddingsForModelInFolders folderPaths must be non-empty",
+    );
+  }
+  const folderPlaceholders = folderPaths.map(() => "?").join(", ");
+  const rows = await db.select<EmbeddingSqlRow>(
+    `SELECT e.item_id, e.model_id, e.content_revision, e.input_fingerprint,
+            e.dims, e.vector, e.updated_at
+     FROM item_embeddings e
+     INNER JOIN items i ON i.id = e.item_id
+     WHERE e.model_id = ?
+       AND e.item_id != ?
+       AND i.folder_path IN (${folderPlaceholders})`,
+    [modelId, excludeItemId, ...folderPaths],
+  );
+  return rows.map(rowToEmbedding);
+}
+
 export async function rewriteItemEmbeddingId(
   db: SqlEmbeddingDb,
   oldId: string,
   newId: string,
 ): Promise<void> {
-  const existing = await getItemEmbedding(db, oldId);
-  if (!existing) {
+  if (oldId === newId) {
     return;
   }
-  await deleteItemEmbedding(db, oldId);
-  await putItemEmbedding(db, {
-    itemId: newId,
-    modelId: existing.modelId,
-    contentRevision: existing.contentRevision,
-    inputFingerprint: existing.inputFingerprint,
-    vector: existing.vector,
-    updatedAt: existing.updatedAt,
+  await rewriteItemEmbeddingIds(db, [{ oldId, newId }]);
+}
+
+/**
+ * Rebind embedding PKs for many items in shared SELECT/DELETE/INSERT round-trips.
+ * Requires disjoint old/new id sets (no swap/chain/duplicate targets). Callers with
+ * overlapping mappings must rewrite one item at a time via rewriteItemEmbeddingId.
+ */
+export async function rewriteItemEmbeddingIds(
+  db: SqlEmbeddingDb,
+  mappings: Array<{ oldId: string; newId: string }>,
+): Promise<void> {
+  const active = mappings.filter((mapping) => mapping.oldId !== mapping.newId);
+  if (active.length === 0) {
+    return;
+  }
+  if (mappingsHaveOverlappingIds(active)) {
+    throw new Error(
+      "rewriteItemEmbeddingIds: overlapping old/new ids; use rewriteItemEmbeddingId per item",
+    );
+  }
+
+  const oldIds = active.map((mapping) => mapping.oldId);
+  const oldToNew = new Map(
+    active.map((mapping) => [mapping.oldId, mapping.newId] as const),
+  );
+  const placeholders = Array.from({ length: oldIds.length }, () => "?").join(
+    ", ",
+  );
+
+  const rows = await db.select<EmbeddingSqlRow>(
+    `SELECT item_id, model_id, content_revision, input_fingerprint, dims, vector, updated_at
+     FROM item_embeddings WHERE item_id IN (${placeholders})`,
+    oldIds,
+  );
+  if (rows.length === 0) {
+    return;
+  }
+
+  await db.execute(
+    `DELETE FROM item_embeddings WHERE item_id IN (${placeholders})`,
+    oldIds,
+  );
+
+  const EMBEDDING_INSERT_COLUMNS = 7;
+  const EMBEDDING_INSERT_CHUNK = Math.min(
+    100,
+    Math.floor(999 / EMBEDDING_INSERT_COLUMNS),
+  );
+  const remapped = rows.map((row) => {
+    const newId = oldToNew.get(row.item_id);
+    if (!newId) {
+      throw new Error(
+        `rewriteItemEmbeddingIds: missing mapping for ${row.item_id}`,
+      );
+    }
+    const embedding = rowToEmbedding(row);
+    if (embedding.vector.length === 0) {
+      throw new Error(`empty embedding vector for ${newId}`);
+    }
+    return {
+      itemId: newId,
+      modelId: embedding.modelId,
+      contentRevision: embedding.contentRevision,
+      inputFingerprint: embedding.inputFingerprint,
+      vector: embedding.vector,
+      updatedAt: embedding.updatedAt,
+    };
   });
+
+  for (
+    let offset = 0;
+    offset < remapped.length;
+    offset += EMBEDDING_INSERT_CHUNK
+  ) {
+    const chunk = remapped.slice(offset, offset + EMBEDDING_INSERT_CHUNK);
+    const rowPlaceholders = Array.from(
+      { length: chunk.length },
+      () => "(?, ?, ?, ?, ?, ?, ?)",
+    ).join(", ");
+    const binds: unknown[] = [];
+    for (const row of chunk) {
+      binds.push(
+        row.itemId,
+        row.modelId,
+        row.contentRevision,
+        row.inputFingerprint,
+        row.vector.length,
+        vectorToBlob(row.vector),
+        row.updatedAt,
+      );
+    }
+    await db.execute(
+      `INSERT INTO item_embeddings (
+        item_id, model_id, content_revision, input_fingerprint, dims, vector, updated_at
+      ) VALUES ${rowPlaceholders}`,
+      binds,
+    );
+  }
 }

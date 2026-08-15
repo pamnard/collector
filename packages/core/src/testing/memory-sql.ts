@@ -231,6 +231,24 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
   async select<T>(query: string, bindValues: unknown[] = []): Promise<T[]> {
     const normalized = query.trim().replace(/\s+/g, " ");
 
+    if (normalized === "SELECT vault_id FROM items WHERE id = ?") {
+      const itemId = String(bindValues[0]);
+      const table = this.tables.get("items") ?? new Map();
+      const row = table.get(itemId);
+      if (!row) {
+        return [];
+      }
+      return [{ vault_id: row.vault_id }] as T[];
+    }
+
+    if (normalized.startsWith("SELECT vault_id FROM items WHERE id IN (")) {
+      const ids = new Set(bindValues.map(String));
+      const table = this.tables.get("items") ?? new Map();
+      return [...table.values()]
+        .filter((row) => ids.has(String(row.id)))
+        .map((row) => ({ vault_id: row.vault_id })) as T[];
+    }
+
     if (
       normalized.startsWith(
         "SELECT i.id FROM items i INNER JOIN item_tags it ON it.item_id = i.id",

@@ -43,7 +43,10 @@ export {
   DASHBOARD_PREFETCH_SIZE,
   DASHBOARD_HYDRATE_CHUNK_SIZE,
   DASHBOARD_HYDRATE_MAX_IDS,
+  SEARCH_PAGE_SIZE,
+  SEARCH_PAGE_MAX_LIMIT,
   type ActiveVaultResult,
+  type SearchItemsResult,
   type AdjacentItemRef,
   type AdjacentItemsResult,
   type SimilarItemHit,
@@ -113,3 +116,9 @@ export {
   asCollectorApiError,
   subscriptionFromTeardown,
 } from "./transport.js";
+
+export {
+  assertSearchItemsPage,
+  searchItemsPageViolation,
+  type SearchItemsPage,
+} from "./search-items-page.js";
