@@ -20,3 +20,16 @@ export function itemGridCoverSlotPending(args: {
     args.coverPending || (args.pathUnresolved && args.optimisticPortrait)
   );
 }
+
+/**
+ * Cover `<img>` layout classes.
+ * While decode is in flight (`loadCover`), keep the img out of document flow so the
+ * aspect-ratio placeholder alone owns teaser height (avoids image+placeholder
+ * masonry jumps when the browser already knows intrinsic dimensions).
+ */
+export function itemGridCoverImgClassName(args: { loadCover: boolean }): string {
+  if (args.loadCover) {
+    return "absolute inset-0 h-full w-full opacity-0";
+  }
+  return "h-auto w-full";
+}

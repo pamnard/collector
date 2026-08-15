@@ -5,7 +5,10 @@ import { useMainScrollElement } from "../../hooks/useMainScrollElement";
 import { useNearViewportRef } from "../../hooks/useNearViewport";
 import { ItemGridCardMeta } from "./ItemGridCardMeta";
 import { textOnlyTeaserChromeClass } from "./text-only-teaser-chrome";
-import { itemGridCoverSlotPending } from "./item-grid-cover-slot";
+import {
+  itemGridCoverImgClassName,
+  itemGridCoverSlotPending,
+} from "./item-grid-cover-slot";
 import { useItemGridCover } from "./use-item-grid-cover";
 import {
   itemGridCardPropsAreEqual,
@@ -106,10 +109,7 @@ function ItemGridCardInner({
               ref={onCoverImgRef}
               src={coverSrc}
               alt=""
-              className={cn(
-                "h-auto w-full",
-                loadCover && "opacity-0",
-              )}
+              className={itemGridCoverImgClassName({ loadCover })}
               loading="eager"
               decoding="async"
               onLoad={(event) => onCoverImgLoad(event.currentTarget)}

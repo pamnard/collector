@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  itemGridCoverImgClassName,
   itemGridCoverSlot,
   itemGridCoverSlotPending,
 } from "./item-grid-cover-slot.ts";
@@ -59,6 +60,24 @@ describe("itemGridCoverSlot", () => {
       }),
       { coverPending: false, showCover: false, loadCover: false },
     );
+  });
+});
+
+describe("itemGridCoverImgClassName", () => {
+  it("takes the in-flight cover img out of layout flow", () => {
+    const classes = itemGridCoverImgClassName({ loadCover: true });
+    assert.match(classes, /\babsolute\b/);
+    assert.match(classes, /\bopacity-0\b/);
+    // In-flow h-auto would stack with the aspect placeholder when dimensions are known.
+    assert.doesNotMatch(classes, /\bh-auto\b/);
+  });
+
+  it("lets the settled cover img own layout height", () => {
+    const classes = itemGridCoverImgClassName({ loadCover: false });
+    assert.match(classes, /\bh-auto\b/);
+    assert.match(classes, /\bw-full\b/);
+    assert.doesNotMatch(classes, /\babsolute\b/);
+    assert.doesNotMatch(classes, /\bopacity-0\b/);
   });
 });
 
