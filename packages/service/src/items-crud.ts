@@ -214,6 +214,7 @@ export function createItemsCrud(
       content_type: input.content_type ?? current.content_type,
       tag_ids: tagIds,
       properties: input.properties !== undefined ? input.properties : current.properties,
+      updated_at: new Date().toISOString(),
     };
     const body =
       input.content !== undefined ? (input.content ?? "") : (currentContent ?? "");
