@@ -114,16 +114,20 @@ export function createItemsCrud(
     return readItemRawMarkdown(ctx.fs, path, itemId);
   };
 
-  const persistNormalizedSource = async (
+  /** Normalize and write only when text changes. Caller owns presentation notify. */
+  const applyNormalizedSource = async (
     itemId: string,
     rawMarkdown: string,
-  ): Promise<ItemFile> => {
+  ): Promise<{ item: ItemFile; wrote: boolean }> => {
     const { vault, path } = await deps.resolveActiveVault();
     const ctx = deps.getContext();
     const { text } = normalizeMarkdown(rawMarkdown);
     const existing = await readItemRawMarkdown(ctx.fs, path, itemId);
     if (text === existing) {
-      return readItemFile(ctx.fs, path, itemId, vault.id);
+      return {
+        item: await readItemFile(ctx.fs, path, itemId, vault.id),
+        wrote: false,
+      };
     }
     const item = await writeItemRawMarkdown(
       ctx,
@@ -132,7 +136,18 @@ export function createItemsCrud(
       itemId,
       text,
     );
-    deps.onVaultPresentationChanged?.(vault.id);
+    return { item, wrote: true };
+  };
+
+  const persistNormalizedSource = async (
+    itemId: string,
+    rawMarkdown: string,
+  ): Promise<ItemFile> => {
+    const { vault } = await deps.resolveActiveVault();
+    const { item, wrote } = await applyNormalizedSource(itemId, rawMarkdown);
+    if (wrote) {
+      deps.onVaultPresentationChanged?.(vault.id);
+    }
     return item;
   };
 
@@ -149,7 +164,7 @@ export function createItemsCrud(
     const fileName = `${newItemId()}.md`;
     const id = `${folderPath}/${fileName}`;
 
-    const item = await upsertItem(ctx, path, vault.id, {
+    const created = await upsertItem(ctx, path, vault.id, {
       item: {
         id,
         vault_id: vault.id,
@@ -171,9 +186,12 @@ export function createItemsCrud(
       sourceRef: input.sourceRef,
     });
     // Same serialize→normalize→write path as update: upsert wrote the document;
-    // persistNormalizedSource applies markdownlint autofix before leaving dirty body on disk.
-    const raw = await readItemRawMarkdown(ctx.fs, path, item.id);
-    return persistNormalizedSource(item.id, raw);
+    // applyNormalizedSource autofixes before leaving dirty body on disk.
+    const raw = await readItemRawMarkdown(ctx.fs, path, created.id);
+    const { item } = await applyNormalizedSource(created.id, raw);
+    // Create always changes vault presentation (new item), even when normalize is a no-op.
+    deps.onVaultPresentationChanged?.(vault.id);
+    return item;
   };
 
   const updateItem = async (
