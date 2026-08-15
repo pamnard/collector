@@ -29,24 +29,48 @@ import type { DomainDispatchEntry } from "./dispatch/types.js";
 import { VAULTS_DISPATCH } from "./dispatch/vaults.js";
 import { WATCHER_DISPATCH } from "./dispatch/watcher.js";
 
+const DISPATCH_GROUPS: ReadonlyArray<Record<string, DomainDispatchEntry>> = [
+  BOOT_DISPATCH,
+  ITEMS_DISPATCH,
+  TAGS_DISPATCH,
+  FOLDERS_DISPATCH,
+  MEDIA_DISPATCH,
+  VAULTS_DISPATCH,
+  SETTINGS_DISPATCH,
+  CREDENTIALS_DISPATCH,
+  PLUGINS_DISPATCH,
+  STATUS_DISPATCH,
+  DASHBOARD_DISPATCH,
+  WATCHER_DISPATCH,
+];
+
+function assertDispatchGroupsDisjoint(): void {
+  const seen = new Map<string, number>();
+  const duplicates: string[] = [];
+  for (const [index, group] of DISPATCH_GROUPS.entries()) {
+    for (const key of Object.keys(group)) {
+      const previous = seen.get(key);
+      if (previous !== undefined) {
+        duplicates.push(`${key} (groups ${previous} and ${index})`);
+      } else {
+        seen.set(key, index);
+      }
+    }
+  }
+  if (duplicates.length > 0) {
+    throw new Error(
+      `host wire domain registry overlap (#419): ${duplicates.join(", ")}`,
+    );
+  }
+}
+
+assertDispatchGroupsDisjoint();
+
 /** Full host registry: every {@link DomainWireMethod} has exactly one entry. */
 export const DOMAIN_DISPATCH_REGISTRY: Record<
   DomainWireMethod,
   DomainDispatchEntry
-> = {
-  ...BOOT_DISPATCH,
-  ...ITEMS_DISPATCH,
-  ...TAGS_DISPATCH,
-  ...FOLDERS_DISPATCH,
-  ...MEDIA_DISPATCH,
-  ...VAULTS_DISPATCH,
-  ...SETTINGS_DISPATCH,
-  ...CREDENTIALS_DISPATCH,
-  ...PLUGINS_DISPATCH,
-  ...STATUS_DISPATCH,
-  ...DASHBOARD_DISPATCH,
-  ...WATCHER_DISPATCH,
-};
+> = Object.assign({}, ...DISPATCH_GROUPS);
 
 function assertDomainRegistryCoverage(): void {
   const catalog = new Set<string>(Object.values(DOMAIN_WIRE_METHODS));
