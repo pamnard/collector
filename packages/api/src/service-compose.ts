@@ -34,6 +34,7 @@ export const ITEMS_PORT_KEYS = [
   "getAdjacentItems",
   "findSimilarItems",
   "resolveContentTextLinks",
+  "listItemBacklinks",
   "getItemSource",
   "updateItemSource",
   "createItem",

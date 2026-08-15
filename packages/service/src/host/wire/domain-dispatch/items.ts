@@ -154,6 +154,14 @@ export const ITEMS_DISPATCH = {
       return runtime.itemsSearch.resolveContentTextLinks(itemId, p.body);
     },
   },
+  [M.listItemBacklinks]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.listItemBacklinks);
+      const itemId = requireString(p.itemId, "itemId", M.listItemBacklinks);
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.listItemBacklinks(itemId);
+    },
+  },
   [M.getItemSource]: {
     handle: async (runtime, params) => {
       const p = asObject(params, M.getItemSource);

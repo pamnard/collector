@@ -1,6 +1,7 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { ItemAdjacentNav } from "../../items/ItemAdjacentNav";
 import { ItemRelatedPanel } from "../../items/ItemRelatedPanel";
+import { useItemBacklinks } from "../../../hooks/useItemBacklinks";
 import { useRelatedSemanticTeasers } from "../../../hooks/useRelatedSemanticTeasers";
 import { useShell } from "../AppLayout";
 import {
@@ -9,8 +10,8 @@ import {
 } from "./item-chrome-context";
 
 /**
- * Bottom item chrome: related teasers + adjacent nav.
- * `mt-auto` keeps the stack at the card bottom (related sticks to adjacent).
+ * Bottom item chrome: related/backlinks tabs + adjacent nav.
+ * `mt-auto` keeps the stack at the card bottom (links stick to adjacent).
  */
 export function ItemChromeItemFooter() {
   const navigate = useNavigate();
@@ -19,25 +20,29 @@ export function ItemChromeItemFooter() {
   const onItemRoute = pathname.startsWith("/item/");
   const itemAdjacent = useItemChromeAdjacent();
   const chromeItem = useItemChromeItem();
-  const relatedTeasers = useRelatedSemanticTeasers(
-    onItemRoute ? chromeItem : null,
-    vaultRevision,
-  );
+  const itemRef = onItemRoute ? chromeItem : null;
+  const relatedTeasers = useRelatedSemanticTeasers(itemRef, vaultRevision);
+  const backlinks = useItemBacklinks(itemRef, vaultRevision);
 
   const showAdjacent =
     onItemRoute &&
     itemAdjacent !== null &&
     Boolean(itemAdjacent.prev || itemAdjacent.next);
 
-  if (!relatedTeasers && !showAdjacent) {
+  const showLinksPanel =
+    relatedTeasers !== null ||
+    (backlinks !== null && backlinks.length > 0);
+
+  if (!showLinksPanel && !showAdjacent) {
     return null;
   }
 
   return (
     <div className="relative mt-auto shrink-0">
-      {relatedTeasers ? (
+      {showLinksPanel ? (
         <ItemRelatedPanel
           teasers={relatedTeasers}
+          backlinks={backlinks ?? []}
           onNavigate={(itemId) => navigate(`/item/${itemId}`)}
         />
       ) : null}

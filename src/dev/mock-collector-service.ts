@@ -319,6 +319,7 @@ export function createDevMockCollectorService(): CollectorService {
       getAdjacentItems: mockCollector.getAdjacentItems,
       findSimilarItems: async (_itemId: string, _limit: number) => [],
       resolveContentTextLinks: mockCollector.resolveContentTextLinks,
+      listItemBacklinks: mockCollector.listItemBacklinks,
       getItemSource: mockCollector.getItemSource,
       updateItemSource: mockCollector.updateItemSource,
       createItem: async (_input: UiCreateItemInput) => refuseUnsupported(),

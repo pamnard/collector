@@ -19,6 +19,8 @@ function createIndexMock(
       itemIds.map((_, i) => String(1000 + i)),
     ),
     listItemIdTitles: vi.fn(async () => []),
+    listItemFtsBodies: vi.fn(async () => []),
+    vaultItemsContentGeneration: vi.fn(async () => 0),
     getAdjacentItems: vi.fn(async () => ({ prev: null, next: null })),
     ...overrides,
   };

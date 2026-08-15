@@ -71,6 +71,7 @@ export {
   type JobStatusCounts,
   type JobsPort,
   type ResolvedTextLink,
+  type BacklinkSource,
   type MediaPort,
   type ServiceSubscribeHandlers,
   type SettingsPort,
