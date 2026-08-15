@@ -1,0 +1,227 @@
+import type { CreateItemInput, UpdateItemInput } from "@collector/api";
+import { searchItemsPageViolation } from "@collector/api";
+import {
+  DOMAIN_WIRE_METHODS,
+  type DomainWireMethod,
+} from "../domain-methods.js";
+import {
+  asObject,
+  badRequest,
+  parseDashboardItemSort,
+  parseNavFilter,
+  requireString,
+} from "../handlers/params.js";
+import { decodeDroppedFiles } from "./decode.js";
+import type { DomainDispatchEntry } from "./types.js";
+
+const M = DOMAIN_WIRE_METHODS;
+
+export const ITEMS_DISPATCH: Partial<Record<DomainWireMethod, DomainDispatchEntry>> = {
+  // #155 reads
+  [M.searchItems]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.searchItems);
+      const query = requireString(p.query, "query", M.searchItems);
+      const filter = parseNavFilter(p.filter, M.searchItems);
+      let page: { limit: number; offset: number } | undefined;
+      if (p.page !== undefined) {
+        if (!p.page || typeof p.page !== "object" || Array.isArray(p.page)) {
+          badRequest(`${M.searchItems}: page must be an object`);
+        }
+        const raw = p.page as Record<string, unknown>;
+        if (typeof raw.limit !== "number" || !Number.isFinite(raw.limit)) {
+          badRequest(`${M.searchItems}: page.limit must be a number`);
+        }
+        if (typeof raw.offset !== "number" || !Number.isFinite(raw.offset)) {
+          badRequest(`${M.searchItems}: page.offset must be a number`);
+        }
+        page = { limit: raw.limit, offset: raw.offset };
+        const violation = searchItemsPageViolation(page);
+        if (violation !== null) {
+          badRequest(`${M.searchItems}: ${violation}`);
+        }
+      }
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.searchItems(query, filter, page);
+    },
+  },
+  [M.fetchDashboardIndexPage]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.fetchDashboardIndexPage);
+      const filter = parseNavFilter(p.filter, M.fetchDashboardIndexPage);
+      const query = typeof p.query === "string" ? p.query : undefined;
+      if (!p.page || typeof p.page !== "object" || Array.isArray(p.page)) {
+        badRequest(`${M.fetchDashboardIndexPage}: page required`);
+      }
+      const page = p.page as Record<string, unknown>;
+      if (typeof page.limit !== "number" || typeof page.offset !== "number") {
+        badRequest(`${M.fetchDashboardIndexPage}: page.limit/offset required`);
+      }
+      const sort = parseDashboardItemSort(p.sort, M.fetchDashboardIndexPage);
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.fetchDashboardIndexPage(
+        filter,
+        query,
+        { limit: page.limit, offset: page.offset },
+        sort,
+      );
+    },
+  },
+  [M.queryIndex]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.queryIndex);
+      const filter = parseNavFilter(p.filter, M.queryIndex);
+      const query = typeof p.query === "string" ? p.query : undefined;
+      if (!p.page || typeof p.page !== "object" || Array.isArray(p.page)) {
+        badRequest(`${M.queryIndex}: page required`);
+      }
+      const page = p.page as Record<string, unknown>;
+      if (typeof page.limit !== "number" || typeof page.offset !== "number") {
+        badRequest(`${M.queryIndex}: page.limit/offset required`);
+      }
+      const sort = parseDashboardItemSort(p.sort, M.queryIndex);
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.queryIndex(
+        filter,
+        query,
+        { limit: page.limit, offset: page.offset },
+        sort,
+      );
+    },
+  },
+  [M.listDashboardItemIds]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.listDashboardItemIds);
+      const filter = parseNavFilter(p.filter, M.listDashboardItemIds);
+      const query = typeof p.query === "string" ? p.query : undefined;
+      const sort = parseDashboardItemSort(p.sort, M.listDashboardItemIds);
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.listDashboardItemIds(filter, query, sort);
+    },
+  },
+  [M.loadDashboardItems]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.loadDashboardItems);
+      if (
+        !Array.isArray(p.itemIds) ||
+        !p.itemIds.every((id) => typeof id === "string")
+      ) {
+        badRequest(`${M.loadDashboardItems}: itemIds must be string[]`);
+      }
+      if (typeof p.offset !== "number") {
+        badRequest(`${M.loadDashboardItems}: offset must be a number`);
+      }
+      const limit = typeof p.limit === "number" ? p.limit : undefined;
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.loadDashboardItems(p.itemIds, p.offset, limit);
+    },
+  },
+  [M.getItemById]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.getItemById);
+      const itemId = requireString(p.itemId, "itemId", M.getItemById);
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.getItemById(itemId);
+    },
+  },
+  [M.getAdjacentItems]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.getAdjacentItems);
+      const itemId = requireString(p.itemId, "itemId", M.getAdjacentItems);
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.getAdjacentItems(itemId);
+    },
+  },
+  [M.findSimilarItems]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.findSimilarItems);
+      const itemId = requireString(p.itemId, "itemId", M.findSimilarItems);
+      if (typeof p.limit !== "number" || !Number.isFinite(p.limit)) {
+        badRequest(`${M.findSimilarItems}: limit must be a number`);
+      }
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.findSimilarItems(itemId, p.limit);
+    },
+  },
+  [M.resolveContentTextLinks]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.resolveContentTextLinks);
+      const itemId = requireString(
+        p.itemId,
+        "itemId",
+        M.resolveContentTextLinks,
+      );
+      if (typeof p.body !== "string") {
+        badRequest(`${M.resolveContentTextLinks}: body must be a string`);
+      }
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.resolveContentTextLinks(itemId, p.body);
+    },
+  },
+  [M.getItemSource]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.getItemSource);
+      const itemId = requireString(p.itemId, "itemId", M.getItemSource);
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.getItemSource(itemId);
+    },
+  },
+
+  // #156 writes
+  [M.createItem]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.createItem);
+      if (typeof p.title !== "string" || p.title.length === 0) {
+        badRequest(`${M.createItem}: title required`);
+      }
+      if (typeof p.content_type !== "string") {
+        badRequest(`${M.createItem}: content_type required`);
+      }
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.createItem(p as unknown as CreateItemInput);
+    },
+  },
+  [M.updateItem]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.updateItem);
+      const itemId = requireString(p.itemId, "itemId", M.updateItem);
+      if (!p.input || typeof p.input !== "object" || Array.isArray(p.input)) {
+        badRequest(`${M.updateItem}: input object required`);
+      }
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.updateItem(itemId, p.input as UpdateItemInput);
+    },
+  },
+  [M.deleteItem]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.deleteItem);
+      const itemId = requireString(p.itemId, "itemId", M.deleteItem);
+      await runtime.ensureInitialized();
+      await runtime.itemsSearch.deleteItem(itemId);
+      return { ok: true };
+    },
+  },
+  [M.updateItemSource]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.updateItemSource);
+      const itemId = requireString(p.itemId, "itemId", M.updateItemSource);
+      const rawMarkdown = requireString(
+        p.rawMarkdown,
+        "rawMarkdown",
+        M.updateItemSource,
+      );
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.updateItemSource(itemId, rawMarkdown);
+    },
+  },
+  [M.importDroppedFiles]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.importDroppedFiles);
+      const files = decodeDroppedFiles(p.files, M.importDroppedFiles);
+      const folder_path =
+        typeof p.folder_path === "string" ? p.folder_path : undefined;
+      await runtime.ensureInitialized();
+      return runtime.dropImport.importDroppedFiles({ folder_path, files });
+    },
+  },
+};
