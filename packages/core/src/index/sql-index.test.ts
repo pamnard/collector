@@ -23,6 +23,7 @@ import {
   getItemEmbedding,
   putItemEmbedding,
 } from "../embeddings/embedding-store.js";
+import { SQL_INSERT_CHUNK, sqlRowPlaceholders } from "./sql-index-helpers.js";
 
 describe("listItemIdsByNavFilter", () => {
   let dataDir = "";
@@ -1498,6 +1499,151 @@ describe("rewriteItemIds", () => {
       [idB, idC].sort(),
     );
     expect(await index.listVaultItemIds(meta.id)).not.toContain(idA);
+  });
+
+  it("chunks media and source_refs inserts on per-item rewrite (#710)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-rewrite-chunk-children-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    const ctx = { fs, index };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const timestamp = new Date().toISOString();
+
+    // Overlapping chain forces rewriteOneItemId (not the batch multi-item path).
+    const idA = `notes/${createId()}.md`;
+    const idB = `notes/${createId()}.md`;
+    const idC = `notes/${createId()}.md`;
+
+    for (const id of [idA, idB]) {
+      await upsertItem(ctx, path, meta.id, {
+        item: {
+          id,
+          vault_id: meta.id,
+          title: id,
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          properties: {},
+          tag_ids: [],
+          collection_ids: [],
+          folder_path: "notes",
+          content_revision: 1,
+          word_count: 0,
+          character_count: 0,
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+        content: `body-${id}`,
+      });
+    }
+
+    const mediaCount = 3;
+    const sourceCount = 3;
+    const mediaIds: string[] = [];
+    for (let i = 0; i < mediaCount; i++) {
+      const mediaId = createId();
+      mediaIds.push(mediaId);
+      await index.upsertMedia({
+        id: mediaId,
+        item_id: idB,
+        filename: `gallery-${i}.png`,
+        media_type: "image",
+        created_at: timestamp,
+      });
+    }
+    const sourceIds: string[] = [];
+    for (let i = 0; i < sourceCount; i++) {
+      const sourceId = createId();
+      sourceIds.push(sourceId);
+      await db.execute(
+        `INSERT INTO source_refs (
+          id, item_id, plugin_id, external_id, synced_at, metadata_json
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          sourceId,
+          idB,
+          "test-plugin",
+          `ext-gallery-${i}`,
+          timestamp,
+          JSON.stringify({ i }),
+        ],
+      );
+    }
+
+    const executeSpy = vi.spyOn(db, "execute");
+    await index.rewriteItemIds([
+      { oldId: idB, newId: idC, folderPath: "notes" },
+      { oldId: idA, newId: idB, folderPath: "notes" },
+    ]);
+
+    const mediaInsertSql = executeSpy.mock.calls
+      .map(([sql]) => sql)
+      .filter(
+        (sql): sql is string =>
+          typeof sql === "string" &&
+          sql.includes("INSERT INTO media") &&
+          !sql.includes("ON CONFLICT"),
+      );
+    const sourceInsertSql = executeSpy.mock.calls
+      .map(([sql]) => sql)
+      .filter(
+        (sql): sql is string =>
+          typeof sql === "string" && sql.includes("INSERT INTO source_refs"),
+      );
+    executeSpy.mockRestore();
+
+    const expectedMediaInserts = Math.ceil(mediaCount / SQL_INSERT_CHUNK);
+    const expectedSourceInserts = Math.ceil(sourceCount / SQL_INSERT_CHUNK);
+    expect(mediaInsertSql).toHaveLength(expectedMediaInserts);
+    expect(sourceInsertSql).toHaveLength(expectedSourceInserts);
+    expect(mediaInsertSql[0]).toContain(sqlRowPlaceholders(mediaCount, 5));
+    expect(sourceInsertSql[0]).toContain(sqlRowPlaceholders(sourceCount, 6));
+
+    const mediaRows = await db.select<{ id: string; item_id: string; filename: string }>(
+      `SELECT id, item_id, filename FROM media WHERE item_id = ? ORDER BY filename`,
+      [idC],
+    );
+    expect(mediaRows).toEqual(
+      mediaIds
+        .map((id, i) => ({
+          id,
+          item_id: idC,
+          filename: `gallery-${i}.png`,
+        }))
+        .sort((a, b) => a.filename.localeCompare(b.filename)),
+    );
+    expect(
+      await db.select<{ id: string }>("SELECT id FROM media WHERE item_id = ?", [
+        idB,
+      ]),
+    ).toEqual([]);
+
+    const sourceRows = await db.select<{
+      id: string;
+      item_id: string;
+      external_id: string;
+    }>(
+      `SELECT id, item_id, external_id FROM source_refs
+       WHERE item_id = ? ORDER BY external_id`,
+      [idC],
+    );
+    expect(sourceRows).toEqual(
+      sourceIds
+        .map((id, i) => ({
+          id,
+          item_id: idC,
+          external_id: `ext-gallery-${i}`,
+        }))
+        .sort((a, b) => a.external_id.localeCompare(b.external_id)),
+    );
+    expect(
+      await db.select<{ id: string }>(
+        "SELECT id FROM source_refs WHERE item_id = ?",
+        [idB],
+      ),
+    ).toEqual([]);
   });
 });
 
