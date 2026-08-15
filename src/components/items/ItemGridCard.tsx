@@ -1,22 +1,16 @@
 import { memo, useMemo } from "react";
-import type { ItemFile } from "@collector/shared";
 import type { TagWithCount } from "@collector/core";
 import { cn } from "../../lib/utils";
-import { itemCoverStamp } from "../../lib/dashboard-commit";
 import { useMainScrollElement } from "../../hooks/useMainScrollElement";
 import { useNearViewportRef } from "../../hooks/useNearViewport";
 import { ItemGridCardMeta } from "./ItemGridCardMeta";
 import { textOnlyTeaserChromeClass } from "./text-only-teaser-chrome";
 import { itemGridCoverSlotPending } from "./item-grid-cover-slot";
 import { useItemGridCover } from "./use-item-grid-cover";
-
-interface ItemGridCardProps {
-  item: ItemFile;
-  /** undefined = paths still resolving; null = no file cover; string = path */
-  thumbnailPath?: string | null;
-  tagsById: Map<string, TagWithCount>;
-  onOpen: (itemId: string) => void;
-}
+import {
+  itemGridCardPropsAreEqual,
+  type ItemGridCardProps,
+} from "./item-grid-card-props";
 
 function ItemGridCardInner({
   item,
@@ -49,6 +43,7 @@ function ItemGridCardInner({
     pathUnresolved,
     onCoverImgLoad,
     onCoverImgError,
+    onCoverImgRef,
   } = useItemGridCover({
     thumbnailPath,
     itemUrl: item.url ?? undefined,
@@ -108,6 +103,7 @@ function ItemGridCardInner({
         >
           {(loadCover || showCover) && coverSrc ? (
             <img
+              ref={onCoverImgRef}
               src={coverSrc}
               alt=""
               className={cn(
@@ -140,19 +136,6 @@ function ItemGridCardInner({
 
       {!overlayLayout && meta}
     </div>
-  );
-}
-
-function itemGridCardPropsAreEqual(
-  prev: ItemGridCardProps,
-  next: ItemGridCardProps,
-): boolean {
-  return (
-    prev.item.id === next.item.id &&
-    itemCoverStamp(prev.item) === itemCoverStamp(next.item) &&
-    prev.thumbnailPath === next.thumbnailPath &&
-    prev.tagsById === next.tagsById &&
-    prev.onOpen === next.onOpen
   );
 }
 

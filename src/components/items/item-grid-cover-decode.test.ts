@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import {
   isPortraitNaturalSize,
   planItemGridCoverDecode,
+  readDomImgDecodeState,
+  settleDomImgCoverDecode,
 } from "./item-grid-cover-decode.ts";
 
 describe("planItemGridCoverDecode", () => {
@@ -70,6 +72,32 @@ describe("planItemGridCoverDecode", () => {
       { kind: "wait-path" },
     );
   });
+
+  it("keeps settled cover when scrolling out of the near zone", () => {
+    assert.deepEqual(
+      planItemGridCoverDecode({
+        thumbnailPath: "/thumb.webp",
+        resolvedSrc: "/cover.jpg",
+        shouldDecode: false,
+        currentSrc: "/cover.jpg",
+        currentSettled: true,
+      }),
+      { kind: "wait-path" },
+    );
+  });
+
+  it("does not abort in-flight decode when leaving the near zone", () => {
+    assert.deepEqual(
+      planItemGridCoverDecode({
+        thumbnailPath: "/thumb.webp",
+        resolvedSrc: "/cover.jpg",
+        shouldDecode: false,
+        currentSrc: "/cover.jpg",
+        currentSettled: false,
+      }),
+      { kind: "wait-path" },
+    );
+  });
 });
 
 describe("isPortraitNaturalSize", () => {
@@ -87,5 +115,87 @@ describe("isPortraitNaturalSize", () => {
       naturalHeight: 100,
     } as HTMLImageElement;
     assert.equal(isPortraitNaturalSize(img), false);
+  });
+});
+
+describe("readDomImgDecodeState", () => {
+  it("is pending while the browser has not completed the load", () => {
+    assert.equal(
+      readDomImgDecodeState({ complete: false, naturalWidth: 0 }),
+      "pending",
+    );
+  });
+
+  it("is loaded for a complete image with dimensions", () => {
+    assert.equal(
+      readDomImgDecodeState({ complete: true, naturalWidth: 120 }),
+      "loaded",
+    );
+  });
+
+  it("is broken when complete with naturalWidth 0 (cached error)", () => {
+    assert.equal(
+      readDomImgDecodeState({ complete: true, naturalWidth: 0 }),
+      "broken",
+    );
+  });
+});
+
+describe("settleDomImgCoverDecode", () => {
+  it("does nothing while pending", () => {
+    let loads = 0;
+    let errors = 0;
+    const settled = settleDomImgCoverDecode(
+      { complete: false, naturalWidth: 0 } as HTMLImageElement,
+      {
+        onLoad: () => {
+          loads += 1;
+        },
+        onError: () => {
+          errors += 1;
+        },
+      },
+    );
+    assert.equal(settled, false);
+    assert.equal(loads, 0);
+    assert.equal(errors, 0);
+  });
+
+  it("routes complete cached images through the load settle path", () => {
+    const img = {
+      complete: true,
+      naturalWidth: 80,
+      naturalHeight: 120,
+      currentSrc: "file:///cover.webp",
+      src: "file:///cover.webp",
+    } as HTMLImageElement;
+    let loaded: HTMLImageElement | null = null;
+    const settled = settleDomImgCoverDecode(img, {
+      onLoad: (el) => {
+        loaded = el;
+      },
+      onError: () => {
+        assert.fail("expected load path");
+      },
+    });
+    assert.equal(settled, true);
+    assert.equal(loaded, img);
+  });
+
+  it("routes complete naturalWidth 0 through the error settle path", () => {
+    let errors = 0;
+    const settled = settleDomImgCoverDecode(
+      { complete: true, naturalWidth: 0 } as HTMLImageElement,
+      {
+        onLoad: () => {
+          assert.fail("expected error path");
+        },
+        onError: () => {
+          errors += 1;
+        },
+      },
+    );
+    assert.equal(settled, true);
+    assert.equal(errors, 1);
   });
 });

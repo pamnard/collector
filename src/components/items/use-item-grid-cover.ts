@@ -4,6 +4,7 @@ import {
   ITEM_GRID_COVER_DECODE_TIMEOUT_MS,
   isPortraitNaturalSize,
   planItemGridCoverDecode,
+  settleDomImgCoverDecode,
 } from "./item-grid-cover-decode";
 import { itemGridCoverSlot } from "./item-grid-cover-slot";
 
@@ -23,6 +24,7 @@ export function useItemGridCover(args: {
   pathUnresolved: boolean;
   onCoverImgLoad: (img: HTMLImageElement) => void;
   onCoverImgError: () => void;
+  onCoverImgRef: (img: HTMLImageElement | null) => void;
 } {
   const { thumbnailPath, itemUrl, optimisticPortrait, shouldDecode } = args;
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
@@ -86,7 +88,9 @@ export function useItemGridCover(args: {
   }, [itemUrl, optimisticPortrait, shouldDecode, thumbnailPath]);
 
   useEffect(() => {
-    if (!loadCover || !shouldDecode) {
+    // Timeout follows in-flight loadCover even after leaving the near zone
+    // (decode is latched until settle — see planItemGridCoverDecode).
+    if (!loadCover) {
       return;
     }
 
@@ -105,7 +109,7 @@ export function useItemGridCover(args: {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [coverSrc, loadCover, shouldDecode]);
+  }, [coverSrc, loadCover]);
 
   const onCoverImgLoad = useCallback((img: HTMLImageElement) => {
     setCoverSrc(img.currentSrc || img.src);
@@ -119,6 +123,19 @@ export function useItemGridCover(args: {
     setIsPortraitCover(false);
   }, []);
 
+  const onCoverImgRef = useCallback(
+    (img: HTMLImageElement | null) => {
+      if (!img) {
+        return;
+      }
+      settleDomImgCoverDecode(img, {
+        onLoad: onCoverImgLoad,
+        onError: onCoverImgError,
+      });
+    },
+    [onCoverImgError, onCoverImgLoad],
+  );
+
   return {
     coverSrc,
     coverSettled,
@@ -129,5 +146,6 @@ export function useItemGridCover(args: {
     pathUnresolved: thumbnailPath === undefined,
     onCoverImgLoad,
     onCoverImgError,
+    onCoverImgRef,
   };
 }
