@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { COVER_DOMINANT_RATIO } from "../../lib/teaser-layout/cover-image-form";
 import { resolveCoverSrc } from "../../utils/item-cover-src";
+import {
+  shouldProbeCoverPixels,
+  shouldSettleCoverWithoutProbe,
+} from "./item-grid-cover-decode";
 import { itemGridCoverSlot } from "./item-grid-cover-slot";
 
 function isPortraitNaturalSize(img: HTMLImageElement): boolean {
@@ -14,6 +18,8 @@ export function useItemGridCover(args: {
   thumbnailPath: string | null | undefined;
   itemUrl: string | undefined;
   optimisticPortrait: boolean;
+  /** When false, skip Image() probe so offscreen masonry cards do not contend. */
+  nearViewport: boolean;
 }): {
   coverSrc: string | null;
   coverSettled: boolean;
@@ -22,7 +28,7 @@ export function useItemGridCover(args: {
   showCover: boolean;
   pathUnresolved: boolean;
 } {
-  const { thumbnailPath, itemUrl, optimisticPortrait } = args;
+  const { thumbnailPath, itemUrl, optimisticPortrait, nearViewport } = args;
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
   const [coverSettled, setCoverSettled] = useState(false);
   const [isPortraitCover, setIsPortraitCover] = useState(optimisticPortrait);
@@ -58,8 +64,13 @@ export function useItemGridCover(args: {
     setCoverSettled(false);
     setIsPortraitCover(optimisticPortrait);
 
-    if (!src) {
+    if (shouldSettleCoverWithoutProbe({ thumbnailPath, coverSrc: src })) {
       setCoverSettled(true);
+      return;
+    }
+
+    if (!shouldProbeCoverPixels({ nearViewport, coverSrc: src })) {
+      // Offscreen with a known cover URL: keep pending placeholder, no decode yet.
       return;
     }
 
@@ -89,7 +100,7 @@ export function useItemGridCover(args: {
     img.onerror = () => {
       finish({ src: null, portrait: false });
     };
-    img.src = src;
+    img.src = src!;
 
     return () => {
       cancelled = true;
@@ -97,7 +108,7 @@ export function useItemGridCover(args: {
       img.onload = null;
       img.onerror = null;
     };
-  }, [itemUrl, optimisticPortrait, thumbnailPath]);
+  }, [itemUrl, nearViewport, optimisticPortrait, thumbnailPath]);
 
   return {
     coverSrc,

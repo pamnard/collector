@@ -1,9 +1,16 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import type { ItemFile } from "@collector/shared";
 import type { TagWithCount } from "@collector/core";
 import { cn } from "../../lib/utils";
+import { itemCoverStamp } from "../../lib/dashboard-commit";
+import { useMainScrollElement } from "../../hooks/useMainScrollElement";
+import { useNearViewport } from "../../hooks/useNearViewport";
 import { ItemGridCardMeta } from "./ItemGridCardMeta";
 import { textOnlyTeaserChromeClass } from "./text-only-teaser-chrome";
+import {
+  COVER_DECODE_ROOT_MARGIN,
+  ITEM_GRID_COVER_IMG_LOADING,
+} from "./item-grid-cover-decode";
 import { itemGridCoverSlotPending } from "./item-grid-cover-slot";
 import { useItemGridCover } from "./use-item-grid-cover";
 
@@ -15,12 +22,37 @@ interface ItemGridCardProps {
   onOpen: (itemId: string) => void;
 }
 
-export function ItemGridCard({
+function itemGridCardPropsEqual(
+  prev: ItemGridCardProps,
+  next: ItemGridCardProps,
+): boolean {
+  return (
+    prev.item.id === next.item.id &&
+    itemCoverStamp(prev.item) === itemCoverStamp(next.item) &&
+    prev.thumbnailPath === next.thumbnailPath &&
+    prev.item.title === next.item.title &&
+    prev.item.description === next.item.description &&
+    prev.item.content_type === next.item.content_type &&
+    prev.item.created_at === next.item.created_at &&
+    prev.item.url === next.item.url &&
+    prev.item.tag_ids === next.item.tag_ids &&
+    prev.tagsById === next.tagsById &&
+    prev.onOpen === next.onOpen
+  );
+}
+
+function ItemGridCardComponent({
   item,
   thumbnailPath,
   tagsById,
   onOpen,
 }: ItemGridCardProps) {
+  const scrollElement = useMainScrollElement();
+  const { setNode, nearViewport } = useNearViewport({
+    root: scrollElement,
+    rootMargin: COVER_DECODE_ROOT_MARGIN,
+  });
+
   const optimisticPortrait =
     item.content_type === "image" || item.content_type === "video";
 
@@ -42,6 +74,7 @@ export function ItemGridCard({
     thumbnailPath,
     itemUrl: item.url ?? undefined,
     optimisticPortrait,
+    nearViewport,
   });
 
   // Notes must not show an empty gray teaser while cover paths resolve.
@@ -68,6 +101,7 @@ export function ItemGridCard({
 
   return (
     <div
+      ref={setNode}
       role="button"
       tabIndex={0}
       onClick={() => onOpen(item.id)}
@@ -98,7 +132,7 @@ export function ItemGridCard({
               src={coverSrc!}
               alt=""
               className="h-auto w-full"
-              loading="eager"
+              loading={ITEM_GRID_COVER_IMG_LOADING}
               decoding="async"
             />
           ) : (
@@ -123,3 +157,5 @@ export function ItemGridCard({
     </div>
   );
 }
+
+export const ItemGridCard = memo(ItemGridCardComponent, itemGridCardPropsEqual);
