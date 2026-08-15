@@ -99,17 +99,97 @@ export async function rewriteItemEmbeddingId(
   oldId: string,
   newId: string,
 ): Promise<void> {
-  const existing = await getItemEmbedding(db, oldId);
-  if (!existing) {
+  if (oldId === newId) {
     return;
   }
-  await deleteItemEmbedding(db, oldId);
-  await putItemEmbedding(db, {
-    itemId: newId,
-    modelId: existing.modelId,
-    contentRevision: existing.contentRevision,
-    inputFingerprint: existing.inputFingerprint,
-    vector: existing.vector,
-    updatedAt: existing.updatedAt,
+  await rewriteItemEmbeddingIds(db, [{ oldId, newId }]);
+}
+
+/** Rebind embedding PKs for many items in shared SELECT/DELETE/INSERT round-trips. */
+export async function rewriteItemEmbeddingIds(
+  db: SqlEmbeddingDb,
+  mappings: Array<{ oldId: string; newId: string }>,
+): Promise<void> {
+  const active = mappings.filter((mapping) => mapping.oldId !== mapping.newId);
+  if (active.length === 0) {
+    return;
+  }
+
+  const oldIds = active.map((mapping) => mapping.oldId);
+  const oldToNew = new Map(
+    active.map((mapping) => [mapping.oldId, mapping.newId] as const),
+  );
+  const placeholders = Array.from({ length: oldIds.length }, () => "?").join(
+    ", ",
+  );
+
+  const rows = await db.select<EmbeddingSqlRow>(
+    `SELECT item_id, model_id, content_revision, input_fingerprint, dims, vector, updated_at
+     FROM item_embeddings WHERE item_id IN (${placeholders})`,
+    oldIds,
+  );
+  if (rows.length === 0) {
+    return;
+  }
+
+  await db.execute(
+    `DELETE FROM item_embeddings WHERE item_id IN (${placeholders})`,
+    oldIds,
+  );
+
+  const EMBEDDING_INSERT_COLUMNS = 7;
+  const EMBEDDING_INSERT_CHUNK = Math.min(
+    100,
+    Math.floor(999 / EMBEDDING_INSERT_COLUMNS),
+  );
+  const remapped = rows.map((row) => {
+    const newId = oldToNew.get(row.item_id);
+    if (!newId) {
+      throw new Error(
+        `rewriteItemEmbeddingIds: missing mapping for ${row.item_id}`,
+      );
+    }
+    const embedding = rowToEmbedding(row);
+    if (embedding.vector.length === 0) {
+      throw new Error(`empty embedding vector for ${newId}`);
+    }
+    return {
+      itemId: newId,
+      modelId: embedding.modelId,
+      contentRevision: embedding.contentRevision,
+      inputFingerprint: embedding.inputFingerprint,
+      vector: embedding.vector,
+      updatedAt: embedding.updatedAt,
+    };
   });
+
+  for (
+    let offset = 0;
+    offset < remapped.length;
+    offset += EMBEDDING_INSERT_CHUNK
+  ) {
+    const chunk = remapped.slice(offset, offset + EMBEDDING_INSERT_CHUNK);
+    const rowPlaceholders = Array.from(
+      { length: chunk.length },
+      () => "(?, ?, ?, ?, ?, ?, ?)",
+    ).join(", ");
+    const binds: unknown[] = [];
+    for (const row of chunk) {
+      binds.push(
+        row.itemId,
+        row.modelId,
+        row.contentRevision,
+        row.inputFingerprint,
+        row.vector.length,
+        vectorToBlob(row.vector),
+        row.updatedAt,
+      );
+    }
+    await db.execute(
+      `INSERT INTO item_embeddings (
+        item_id, model_id, content_revision, input_fingerprint, dims, vector, updated_at
+      ) VALUES ${rowPlaceholders}`,
+      binds,
+    );
+  }
 }
