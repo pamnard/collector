@@ -6,6 +6,7 @@ import {
   type SetStateAction,
 } from "react";
 import type { ItemFile } from "@collector/shared";
+import type { ItemDetailMode } from "../../components/layout/item-chrome";
 import type { ItemFormValues } from "../../types/item";
 import {
   createItemDetailReloadGate,
@@ -13,6 +14,7 @@ import {
   type ItemDetailReloadGate,
 } from "./item-detail-reload-gate";
 import { reloadItemDetail } from "./item-detail-load";
+import { applyItemDetailIdentityChange } from "./reset-item-detail-edit-session";
 
 export function useItemDetailLoad(options: {
   id: string | undefined;
@@ -22,6 +24,9 @@ export function useItemDetailLoad(options: {
   setContent: Dispatch<SetStateAction<string | null>>;
   setItemTagNames: Dispatch<SetStateAction<string[]>>;
   setFormValues: Dispatch<SetStateAction<ItemFormValues | null>>;
+  setMode: Dispatch<SetStateAction<ItemDetailMode>>;
+  setSourceText: Dispatch<SetStateAction<string | null>>;
+  setSourceBaseline: Dispatch<SetStateAction<string | null>>;
 }): { reloadGateRef: MutableRefObject<ItemDetailReloadGate> } {
   const {
     id,
@@ -31,6 +36,9 @@ export function useItemDetailLoad(options: {
     setContent,
     setItemTagNames,
     setFormValues,
+    setMode,
+    setSourceText,
+    setSourceBaseline,
   } = options;
 
   const loadedIdRef = useRef<string | undefined>(undefined);
@@ -43,9 +51,17 @@ export function useItemDetailLoad(options: {
     }
 
     setError(null);
-    if (loadedIdRef.current !== id) {
+    if (
+      applyItemDetailIdentityChange({
+        previousId: loadedIdRef.current,
+        nextId: id,
+        setItem,
+        setMode,
+        setSourceText,
+        setSourceBaseline,
+      })
+    ) {
       loadedIdRef.current = id;
-      setItem(null);
     }
 
     let cancelled = false;
@@ -76,6 +92,9 @@ export function useItemDetailLoad(options: {
     setContent,
     setItemTagNames,
     setFormValues,
+    setMode,
+    setSourceText,
+    setSourceBaseline,
   ]);
 
   return { reloadGateRef };
