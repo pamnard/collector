@@ -55,11 +55,14 @@ function candidatePaths(sourceItemId: string, targetKey: string): string[] {
   }
 
   const candidates: string[] = [];
+  const seen = new Set<string>();
   const push = (value: string) => {
     const collapsed = collapsePathSegments(value);
-    if (collapsed && !candidates.includes(collapsed)) {
-      candidates.push(collapsed);
+    if (!collapsed || seen.has(collapsed)) {
+      return;
     }
+    seen.add(collapsed);
+    candidates.push(collapsed);
   };
 
   if (key.startsWith("/")) {
@@ -92,15 +95,18 @@ export function titleResolveCandidates(targetKey: string): string[] {
     return [];
   }
   const out: string[] = [];
+  const seen = new Set<string>();
   const push = (value: string) => {
     const trimmed = value.trim();
-    if (!trimmed || out.includes(trimmed)) {
+    if (!trimmed || seen.has(trimmed)) {
       return;
     }
+    seen.add(trimmed);
     out.push(trimmed);
     if (trimmed.toLowerCase().endsWith(".md")) {
       const stem = trimmed.slice(0, -3).trim();
-      if (stem && !out.includes(stem)) {
+      if (stem && !seen.has(stem)) {
+        seen.add(stem);
         out.push(stem);
       }
     }
