@@ -49,7 +49,12 @@ export function normalizeMarkdown(raw: string): NormalizeMarkdownResult {
       strings: { content: text },
       config: MARKDOWN_NORMALIZE_CONFIG,
     });
-    const errors = results.content ?? [];
+    const errors = results.content;
+    if (errors === undefined) {
+      throw new Error(
+        "normalizeMarkdown: markdownlint results missing `content` for input string key",
+      );
+    }
     const next = applyFixes(text, errors);
     if (next === text) {
       break;

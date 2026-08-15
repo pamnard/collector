@@ -170,8 +170,10 @@ export function createItemsCrud(
       content: input.content ?? null,
       sourceRef: input.sourceRef,
     });
-    deps.onVaultPresentationChanged?.(vault.id);
-    return item;
+    // Same serialize→normalize→write path as update: upsert wrote the document;
+    // persistNormalizedSource applies markdownlint autofix before leaving dirty body on disk.
+    const raw = await readItemRawMarkdown(ctx.fs, path, item.id);
+    return persistNormalizedSource(item.id, raw);
   };
 
   const updateItem = async (
