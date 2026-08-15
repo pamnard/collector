@@ -165,8 +165,14 @@ describe("MCP tools over host HTTP (#556)", () => {
     expect(search.isError).toBeFalsy();
     const searchBody = JSON.parse(
       (search.content as { text: string }[])[0]!.text,
-    ) as { id: string; title: string; content_type: string; tag_ids: string[] }[];
-    const hit = searchBody.find((row) => row.id === createdBody.id);
+    ) as {
+      items: { id: string; title: string; content_type: string; tag_ids: string[] }[];
+      total: number;
+      offset: number;
+    };
+    expect(searchBody.total).toBeGreaterThanOrEqual(1);
+    expect(searchBody.offset).toBe(0);
+    const hit = searchBody.items.find((row) => row.id === createdBody.id);
     expect(hit).toBeDefined();
     expect(hit!.title).toBe("MCP note");
     expect(hit!.content_type).toBe("note");

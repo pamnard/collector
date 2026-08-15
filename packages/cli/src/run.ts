@@ -66,8 +66,8 @@ export async function runCollectorCli(
       return 0;
     }
     if (cmd.name === "search") {
-      const items = await client.items.searchItems(cmd.query, "all");
-      io.stdout(JSON.stringify(items, null, 2));
+      const result = await client.items.searchItems(cmd.query, "all");
+      io.stdout(JSON.stringify(result, null, 2));
       return 0;
     }
     if (cmd.name === "get-item") {

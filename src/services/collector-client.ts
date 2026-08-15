@@ -46,4 +46,4 @@ export {
 } from "../dev/mock-collector-service";
 export { createUiDashboardSnapshotPort } from "./ui-dashboard-snapshot-port";
 export { getUiSession, setUiSession } from "./ui-session";
-export { DASHBOARD_PREFETCH_SIZE } from "@collector/api";
+export { DASHBOARD_PREFETCH_SIZE, SEARCH_PAGE_SIZE } from "@collector/api";

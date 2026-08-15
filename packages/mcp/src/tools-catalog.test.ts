@@ -59,7 +59,7 @@ describe("COLLECTOR_MCP_TOOLS catalog (#273 / #265)", () => {
     expect(getItem!.description).toMatch(/not a bare UUID/i);
   });
 
-  it("documents search as FTS returning full ItemFile (#265 / #354)", () => {
+  it("documents search as FTS returning paged ItemFile with total (#265 / #354 / #658)", () => {
     const search = COLLECTOR_MCP_TOOLS.find(
       (tool) => tool.name === "collector_search",
     );
@@ -68,6 +68,8 @@ describe("COLLECTOR_MCP_TOOLS catalog (#273 / #265)", () => {
     expect(search!.description).toMatch(/frontmatter/i);
     expect(search!.description).toMatch(/does not look up by item id/i);
     expect(search!.description).toMatch(/ItemFile/i);
+    expect(search!.description).toMatch(/total/i);
+    expect(search!.description).toMatch(/truncat/i);
     const query = search!.params.find((param) => param.name === "query");
     expect(query?.description).toMatch(/not an id or path lookup/i);
     expect(query?.description).toMatch(/frontmatter/i);

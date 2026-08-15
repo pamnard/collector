@@ -12,7 +12,7 @@ After `move-item` / update-with-folder, the item path changes. Use the **new** `
 
 ## Search
 
-`search` / `collector_search` is full-text over note text (and title/description columns). It is **not** lookup by id or path. Searching a UUID or `Inbox/foo.md` will not reliably return that item by identity.
+`search` / `collector_search` is full-text over note text (and title/description columns). It is **not** lookup by id or path. Searching a UUID or `Inbox/foo.md` will not reliably return that item by identity. Results are page-capped and return `{ items, total, offset }` — when `items.length < total` the page is truncated.
 
 To open a known path: `get-item` / `get-item-source` with that full path.
 

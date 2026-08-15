@@ -110,8 +110,8 @@ export function createCollectorMcpServer(
     },
     async ({ query }) => {
       try {
-        const items = await client.items.searchItems(query, "all");
-        return textResult(items);
+        const result = await client.items.searchItems(query, "all");
+        return textResult(result);
       } catch (error) {
         return errorResult(error);
       }

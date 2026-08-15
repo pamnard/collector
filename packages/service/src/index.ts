@@ -16,11 +16,13 @@ export {
   createItemsSearchService,
   queryDashboardIndexPage,
   DASHBOARD_PREFETCH_SIZE,
+  SEARCH_PAGE_SIZE,
   type DashboardIndexPage,
   type DashboardItemIdsResult,
   type ItemsIndexPort,
   type ItemsSearchService,
   type ItemsSearchServiceDeps,
+  type SearchItemsResult,
   type VaultSyncBatchListener,
 } from "./items-search.js";
 
