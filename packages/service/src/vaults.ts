@@ -100,6 +100,8 @@ function defaultWelcomeItem(
       collection_ids: [],
       folder_path: inboxFolder,
       content_revision: 1,
+      word_count: 0,
+      character_count: 0,
       created_at: now,
       updated_at: now,
     },

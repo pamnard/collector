@@ -39,7 +39,9 @@ function sampleItem(overrides: Partial<ItemFile> = {}): ItemFile {
     collection_ids: [],
     folder_path: "Inbox",
     content_revision: 2,
-    created_at: "2024-01-01T00:00:00.000Z",
+      word_count: 0,
+      character_count: 0,
+      created_at: "2024-01-01T00:00:00.000Z",
     updated_at: "2024-01-02T00:00:00.000Z",
     ...overrides,
   };
@@ -48,12 +50,19 @@ function sampleItem(overrides: Partial<ItemFile> = {}): ItemFile {
 describe("item-document mapping", () => {
   it("round-trips ItemFile through markdown with tag names", () => {
     const { byId, byName } = buildTagMaps([TAG_A, TAG_B]);
-    const item = sampleItem({ tag_ids: [TAG_A.id, TAG_B.id] });
-    const md = serializeItemDocument(item, "# Body\n", byId);
+    const body = "# Body\n";
+    const item = sampleItem({
+      tag_ids: [TAG_A.id, TAG_B.id],
+      word_count: 1,
+      character_count: 7,
+    });
+    const md = serializeItemDocument(item, body, byId);
     expect(md).toContain("tags:");
     expect(md).toContain("Focus");
     expect(md).toContain("Research");
     expect(md).not.toContain(TAG_A.id);
+    expect(md).not.toContain("word_count");
+    expect(md).not.toContain("character_count");
 
     const parsed = parseItemDocumentResolved(md, {
       itemId: ITEM_ID,
@@ -61,7 +70,7 @@ describe("item-document mapping", () => {
       tagsByName: byName,
     });
     expect(parsed.item).toEqual(item);
-    expect(parsed.body).toBe("# Body\n");
+    expect(parsed.body).toBe(body);
   });
 
   it("reports missing tag names without inventing ids", () => {

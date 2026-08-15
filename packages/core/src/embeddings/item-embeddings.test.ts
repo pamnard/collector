@@ -47,8 +47,8 @@ describe("item embedding orchestration", () => {
       `INSERT INTO items (
         id, vault_id, title, description, content_type, source_type,
         metadata_json, properties_json, has_content_file, folder_path,
-        created_at, updated_at, content_revision
-      ) VALUES (?, 'v1', ?, ?, 'note', 'manual', '{}', '{}', 0, ?, 't', 't', 1)`,
+        created_at, updated_at, content_revision, word_count, character_count
+      ) VALUES (?, 'v1', ?, ?, 'note', 'manual', '{}', '{}', 0, ?, 't', 't', 1, 0, 0)`,
       [id, title, description, folderPath],
     );
   }

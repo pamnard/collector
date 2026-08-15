@@ -66,6 +66,8 @@ describe("item-io", () => {
       collection_ids: [],
       folder_path: "",
       content_revision: 1,
+      word_count: 0,
+      character_count: 0,
       created_at: ts,
       updated_at: ts,
       ...overrides,

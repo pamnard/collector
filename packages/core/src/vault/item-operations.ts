@@ -25,6 +25,7 @@ import { listItemRelativePaths } from "./scan.js";
 import { diskMtimeMsFromDocumentMarkdown } from "./recover-item-mtime.js";
 import { readVaultItemMetaBatch } from "./vault-fs-batch.js";
 import { refreshItemEmbeddingAfterWrite } from "./item-embedding-refresh.js";
+import { countTextStats } from "./text-stats.js";
 
 export async function upsertItem(
   ctx: VaultContext,
@@ -34,6 +35,8 @@ export async function upsertItem(
 ): Promise<ItemFile> {
   const timestamp = nowIso();
   const id = normalizeRelativePath(input.item.id);
+  const body = input.content ?? "";
+  const textStats = countTextStats(body);
   const item: ItemFile = {
     ...input.item,
     id,
@@ -43,9 +46,10 @@ export async function upsertItem(
     folder_path: folderPathFromItemId(id),
     updated_at: timestamp,
     created_at: input.item.created_at || timestamp,
+    word_count: textStats.wordCount,
+    character_count: textStats.characterCount,
   };
 
-  const body = input.content ?? "";
   await writeItemDocument(ctx.fs, vaultPath, item, body);
 
   if (input.sourceRef) {

@@ -193,8 +193,8 @@ describe("listItemIdTitles warm cache (#661)", () => {
       `INSERT INTO items (
         id, vault_id, title, description, content_type, source_type,
         metadata_json, properties_json, has_content_file, folder_path,
-        created_at, updated_at, content_revision
-      ) VALUES (?, ?, ?, '', 'note', 'manual', '{}', '{}', 1, 'Inbox', ?, ?, 1)`,
+        created_at, updated_at, content_revision, word_count, character_count
+      ) VALUES (?, ?, ?, '', 'note', 'manual', '{}', '{}', 1, 'Inbox', ?, ?, 1, 0, 0)`,
       ["Inbox/a.md", "vault-1", "Alpha", now, now],
     );
 
@@ -228,6 +228,8 @@ describe("listItemIdTitles warm cache (#661)", () => {
           created_at: now,
           updated_at: now,
           content_revision: 2,
+          word_count: 0,
+          character_count: 0,
         },
         fileMtimeMs: 1,
       },
@@ -267,8 +269,8 @@ describe("listItemIdTitles warm cache (#661)", () => {
       `INSERT INTO items (
         id, vault_id, title, description, content_type, source_type,
         metadata_json, properties_json, has_content_file, folder_path,
-        created_at, updated_at, content_revision
-      ) VALUES (?, ?, ?, '', 'note', 'manual', '{}', '{}', 1, 'Inbox', ?, ?, 1)`,
+        created_at, updated_at, content_revision, word_count, character_count
+      ) VALUES (?, ?, ?, '', 'note', 'manual', '{}', '{}', 1, 'Inbox', ?, ?, 1, 0, 0)`,
       ["Inbox/a.md", "vault-1", "Alpha", now, now],
     );
 
@@ -293,6 +295,8 @@ describe("listItemIdTitles warm cache (#661)", () => {
           created_at: now,
           updated_at: now,
           content_revision: 2,
+          word_count: 0,
+          character_count: 0,
         },
         fileMtimeMs: 1,
       },
@@ -339,8 +343,8 @@ describe("catalog invalidation on index mutations (#661)", () => {
       `INSERT INTO items (
         id, vault_id, title, description, content_type, source_type,
         metadata_json, properties_json, has_content_file, folder_path,
-        created_at, updated_at, content_revision
-      ) VALUES (?, ?, ?, '', 'note', 'manual', '{}', '{}', 1, 'Inbox', ?, ?, 1)`,
+        created_at, updated_at, content_revision, word_count, character_count
+      ) VALUES (?, ?, ?, '', 'note', 'manual', '{}', '{}', 1, 'Inbox', ?, ?, 1, 0, 0)`,
       ["Inbox/a.md", "vault-1", "Alpha", now, now],
     );
     return { index: new SqlVaultIndexStore(db), now };

@@ -198,6 +198,8 @@ export function createItemsCrud(
         collection_ids: [],
         folder_path: folderPath,
         content_revision: 1,
+        word_count: 0,
+        character_count: 0,
         created_at: timestamp,
         updated_at: timestamp,
       },

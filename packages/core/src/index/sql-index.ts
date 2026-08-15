@@ -105,8 +105,9 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
       `INSERT INTO items (
         id, vault_id, title, description, url, content_type, source_type, source_id,
         metadata_json, properties_json, thumbnail_path, has_content_file,
-        folder_path, created_at, updated_at, file_mtime_ms, content_revision
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        folder_path, created_at, updated_at, file_mtime_ms, content_revision,
+        word_count, character_count
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         vault_id = excluded.vault_id,
         title = excluded.title,
@@ -122,7 +123,9 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
         created_at = excluded.created_at,
         updated_at = excluded.updated_at,
         file_mtime_ms = excluded.file_mtime_ms,
-        content_revision = excluded.content_revision`,
+        content_revision = excluded.content_revision,
+        word_count = excluded.word_count,
+        character_count = excluded.character_count`,
       [
         item.id,
         vaultId,
@@ -141,6 +144,8 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
         item.updated_at,
         record.fileMtimeMs ?? null,
         item.content_revision,
+        item.word_count,
+        item.character_count,
       ],
     );
 
@@ -226,6 +231,8 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
           item.updated_at,
           record.fileMtimeMs ?? null,
           item.content_revision,
+          item.word_count,
+          item.character_count,
         );
         for (const tagId of item.tag_ids) {
           tagLinks.push({ itemId: item.id, tagId });
@@ -244,8 +251,9 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
         `INSERT INTO items (
           id, vault_id, title, description, url, content_type, source_type, source_id,
           metadata_json, properties_json, thumbnail_path, has_content_file,
-          folder_path, created_at, updated_at, file_mtime_ms, content_revision
-        ) VALUES ${sqlRowPlaceholders(chunk.length, 17)}
+          folder_path, created_at, updated_at, file_mtime_ms, content_revision,
+          word_count, character_count
+        ) VALUES ${sqlRowPlaceholders(chunk.length, 19)}
         ON CONFLICT(id) DO UPDATE SET
           vault_id = excluded.vault_id,
           title = excluded.title,
@@ -261,7 +269,9 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
           created_at = excluded.created_at,
           updated_at = excluded.updated_at,
           file_mtime_ms = excluded.file_mtime_ms,
-          content_revision = excluded.content_revision`,
+          content_revision = excluded.content_revision,
+          word_count = excluded.word_count,
+          character_count = excluded.character_count`,
         itemBinds,
       );
 
