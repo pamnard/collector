@@ -4,6 +4,11 @@ import type {
   ItemFile,
 } from "@collector/shared";
 import type { DashboardQueryCacheEntry } from "../services/dashboard-query-cache";
+import {
+  pruneItemIdFromDashboardListSnapshot,
+  type DashboardListSnapshot as DashboardListSharedFields,
+  type DashboardListSnapshotPruneInput,
+} from "./dashboard-list-snapshot.ts";
 
 export function orderedIds(items: ItemFile[]): string[] {
   return items.map((item) => item.id);
@@ -221,32 +226,19 @@ export function intersectCommittedWithPageIds(
   return committed.filter((item) => allowed.has(item.id));
 }
 
-export interface DashboardListPruneInput {
-  itemIds: string[];
-  itemsById: ReadonlyMap<string, ItemFile>;
-  bodyStamps: ReadonlyMap<string, string>;
-  thumbnailPaths: ReadonlyMap<string, string | null>;
-  thumbnailStamps: ReadonlyMap<string, string>;
-  streamEndOffset: number;
-  totalCount: number;
+export type DashboardListPruneInput = DashboardListSnapshotPruneInput & {
   committedItems: readonly ItemFile[];
   committedTotalCount: number;
-}
+};
 
 /**
  * Full working + committed list window for dashboard paint (#655).
- * Applied atomically via {@link applyDashboardListSnapshot} so setters and refs stay aligned.
+ * Shared list fields come from {@link DashboardListSharedFields}; applied atomically
+ * via {@link applyDashboardListSnapshot} so setters and refs stay aligned.
  */
-export type DashboardListSnapshot = {
-  itemIds: string[];
-  itemsById: Map<string, ItemFile>;
-  bodyStamps: Map<string, string>;
-  streamEndOffset: number;
-  totalCount: number;
+export type DashboardListSnapshot = DashboardListSharedFields & {
   committedItems: ItemFile[];
   committedTotalCount: number;
-  thumbnailPaths: Map<string, string | null>;
-  thumbnailStamps: Map<string, string>;
 };
 
 export type DashboardListPruneResult =
@@ -297,40 +289,49 @@ export function pruneItemIdFromDashboardLists(
   itemId: string,
   input: DashboardListPruneInput,
 ): DashboardListPruneResult {
-  const inIds = input.itemIds.includes(itemId);
-  const inBodies = input.itemsById.has(itemId);
-  const inCommitted = input.committedItems.some((item) => item.id === itemId);
-  if (!inIds && !inBodies && !inCommitted) {
-    return { removed: false };
-  }
-
-  const itemIds = input.itemIds.filter((id) => id !== itemId);
-  const removedFromIds = input.itemIds.length - itemIds.length;
-  const itemsById = new Map(input.itemsById);
-  itemsById.delete(itemId);
-  const bodyStamps = new Map(input.bodyStamps);
-  bodyStamps.delete(itemId);
-  const thumbnailPaths = new Map(input.thumbnailPaths);
-  thumbnailPaths.delete(itemId);
-  const thumbnailStamps = new Map(input.thumbnailStamps);
-  thumbnailStamps.delete(itemId);
+  const list = pruneItemIdFromDashboardListSnapshot(itemId, input);
   const committedItems = filterOutItemId(input.committedItems, itemId);
   const removedFromCommitted =
     input.committedItems.length - committedItems.length;
 
+  if (!list.removed && removedFromCommitted === 0) {
+    return { removed: false };
+  }
+
+  if (list.removed) {
+    const removedFromIds = input.itemIds.length - list.itemIds.length;
+    return {
+      removed: true,
+      itemIds: list.itemIds,
+      itemsById: list.itemsById,
+      bodyStamps: list.bodyStamps,
+      thumbnailPaths: list.thumbnailPaths,
+      thumbnailStamps: list.thumbnailStamps,
+      streamEndOffset: list.streamEndOffset,
+      totalCount: list.totalCount,
+      committedItems,
+      committedTotalCount: Math.max(
+        0,
+        input.committedTotalCount -
+          Math.max(removedFromIds, removedFromCommitted),
+      ),
+    };
+  }
+
+  // Present only in committed paint — clone snapshot fields for new refs.
   return {
     removed: true,
-    itemIds,
-    itemsById,
-    bodyStamps,
-    thumbnailPaths,
-    thumbnailStamps,
-    streamEndOffset: Math.min(input.streamEndOffset, itemIds.length),
-    totalCount: Math.max(0, input.totalCount - removedFromIds),
+    itemIds: [...input.itemIds],
+    itemsById: new Map(input.itemsById),
+    bodyStamps: new Map(input.bodyStamps),
+    thumbnailPaths: new Map(input.thumbnailPaths),
+    thumbnailStamps: new Map(input.thumbnailStamps),
+    streamEndOffset: Math.min(input.streamEndOffset, input.itemIds.length),
+    totalCount: input.totalCount,
     committedItems,
     committedTotalCount: Math.max(
       0,
-      input.committedTotalCount - Math.max(removedFromIds, removedFromCommitted),
+      input.committedTotalCount - removedFromCommitted,
     ),
   };
 }
