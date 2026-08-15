@@ -6,11 +6,12 @@ import type {
   AttachMediaFileInput,
   CreateItemInput,
   CredentialsPort,
+  FolderTreeNode,
   SyncPluginsPort,
   TelegramSyncPort,
 } from "@collector/api";
 import type { FileSystemAdapter } from "@collector/core";
-import type { FolderTreeNode, ItemFile } from "@collector/shared";
+import type { ItemFile } from "@collector/shared";
 import { createSyncPluginRegistry } from "../sync-plugin-registry.js";
 import {
   createSyncPluginWakeController,
