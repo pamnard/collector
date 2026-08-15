@@ -285,6 +285,15 @@ export type {
 export { parseAndResolveTextLinks } from "./links/parse-text-links.js";
 
 export {
+  buildBacklinkReverseMap,
+  collectBacklinkSources,
+} from "./links/collect-backlink-sources.js";
+export type {
+  BacklinkSource,
+  BacklinkSourceBody,
+} from "./links/collect-backlink-sources.js";
+
+export {
   buildTextLinkResolveContext,
   textLinkResolveContextFromItems,
 } from "./links/text-links-reindex.js";

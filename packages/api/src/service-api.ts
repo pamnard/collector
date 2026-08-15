@@ -134,6 +134,12 @@ export interface ResolvedTextLink {
   resolvedItemId: string | null;
 }
 
+/** Unique item that links to a target note (#410). */
+export interface BacklinkSource {
+  id: string;
+  title: string;
+}
+
 /** Explicit unsubscribe handle for port subscriptions (#364). */
 /** Tear-down handle. Prefer `.unsubscribe()`; also callable for React effect cleanup. */
 export type Subscription = (() => void) & { unsubscribe(): void };
@@ -226,6 +232,8 @@ export interface ItemsPort {
     itemId: string,
     body: string,
   ): Promise<ResolvedTextLink[]>;
+  /** Unique notes that link to this item via text links (#410). */
+  listItemBacklinks(itemId: string): Promise<BacklinkSource[]>;
   getItemSource(itemId: string): Promise<string>;
   updateItemSource(itemId: string, rawMarkdown: string): Promise<ItemFile>;
   createItem(input: CreateItemInput): Promise<ItemFile>;

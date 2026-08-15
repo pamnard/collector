@@ -430,8 +430,7 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
         .map((row) => ({ item_id: row.item_id, tag_id: row.tag_id })) as T[];
     }
 
-    if (
-      normalized.startsWith("SELECT item_id, collection_id FROM item_collections WHERE item_id IN",
+    if (normalized.startsWith("SELECT item_id, collection_id FROM item_collections WHERE item_id IN",
       )
     ) {
       const ids = new Set(bindValues.map(String));
@@ -442,6 +441,54 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
           item_id: row.item_id,
           collection_id: row.collection_id,
         })) as T[];
+    }
+
+    if (
+      normalized.startsWith(
+        "SELECT i.id AS id, i.title AS title, items_fts.content AS content",
+      )
+    ) {
+      const vaultId = bindValues[0];
+      const items = this.tables.get("items") ?? new Map();
+      const fts = this.tables.get("items_fts") ?? new Map();
+      const out: Array<{ id: string; title: string; content: string }> = [];
+      for (const row of items.values()) {
+        if (row.vault_id !== vaultId || Number(row.has_content_file) !== 1) {
+          continue;
+        }
+        const ftsRow = fts.get(String(row.id));
+        if (!ftsRow) {
+          continue;
+        }
+        out.push({
+          id: String(row.id),
+          title: String(row.title),
+          content: String(ftsRow.content ?? ""),
+        });
+      }
+      return out as T[];
+    }
+
+    if (
+      normalized.startsWith(
+        "SELECT MAX(content_revision) AS generation FROM items WHERE vault_id = ?",
+      )
+    ) {
+      const vaultId = bindValues[0];
+      const items = this.tables.get("items") ?? new Map();
+      let max = 0;
+      let any = false;
+      for (const row of items.values()) {
+        if (row.vault_id !== vaultId) {
+          continue;
+        }
+        any = true;
+        const rev = Number(row.content_revision ?? 0);
+        if (rev > max) {
+          max = rev;
+        }
+      }
+      return [{ generation: any ? max : null }] as T[];
     }
 
     throw new Error(`Unsupported select in MemorySqlAdapter: ${normalized.slice(0, 80)}`);

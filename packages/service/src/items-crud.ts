@@ -4,6 +4,7 @@
 
 import type {
   AdjacentItemsResult,
+  BacklinkSource,
   CreateItemInput,
   GetItemResult,
   ResolvedTextLink,
@@ -18,6 +19,7 @@ import {
   loadTagMaps,
   moveItemToFolder,
   parseAndResolveTextLinks,
+  parseDocumentMarkdown,
   readItemContent,
   readItemFile,
   readItemRawMarkdown,
@@ -28,6 +30,7 @@ import {
   writeItemRawMarkdown,
   type AdjacentItemAnchor,
 } from "@collector/core";
+import { getBacklinksForTarget } from "./backlinks-reverse-cache.js";
 import type { ItemsSearchServiceDeps } from "./items-search.js";
 
 export type ItemsCrud = {
@@ -37,6 +40,7 @@ export type ItemsCrud = {
     itemId: string,
     body: string,
   ): Promise<ResolvedTextLink[]>;
+  listItemBacklinks(itemId: string): Promise<BacklinkSource[]>;
   getItemSource(itemId: string): Promise<string>;
   updateItemSource(itemId: string, rawMarkdown: string): Promise<ItemFile>;
   createItem(input: CreateItemInput): Promise<ItemFile>;
@@ -102,6 +106,22 @@ export function createItemsCrud(
       body,
       textLinkResolveContextFromItems(itemId, items),
     );
+  };
+
+  const listItemBacklinks = async (
+    itemId: string,
+  ): Promise<BacklinkSource[]> => {
+    const { vault } = await deps.resolveActiveVault();
+    const index = deps.getIndex();
+    const generation = await index.vaultItemsContentGeneration(vault.id);
+    return getBacklinksForTarget({
+      vaultId: vault.id,
+      targetItemId: itemId,
+      generation,
+      loadCatalog: () => index.listItemIdTitles(vault.id),
+      loadBodies: () => index.listItemFtsBodies(vault.id),
+      bodyFromContent: (content) => parseDocumentMarkdown(content).body,
+    });
   };
 
   const getItemSource = async (itemId: string): Promise<string> => {
@@ -260,6 +280,7 @@ export function createItemsCrud(
     getItemById,
     getAdjacentItems,
     resolveContentTextLinks,
+    listItemBacklinks,
     getItemSource,
     updateItemSource: persistNormalizedSource,
     createItem,

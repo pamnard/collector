@@ -17,6 +17,7 @@ import {
   type IndexQueryResult,
   type NavFilter,
   type ResolvedTextLink,
+  type BacklinkSource,
   type SearchItemsResult,
   type SimilarItemHit,
   type Subscription,
@@ -69,6 +70,12 @@ export interface ItemsIndexPort {
   listItemIdTitles(
     vaultId: string,
   ): Promise<Array<{ id: string; title: string }>>;
+  /** Full markdown bodies from FTS for text-link inversion (#410). */
+  listItemFtsBodies(
+    vaultId: string,
+  ): Promise<Array<{ id: string; title: string; content: string }>>;
+  /** MAX(content_revision) for backlink reverse-map invalidation (#410). */
+  vaultItemsContentGeneration(vaultId: string): Promise<number>;
   getAdjacentItems(
     vaultId: string,
     anchor: AdjacentItemAnchor,
@@ -163,6 +170,7 @@ export interface ItemsSearchService {
     itemId: string,
     body: string,
   ): Promise<ResolvedTextLink[]>;
+  listItemBacklinks(itemId: string): Promise<BacklinkSource[]>;
   getItemSource(itemId: string): Promise<string>;
   updateItemSource(itemId: string, rawMarkdown: string): Promise<ItemFile>;
   createItem(input: CreateItemInput): Promise<ItemFile>;
@@ -348,6 +356,7 @@ export function createItemsSearchService(
     getAdjacentItems: crud.getAdjacentItems,
     findSimilarItems: deps.findSimilarItems,
     resolveContentTextLinks: crud.resolveContentTextLinks,
+    listItemBacklinks: crud.listItemBacklinks,
     getItemSource: crud.getItemSource,
     updateItemSource: crud.updateItemSource,
     createItem: crud.createItem,

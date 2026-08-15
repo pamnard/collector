@@ -194,6 +194,10 @@ export function createHostItemsPort(ctx: HostSessionCtx): ItemsPort {
         itemId,
         body,
       }) as ReturnType<ItemsPort["resolveContentTextLinks"]>,
+    listItemBacklinks: async (itemId: string) =>
+      transport.request("listItemBacklinks", {
+        itemId,
+      }) as ReturnType<ItemsPort["listItemBacklinks"]>,
     getItemSource: async (itemId: string): Promise<string> =>
       transport.request("getItemSource", { itemId }) as Promise<string>,
     updateItemSource: async (

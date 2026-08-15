@@ -1,6 +1,7 @@
 import type { FolderTreeNode, MediaWithPath, TagWithCount } from "@collector/core";
 import {
   buildCanonicalFrontmatter,
+  buildBacklinkReverseMap,
   contentTypeFromFrontmatter,
   isItemIdSortKey,
   parseAndResolveTextLinks,
@@ -251,6 +252,28 @@ export async function resolveContentTextLinks(
     body,
     textLinkResolveContextFromItems(itemId, items),
   );
+}
+
+export async function listItemBacklinks(itemId: string) {
+  ensureWarmedUp();
+  const items = mockStore.getItems();
+  if (!mockStore.isDiskVault()) {
+    return [];
+  }
+  const sources: Array<{ id: string; title: string; body: string }> = [];
+  for (const item of items) {
+    const raw = await fetchDevVaultText(devVaultFsUrl(item.id));
+    if (raw === null) {
+      continue;
+    }
+    sources.push({
+      id: item.id,
+      title: item.title,
+      body: parseDocumentMarkdown(raw).body,
+    });
+  }
+  const reverse = buildBacklinkReverseMap(items, sources);
+  return reverse.get(itemId) ?? [];
 }
 
 export async function getAdjacentItems(itemId: string): Promise<{
