@@ -295,8 +295,11 @@ export type {
 
 export {
   buildTextLinkResolveContext,
+  textLinkCatalogIndexesFromItems,
+  textLinkResolveContextFromIndexes,
   textLinkResolveContextFromItems,
 } from "./links/text-links-reindex.js";
+export type { TextLinkCatalogIndexes } from "./links/text-links-reindex.js";
 
 export {
   invalidateAllVaultIdTitleCatalogs,

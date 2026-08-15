@@ -1,5 +1,8 @@
 import { parseAndResolveTextLinks } from "./parse-text-links.js";
-import { textLinkResolveContextFromItems } from "./text-links-reindex.js";
+import {
+  textLinkCatalogIndexesFromItems,
+  textLinkResolveContextFromIndexes,
+} from "./text-links-reindex.js";
 
 export type BacklinkSource = {
   id: string;
@@ -21,6 +24,7 @@ export function collectBacklinkSources(
 ): BacklinkSource[] {
   const out: BacklinkSource[] = [];
   const seen = new Set<string>();
+  const indexes = textLinkCatalogIndexesFromItems(catalog);
 
   for (const source of sources) {
     if (source.id === targetItemId) {
@@ -28,7 +32,7 @@ export function collectBacklinkSources(
     }
     const links = parseAndResolveTextLinks(
       source.body,
-      textLinkResolveContextFromItems(source.id, catalog),
+      textLinkResolveContextFromIndexes(source.id, indexes),
     );
     const hitsTarget = links.some(
       (link) => link.resolvedItemId === targetItemId,
@@ -53,11 +57,12 @@ export function buildBacklinkReverseMap(
 ): Map<string, BacklinkSource[]> {
   const reverse = new Map<string, BacklinkSource[]>();
   const seenByTarget = new Map<string, Set<string>>();
+  const indexes = textLinkCatalogIndexesFromItems(catalog);
 
   for (const source of sources) {
     const links = parseAndResolveTextLinks(
       source.body,
-      textLinkResolveContextFromItems(source.id, catalog),
+      textLinkResolveContextFromIndexes(source.id, indexes),
     );
     for (const link of links) {
       const targetId = link.resolvedItemId;
