@@ -14,7 +14,7 @@ import type {
   ImportDroppedFilesInput,
   UpdateItemInput,
 } from "@collector/api";
-import { assertSearchItemsPage } from "@collector/api";
+import { searchItemsPageViolation } from "@collector/api";
 import type { AppSettings, ItemFile } from "@collector/shared";
 import { dashboardSnapshotSchema } from "@collector/shared";
 import type { ServiceDomainRuntime } from "../domain-runtime.js";
@@ -143,12 +143,9 @@ export const DOMAIN_DISPATCH_REGISTRY: Record<
           badRequest(`${M.searchItems}: page.offset must be a number`);
         }
         page = { limit: raw.limit, offset: raw.offset };
-        try {
-          assertSearchItemsPage(page);
-        } catch (error) {
-          badRequest(
-            `${M.searchItems}: ${error instanceof Error ? error.message : String(error)}`,
-          );
+        const violation = searchItemsPageViolation(page);
+        if (violation !== null) {
+          badRequest(`${M.searchItems}: ${violation}`);
         }
       }
       await runtime.ensureInitialized();

@@ -119,5 +119,6 @@ export {
 
 export {
   assertSearchItemsPage,
+  searchItemsPageViolation,
   type SearchItemsPage,
 } from "./search-items-page.js";
