@@ -27,6 +27,7 @@ import {
   readVaultItemSourceRefBatch,
   statVaultItemMetaBatch,
 } from "./vault-fs-batch.js";
+import { hydrateReindexQueue } from "./sync-operations/reindex-phase.js";
 import {
   embeddingRefreshInputFromItem,
   flushEmbeddingRefresh,
@@ -320,39 +321,8 @@ export async function syncIndexItemsFromFilesystem(
     }
   }
 
-  const reindexIdsNeedingRead = reindexQueue
-    .filter((work) => !work.item)
-    .map((work) => work.itemId);
-  if (reindexIdsNeedingRead.length > 0) {
-    const reindexReads = await readVaultItemMetaBatch(
-      ctx.fs,
-      vaultPath,
-      reindexIdsNeedingRead,
-    );
-    const reindexMdById = new Map(
-      reindexReads.map((read) => [read.id, read.documentMarkdown]),
-    );
-    for (const work of reindexQueue) {
-      if (work.item) {
-        continue;
-      }
-      const documentMarkdown = reindexMdById.get(work.itemId);
-      if (!documentMarkdown) {
-        continue;
-      }
-      work.item = await itemFileFromDocumentMarkdown(
-        ctx.fs,
-        vaultPath,
-        vaultId,
-        work.itemId,
-        documentMarkdown,
-        work.diskMtimeMs,
-        tagMaps,
-      );
-      const fts = ftsFieldsFromDocumentMarkdown(documentMarkdown);
-      work.content = fts.content;
-      work.hasContentFile = fts.hasContentFile;
-    }
+  if (reindexQueue.some((work) => !work.item)) {
+    await hydrateReindexQueue(ctx, vaultPath, vaultId, tagMaps, reindexQueue);
   }
 
   for (let offset = 0; offset < reindexQueue.length; offset += INDEX_SYNC_WRITE_BATCH) {

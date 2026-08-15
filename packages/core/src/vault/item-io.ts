@@ -9,6 +9,7 @@ import {
   type VaultMeta,
 } from "@collector/shared";
 import type { FileSystemAdapter } from "../adapters/types.js";
+import { createAsyncQueue } from "../util/concurrency.js";
 import { createId, nowIso } from "../util/ids.js";
 import {
   extractUnknownFrontmatterKeys,
@@ -63,6 +64,23 @@ export type TagMaps = {
 export type TagMapsHolder = {
   maps: TagMaps;
 };
+
+const tagEnsureQueues = new WeakMap<
+  TagMapsHolder,
+  ReturnType<typeof createAsyncQueue>
+>();
+
+function enqueueTagEnsure<T>(
+  holder: TagMapsHolder,
+  fn: () => Promise<T>,
+): Promise<T> {
+  let queue = tagEnsureQueues.get(holder);
+  if (!queue) {
+    queue = createAsyncQueue();
+    tagEnsureQueues.set(holder, queue);
+  }
+  return queue.enqueue(fn);
+}
 
 export async function loadTagMaps(
   fs: FileSystemAdapter,
@@ -175,9 +193,19 @@ export async function itemFileFromDocumentMarkdown(
   if (first.missingTagNames.length === 0) {
     return first.item;
   }
-  maps = await ensureTagsByName(fs, vaultPath, first.missingTagNames, maps);
   if (tagMaps) {
-    tagMaps.maps = maps;
+    maps = await enqueueTagEnsure(tagMaps, async () => {
+      const next = await ensureTagsByName(
+        fs,
+        vaultPath,
+        first.missingTagNames,
+        tagMaps.maps,
+      );
+      tagMaps.maps = next;
+      return next;
+    });
+  } else {
+    maps = await ensureTagsByName(fs, vaultPath, first.missingTagNames, maps);
   }
   return parseItemDocumentResolved(raw, {
     itemId,

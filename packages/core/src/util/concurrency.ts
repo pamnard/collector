@@ -90,3 +90,20 @@ export function createSingleFlight<T>(run: () => Promise<T>): () => Promise<T> {
     return inflight;
   };
 }
+
+/** Serialize async work onto one chain (e.g. shared tags.json mutations). */
+export function createAsyncQueue(): {
+  enqueue<T>(fn: () => Promise<T>): Promise<T>;
+} {
+  let tail: Promise<unknown> = Promise.resolve();
+  return {
+    enqueue<T>(fn: () => Promise<T>): Promise<T> {
+      const run = tail.then(fn, fn);
+      tail = run.then(
+        () => undefined,
+        () => undefined,
+      );
+      return run;
+    },
+  };
+}

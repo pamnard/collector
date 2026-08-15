@@ -177,6 +177,43 @@ body
     expect(again.tag_ids).toEqual(item.tag_ids);
   });
 
+  it("itemFileFromDocumentMarkdown serializes concurrent missing-tag creates on one holder", async () => {
+    const { meta, path } = await seedVault();
+    const holder: TagMapsHolder = { maps: await loadTagMaps(fs, path) };
+    const tagNames = ["Alpha", "Beta", "Gamma", "Delta"];
+    const diskMtimeMs = Date.now();
+
+    await Promise.all(
+      tagNames.map(async (tagName, index) => {
+        const raw = `---
+title: Note ${index}
+tags:
+  - ${tagName}
+created: 2024-01-01T00:00:00.000Z
+updated: 2024-01-01T00:00:00.000Z
+---
+body
+`;
+        return itemFileFromDocumentMarkdown(
+          fs,
+          path,
+          meta.id,
+          `${createId()}.md`,
+          raw,
+          diskMtimeMs,
+          holder,
+        );
+      }),
+    );
+
+    for (const tagName of tagNames) {
+      expect(holder.maps.byName.has(tagName.toLowerCase())).toBe(true);
+    }
+    const onDisk = await readTagsFile(fs, path);
+    expect(onDisk.tags.map((t) => t.name).sort()).toEqual([...tagNames].sort());
+    expect(onDisk.tags).toHaveLength(tagNames.length);
+  });
+
   it("readItemDocument / readItemRawMarkdown: missing throws; happy path", async () => {
     const { meta, path } = await seedVault();
     const itemId = `${createId()}.md`;
