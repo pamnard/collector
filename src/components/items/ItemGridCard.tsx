@@ -1,7 +1,10 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import type { ItemFile } from "@collector/shared";
 import type { TagWithCount } from "@collector/core";
 import { cn } from "../../lib/utils";
+import { itemCoverStamp } from "../../lib/dashboard-commit";
+import { useMainScrollElement } from "../../hooks/useMainScrollElement";
+import { useNearViewportRef } from "../../hooks/useNearViewport";
 import { ItemGridCardMeta } from "./ItemGridCardMeta";
 import { textOnlyTeaserChromeClass } from "./text-only-teaser-chrome";
 import { itemGridCoverSlotPending } from "./item-grid-cover-slot";
@@ -15,12 +18,17 @@ interface ItemGridCardProps {
   onOpen: (itemId: string) => void;
 }
 
-export function ItemGridCard({
+function ItemGridCardInner({
   item,
   thumbnailPath,
   tagsById,
   onOpen,
 }: ItemGridCardProps) {
+  const scrollElement = useMainScrollElement();
+  const { ref: nearViewportRef, nearViewport } = useNearViewportRef({
+    root: scrollElement,
+  });
+
   const optimisticPortrait =
     item.content_type === "image" || item.content_type === "video";
 
@@ -37,11 +45,15 @@ export function ItemGridCard({
     isPortraitCover,
     coverPending,
     showCover,
+    loadCover,
     pathUnresolved,
+    onCoverImgLoad,
+    onCoverImgError,
   } = useItemGridCover({
     thumbnailPath,
     itemUrl: item.url ?? undefined,
     optimisticPortrait,
+    shouldDecode: nearViewport,
   });
 
   // Notes must not show an empty gray teaser while cover paths resolve.
@@ -68,6 +80,7 @@ export function ItemGridCard({
 
   return (
     <div
+      ref={nearViewportRef}
       role="button"
       tabIndex={0}
       onClick={() => onOpen(item.id)}
@@ -93,15 +106,21 @@ export function ItemGridCard({
             !overlayLayout && "mb-4 shrink-0",
           )}
         >
-          {showCover ? (
+          {(loadCover || showCover) && coverSrc ? (
             <img
-              src={coverSrc!}
+              src={coverSrc}
               alt=""
-              className="h-auto w-full"
+              className={cn(
+                "h-auto w-full",
+                loadCover && "opacity-0",
+              )}
               loading="eager"
               decoding="async"
+              onLoad={(event) => onCoverImgLoad(event.currentTarget)}
+              onError={onCoverImgError}
             />
-          ) : (
+          ) : null}
+          {!showCover ? (
             <div
               aria-hidden
               className={
@@ -110,7 +129,7 @@ export function ItemGridCard({
                   : "aspect-video w-full animate-pulse bg-neutral-100 dark:bg-neutral-700"
               }
             />
-          )}
+          ) : null}
           {overlayLayout && (
             <div className="absolute inset-x-0 bottom-0 flex flex-col bg-gradient-to-t from-neutral-950/95 via-neutral-950/75 to-transparent p-5 pt-16 dark:from-white/95 dark:via-white/75 dark:to-transparent">
               {meta}
@@ -123,3 +142,18 @@ export function ItemGridCard({
     </div>
   );
 }
+
+function itemGridCardPropsAreEqual(
+  prev: ItemGridCardProps,
+  next: ItemGridCardProps,
+): boolean {
+  return (
+    prev.item.id === next.item.id &&
+    itemCoverStamp(prev.item) === itemCoverStamp(next.item) &&
+    prev.thumbnailPath === next.thumbnailPath &&
+    prev.tagsById === next.tagsById &&
+    prev.onOpen === next.onOpen
+  );
+}
+
+export const ItemGridCard = memo(ItemGridCardInner, itemGridCardPropsAreEqual);

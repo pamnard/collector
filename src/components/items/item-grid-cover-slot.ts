@@ -3,11 +3,11 @@ export function itemGridCoverSlot(args: {
   expectedCoverSrc: string | null;
   coverSrc: string | null;
   coverSettled: boolean;
-}): { coverPending: boolean; showCover: boolean } {
-  return {
-    coverPending: Boolean(args.expectedCoverSrc) && !args.coverSettled,
-    showCover: Boolean(args.coverSrc && args.coverSettled),
-  };
+}): { coverPending: boolean; showCover: boolean; loadCover: boolean } {
+  const coverPending = Boolean(args.expectedCoverSrc) && !args.coverSettled;
+  const showCover = Boolean(args.coverSrc && args.coverSettled);
+  const loadCover = Boolean(args.coverSrc) && !args.coverSettled;
+  return { coverPending, showCover, loadCover };
 }
 
 /** Reserve a cover teaser while paths resolve — image/video only, not notes. */

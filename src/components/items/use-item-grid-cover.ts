@@ -1,38 +1,41 @@
-import { useEffect, useRef, useState } from "react";
-import { COVER_DOMINANT_RATIO } from "../../lib/teaser-layout/cover-image-form";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { resolveCoverSrc } from "../../utils/item-cover-src";
+import {
+  ITEM_GRID_COVER_DECODE_TIMEOUT_MS,
+  isPortraitNaturalSize,
+  planItemGridCoverDecode,
+} from "./item-grid-cover-decode";
 import { itemGridCoverSlot } from "./item-grid-cover-slot";
-
-function isPortraitNaturalSize(img: HTMLImageElement): boolean {
-  if (img.naturalWidth === 0) {
-    return false;
-  }
-  return img.naturalHeight / img.naturalWidth >= COVER_DOMINANT_RATIO;
-}
 
 export function useItemGridCover(args: {
   thumbnailPath: string | null | undefined;
   itemUrl: string | undefined;
   optimisticPortrait: boolean;
+  /** Near-viewport cards decode; offscreen cards defer until scroll. */
+  shouldDecode: boolean;
 }): {
   coverSrc: string | null;
   coverSettled: boolean;
   isPortraitCover: boolean;
   coverPending: boolean;
   showCover: boolean;
+  loadCover: boolean;
   pathUnresolved: boolean;
+  onCoverImgLoad: (img: HTMLImageElement) => void;
+  onCoverImgError: () => void;
 } {
-  const { thumbnailPath, itemUrl, optimisticPortrait } = args;
+  const { thumbnailPath, itemUrl, optimisticPortrait, shouldDecode } = args;
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
   const [coverSettled, setCoverSettled] = useState(false);
   const [isPortraitCover, setIsPortraitCover] = useState(optimisticPortrait);
   const coverSrcRef = useRef(coverSrc);
+  const coverSettledRef = useRef(coverSettled);
 
   const expectedCoverSrc =
     thumbnailPath === undefined
       ? null
       : resolveCoverSrc(thumbnailPath, itemUrl);
-  const { coverPending, showCover } = itemGridCoverSlot({
+  const { coverPending, showCover, loadCover } = itemGridCoverSlot({
     expectedCoverSrc,
     coverSrc,
     coverSettled,
@@ -43,61 +46,78 @@ export function useItemGridCover(args: {
   }, [coverSrc]);
 
   useEffect(() => {
-    // Path still resolving — wait; do not tear down chrome once path is known.
-    if (thumbnailPath === undefined) {
+    coverSettledRef.current = coverSettled;
+  }, [coverSettled]);
+
+  useEffect(() => {
+    const resolvedSrc =
+      thumbnailPath === undefined
+        ? null
+        : resolveCoverSrc(thumbnailPath, itemUrl);
+    const plan = planItemGridCoverDecode({
+      thumbnailPath,
+      resolvedSrc,
+      shouldDecode,
+      currentSrc: coverSrcRef.current,
+      currentSettled: coverSettledRef.current,
+    });
+
+    if (plan.kind === "wait-path") {
       return;
     }
 
-    const src = resolveCoverSrc(thumbnailPath, itemUrl);
-    // Skip only when the same successful src is already shown (ref holds coverSrc).
-    if (src !== null && src === coverSrcRef.current) {
+    if (plan.kind === "settled-empty") {
+      setCoverSrc(null);
+      setCoverSettled(true);
+      setIsPortraitCover(false);
       return;
     }
 
-    setCoverSrc(null);
+    if (plan.kind === "defer") {
+      setCoverSrc(null);
+      setCoverSettled(false);
+      setIsPortraitCover(optimisticPortrait);
+      return;
+    }
+
+    setCoverSrc(plan.src);
     setCoverSettled(false);
     setIsPortraitCover(optimisticPortrait);
+  }, [itemUrl, optimisticPortrait, shouldDecode, thumbnailPath]);
 
-    if (!src) {
-      setCoverSettled(true);
+  useEffect(() => {
+    if (!loadCover || !shouldDecode) {
       return;
     }
 
     let cancelled = false;
-    let settled = false;
-    const img = new Image();
-    const finish = (next: { src: string | null; portrait: boolean }) => {
-      if (cancelled || settled) {
+    const timer = setTimeout(() => {
+      if (cancelled) {
         return;
       }
-      settled = true;
-      clearTimeout(timer);
-      setCoverSrc(next.src);
+      console.warn("[ItemGridCard] cover decode timed out", { src: coverSrc });
+      setCoverSrc(null);
       setCoverSettled(true);
-      setIsPortraitCover(next.portrait);
-    };
-    const timer = setTimeout(() => {
-      console.warn("[ItemGridCard] cover decode timed out", { src });
-      finish({ src: null, portrait: false });
-    }, 4_000);
-    img.onload = () => {
-      finish({
-        src,
-        portrait: isPortraitNaturalSize(img),
-      });
-    };
-    img.onerror = () => {
-      finish({ src: null, portrait: false });
-    };
-    img.src = src;
+      setIsPortraitCover(false);
+    }, ITEM_GRID_COVER_DECODE_TIMEOUT_MS);
 
     return () => {
       cancelled = true;
       clearTimeout(timer);
-      img.onload = null;
-      img.onerror = null;
     };
-  }, [itemUrl, optimisticPortrait, thumbnailPath]);
+  }, [coverSrc, loadCover, shouldDecode]);
+
+  const onCoverImgLoad = useCallback((img: HTMLImageElement) => {
+    setCoverSrc(img.currentSrc || img.src);
+    setCoverSettled(true);
+    setIsPortraitCover(isPortraitNaturalSize(img));
+  }, []);
+
+  const onCoverImgError = useCallback(() => {
+    setCoverSrc(null);
+    setCoverSettled(true);
+    setIsPortraitCover(false);
+  }, []);
 
   return {
     coverSrc,
@@ -105,6 +125,9 @@ export function useItemGridCover(args: {
     isPortraitCover,
     coverPending,
     showCover,
+    loadCover,
     pathUnresolved: thumbnailPath === undefined,
+    onCoverImgLoad,
+    onCoverImgError,
   };
 }

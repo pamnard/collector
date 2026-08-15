@@ -13,7 +13,7 @@ describe("itemGridCoverSlot", () => {
         coverSrc: null,
         coverSettled: false,
       }),
-      { coverPending: true, showCover: false },
+      { coverPending: true, showCover: false, loadCover: false },
     );
   });
 
@@ -24,7 +24,7 @@ describe("itemGridCoverSlot", () => {
         coverSrc: null,
         coverSettled: true,
       }),
-      { coverPending: false, showCover: false },
+      { coverPending: false, showCover: false, loadCover: false },
     );
   });
 
@@ -35,7 +35,18 @@ describe("itemGridCoverSlot", () => {
         coverSrc: "/cover.jpg",
         coverSettled: true,
       }),
-      { coverPending: false, showCover: true },
+      { coverPending: false, showCover: true, loadCover: false },
+    );
+  });
+
+  it("loads the cover img while decode is in flight", () => {
+    assert.deepEqual(
+      itemGridCoverSlot({
+        expectedCoverSrc: "/cover.jpg",
+        coverSrc: "/cover.jpg",
+        coverSettled: false,
+      }),
+      { coverPending: true, showCover: false, loadCover: true },
     );
   });
 
@@ -46,7 +57,7 @@ describe("itemGridCoverSlot", () => {
         coverSrc: null,
         coverSettled: false,
       }),
-      { coverPending: false, showCover: false },
+      { coverPending: false, showCover: false, loadCover: false },
     );
   });
 });
