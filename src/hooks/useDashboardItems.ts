@@ -10,11 +10,8 @@ import type { ItemFile } from "@collector/shared";
 import type { DashboardItemSort } from "@collector/api";
 import { useAppSettings } from "../context/AppSettingsContext";
 import {
-  coverNeedsResolve,
   coverPathsFromMaps,
   bodyStampsFromMap,
-  zipIdStamps,
-  itemCoverStamp,
   itemsBodiesEqual,
   intersectCommittedWithPageIds,
   mergeCommittedThumbnailPaths,
@@ -25,24 +22,27 @@ import {
   snapshotToCacheEntry,
 } from "../lib/dashboard-commit";
 import {
-  createCoverPathCommitBatcher,
-  type CoverPathCommitBatcher,
-} from "../lib/cover-path-commit-batcher";
-import {
-  collectHydratedItems,
   createThrottledPublisher,
   isDashboardPrefetchWindowReady,
   itemIdsEqual,
   mapIndexQueryResult,
-  mergeStreamedItemsById,
   orderDashboardItems,
-  shouldApplyDashboardStreamBatch,
 } from "../lib/dashboard-display";
 import {
-  nextStreamWindow,
-  planApplyOffsetZeroPage,
-  planLoadMore,
-} from "../lib/dashboard-query-window";
+  runCoverPathFlight,
+  type CoverFlightSlot,
+} from "../lib/dashboard-cover-flight";
+import {
+  buildDashboardQueryCacheEntry,
+  readInitialDashboardCacheEntry,
+  stateFromDashboardCacheEntry,
+} from "../lib/dashboard-query-load";
+import {
+  applyDashboardIndexPage,
+  mergePendingIntoItemsById,
+  runDashboardLoadMore,
+  streamDashboardSlice,
+} from "../lib/dashboard-stream";
 import { resolveDashboardCoverPathsProgressive } from "../lib/preload-dashboard-covers";
 import { navFilterKey, type NavFilter } from "../types/ui";
 import {
@@ -92,32 +92,29 @@ function readInitialCacheEntry(
   sort: DashboardItemSort,
   vaultId: string | null | undefined,
 ): DashboardQueryCacheEntry | null {
-  const key = dashboardQueryCacheKey(
-    navFilterKey(filter),
-    searchQuery,
-    sort.key,
-    sort.dir,
-  );
-  const cached = getDashboardQueryCache(key);
-  if (cached) {
-    return cached;
-  }
-
-  if (!vaultId) {
-    return null;
-  }
-  const warm = getUiSession().snapshot.peekMatchingDashboardSnapshot({
+  return readInitialDashboardCacheEntry({
+    cacheKey: dashboardQueryCacheKey(
+      navFilterKey(filter),
+      searchQuery,
+      sort.key,
+      sort.dir,
+    ),
+    getCached: getDashboardQueryCache,
+    setCached: setDashboardQueryCache,
     vaultId,
-    filter,
-    search: searchQuery,
-    sort,
+    peekWarmSnapshot: () => {
+      if (!vaultId) {
+        return null;
+      }
+      return getUiSession().snapshot.peekMatchingDashboardSnapshot({
+        vaultId,
+        filter,
+        search: searchQuery,
+        sort,
+      });
+    },
+    snapshotToEntry: snapshotToCacheEntry,
   });
-  if (!warm) {
-    return null;
-  }
-  const entry = snapshotToCacheEntry(warm);
-  setDashboardQueryCache(key, entry);
-  return getDashboardQueryCache(key);
 }
 
 export function useDashboardItems(
@@ -196,12 +193,7 @@ export function useDashboardItems(
     ),
   );
   const streamAbortRef = useRef<AbortController | null>(null);
-  const coverFlightRef = useRef<{
-    version: number;
-    promise: Promise<void>;
-    controller: AbortController;
-    batcher: CoverPathCommitBatcher;
-  } | null>(null);
+  const coverFlightRef = useRef<CoverFlightSlot>(null);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryBusyRef = useRef(false);
   const filterRef = useRef(filter);
@@ -258,46 +250,42 @@ export function useDashboardItems(
       end: number,
       nextTotal: number,
     ) => {
-      setDashboardQueryCache(queryKeyRef.current, {
-        itemIds: [...ids],
-        itemsById: new Map(byId),
-        bodyStamps: new Map(bodyStampsRef.current),
-        streamEndOffset: end,
-        totalCount: nextTotal,
-        thumbnailPaths: new Map(committedThumbnailPathsRef.current),
-        thumbnailStamps: new Map(committedThumbnailStampsRef.current),
-        updatedAt: Date.now(),
-      });
+      setDashboardQueryCache(
+        queryKeyRef.current,
+        buildDashboardQueryCacheEntry({
+          itemIds: ids,
+          itemsById: byId,
+          bodyStamps: bodyStampsRef.current,
+          streamEndOffset: end,
+          totalCount: nextTotal,
+          thumbnailPaths: committedThumbnailPathsRef.current,
+          thumbnailStamps: committedThumbnailStampsRef.current,
+        }),
+      );
     },
     [],
   );
 
   const applyCacheEntryToState = useCallback((entry: DashboardQueryCacheEntry) => {
-    itemIdsRef.current = entry.itemIds;
-    itemsByIdRef.current = entry.itemsById;
-    bodyStampsRef.current = new Map(entry.bodyStamps);
-    streamEndOffsetRef.current = entry.streamEndOffset;
-    totalCountRef.current = entry.totalCount;
-    setItemIds(entry.itemIds);
-    setItemsById(entry.itemsById);
-    setStreamEndOffset(entry.streamEndOffset);
-    setTotalCount(entry.totalCount);
-    const ordered = orderDashboardItems(
-      entry.itemIds,
-      entry.itemsById,
-      entry.streamEndOffset,
-    );
-    const paths = new Map(entry.thumbnailPaths);
-    const stamps = new Map(entry.thumbnailStamps);
-    setCommittedItems(ordered);
-    setCommittedThumbnailPaths(paths);
-    setCommittedThumbnailStamps(stamps);
-    setCommittedTotalCount(entry.totalCount);
-    setCommittedHasMore(entry.streamEndOffset < entry.totalCount);
-    committedItemsRef.current = ordered;
-    committedThumbnailPathsRef.current = paths;
-    committedThumbnailStampsRef.current = stamps;
-    committedTotalCountRef.current = entry.totalCount;
+    const next = stateFromDashboardCacheEntry(entry);
+    itemIdsRef.current = next.itemIds;
+    itemsByIdRef.current = next.itemsById;
+    bodyStampsRef.current = next.bodyStamps;
+    streamEndOffsetRef.current = next.streamEndOffset;
+    totalCountRef.current = next.totalCount;
+    setItemIds(next.itemIds);
+    setItemsById(next.itemsById);
+    setStreamEndOffset(next.streamEndOffset);
+    setTotalCount(next.totalCount);
+    setCommittedItems(next.ordered);
+    setCommittedThumbnailPaths(next.thumbnailPaths);
+    setCommittedThumbnailStamps(next.thumbnailStamps);
+    setCommittedTotalCount(next.totalCount);
+    setCommittedHasMore(next.hasMore);
+    committedItemsRef.current = next.ordered;
+    committedThumbnailPathsRef.current = next.thumbnailPaths;
+    committedThumbnailStampsRef.current = next.thumbnailStamps;
+    committedTotalCountRef.current = next.totalCount;
   }, []);
 
   const commitWorkingToDisplay = useCallback(
@@ -364,83 +352,25 @@ export function useDashboardItems(
 
       writeQueryCache(ids, byId, end, nextTotal);
 
-      const collectNeedsResolve = () =>
-        ordered.filter((item) =>
-          coverNeedsResolve(
-            item,
-            committedThumbnailPathsRef.current,
-            committedThumbnailStampsRef.current,
-          ),
-        );
-
-      // Same-version waiters share one flight so sync republish does not abort
-      // in-flight covers (#657).
-      while (true) {
-        if (requestVersionRef.current !== requestVersion) {
-          return;
-        }
-        const needsResolve = collectNeedsResolve();
-        if (!needsResolve.length) {
-          return;
-        }
-
-        const existingFlight = coverFlightRef.current;
-        if (existingFlight && existingFlight.version === requestVersion) {
-          await existingFlight.promise;
-          continue;
-        }
-
-        existingFlight?.batcher.cancel();
-        existingFlight?.controller.abort();
-
-        const coverController = new AbortController();
-        const stampById = new Map(
-          needsResolve.map((item) => [item.id, itemCoverStamp(item)]),
-        );
-        const coverBatcher = createCoverPathCommitBatcher({
-          requestVersion,
-          getRequestVersion: () => requestVersionRef.current,
-          isAborted: () => coverController.signal.aborted,
-          getOrderedIds: () => nextOrderedIds,
-          getPaths: () => committedThumbnailPathsRef.current,
-          getStamps: () => committedThumbnailStampsRef.current,
-          commit: (mergedPaths, mergedStamps) => {
-            setCommittedThumbnailPaths(mergedPaths);
-            setCommittedThumbnailStamps(mergedStamps);
-            committedThumbnailPathsRef.current = mergedPaths;
-            committedThumbnailStampsRef.current = mergedStamps;
-          },
-        });
-
-        const flightPromise = (async () => {
-          await resolveDashboardCoverPathsProgressive(needsResolve, {
-            signal: coverController.signal,
-            onResolved: (id, path) => {
-              const stamp = stampById.get(id);
-              if (stamp === undefined) {
-                return;
-              }
-              coverBatcher.enqueue(id, path, stamp);
-            },
-          });
-          coverBatcher.flush();
-        })();
-
-        coverFlightRef.current = {
-          version: requestVersion,
-          promise: flightPromise,
-          controller: coverController,
-          batcher: coverBatcher,
-        };
-        try {
-          await flightPromise;
-        } finally {
-          if (coverFlightRef.current?.promise === flightPromise) {
-            coverFlightRef.current = null;
-          }
-        }
-        break;
-      }
+      await runCoverPathFlight({
+        requestVersion,
+        getRequestVersion: () => requestVersionRef.current,
+        orderedItems: ordered,
+        getOrderedIds: () => nextOrderedIds,
+        getPaths: () => committedThumbnailPathsRef.current,
+        getStamps: () => committedThumbnailStampsRef.current,
+        commit: (mergedPaths, mergedStamps) => {
+          setCommittedThumbnailPaths(mergedPaths);
+          setCommittedThumbnailStamps(mergedStamps);
+          committedThumbnailPathsRef.current = mergedPaths;
+          committedThumbnailStampsRef.current = mergedStamps;
+        },
+        getFlight: () => coverFlightRef.current,
+        setFlight: (next) => {
+          coverFlightRef.current = next;
+        },
+        resolveProgressive: resolveDashboardCoverPathsProgressive,
+      });
 
       if (requestVersionRef.current !== requestVersion) {
         return;
@@ -458,45 +388,29 @@ export function useDashboardItems(
       limit: number,
       requestVersion: number,
     ): Promise<void> => {
-      // Stale callers (Strict Mode / superseded query) must not abort the
-      // in-flight stream owned by a newer requestVersion.
-      if (requestVersion !== requestVersionRef.current) {
-        return;
-      }
-      if (!ids.length || offset >= ids.length || limit <= 0) {
-        return;
-      }
-
-      streamAbortRef.current?.abort();
-      const controller = new AbortController();
-      streamAbortRef.current = controller;
-
-      const pending = new Map<string, ItemFile>();
-      const slice = ids.slice(offset, offset + limit);
-      await collectHydratedItems(
-        getCollectorService().items.hydrate(slice, { signal: controller.signal }),
-        (item) => {
-          if (requestVersionRef.current !== requestVersion) {
-            return;
-          }
-          pending.set(item.id, item);
+      await streamDashboardSlice({
+        ids,
+        offset,
+        limit,
+        requestVersion,
+        getRequestVersion: () => requestVersionRef.current,
+        abortCurrentStream: () => {
+          streamAbortRef.current?.abort();
         },
-      );
-
-      if (
-        !shouldApplyDashboardStreamBatch(
-          requestVersionRef.current,
-          requestVersion,
-          pending.size,
-        )
-      ) {
-        return;
-      }
-
-      setItemsById((current) => {
-        const next = mergeStreamedItemsById(current, pending);
-        itemsByIdRef.current = next;
-        return next;
+        beginStream: () => {
+          const controller = new AbortController();
+          streamAbortRef.current = controller;
+          return controller;
+        },
+        hydrate: (slice, signal) =>
+          getCollectorService().items.hydrate(slice, { signal }),
+        mergeItems: (pending) => {
+          setItemsById((current) => {
+            const next = mergePendingIntoItemsById(current, pending);
+            itemsByIdRef.current = next;
+            return next;
+          });
+        },
       });
     },
     [],
@@ -522,118 +436,79 @@ export function useDashboardItems(
       },
       requestVersion: number,
     ): Promise<void> => {
-      totalCountRef.current = page.totalCount;
-      setTotalCount(page.totalCount);
-
-      if (page.offset !== 0) {
-        return;
-      }
-
-      const plan = planApplyOffsetZeroPage({
-        pageItemIds: page.itemIds,
-        pageStamps: page.stamps,
-        previousIds: itemIdsRef.current,
-        previousStreamEnd: streamEndOffsetRef.current,
+      await applyDashboardIndexPage(page, requestVersion, {
         prefetchSize: DASHBOARD_PREFETCH_SIZE,
+        getRequestVersion: () => requestVersionRef.current,
+        getPreviousIds: () => itemIdsRef.current,
+        getPreviousStreamEnd: () => streamEndOffsetRef.current,
         itemsByIdHas: (id) => itemsByIdRef.current.has(id),
         cachedStampFor: (id) => bodyStampsRef.current.get(id),
-      });
-
-      if (plan.kind === "empty") {
-        setLoadedItemIds([]);
-        bodyStampsRef.current = new Map();
-        setStreamWindowEnd(0);
-        setCommittedItems([]);
-        committedItemsRef.current = [];
-        setCommittedTotalCount(0);
-        committedTotalCountRef.current = 0;
-        setCommittedHasMore(false);
-        const emptyThumbs = new Map<string, string | null>();
-        const emptyStamps = new Map<string, string>();
-        setCommittedThumbnailPaths(emptyThumbs);
-        setCommittedThumbnailStamps(emptyStamps);
-        committedThumbnailPathsRef.current = emptyThumbs;
-        committedThumbnailStampsRef.current = emptyStamps;
-        return;
-      }
-
-      const pageStampMap = zipIdStamps(page.itemIds, page.stamps);
-
-      const streamWindow = async () => {
-        await streamSlice(
-          page.itemIds,
-          0,
-          plan.preservedEnd,
-          requestVersion,
-        );
-        if (
-          !isDashboardPrefetchWindowReady(
-            itemIdsRef.current,
-            itemsByIdRef.current,
-            streamEndOffsetRef.current,
-          )
-        ) {
-          // First stream often races with effect abort on query switch — retry once.
-          await streamSlice(
-            page.itemIds,
-            0,
-            plan.preservedEnd,
-            requestVersion,
-          );
-        }
-        if (requestVersionRef.current === requestVersion) {
-          bodyStampsRef.current = pageStampMap;
-        }
-      };
-
-      if (plan.kind === "ids-changed") {
-        setLoadedItemIds(page.itemIds);
-        const kept = new Map<string, ItemFile>();
-        for (const id of plan.idsToKeepBodies) {
-          const existing = itemsByIdRef.current.get(id);
-          if (existing) {
-            kept.set(id, existing);
+        getItemIds: () => itemIdsRef.current,
+        getItemsById: () => itemsByIdRef.current,
+        getStreamEnd: () => streamEndOffsetRef.current,
+        setTotalCount: (total) => {
+          totalCountRef.current = total;
+          setTotalCount(total);
+        },
+        setLoadedItemIds,
+        setBodyStamps: (stamps) => {
+          bodyStampsRef.current = stamps;
+        },
+        setStreamWindowEnd,
+        clearCommittedEmpty: () => {
+          setCommittedItems([]);
+          committedItemsRef.current = [];
+          setCommittedTotalCount(0);
+          committedTotalCountRef.current = 0;
+          setCommittedHasMore(false);
+          const emptyThumbs = new Map<string, string | null>();
+          const emptyStamps = new Map<string, string>();
+          setCommittedThumbnailPaths(emptyThumbs);
+          setCommittedThumbnailStamps(emptyStamps);
+          committedThumbnailPathsRef.current = emptyThumbs;
+          committedThumbnailStampsRef.current = emptyStamps;
+        },
+        replaceWorkingBodiesKeeping: (idsToKeep) => {
+          const kept = new Map<string, ItemFile>();
+          for (const id of idsToKeep) {
+            const existing = itemsByIdRef.current.get(id);
+            if (existing) {
+              kept.set(id, existing);
+            }
           }
-        }
-        itemsByIdRef.current = kept;
-        setItemsById(kept);
-        setStreamWindowEnd(plan.preservedEnd);
-
-        const nextCommitted = intersectCommittedWithPageIds(
-          committedItemsRef.current,
-          page.itemIds,
-        );
-        const nextCommittedIds = nextCommitted.map((item) => item.id);
-        setCommittedItems(nextCommitted);
-        committedItemsRef.current = nextCommitted;
-        setCommittedTotalCount(page.totalCount);
-        committedTotalCountRef.current = page.totalCount;
-        setCommittedHasMore(plan.preservedEnd < page.totalCount);
-        const prunedPaths = mergeCommittedThumbnailPaths(
-          committedThumbnailPathsRef.current,
-          new Map(),
-          nextCommittedIds,
-        );
-        const prunedStamps = mergeCommittedThumbnailStamps(
-          committedThumbnailStampsRef.current,
-          new Map(),
-          nextCommittedIds,
-        );
-        setCommittedThumbnailPaths(prunedPaths);
-        setCommittedThumbnailStamps(prunedStamps);
-        committedThumbnailPathsRef.current = prunedPaths;
-        committedThumbnailStampsRef.current = prunedStamps;
-
-        await streamWindow();
-        return;
-      }
-
-      setStreamWindowEnd(plan.preservedEnd);
-      if (plan.needsStream) {
-        await streamWindow();
-      } else {
-        bodyStampsRef.current = pageStampMap;
-      }
+          itemsByIdRef.current = kept;
+          setItemsById(kept);
+        },
+        intersectCommittedWithPage: (pageItemIds) => {
+          const nextCommitted = intersectCommittedWithPageIds(
+            committedItemsRef.current,
+            pageItemIds,
+          );
+          const nextCommittedIds = nextCommitted.map((item) => item.id);
+          setCommittedItems(nextCommitted);
+          committedItemsRef.current = nextCommitted;
+          setCommittedTotalCount(totalCountRef.current);
+          committedTotalCountRef.current = totalCountRef.current;
+          setCommittedHasMore(
+            streamEndOffsetRef.current < totalCountRef.current,
+          );
+          const prunedPaths = mergeCommittedThumbnailPaths(
+            committedThumbnailPathsRef.current,
+            new Map(),
+            nextCommittedIds,
+          );
+          const prunedStamps = mergeCommittedThumbnailStamps(
+            committedThumbnailStampsRef.current,
+            new Map(),
+            nextCommittedIds,
+          );
+          setCommittedThumbnailPaths(prunedPaths);
+          setCommittedThumbnailStamps(prunedStamps);
+          committedThumbnailPathsRef.current = prunedPaths;
+          committedThumbnailStampsRef.current = prunedStamps;
+        },
+        streamSlice,
+      });
     },
     [setLoadedItemIds, setStreamWindowEnd, streamSlice],
   );
@@ -656,28 +531,29 @@ export function useDashboardItems(
     const prevCommitted = committedItemsRef.current.length;
     queryKeyRef.current = queryKey;
 
-    const cached = getDashboardQueryCache(queryKey);
     setError(null);
-    if (cached) {
-      applyCacheEntryToState(cached);
+    const warmed = readInitialDashboardCacheEntry({
+      cacheKey: queryKey,
+      getCached: getDashboardQueryCache,
+      setCached: setDashboardQueryCache,
+      vaultId,
+      peekWarmSnapshot: () => {
+        if (!vaultId) {
+          return null;
+        }
+        return getUiSession().snapshot.peekMatchingDashboardSnapshot({
+          vaultId,
+          filter,
+          search: searchQuery,
+          sort,
+        });
+      },
+      snapshotToEntry: snapshotToCacheEntry,
+    });
+    if (warmed) {
+      applyCacheEntryToState(warmed);
       setIsLoading(false);
       return;
-    }
-
-    if (vaultId) {
-      const warm = getUiSession().snapshot.peekMatchingDashboardSnapshot({
-        vaultId,
-        filter,
-        search: searchQuery,
-        sort,
-      });
-      if (warm) {
-        const entry = snapshotToCacheEntry(warm);
-        setDashboardQueryCache(queryKey, entry);
-        applyCacheEntryToState(entry);
-        setIsLoading(false);
-        return;
-      }
     }
 
     // Keep committed paint until the new query commits — clearing here forces
@@ -939,16 +815,18 @@ export function useDashboardItems(
           bodyStamps: bodyStampsFromMap(bodyStampsRef.current),
         }),
       );
-      setDashboardQueryCache(queryKey, {
-        itemIds: [...itemIds],
-        itemsById: new Map(itemsById),
-        bodyStamps: new Map(bodyStampsRef.current),
-        streamEndOffset,
-        totalCount,
-        thumbnailPaths: new Map(committedThumbnailPathsRef.current),
-        thumbnailStamps: new Map(committedThumbnailStampsRef.current),
-        updatedAt: Date.now(),
-      });
+      setDashboardQueryCache(
+        queryKey,
+        buildDashboardQueryCacheEntry({
+          itemIds,
+          itemsById,
+          bodyStamps: bodyStampsRef.current,
+          streamEndOffset,
+          totalCount,
+          thumbnailPaths: committedThumbnailPathsRef.current,
+          thumbnailStamps: committedThumbnailStampsRef.current,
+        }),
+      );
     }, 400);
 
     return () => {
@@ -971,48 +849,27 @@ export function useDashboardItems(
   ]);
 
   const loadMore = useCallback(() => {
-    const plan = planLoadMore({
+    void runDashboardLoadMore({
       isLoading,
       isLoadingMore,
       streamEndOffset,
       loadedCount: itemIds.length,
       totalCount,
       prefetchSize: DASHBOARD_PREFETCH_SIZE,
-    });
-    if (plan.kind === "noop") {
-      return;
-    }
-
-    const requestVersion = requestVersionRef.current;
-    const loadedCount = itemIds.length;
-    setIsLoadingMore(true);
-
-    const streamNextWindow = (ids: string[]) => {
-      const { offset, limit, nextEnd } = nextStreamWindow(
-        streamEndOffsetRef.current,
-        ids.length,
-        DASHBOARD_PREFETCH_SIZE,
-      );
-      setStreamWindowEnd(nextEnd);
-
-      void streamSlice(ids, offset, limit, requestVersion)
-        .catch((err: unknown) => {
-          if (requestVersionRef.current !== requestVersion) {
-            return;
-          }
-          reportServiceError("dashboard load more", err);
-          setError(err instanceof Error ? err.message : String(err));
-        })
-        .finally(() => {
-          if (requestVersionRef.current === requestVersion) {
-            setIsLoadingMore(false);
-          }
-        });
-    };
-
-    if (plan.kind === "fetch-ids-then-stream") {
-      void getCollectorService().items
-        .queryIndex(
+      getRequestVersion: () => requestVersionRef.current,
+      getItemIds: () => itemIdsRef.current,
+      getStreamEnd: () => streamEndOffsetRef.current,
+      setIsLoadingMore,
+      setStreamWindowEnd,
+      setLoadedItemIds,
+      setTotalCount: (nextTotal) => {
+        totalCountRef.current = nextTotal;
+        setTotalCount(nextTotal);
+      },
+      setError,
+      streamSlice,
+      fetchMoreIds: async (loadedCount) => {
+        const result = await getCollectorService().items.queryIndex(
           filter,
           searchQuery,
           {
@@ -1020,30 +877,12 @@ export function useDashboardItems(
             limit: DASHBOARD_PREFETCH_SIZE,
           },
           sort,
-        )
-        .then((result) => {
-          if (requestVersionRef.current !== requestVersion) {
-            return;
-          }
-          const page = mapIndexQueryResult(result);
-          totalCountRef.current = page.totalCount;
-          setTotalCount(page.totalCount);
-          const mergedIds = [...itemIdsRef.current, ...page.itemIds];
-          setLoadedItemIds(mergedIds);
-          streamNextWindow(mergedIds);
-        })
-        .catch((err: unknown) => {
-          if (requestVersionRef.current !== requestVersion) {
-            return;
-          }
-          reportServiceError("dashboard load more ids", err);
-          setError(err instanceof Error ? err.message : String(err));
-          setIsLoadingMore(false);
-        });
-      return;
-    }
-
-    streamNextWindow(itemIds);
+        );
+        const page = mapIndexQueryResult(result);
+        return { itemIds: page.itemIds, totalCount: page.totalCount };
+      },
+      reportError: reportServiceError,
+    });
   }, [
     filter,
     filterKey,
