@@ -43,24 +43,13 @@ export function resolveItemThumbnailAbsolutePath(
     : joinSegments(vaultPath, relative);
 }
 
-export async function applyItemCover(
+async function persistItemPresentation(
   ctx: VaultContext,
   vaultPath: string,
   vaultId: string,
   itemId: string,
-  coverData: Uint8Array,
+  item: ItemFile,
 ): Promise<ItemFile> {
-  const coverPath = itemCoverPath(vaultPath, itemId);
-
-  await ctx.fs.mkdir(itemMediaRoot(vaultPath, itemId));
-  await ctx.fs.writeBinary(coverPath, coverData);
-
-  // Cover SoT is the file on disk (#276); do not store vault image paths in FM.
-  const item = await readItemFile(ctx.fs, vaultPath, itemId, vaultId);
-  if (!item.thumbnail) {
-    return item;
-  }
-
   const updated: ItemFile = {
     ...item,
     thumbnail: null,
@@ -85,6 +74,38 @@ export async function applyItemCover(
   return updated;
 }
 
+/**
+ * Bump item `updated_at` (and index) so dashboard/host thumbnail stamps invalidate
+ * after media attach without waiting for cover (#720).
+ */
+export async function touchItemUpdatedAt(
+  ctx: VaultContext,
+  vaultPath: string,
+  vaultId: string,
+  itemId: string,
+): Promise<ItemFile> {
+  const item = await readItemFile(ctx.fs, vaultPath, itemId, vaultId);
+  return persistItemPresentation(ctx, vaultPath, vaultId, itemId, item);
+}
+
+export async function applyItemCover(
+  ctx: VaultContext,
+  vaultPath: string,
+  vaultId: string,
+  itemId: string,
+  coverData: Uint8Array,
+): Promise<ItemFile> {
+  const coverPath = itemCoverPath(vaultPath, itemId);
+
+  await ctx.fs.mkdir(itemMediaRoot(vaultPath, itemId));
+  await ctx.fs.writeBinary(coverPath, coverData);
+
+  // Cover SoT is the file on disk (#276); do not store vault image paths in FM.
+  // Always bump updated_at so preview stamps/caches cannot stick on null (#720).
+  const item = await readItemFile(ctx.fs, vaultPath, itemId, vaultId);
+  return persistItemPresentation(ctx, vaultPath, vaultId, itemId, item);
+}
+
 export async function clearItemCover(
   ctx: VaultContext,
   vaultPath: string,
@@ -97,32 +118,7 @@ export async function clearItemCover(
     await ctx.fs.remove(coverPath);
   }
 
+  // Drop leftover FM image paths from pre-#279 sidecars; always bump stamp (#720).
   const item = await readItemFile(ctx.fs, vaultPath, itemId, vaultId);
-  if (!item.thumbnail) {
-    return item;
-  }
-
-  // Drop leftover FM image paths from pre-#279 sidecars.
-  const updated: ItemFile = {
-    ...item,
-    thumbnail: null,
-    updated_at: nowIso(),
-  };
-  await writeItemFile(ctx.fs, vaultPath, updated);
-
-  const clearedDocument = await ctx.fs.readText(
-    itemMarkdownPath(vaultPath, itemId),
-  );
-  const clearedFts = ftsFieldsFromDocumentMarkdown(clearedDocument);
-  const clearedSourceRef = await readItemSourceRef(ctx.fs, vaultPath, itemId);
-  await ctx.index.upsertItem(
-    {
-      item: updated,
-      content: clearedFts.content,
-      hasContentFile: clearedFts.hasContentFile,
-      sourceRef: clearedSourceRef,
-    },
-    vaultId,
-  );
-  return updated;
+  return persistItemPresentation(ctx, vaultPath, vaultId, itemId, item);
 }

@@ -17,6 +17,7 @@ import {
   listItemMediaWithPaths,
   readItemFile,
   replaceMediaFile,
+  touchItemUpdatedAt,
   type VaultContext,
 } from "@collector/core";
 import type { TerminalJobStatus } from "./jobs/job-wait.js";
@@ -69,6 +70,18 @@ export function createMediaCoverService(
     string,
     { cacheKey: string; path: string | null }
   >();
+
+  const invalidateThumbnailPathCache = (itemId: string): void => {
+    itemThumbnailPathCache.delete(itemId);
+  };
+
+  const afterMediaPresentationChange = async (itemId: string): Promise<void> => {
+    const { vault, path } = await deps.resolveActiveVault();
+    invalidateThumbnailPathCache(itemId);
+    await touchItemUpdatedAt(deps.getContext(), path, vault.id, itemId);
+    await enqueuePreferredCover(itemId);
+    deps.onVaultPresentationChanged?.(vault.id);
+  };
 
   const listItemMedia = async (itemId: string): Promise<MediaWithPath[]> => {
     const { path } = await deps.resolveActiveVault();
@@ -203,7 +216,7 @@ export function createMediaCoverService(
     itemId: string,
     files: AttachMediaFileInput[],
   ): Promise<MediaFileMeta[]> => {
-    const { vault, path } = await deps.resolveActiveVault();
+    const { path } = await deps.resolveActiveVault();
     const ctx = deps.getContext();
     const attached: MediaFileMeta[] = [];
     for (const file of files) {
@@ -214,8 +227,7 @@ export function createMediaCoverService(
         }),
       );
     }
-    await enqueuePreferredCover(itemId);
-    deps.onVaultPresentationChanged?.(vault.id);
+    await afterMediaPresentationChange(itemId);
     return attached;
   };
 
@@ -224,13 +236,12 @@ export function createMediaCoverService(
     mediaId: string,
     file: AttachMediaFileInput,
   ): Promise<MediaFileMeta> => {
-    const { vault, path } = await deps.resolveActiveVault();
+    const { path } = await deps.resolveActiveVault();
     const replaced = await replaceMediaFile(deps.getContext(), path, itemId, mediaId, {
       filename: file.name,
       data: file.bytes,
     });
-    await enqueuePreferredCover(itemId);
-    deps.onVaultPresentationChanged?.(vault.id);
+    await afterMediaPresentationChange(itemId);
     return replaced;
   };
 
@@ -238,10 +249,9 @@ export function createMediaCoverService(
     itemId: string,
     mediaId: string,
   ): Promise<void> => {
-    const { vault, path } = await deps.resolveActiveVault();
+    const { path } = await deps.resolveActiveVault();
     await deleteMediaFile(deps.getContext(), path, itemId, mediaId);
-    await enqueuePreferredCover(itemId);
-    deps.onVaultPresentationChanged?.(vault.id);
+    await afterMediaPresentationChange(itemId);
   };
 
   return {
