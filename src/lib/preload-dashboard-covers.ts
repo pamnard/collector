@@ -6,7 +6,8 @@ import { getUiSession } from "../services/collector-client";
 
 /**
  * Resolve on-disk cover paths for dashboard items.
- * Does not wait for image decode — that is per-card in ItemGridCard.
+ * Does not wait for image decode — that is per-card in ItemGridCard
+ * (near-viewport / displayed `<img>` only; see #660).
  */
 export async function resolveDashboardCoverPathsProgressive(
   items: ItemFile[],

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Masonry from "react-masonry-css";
 import type { TagWithCount } from "@collector/core";
@@ -37,6 +37,12 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
     () => new Map(tags.map((tag) => [tag.id, tag])),
     [tags],
   );
+  const onOpen = useCallback(
+    (itemId: string) => {
+      navigate(`/item/${itemId}`);
+    },
+    [navigate],
+  );
 
   if (dashboard.isLoading) {
     return <DashboardGridSkeleton />;
@@ -59,7 +65,8 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
                 dashboard.thumbnailStamps,
               )}
               tagsById={tagsById}
-              onOpen={(itemId) => navigate(`/item/${itemId}`)}
+              onOpen={onOpen}
+              scrollRoot={scrollElement}
             />
           </div>
         ))}
