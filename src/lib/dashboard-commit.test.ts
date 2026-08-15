@@ -4,12 +4,15 @@ import type { ItemFile } from "@collector/shared";
 import {
   coverNeedsResolve,
   coverPathsFromMaps,
+  filterOutItemId,
+  intersectCommittedWithPageIds,
   itemCoverStamp,
   itemsBodiesEqual,
   mapsFromCoverPaths,
   mergeCommittedThumbnailPaths,
   mergeCommittedThumbnailStamps,
   orderedIds,
+  pruneItemIdFromDashboardLists,
   shouldSkipEmptyCommit,
   snapshotToCacheEntry,
   thumbnailPathsEqual,
@@ -301,5 +304,124 @@ describe("snapshotToCacheEntry", () => {
     assert.equal(entry.thumbnailPaths.size, 0);
     assert.equal(entry.thumbnailStamps.size, 0);
     assert.equal(entry.bodyStamps.size, 0);
+  });
+});
+
+describe("filterOutItemId", () => {
+  it("removes matching ids and leaves others", () => {
+    assert.deepEqual(
+      filterOutItemId([{ id: "a" }, { id: "b" }, { id: "a" }], "a"),
+      [{ id: "b" }],
+    );
+  });
+});
+
+describe("intersectCommittedWithPageIds", () => {
+  it("returns empty when page is empty", () => {
+    assert.deepEqual(
+      intersectCommittedWithPageIds([stubItem("a"), stubItem("b")], []),
+      [],
+    );
+  });
+
+  it("keeps only ids present on the page", () => {
+    const kept = intersectCommittedWithPageIds(
+      [stubItem("a"), stubItem("b"), stubItem("c")],
+      ["c", "a"],
+    );
+    assert.deepEqual(
+      kept.map((item) => item.id),
+      ["a", "c"],
+    );
+  });
+});
+
+describe("pruneItemIdFromDashboardLists", () => {
+  it("is idempotent when id is absent", () => {
+    const input = {
+      itemIds: ["a", "b"],
+      itemsById: new Map([
+        ["a", stubItem("a")],
+        ["b", stubItem("b")],
+      ]),
+      bodyStamps: new Map([
+        ["a", "1"],
+        ["b", "2"],
+      ]),
+      thumbnailPaths: new Map<string, string | null>([
+        ["a", "/a"],
+        ["b", null],
+      ]),
+      thumbnailStamps: new Map([
+        ["a", "sa"],
+        ["b", "sb"],
+      ]),
+      streamEndOffset: 2,
+      totalCount: 2,
+      committedItems: [stubItem("a"), stubItem("b")],
+      committedTotalCount: 2,
+    };
+    const result = pruneItemIdFromDashboardLists("gone", input);
+    assert.equal(result.removed, false);
+  });
+
+  it("removes id from lists and adjusts totals", () => {
+    const input = {
+      itemIds: ["a", "b", "c"],
+      itemsById: new Map([
+        ["a", stubItem("a")],
+        ["b", stubItem("b")],
+        ["c", stubItem("c")],
+      ]),
+      bodyStamps: new Map([
+        ["a", "1"],
+        ["b", "2"],
+        ["c", "3"],
+      ]),
+      thumbnailPaths: new Map<string, string | null>([
+        ["a", "/a"],
+        ["b", "/b"],
+        ["c", null],
+      ]),
+      thumbnailStamps: new Map([
+        ["a", "sa"],
+        ["b", "sb"],
+        ["c", "sc"],
+      ]),
+      streamEndOffset: 3,
+      totalCount: 10,
+      committedItems: [stubItem("a"), stubItem("b"), stubItem("c")],
+      committedTotalCount: 10,
+    };
+    const result = pruneItemIdFromDashboardLists("b", input);
+    assert.equal(result.removed, true);
+    if (!result.removed) {
+      return;
+    }
+    assert.deepEqual(result.itemIds, ["a", "c"]);
+    assert.equal(result.itemsById.has("b"), false);
+    assert.equal(result.bodyStamps.has("b"), false);
+    assert.equal(result.thumbnailPaths.has("b"), false);
+    assert.equal(result.thumbnailStamps.has("b"), false);
+    assert.equal(result.streamEndOffset, 2);
+    assert.equal(result.totalCount, 9);
+    assert.deepEqual(
+      result.committedItems.map((item) => item.id),
+      ["a", "c"],
+    );
+    assert.equal(result.committedTotalCount, 9);
+
+    const again = pruneItemIdFromDashboardLists("b", {
+      itemIds: result.itemIds,
+      itemsById: result.itemsById,
+      bodyStamps: result.bodyStamps,
+      thumbnailPaths: result.thumbnailPaths,
+      thumbnailStamps: result.thumbnailStamps,
+      streamEndOffset: result.streamEndOffset,
+      totalCount: result.totalCount,
+      committedItems: result.committedItems,
+      committedTotalCount: result.committedTotalCount,
+    });
+    assert.equal(again.removed, false);
   });
 });

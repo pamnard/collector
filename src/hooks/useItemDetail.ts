@@ -101,7 +101,7 @@ export function useItemDetail(): UseItemDetailResult {
   const params = useParams();
   const id = params["*"];
   const navigate = useNavigate();
-  const { refreshVault, vaultRevision } = useShell();
+  const { refreshVault, vaultRevision, pruneItem } = useShell();
   const alerts = useAlerts();
   useDismissAlertsOnUnmount([ITEM_DETAIL_ERROR_ID]);
   const [item, setItem] = useState<ItemFile | null>(null);
@@ -275,6 +275,7 @@ export function useItemDetail(): UseItemDetailResult {
 
     try {
       await getCollectorService().items.deleteItem(id);
+      pruneItem(id);
       refreshVault();
       navigate("/");
     } catch (err: unknown) {

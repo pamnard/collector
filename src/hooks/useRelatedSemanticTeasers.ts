@@ -4,6 +4,9 @@ import {
   useDismissAlertsOnUnmount,
 } from "../components/alerts/AlertBusProvider";
 import type { ItemChromeItemRef } from "../components/layout/item-chrome/types";
+import { useShell } from "../components/layout/AppLayout";
+import { filterOutItemId } from "../lib/dashboard-commit";
+import { useItemPruneEffect } from "./useItemPruneEffect";
 import { loadRelatedSemanticTeasers } from "../lib/related-semantic-items";
 import type { RelatedTeaser } from "../lib/related-teaser";
 import { probeCoverImageFormInBrowser } from "../lib/teaser-layout/probe-cover-image-form";
@@ -25,6 +28,7 @@ export function useRelatedSemanticTeasers(
   vaultRevision: number,
 ): RelatedTeaser[] | null {
   const alerts = useAlerts();
+  const { itemPruneSignal } = useShell();
   useDismissAlertsOnUnmount([RELATED_SEMANTIC_ERROR_ID]);
   const [teasers, setTeasers] = useState<RelatedTeaser[] | null>(null);
 
@@ -79,6 +83,19 @@ export function useRelatedSemanticTeasers(
       controller.abort();
     };
   }, [alerts, itemId, vaultRevision]);
+
+  useItemPruneEffect(itemPruneSignal, (prunedId) => {
+    setTeasers((previous) => {
+      if (previous === null) {
+        return null;
+      }
+      const next = filterOutItemId(previous, prunedId);
+      if (next.length === previous.length) {
+        return previous;
+      }
+      return next.length === 0 ? null : next;
+    });
+  });
 
   return teasers;
 }
