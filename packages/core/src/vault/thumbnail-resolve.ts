@@ -7,6 +7,7 @@
  *
  * Issue #255: domain host must not stub this to null.
  * Issue #544: progressive emit + bounded parallel resolve.
+ * Issue #711: gallery fallback without O(g) exists probes.
  */
 
 import type { FileSystemAdapter } from "../adapters/types.js";
@@ -42,7 +43,7 @@ async function resolveOneThumbnail(
   }
 
   const galleryImage = await findFirstGalleryImagePath(fs, vaultPath, item.id);
-  if (galleryImage) {
+  if (galleryImage !== null) {
     return galleryImage;
   }
 

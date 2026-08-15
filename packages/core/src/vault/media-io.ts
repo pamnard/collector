@@ -178,13 +178,10 @@ export async function findFirstGalleryImagePath(
     if (shouldSkipMediaDirEntry(name) || entry.isDirectory) {
       continue;
     }
-
-    const attached = name.match(ATTACHED_MEDIA_FILENAME_RE);
-    const filename = attached ? attached[2]! : name;
-    if (inferMediaType(filename) !== "image") {
+    // Stored names keep the original extension (bare or `{id}-{filename}`).
+    if (inferMediaType(name) !== "image") {
       continue;
     }
-
     return joinSegments(root, name);
   }
 

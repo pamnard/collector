@@ -140,8 +140,8 @@ describe("resolveItemThumbnailPathsBatch", () => {
     const imagePath = joinSegments(mediaRoot, imageName);
 
     const mediaNames = [
-      ...Array.from({ length: 40 }, (_, i) => `clip-${String(i).padStart(2, "0")}.mp4`),
-      ...Array.from({ length: 40 }, (_, i) => `note-${String(i).padStart(2, "0")}.pdf`),
+      ...Array.from({ length: 20 }, (_, i) => `clip-${i}.mp4`),
+      ...Array.from({ length: 20 }, (_, i) => `note-${i}.pdf`),
       imageName,
     ];
 
@@ -157,7 +157,6 @@ describe("resolveItemThumbnailPathsBatch", () => {
         if (path === mediaRoot) {
           return true;
         }
-        // Candidates from a directory listing must not be re-probed.
         throw new Error(`unexpected exists probe: ${path}`);
       },
       async readDirEntries(path: string) {
