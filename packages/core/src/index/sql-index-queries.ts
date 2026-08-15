@@ -10,6 +10,8 @@ import type { NavSearchFilter } from "../search/nav-filter.js";
 import { isFolderFilter, isTagFilter } from "../search/nav-filter.js";
 import { resolveItemIdOrderByClause } from "./item-id-sort.js";
 import {
+  assertSqlInListSize,
+  chunkSqlInList,
   itemRowToFile,
   sqlInPlaceholders,
   sqlPageClause,
@@ -68,54 +70,68 @@ export async function listItemFilesByIds(
   if (itemIds.length === 0) {
     return [];
   }
+  assertSqlInListSize(itemIds.length, "listItemFilesByIds");
 
-  const placeholders = sqlInPlaceholders(itemIds.length);
-  const rows = await selector.select<ItemRow>(
-    `SELECT
-       id, vault_id, title, description, url, content_type, source_type,
-       source_id, metadata_json, properties_json, thumbnail_path,
-       folder_path, content_revision, created_at, updated_at
-     FROM items
-     WHERE vault_id = ? AND id IN (${placeholders})`,
-    [vaultId, ...itemIds],
-  );
-
-  const byId = new Map(rows.map((row) => [row.id, row]));
-  const foundIds = itemIds.filter((id) => byId.has(id));
-  if (foundIds.length === 0) {
-    return [];
-  }
-
-  const foundPlaceholders = sqlInPlaceholders(foundIds.length);
-  const tagRows = await selector.select<{
-    item_id: string;
-    tag_id: string;
-  }>(
-    `SELECT item_id, tag_id FROM item_tags WHERE item_id IN (${foundPlaceholders})`,
-    foundIds,
-  );
-  const collectionRows = await selector.select<{
-    item_id: string;
-    collection_id: string;
-  }>(
-    `SELECT item_id, collection_id
-     FROM item_collections
-     WHERE item_id IN (${foundPlaceholders})`,
-    foundIds,
-  );
-
+  const byId = new Map<string, ItemRow>();
   const tagsByItem = new Map<string, string[]>();
-  for (const row of tagRows) {
-    const list = tagsByItem.get(row.item_id) ?? [];
-    list.push(row.tag_id);
-    tagsByItem.set(row.item_id, list);
-  }
-
   const collectionsByItem = new Map<string, string[]>();
-  for (const row of collectionRows) {
-    const list = collectionsByItem.get(row.item_id) ?? [];
-    list.push(row.collection_id);
-    collectionsByItem.set(row.item_id, list);
+  const sideDataLoaded = new Set<string>();
+
+  for (const chunk of chunkSqlInList(itemIds)) {
+    const placeholders = sqlInPlaceholders(chunk.length);
+    const rows = await selector.select<ItemRow>(
+      `SELECT
+         id, vault_id, title, description, url, content_type, source_type,
+         source_id, metadata_json, properties_json, thumbnail_path,
+         folder_path, content_revision, created_at, updated_at
+       FROM items
+       WHERE vault_id = ? AND id IN (${placeholders})`,
+      [vaultId, ...chunk],
+    );
+    for (const row of rows) {
+      byId.set(row.id, row);
+    }
+
+    const foundIds: string[] = [];
+    for (const id of chunk) {
+      if (!byId.has(id) || sideDataLoaded.has(id)) {
+        continue;
+      }
+      sideDataLoaded.add(id);
+      foundIds.push(id);
+    }
+    if (foundIds.length === 0) {
+      continue;
+    }
+
+    const foundPlaceholders = sqlInPlaceholders(foundIds.length);
+    const tagRows = await selector.select<{
+      item_id: string;
+      tag_id: string;
+    }>(
+      `SELECT item_id, tag_id FROM item_tags WHERE item_id IN (${foundPlaceholders})`,
+      foundIds,
+    );
+    const collectionRows = await selector.select<{
+      item_id: string;
+      collection_id: string;
+    }>(
+      `SELECT item_id, collection_id
+       FROM item_collections
+       WHERE item_id IN (${foundPlaceholders})`,
+      foundIds,
+    );
+
+    for (const row of tagRows) {
+      const list = tagsByItem.get(row.item_id) ?? [];
+      list.push(row.tag_id);
+      tagsByItem.set(row.item_id, list);
+    }
+    for (const row of collectionRows) {
+      const list = collectionsByItem.get(row.item_id) ?? [];
+      list.push(row.collection_id);
+      collectionsByItem.set(row.item_id, list);
+    }
   }
 
   const result: ItemFile[] = [];

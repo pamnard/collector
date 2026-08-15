@@ -587,6 +587,105 @@ describe("listItemFilesByIds", () => {
     const loaded = await index.listItemFilesByIds(meta.id, [firstId, secondId]);
     expect(loaded.map((item) => item.id)).toEqual([secondId]);
   });
+
+  it("multi-chunk hydrate returns same ordered set as a single request (#666)", async () => {
+    const { SQL_IN_LIST_CHUNK } = await import("./sql-index-helpers.js");
+    dataDir = await mkdtemp(join(tmpdir(), "collector-list-chunk-order-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    const ctx = { fs, index };
+    const { meta } = await createVault(ctx, dataDir, { name: "Vault" });
+    const timestamp = new Date().toISOString();
+    const count = SQL_IN_LIST_CHUNK + 5;
+    const ids = Array.from({ length: count }, (_, i) => `n${String(i).padStart(4, "0")}.md`);
+
+    for (const itemId of ids) {
+      await db.execute(
+        `INSERT INTO items (
+           id, vault_id, title, description, url, content_type, source_type,
+           source_id, metadata_json, properties_json, thumbnail_path,
+           has_content_file, sort_order, folder_path, created_at, updated_at,
+           file_mtime_ms, content_revision
+         ) VALUES (?, ?, ?, '', NULL, 'note', 'manual', NULL, '{}', '{}', NULL, 0, 0, '', ?, ?, NULL, 1)`,
+        [itemId, meta.id, itemId, timestamp, timestamp],
+      );
+    }
+
+    const requestOrder = [...ids].reverse();
+    const loaded = await index.listItemFilesByIds(meta.id, requestOrder);
+    expect(loaded.map((item) => item.id)).toEqual(requestOrder);
+  });
+
+  it("pathological large id list chunks IN binds under SQL_IN_LIST_CHUNK (#666)", async () => {
+    const { SQL_IN_LIST_CHUNK } = await import("./sql-index-helpers.js");
+    dataDir = await mkdtemp(join(tmpdir(), "collector-list-bind-safe-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    const ctx = { fs, index };
+    const { meta } = await createVault(ctx, dataDir, { name: "Vault" });
+    const timestamp = new Date().toISOString();
+    const count = SQL_IN_LIST_CHUNK * 2 + 7;
+    const ids = Array.from({ length: count }, (_, i) => `b${String(i).padStart(4, "0")}.md`);
+
+    for (let offset = 0; offset < ids.length; offset += 50) {
+      const slice = ids.slice(offset, offset + 50);
+      const placeholders = slice
+        .map(
+          () =>
+            "(?, ?, ?, '', NULL, 'note', 'manual', NULL, '{}', '{}', NULL, 0, 0, '', ?, ?, NULL, 1)",
+        )
+        .join(", ");
+      const binds = slice.flatMap((itemId) => [
+        itemId,
+        meta.id,
+        itemId,
+        timestamp,
+        timestamp,
+      ]);
+      await db.execute(
+        `INSERT INTO items (
+           id, vault_id, title, description, url, content_type, source_type,
+           source_id, metadata_json, properties_json, thumbnail_path,
+           has_content_file, sort_order, folder_path, created_at, updated_at,
+           file_mtime_ms, content_revision
+         ) VALUES ${placeholders}`,
+        binds,
+      );
+    }
+
+    const inBindCounts: number[] = [];
+    const underlying = db.select.bind(db);
+    db.select = async <T>(query: string, bindValues: unknown[] = []) => {
+      if (String(query).includes(" IN (")) {
+        const inCount = String(query).includes("vault_id")
+          ? bindValues.length - 1
+          : bindValues.length;
+        inBindCounts.push(inCount);
+      }
+      return underlying<T>(query, bindValues);
+    };
+
+    const loaded = await index.listItemFilesByIds(meta.id, ids);
+    expect(loaded.map((item) => item.id)).toEqual(ids);
+    expect(inBindCounts.length).toBeGreaterThan(1);
+    expect(Math.max(...inBindCounts)).toBeLessThanOrEqual(SQL_IN_LIST_CHUNK);
+  });
+
+  it("rejects absurd id list sizes without silent truncation (#666)", async () => {
+    const { SQL_IN_LIST_MAX } = await import("./sql-index-helpers.js");
+    dataDir = await mkdtemp(join(tmpdir(), "collector-list-absurd-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const index = new SqlVaultIndexStore(db);
+    const ctx = { fs, index };
+    const { meta } = await createVault(ctx, dataDir, { name: "Vault" });
+    const ids = Array.from({ length: SQL_IN_LIST_MAX + 1 }, (_, i) => `${i}.md`);
+    await expect(index.listItemFilesByIds(meta.id, ids)).rejects.toThrow(
+      /exceeds max/,
+    );
+  });
 });
 
 describe("upsertItemMetadata / upsertItemContent", () => {
