@@ -82,6 +82,44 @@ describe("vault id/title catalog cache (#661)", () => {
     expect(dbA.selectCalls).toHaveLength(1);
     expect(dbB.selectCalls).toHaveLength(1);
   });
+
+  it("does not write stale SELECT when invalidate races with in-flight load", async () => {
+    let selectCount = 0;
+    let releaseFirstSelect!: () => void;
+    const firstSelectBlocked = new Promise<void>((resolve) => {
+      releaseFirstSelect = resolve;
+    });
+    let firstSelectStarted!: () => void;
+    const firstSelectSeen = new Promise<void>((resolve) => {
+      firstSelectStarted = resolve;
+    });
+
+    const db: SqlSelector = {
+      async select<T>(_query: string, _bindValues?: unknown[]): Promise<T[]> {
+        selectCount += 1;
+        if (selectCount === 1) {
+          firstSelectStarted();
+          await firstSelectBlocked;
+          return [{ id: "Inbox/stale.md", title: "Stale" }] as T[];
+        }
+        return [{ id: "Inbox/fresh.md", title: "Fresh" }] as T[];
+      },
+    };
+
+    const loadPromise = loadVaultIdTitleCatalog(db, "vault-1");
+    await firstSelectSeen;
+    invalidateVaultIdTitleCatalog(db, "vault-1");
+    releaseFirstSelect();
+
+    const rows = await loadPromise;
+    expect(rows).toEqual([{ id: "Inbox/fresh.md", title: "Fresh" }]);
+    expect(hasVaultIdTitleCatalogCache(db, "vault-1")).toBe(true);
+
+    const cached = await loadVaultIdTitleCatalog(db, "vault-1");
+    expect(cached).toEqual([{ id: "Inbox/fresh.md", title: "Fresh" }]);
+    expect(selectCount).toBe(2);
+  });
+
   it("preserves ambiguous-title behavior (multiple ids for one title)", async () => {
     const db = countingSelector([
       { id: "Inbox/a.md", title: "Dup" },
@@ -202,5 +240,138 @@ describe("listItemIdTitles warm cache (#661)", () => {
       String(query).includes("SELECT id, title FROM items WHERE vault_id"),
     ).length;
     expect(catalogQueryCountAfter).toBe(2);
+  });
+
+  it("invalidates both old and new vault when upsert moves vault_id", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-catalog-move-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const now = new Date().toISOString();
+    await db.execute(
+      `INSERT INTO vaults (id, path, name, description, is_default, created_at, updated_at)
+       VALUES (?, ?, ?, '', 1, ?, ?), (?, ?, ?, '', 0, ?, ?)`,
+      [
+        "vault-1",
+        "/tmp/v1",
+        "V1",
+        now,
+        now,
+        "vault-2",
+        "/tmp/v2",
+        "V2",
+        now,
+        now,
+      ],
+    );
+    await db.execute(
+      `INSERT INTO items (
+        id, vault_id, title, description, content_type, source_type,
+        metadata_json, properties_json, has_content_file, folder_path,
+        created_at, updated_at, content_revision
+      ) VALUES (?, ?, ?, '', 'note', 'manual', '{}', '{}', 1, 'Inbox', ?, ?, 1)`,
+      ["Inbox/a.md", "vault-1", "Alpha", now, now],
+    );
+
+    const index = new SqlVaultIndexStore(db);
+    await index.listItemIdTitles("vault-1");
+    expect(hasVaultIdTitleCatalogCache(db, "vault-1")).toBe(true);
+
+    await index.upsertItemMetadata(
+      {
+        item: {
+          id: "Inbox/a.md",
+          vault_id: "vault-2",
+          title: "Alpha",
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          properties: {},
+          tag_ids: [],
+          collection_ids: [],
+          folder_path: "Inbox",
+          created_at: now,
+          updated_at: now,
+          content_revision: 2,
+        },
+        fileMtimeMs: 1,
+      },
+      "vault-2",
+    );
+
+    expect(hasVaultIdTitleCatalogCache(db, "vault-1")).toBe(false);
+    expect(hasVaultIdTitleCatalogCache(db, "vault-2")).toBe(false);
+
+    const vault1 = await index.listItemIdTitles("vault-1");
+    const vault2 = await index.listItemIdTitles("vault-2");
+    expect(vault1).toEqual([]);
+    expect(vault2).toEqual([{ id: "Inbox/a.md", title: "Alpha" }]);
+  });
+});
+
+describe("catalog invalidation on index mutations (#661)", () => {
+  let dataDir = "";
+  let db: BetterSqliteMigrator | null = null;
+
+  afterEach(async () => {
+    db?.close();
+    db = null;
+    if (dataDir) {
+      await rm(dataDir, { recursive: true, force: true });
+      dataDir = "";
+    }
+  });
+
+  async function seedVaultWithItem(): Promise<{
+    index: SqlVaultIndexStore;
+    now: string;
+  }> {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-catalog-invalidate-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const now = new Date().toISOString();
+    await db.execute(
+      `INSERT INTO vaults (id, path, name, description, is_default, created_at, updated_at)
+       VALUES (?, ?, ?, '', 1, ?, ?)`,
+      ["vault-1", "/tmp/v", "V", now, now],
+    );
+    await db.execute(
+      `INSERT INTO items (
+        id, vault_id, title, description, content_type, source_type,
+        metadata_json, properties_json, has_content_file, folder_path,
+        created_at, updated_at, content_revision
+      ) VALUES (?, ?, ?, '', 'note', 'manual', '{}', '{}', 1, 'Inbox', ?, ?, 1)`,
+      ["Inbox/a.md", "vault-1", "Alpha", now, now],
+    );
+    return { index: new SqlVaultIndexStore(db), now };
+  }
+
+  it("invalidates catalog on deleteItem", async () => {
+    const { index } = await seedVaultWithItem();
+    await index.listItemIdTitles("vault-1");
+    expect(hasVaultIdTitleCatalogCache(db!, "vault-1")).toBe(true);
+
+    await index.deleteItem("Inbox/a.md");
+    expect(hasVaultIdTitleCatalogCache(db!, "vault-1")).toBe(false);
+  });
+
+  it("invalidates catalog on rewriteItemIds", async () => {
+    const { index } = await seedVaultWithItem();
+    await index.listItemIdTitles("vault-1");
+    expect(hasVaultIdTitleCatalogCache(db!, "vault-1")).toBe(true);
+
+    await index.rewriteItemIds([
+      { oldId: "Inbox/a.md", newId: "Inbox/b.md", folderPath: "Inbox" },
+    ]);
+    expect(hasVaultIdTitleCatalogCache(db!, "vault-1")).toBe(false);
+  });
+
+  it("invalidates catalog on deleteVault", async () => {
+    const { index } = await seedVaultWithItem();
+    await index.listItemIdTitles("vault-1");
+    expect(hasVaultIdTitleCatalogCache(db!, "vault-1")).toBe(true);
+
+    await index.deleteVault("vault-1");
+    expect(hasVaultIdTitleCatalogCache(db!, "vault-1")).toBe(false);
   });
 });

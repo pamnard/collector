@@ -4,7 +4,7 @@ import type {
   Tag,
   VaultMeta,
 } from "@collector/shared";
-import type { SqlExecutor } from "@collector/db";
+import type { SqlExecutor, SqlReader } from "@collector/db";
 import type {
   IndexedItem,
   IndexedItemMetadata,
@@ -41,8 +41,10 @@ import {
 
 type TagWithCount = Tag & { item_count: number };
 
+type SqlIndexDb = SqlExecutor & SqlReader;
+
 export class SqlVaultIndexAdapter implements VaultIndexAdapter {
-  constructor(private readonly db: SqlExecutor) {}
+  constructor(private readonly db: SqlIndexDb) {}
 
   async upsertVault(meta: VaultMeta, vaultPath: string): Promise<void> {
     await this.db.execute(
@@ -92,6 +94,11 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     vaultId: string,
   ): Promise<void> {
     const { item } = record;
+
+    const previous = await this.db.select<{ vault_id: string }>(
+      "SELECT vault_id FROM items WHERE id = ?",
+      [item.id],
+    );
 
     // No multi-statement BEGIN/COMMIT across pooled executes (#49/#77).
     await this.db.execute(
@@ -148,13 +155,40 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     );
 
     // FTS document is written only by upsertItemContent after the content read.
+    // ON CONFLICT may change vault_id — invalidate both previous and new vault.
     invalidateVaultIdTitleCatalog(this.db, vaultId);
+    const previousVaultId = previous[0]?.vault_id;
+    if (previousVaultId !== undefined && previousVaultId !== vaultId) {
+      invalidateVaultIdTitleCatalog(this.db, previousVaultId);
+    }
   }
 
   async upsertItemMetadataBatch(
     records: IndexedItemMetadata[],
     vaultId: string,
   ): Promise<void> {
+    const previousVaultIds = new Set<string>();
+    const allItemIds = records.map((record) => record.item.id);
+    for (
+      let offset = 0;
+      offset < allItemIds.length;
+      offset += SQL_INSERT_CHUNK
+    ) {
+      const idChunk = allItemIds.slice(offset, offset + SQL_INSERT_CHUNK);
+      if (idChunk.length === 0) {
+        continue;
+      }
+      const previousRows = await this.db.select<{ vault_id: string }>(
+        `SELECT vault_id FROM items WHERE id IN (${sqlInPlaceholders(idChunk.length)})`,
+        idChunk,
+      );
+      for (const row of previousRows) {
+        if (row.vault_id !== vaultId) {
+          previousVaultIds.add(row.vault_id);
+        }
+      }
+    }
+
     for (
       let offset = 0;
       offset < records.length;
@@ -277,6 +311,9 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
       }
     }
     invalidateVaultIdTitleCatalog(this.db, vaultId);
+    for (const previousVaultId of previousVaultIds) {
+      invalidateVaultIdTitleCatalog(this.db, previousVaultId);
+    }
   }
 
   async upsertItemContent(input: ItemContentUpsert): Promise<void> {
