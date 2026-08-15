@@ -1,5 +1,6 @@
 import type { SqlSelector } from "../index/sql-index.js";
 import type { TextLinkResolveContext } from "./resolve-text-links.js";
+import { loadVaultIdTitleCatalog } from "./vault-id-title-catalog.js";
 
 /** Build resolve maps from a light id/title catalog (no full ItemFile load). */
 export function textLinkResolveContextFromItems(
@@ -36,9 +37,6 @@ export async function buildTextLinkResolveContext(
     return null;
   }
 
-  const rows = await db.select<{ id: string; title: string }>(
-    "SELECT id, title FROM items WHERE vault_id = ?",
-    [vaultId],
-  );
+  const rows = await loadVaultIdTitleCatalog(db, vaultId);
   return textLinkResolveContextFromItems(sourceItemId, rows);
 }

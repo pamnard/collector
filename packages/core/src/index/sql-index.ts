@@ -33,6 +33,11 @@ import {
 } from "./sql-index-helpers.js";
 import * as indexQueries from "./sql-index-queries.js";
 import { rewriteItemIds as rewriteItemIdsImpl } from "./sql-index-rewrite.js";
+import {
+  invalidateAllVaultIdTitleCatalogs,
+  invalidateVaultIdTitleCatalog,
+  loadVaultIdTitleCatalog,
+} from "../links/vault-id-title-catalog.js";
 
 type TagWithCount = Tag & { item_count: number };
 
@@ -64,6 +69,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
 
   async deleteVault(vaultId: string): Promise<void> {
     await this.db.execute("DELETE FROM vaults WHERE id = ?", [vaultId]);
+    invalidateVaultIdTitleCatalog(this.db, vaultId);
   }
 
   async upsertItem(record: IndexedItem, vaultId: string): Promise<void> {
@@ -142,6 +148,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     );
 
     // FTS document is written only by upsertItemContent after the content read.
+    invalidateVaultIdTitleCatalog(this.db, vaultId);
   }
 
   async upsertItemMetadataBatch(
@@ -269,6 +276,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
         );
       }
     }
+    invalidateVaultIdTitleCatalog(this.db, vaultId);
   }
 
   async upsertItemContent(input: ItemContentUpsert): Promise<void> {
@@ -418,6 +426,8 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
       itemId,
     ]);
     await this.db.execute("DELETE FROM items WHERE id = ?", [itemId]);
+    // deleteItem has no vaultId; clear all catalogs for this SQL session.
+    invalidateAllVaultIdTitleCatalogs(this.db);
   }
 
   async rewriteItemIds(_mappings: ItemIdRewriteMapping[]): Promise<void> {
@@ -668,10 +678,8 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
   async listItemIdTitles(
     vaultId: string,
   ): Promise<Array<{ id: string; title: string }>> {
-    return this.selector.select<{ id: string; title: string }>(
-      `SELECT id, title FROM items WHERE vault_id = ?`,
-      [vaultId],
-    );
+    const rows = await loadVaultIdTitleCatalog(this.selector, vaultId);
+    return rows.map((row) => ({ id: row.id, title: row.title }));
   }
 
   override async upsertTag(tag: Tag, vaultId: string): Promise<void> {
@@ -699,7 +707,9 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
   override async rewriteItemIds(
     mappings: ItemIdRewriteMapping[],
   ): Promise<void> {
-    return rewriteItemIdsImpl(this.selector, mappings);
+    await rewriteItemIdsImpl(this.selector, mappings);
+    // Id rewrites change catalog keys; clear all vaults for this session.
+    invalidateAllVaultIdTitleCatalogs(this.selector);
   }
 
   override async listVaultItemIds(vaultId: string): Promise<string[]> {

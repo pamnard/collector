@@ -290,6 +290,13 @@ export {
 } from "./links/text-links-reindex.js";
 
 export {
+  invalidateAllVaultIdTitleCatalogs,
+  invalidateVaultIdTitleCatalog,
+  loadVaultIdTitleCatalog,
+} from "./links/vault-id-title-catalog.js";
+export type { VaultIdTitleRow } from "./links/vault-id-title-catalog.js";
+
+export {
   COLLECTOR_UNRESOLVED_HREF_PREFIX,
   decodeItemPathHref,
   itemPathHref,
