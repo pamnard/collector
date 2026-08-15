@@ -53,6 +53,7 @@ import {
   getUiSession,
 } from "../services/collector-client";
 import {
+  applyDashboardQueryCacheCoverFlightPatch,
   dashboardQueryCacheKey,
   getDashboardQueryCache,
   removeItemIdFromDashboardQueryCache,
@@ -337,6 +338,7 @@ export function useDashboardItems(
       const ids = itemIdsRef.current;
       const byId = itemsByIdRef.current;
       const end = streamEndOffsetRef.current;
+      const cacheKeyForFlight = queryKeyRef.current;
 
       if (!isDashboardPrefetchWindowReady(ids, byId, end)) {
         console.warn(
@@ -400,6 +402,31 @@ export function useDashboardItems(
         getPaths: () => committedThumbnailPathsRef.current,
         getStamps: () => committedThumbnailStampsRef.current,
         commit: (mergedPaths, mergedStamps) => {
+          const result = applyDashboardQueryCacheCoverFlightPatch({
+            flightKey: cacheKeyForFlight,
+            flightVersion: requestVersion,
+            getLiveKey: () => queryKeyRef.current,
+            getLiveVersion: () => requestVersionRef.current,
+            thumbnailPaths: mergedPaths,
+            thumbnailStamps: mergedStamps,
+            rewriteFull: () => {
+              setDashboardQueryCache(
+                cacheKeyForFlight,
+                buildDashboardQueryCacheEntry({
+                  itemIds: ids,
+                  itemsById: byId,
+                  bodyStamps: bodyStampsRef.current,
+                  streamEndOffset: end,
+                  totalCount: nextTotal,
+                  thumbnailPaths: mergedPaths,
+                  thumbnailStamps: mergedStamps,
+                }),
+              );
+            },
+          });
+          if (result === "skipped") {
+            return;
+          }
           setCommittedThumbnailPaths(mergedPaths);
           setCommittedThumbnailStamps(mergedStamps);
           committedThumbnailPathsRef.current = mergedPaths;
@@ -411,12 +438,6 @@ export function useDashboardItems(
         },
         resolveProgressive: resolveDashboardCoverPathsProgressive,
       });
-
-      if (requestVersionRef.current !== requestVersion) {
-        return;
-      }
-
-      writeQueryCache(ids, byId, end, nextTotal);
     },
     [writeQueryCache],
   );
@@ -631,13 +652,14 @@ export function useDashboardItems(
     setError(null);
 
     if (cached) {
-      setLoadedItemIds(cached.itemIds);
-      itemsByIdRef.current = cached.itemsById;
-      bodyStampsRef.current = new Map(cached.bodyStamps);
-      setItemsById(cached.itemsById);
-      totalCountRef.current = cached.totalCount;
-      setTotalCount(cached.totalCount);
-      setStreamWindowEnd(cached.streamEndOffset);
+      const working = stateFromDashboardCacheEntry(cached);
+      setLoadedItemIds(working.itemIds);
+      itemsByIdRef.current = working.itemsById;
+      bodyStampsRef.current = working.bodyStamps;
+      setItemsById(working.itemsById);
+      totalCountRef.current = working.totalCount;
+      setTotalCount(working.totalCount);
+      setStreamWindowEnd(working.streamEndOffset);
       setIsLoading(false);
     } else {
       // Cache miss after invalidate: drop bodies so ids-same re-hydrates.
