@@ -3,10 +3,13 @@ import { folderPathFromItemPath } from "@collector/shared";
 import { useFolderTree } from "../../hooks/useFolderTree";
 import type { ItemActionId } from "../../lib/item-action-catalog";
 import {
+  ITEM_LINT_BUSY_ID,
+  ITEM_LINT_ERROR_ID,
   ITEM_MOVE_BUSY_ID,
   ITEM_MOVE_ERROR_ID,
   ITEM_RENAME_BUSY_ID,
   ITEM_RENAME_ERROR_ID,
+  lintItemFile,
   moveItemToFolder,
   renameItemTitle,
 } from "../../lib/item-actions";
@@ -38,12 +41,15 @@ export function ItemRowActions({
     ITEM_RENAME_ERROR_ID,
     ITEM_MOVE_BUSY_ID,
     ITEM_MOVE_ERROR_ID,
+    ITEM_LINT_BUSY_ID,
+    ITEM_LINT_ERROR_ID,
   ]);
-  const { vaultRevision, pruneItem } = useShell();
+  const { vaultRevision, pruneItem, refreshVault } = useShell();
   const folders = useFolderTree(vaultRevision);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
+  const [isLinting, setIsLinting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
@@ -81,6 +87,17 @@ export function ItemRowActions({
     onUpdated?.();
   };
 
+  const handleLint = async () => {
+    setIsLinting(true);
+    const updated = await lintItemFile(alerts, itemId);
+    setIsLinting(false);
+    if (updated === undefined) {
+      return;
+    }
+    refreshVault();
+    onUpdated?.();
+  };
+
   const handleAction = (id: ItemActionId) => {
     if (id === "move") {
       setMoveOpen(true);
@@ -90,12 +107,16 @@ export function ItemRowActions({
       setRenameOpen(true);
       return;
     }
+    if (id === "lint") {
+      void handleLint();
+      return;
+    }
     if (id === "delete") {
       setConfirmOpen(true);
     }
   };
 
-  const busy = isDeleting || isRenaming || isMoving;
+  const busy = isDeleting || isRenaming || isMoving || isLinting;
   const itemLabel = itemTitle.trim() || itemId;
   const currentFolderPath = folderPathFromItemPath(itemId);
 

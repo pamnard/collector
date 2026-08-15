@@ -28,6 +28,7 @@ import {
   writeItemRawMarkdown,
   type AdjacentItemAnchor,
 } from "@collector/core";
+import { normalizeMarkdown } from "@collector/core/node";
 import type { ItemsSearchServiceDeps } from "./items-search.js";
 
 export type ItemsCrud = {
@@ -113,17 +114,23 @@ export function createItemsCrud(
     return readItemRawMarkdown(ctx.fs, path, itemId);
   };
 
-  const updateItemSource = async (
+  const persistNormalizedSource = async (
     itemId: string,
     rawMarkdown: string,
   ): Promise<ItemFile> => {
     const { vault, path } = await deps.resolveActiveVault();
+    const ctx = deps.getContext();
+    const { text } = normalizeMarkdown(rawMarkdown);
+    const existing = await readItemRawMarkdown(ctx.fs, path, itemId);
+    if (text === existing) {
+      return readItemFile(ctx.fs, path, itemId, vault.id);
+    }
     const item = await writeItemRawMarkdown(
-      deps.getContext(),
+      ctx,
       path,
       vault.id,
       itemId,
-      rawMarkdown,
+      text,
     );
     deps.onVaultPresentationChanged?.(vault.id);
     return item;
@@ -171,7 +178,7 @@ export function createItemsCrud(
     itemId: string,
     input: UpdateItemInput,
   ): Promise<ItemFile> => {
-    const { vault, path } = await deps.resolveActiveVault();
+    const { path } = await deps.resolveActiveVault();
     const { item: existing, content: existingContent } =
       await getItemById(itemId);
     const ctx = deps.getContext();
@@ -185,7 +192,7 @@ export function createItemsCrud(
       current = await moveItemToFolder(
         ctx,
         path,
-        vault.id,
+        existing.vault_id,
         existing.id,
         input.folder_path,
       );
@@ -219,16 +226,8 @@ export function createItemsCrud(
     const body =
       input.content !== undefined ? (input.content ?? "") : (currentContent ?? "");
     const markdown = serializeItemDocument(nextItem, body, maps.byId);
-    // Same on-disk write + parse/ensure path as updateItemSource.
-    const updated = await writeItemRawMarkdown(
-      ctx,
-      path,
-      vault.id,
-      nextItem.id,
-      markdown,
-    );
-    deps.onVaultPresentationChanged?.(vault.id);
-    return updated;
+    // Same normalize + write path as updateItemSource (every note persist).
+    return persistNormalizedSource(nextItem.id, markdown);
   };
 
   const deleteItem = async (itemId: string): Promise<void> => {
@@ -243,7 +242,7 @@ export function createItemsCrud(
     getAdjacentItems,
     resolveContentTextLinks,
     getItemSource,
-    updateItemSource,
+    updateItemSource: persistNormalizedSource,
     createItem,
     updateItem,
     deleteItem,

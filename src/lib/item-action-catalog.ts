@@ -1,4 +1,4 @@
-export type ItemActionId = "move" | "rename" | "delete";
+export type ItemActionId = "move" | "rename" | "lint" | "delete";
 
 export type ItemActionGroup = "manage" | "modify";
 
@@ -12,6 +12,7 @@ export type ItemActionDef = {
 export const ITEM_ACTION_ORDER: readonly ItemActionDef[] = [
   { id: "move", group: "manage", label: "Переместить файл в…" },
   { id: "rename", group: "modify", label: "Переименовать" },
+  { id: "lint", group: "modify", label: "Линт файла" },
   { id: "delete", group: "modify", label: "Удалить" },
 ] as const;
 

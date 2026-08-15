@@ -1,5 +1,5 @@
 /**
- * Node-only filesystem adapter + host embedding runtime.
+ * Node-only filesystem adapter + host embedding runtime + markdownlint.
  * Do not import from the Vite UI bundle — use `@collector/core` there.
  */
 
@@ -21,3 +21,6 @@ export type {
   ItemEmbeddingSource,
   SimilarItemHit,
 } from "./embeddings/node.js";
+
+export { normalizeMarkdown } from "./markdown/normalize-markdown.js";
+export type { NormalizeMarkdownResult } from "./markdown/normalize-markdown.js";

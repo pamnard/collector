@@ -19,6 +19,8 @@ import { useItemDetail } from "../hooks/useItemDetail";
 import { useItemDetailChrome } from "../hooks/useItemDetailChrome";
 import { useMediaPlayerOverlay } from "../hooks/useMediaPlayerOverlay";
 import {
+  ITEM_LINT_BUSY_ID,
+  ITEM_LINT_ERROR_ID,
   ITEM_MOVE_BUSY_ID,
   ITEM_MOVE_ERROR_ID,
   ITEM_RENAME_BUSY_ID,
@@ -71,6 +73,10 @@ export function ItemDetailPage() {
     onView: switchToView,
     onForm: switchToForm,
     onSource: switchToSource,
+    onLinted: () => {
+      handleItemUpdated();
+      refreshVault();
+    },
   });
 
   const alerts = useAlerts();
@@ -79,6 +85,8 @@ export function ItemDetailPage() {
     ITEM_RENAME_ERROR_ID,
     ITEM_MOVE_BUSY_ID,
     ITEM_MOVE_ERROR_ID,
+    ITEM_LINT_BUSY_ID,
+    ITEM_LINT_ERROR_ID,
   ]);
   const [isRenaming, setIsRenaming] = useState(false);
   const [mediaPlayError, setMediaPlayError] = useState<string | null>(null);

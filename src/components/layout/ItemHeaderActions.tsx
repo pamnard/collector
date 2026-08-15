@@ -19,6 +19,7 @@ export interface ItemHeaderActionsModel {
   onSource: () => void;
   onMove: () => void;
   onRename: () => void;
+  onLint: () => void;
   onDelete: () => void;
 }
 
@@ -49,6 +50,7 @@ export function ItemHeaderActions({ actions }: ItemHeaderActionsProps) {
     onSource,
     onMove,
     onRename,
+    onLint,
     onDelete,
   } = actions;
 
@@ -59,6 +61,10 @@ export function ItemHeaderActions({ actions }: ItemHeaderActionsProps) {
     }
     if (id === "rename") {
       onRename();
+      return;
+    }
+    if (id === "lint") {
+      onLint();
       return;
     }
     if (id === "delete") {

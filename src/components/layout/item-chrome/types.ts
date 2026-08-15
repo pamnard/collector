@@ -32,5 +32,6 @@ export type ItemChromeDomain = {
   onSource: () => void;
   onMove: () => void;
   onRename: () => void;
+  onLint: () => void;
   onDelete: () => void;
 };
