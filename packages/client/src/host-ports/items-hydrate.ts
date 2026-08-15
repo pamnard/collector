@@ -14,7 +14,8 @@ export async function* hydrateHostItems(
   ids: string[],
   options?: { signal?: AbortSignal },
 ): AsyncIterable<ItemFile> {
-  if (!ids.length || options?.signal?.aborted) {
+  const signal = options?.signal;
+  if (!ids.length || signal?.aborted) {
     return;
   }
   if (ids.length > DASHBOARD_HYDRATE_MAX_IDS) {
@@ -27,7 +28,7 @@ export async function* hydrateHostItems(
     offset < ids.length;
     offset += DASHBOARD_HYDRATE_CHUNK_SIZE
   ) {
-    if (options?.signal?.aborted) {
+    if (signal?.aborted) {
       return;
     }
     const chunk = ids.slice(offset, offset + DASHBOARD_HYDRATE_CHUNK_SIZE);
@@ -37,7 +38,7 @@ export async function* hydrateHostItems(
       limit: chunk.length,
     })) as ItemFile[];
     for (const item of items) {
-      if (options?.signal?.aborted) {
+      if (signal?.aborted) {
         return;
       }
       yield item;
