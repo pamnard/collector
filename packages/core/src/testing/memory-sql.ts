@@ -47,6 +47,13 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
     }
 
     if (normalized.startsWith("DELETE FROM item_embeddings")) {
+      if (normalized.includes(" IN (")) {
+        return this.deleteByFieldValues(
+          "item_embeddings",
+          "item_id",
+          bindValues,
+        );
+      }
       return this.deleteByField("item_embeddings", "item_id", bindValues[0]);
     }
 
@@ -83,6 +90,9 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
     }
 
     if (normalized.startsWith("DELETE FROM media WHERE item_id")) {
+      if (normalized.includes(" IN (")) {
+        return this.deleteByFieldValues("media", "item_id", bindValues);
+      }
       return this.deleteByField("media", "item_id", bindValues[0]);
     }
 
@@ -91,6 +101,9 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
     }
 
     if (normalized.startsWith("DELETE FROM items")) {
+      if (normalized.includes(" IN (")) {
+        return this.deleteByFieldValues("items", "id", bindValues);
+      }
       return this.deleteByField("items", "id", bindValues[0]);
     }
 

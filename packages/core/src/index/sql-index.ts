@@ -411,13 +411,38 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
   }
 
   async deleteItem(itemId: string): Promise<void> {
-    await this.db.execute("DELETE FROM media WHERE item_id = ?", [itemId]);
-    await this.db.execute("DELETE FROM source_refs WHERE item_id = ?", [itemId]);
-    await this.db.execute("DELETE FROM items_fts WHERE item_id = ?", [itemId]);
-    await this.db.execute("DELETE FROM item_embeddings WHERE item_id = ?", [
-      itemId,
-    ]);
-    await this.db.execute("DELETE FROM items WHERE id = ?", [itemId]);
+    await this.deleteItemsBatch([itemId]);
+  }
+
+  async deleteItemsBatch(itemIds: string[]): Promise<void> {
+    if (itemIds.length === 0) {
+      return;
+    }
+
+    for (let offset = 0; offset < itemIds.length; offset += SQL_INSERT_CHUNK) {
+      const chunk = itemIds.slice(offset, offset + SQL_INSERT_CHUNK);
+      const placeholders = sqlInPlaceholders(chunk.length);
+      await this.db.execute(
+        `DELETE FROM media WHERE item_id IN (${placeholders})`,
+        chunk,
+      );
+      await this.db.execute(
+        `DELETE FROM source_refs WHERE item_id IN (${placeholders})`,
+        chunk,
+      );
+      await this.db.execute(
+        `DELETE FROM items_fts WHERE item_id IN (${placeholders})`,
+        chunk,
+      );
+      await this.db.execute(
+        `DELETE FROM item_embeddings WHERE item_id IN (${placeholders})`,
+        chunk,
+      );
+      await this.db.execute(
+        `DELETE FROM items WHERE id IN (${placeholders})`,
+        chunk,
+      );
+    }
   }
 
   async rewriteItemIds(_mappings: ItemIdRewriteMapping[]): Promise<void> {

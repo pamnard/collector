@@ -103,6 +103,113 @@ describe("syncIndexItemsFromFilesystem", () => {
     expect(await ctx.index.listVaultItemIds(meta.id)).toEqual([]);
   });
 
+  it("batch-deletes a burst of removed items without leaving stale rows", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-watch-burst-delete-"));
+    const sql = new MemorySqlAdapter();
+    const index = new SqlVaultIndexStore(sql);
+    const ctx = { fs, index };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const timestamp = new Date().toISOString();
+    const itemIds = Array.from({ length: 12 }, () => `${createId()}.md`);
+
+    for (const itemId of itemIds) {
+      await upsertItem(ctx, path, meta.id, {
+        item: {
+          id: itemId,
+          vault_id: meta.id,
+          title: itemId,
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          properties: {},
+          tag_ids: [],
+          collection_ids: [],
+          folder_path: "",
+          content_revision: 1,
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+        content: "body",
+      });
+    }
+    await syncIndexFromFilesystem(ctx, path, meta.id);
+
+    for (const itemId of itemIds) {
+      await fs.remove(itemMarkdownPath(path, itemId), { recursive: true });
+    }
+
+    let batchCalls = 0;
+    let deletedViaBatch = 0;
+    const originalBatch = index.deleteItemsBatch.bind(index);
+    index.deleteItemsBatch = async (ids) => {
+      batchCalls += 1;
+      deletedViaBatch += ids.length;
+      return originalBatch(ids);
+    };
+
+    const report = await syncIndexItemsFromFilesystem(ctx, path, meta.id, itemIds);
+    expect(report.removed).toBe(itemIds.length);
+    expect(batchCalls).toBeGreaterThanOrEqual(1);
+    expect(deletedViaBatch).toBe(itemIds.length);
+    expect(await ctx.index.listVaultItemIds(meta.id)).toEqual([]);
+  });
+
+  it("uses batched exists/stat instead of serial fs.exists for reconcile", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-watch-batch-exists-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const timestamp = new Date().toISOString();
+    const itemIds = Array.from({ length: 6 }, () => `${createId()}.md`);
+
+    for (const itemId of itemIds) {
+      await upsertItem(ctx, path, meta.id, {
+        item: {
+          id: itemId,
+          vault_id: meta.id,
+          title: itemId,
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          properties: {},
+          tag_ids: [],
+          collection_ids: [],
+          folder_path: "",
+          content_revision: 1,
+          created_at: timestamp,
+          updated_at: timestamp,
+        },
+        content: "body",
+      });
+    }
+    await syncIndexFromFilesystem(ctx, path, meta.id);
+
+    let peakInFlight = 0;
+    let inFlight = 0;
+    const originalExists = fs.exists.bind(fs);
+    fs.exists = async (filePath: string) => {
+      inFlight += 1;
+      peakInFlight = Math.max(peakInFlight, inFlight);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return originalExists(filePath);
+      } finally {
+        inFlight -= 1;
+      }
+    };
+
+    try {
+      const report = await syncIndexItemsFromFilesystem(ctx, path, meta.id, itemIds);
+      expect(report.errors).toHaveLength(0);
+      expect(peakInFlight).toBeGreaterThan(1);
+      expect(peakInFlight).toBeLessThanOrEqual(4);
+    } finally {
+      fs.exists = originalExists;
+    }
+  });
+
   it("patches metadata when only mtime changed", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "collector-watch-patch-"));
     const sql = new MemorySqlAdapter();

@@ -19,10 +19,12 @@ import {
   hasVaultFsBatch,
   readVaultItemMetaBatch,
   statAllVaultItemMeta,
+  statVaultItemMetaBatch,
   VAULT_ITEM_READ_META_BATCH,
 } from "./vault-fs-batch.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import * as concurrency from "../util/concurrency.js";
+import { DISK_ITEM_READ_CONCURRENCY } from "../util/concurrency.js";
 
 describe("vault-fs-batch", () => {
   let dataDir = "";
@@ -67,6 +69,84 @@ describe("vault-fs-batch", () => {
     expect(stats).toHaveLength(1);
     expect(stats[0]?.id).toBe(itemId);
     expect(stats[0]?.mtimeMs).not.toBeNull();
+  });
+
+  it("statVaultItemMetaBatch omits missing ids and stats only requested ones", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-batch-stat-ids-"));
+    const ctx = { fs, index: new SqlVaultIndexStore(new MemorySqlAdapter()) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const presentId = `${createId()}.md`;
+    const missingId = `${createId()}.md`;
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: presentId,
+        vault_id: meta.id,
+        title: "Present",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    });
+
+    const stats = await statVaultItemMetaBatch(fs, path, [presentId, missingId]);
+    expect(stats).toHaveLength(1);
+    expect(stats[0]?.id).toBe(presentId);
+    expect(stats[0]?.mtimeMs).not.toBeNull();
+  });
+
+  it("statAllVaultItemMeta fallback uses bounded concurrency", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-batch-stat-fallback-"));
+    const ctx = { fs, index: new SqlVaultIndexStore(new MemorySqlAdapter()) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemIds = Array.from({ length: 8 }, () => `${createId()}.md`);
+    for (const itemId of itemIds) {
+      await upsertItem(ctx, path, meta.id, {
+        item: {
+          id: itemId,
+          vault_id: meta.id,
+          title: itemId,
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          properties: {},
+          tag_ids: [],
+          collection_ids: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      });
+    }
+
+    let peakInFlight = 0;
+    let inFlight = 0;
+    const fallbackFs = new CountingBatchAdapter(fs);
+    (fallbackFs as { statVaultItemsMeta?: unknown }).statVaultItemsMeta =
+      undefined;
+    (fallbackFs as { readVaultItemsMeta?: unknown }).readVaultItemsMeta =
+      undefined;
+    const originalExists = fallbackFs.exists.bind(fallbackFs);
+    fallbackFs.exists = async (filePath: string) => {
+      inFlight += 1;
+      peakInFlight = Math.max(peakInFlight, inFlight);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return originalExists(filePath);
+      } finally {
+        inFlight -= 1;
+      }
+    };
+
+    const stats = await statAllVaultItemMeta(fallbackFs, path);
+    expect(stats).toHaveLength(itemIds.length);
+    expect(peakInFlight).toBeGreaterThan(1);
+    expect(peakInFlight).toBeLessThanOrEqual(DISK_ITEM_READ_CONCURRENCY);
   });
 
   it("readVaultItemMetaBatch chunks large id lists", async () => {
