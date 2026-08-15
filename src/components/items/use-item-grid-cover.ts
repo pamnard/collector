@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { resolveCoverSrc } from "../../utils/item-cover-src";
 import {
-  isPortraitCoverNaturalSize,
+  applyCoverDecodeFail,
+  applyCoverDecodeLoad,
+  isCoverImgEventForSrc,
   shouldAttachCoverSrc,
   shouldRunCoverDecodeTimeout,
 } from "./item-grid-cover-decode";
@@ -13,7 +15,7 @@ export function useItemGridCover(args: {
   thumbnailPath: string | null | undefined;
   itemUrl: string | undefined;
   optimisticPortrait: boolean;
-  /** Near-viewport / sticky priority from IntersectionObserver. */
+  /** Near-viewport priority from IntersectionObserver. */
   decodePriority: boolean;
 }): {
   coverSrc: string | null;
@@ -25,7 +27,7 @@ export function useItemGridCover(args: {
   showCover: boolean;
   pathUnresolved: boolean;
   onCoverLoad: (img: HTMLImageElement) => void;
-  onCoverError: () => void;
+  onCoverError: (img: HTMLImageElement) => void;
 } {
   const { thumbnailPath, itemUrl, optimisticPortrait, decodePriority } = args;
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
@@ -34,6 +36,7 @@ export function useItemGridCover(args: {
   const coverSrcRef = useRef(coverSrc);
   const expectedCoverSrcRef = useRef<string | null>(null);
   const settledRef = useRef(false);
+  const flightIdRef = useRef(0);
 
   const expectedCoverSrc =
     thumbnailPath === undefined
@@ -74,6 +77,7 @@ export function useItemGridCover(args: {
       return;
     }
 
+    flightIdRef.current += 1;
     settledRef.current = false;
     setCoverSrc(null);
     setCoverSettled(false);
@@ -97,15 +101,20 @@ export function useItemGridCover(args: {
     }
 
     const src = expectedCoverSrc;
+    const eventFlightId = flightIdRef.current;
     const timer = setTimeout(() => {
-      if (settledRef.current) {
+      const failed = applyCoverDecodeFail({
+        flightId: flightIdRef.current,
+        eventFlightId,
+      });
+      if (failed === null || settledRef.current) {
         return;
       }
       console.warn("[ItemGridCard] cover decode timed out", { src });
       settledRef.current = true;
-      setCoverSrc(null);
+      setCoverSrc(failed.coverSrc);
       setCoverSettled(true);
-      setIsPortraitCover(false);
+      setIsPortraitCover(failed.isPortrait);
     }, COVER_DECODE_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, [attachCover, coverSettled, expectedCoverSrc]);
@@ -114,26 +123,46 @@ export function useItemGridCover(args: {
     if (settledRef.current) {
       return;
     }
-    const src = expectedCoverSrcRef.current;
-    if (src === null) {
+    const loaded = applyCoverDecodeLoad({
+      flightId: flightIdRef.current,
+      eventFlightId: flightIdRef.current,
+      expectedSrc: expectedCoverSrcRef.current,
+      imgSrcAttr: img.getAttribute("src"),
+      width: img.naturalWidth,
+      height: img.naturalHeight,
+    });
+    if (loaded === null) {
       return;
     }
     settledRef.current = true;
-    setCoverSrc(src);
+    setCoverSrc(loaded.coverSrc);
     setCoverSettled(true);
-    setIsPortraitCover(
-      isPortraitCoverNaturalSize(img.naturalWidth, img.naturalHeight),
-    );
+    setIsPortraitCover(loaded.isPortrait);
   };
 
-  const onCoverError = () => {
+  const onCoverError = (img: HTMLImageElement) => {
     if (settledRef.current) {
       return;
     }
+    if (
+      !isCoverImgEventForSrc(
+        img.getAttribute("src"),
+        expectedCoverSrcRef.current,
+      )
+    ) {
+      return;
+    }
+    const failed = applyCoverDecodeFail({
+      flightId: flightIdRef.current,
+      eventFlightId: flightIdRef.current,
+    });
+    if (failed === null) {
+      return;
+    }
     settledRef.current = true;
-    setCoverSrc(null);
+    setCoverSrc(failed.coverSrc);
     setCoverSettled(true);
-    setIsPortraitCover(false);
+    setIsPortraitCover(failed.isPortrait);
   };
 
   return {

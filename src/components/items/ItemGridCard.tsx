@@ -147,17 +147,18 @@ function ItemGridCardInner({
         >
           {attachCover && attachSrc ? (
             <img
+              key={attachSrc}
               src={attachSrc}
               alt=""
               className={cn(
                 "h-auto w-full",
                 !showCover &&
-                  "pointer-events-none invisible absolute inset-x-0 top-0",
+                  "pointer-events-none absolute inset-x-0 top-0 opacity-0",
               )}
               loading={COVER_IMG_LOADING_PRIORITY}
               decoding="async"
               onLoad={(event) => onCoverLoad(event.currentTarget)}
-              onError={onCoverError}
+              onError={(event) => onCoverError(event.currentTarget)}
             />
           ) : null}
           {!showCover ? (

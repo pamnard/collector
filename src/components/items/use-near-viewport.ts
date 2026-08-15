@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
-import { COVER_DECODE_ROOT_MARGIN } from "./item-grid-cover-decode";
+import {
+  COVER_DECODE_ROOT_MARGIN,
+  shouldObserveNearViewport,
+} from "./item-grid-cover-decode";
 
 /**
- * Sticky near-viewport flag for masonry cover decode.
- * Once the card intersects the prefetch band it stays true so we do not
- * cancel an in-flight decode or unload a decoded cover.
+ * Near-viewport flag for masonry cover decode.
+ * Observes only after the masonry scroll root exists (no viewport fallback).
+ * Not sticky: leaving the prefetch band cancels an unsettled decode.
  */
 export function useNearViewport(
   root: Element | null,
@@ -14,21 +17,20 @@ export function useNearViewport(
   const [nearViewport, setNearViewport] = useState(false);
 
   useEffect(() => {
-    if (!node || nearViewport) {
+    const target = { node, root };
+    if (!shouldObserveNearViewport(target)) {
       return;
     }
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setNearViewport(true);
-        }
+        setNearViewport(entries.some((entry) => entry.isIntersecting));
       },
-      { root, rootMargin },
+      { root: target.root, rootMargin },
     );
-    observer.observe(node);
+    observer.observe(target.node);
     return () => observer.disconnect();
-  }, [nearViewport, node, root, rootMargin]);
+  }, [node, root, rootMargin]);
 
   return [setNode, nearViewport];
 }
