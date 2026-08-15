@@ -157,6 +157,11 @@ export function mapsFromCoverPaths(coverPaths: DashboardSnapshot["cover_paths"])
   const thumbnailPaths = new Map<string, string | null>();
   const thumbnailStamps = new Map<string, string>();
   for (const [id, entry] of Object.entries(coverPaths ?? {})) {
+    // Never warm a sticky null (#720): cover may exist on disk without stamp bump.
+    // Missing map entry → coverNeedsResolve → fresh host resolve.
+    if (entry.path == null) {
+      continue;
+    }
     thumbnailPaths.set(id, entry.path);
     thumbnailStamps.set(id, entry.stamp);
   }

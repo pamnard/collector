@@ -261,7 +261,7 @@ describe("mergeCommittedThumbnailStamps", () => {
 });
 
 describe("coverPathsFromMaps / mapsFromCoverPaths", () => {
-  it("round-trips path+stamp pairs", () => {
+  it("round-trips non-null path+stamp pairs", () => {
     const paths = new Map<string, string | null>([
       ["a", "/a"],
       ["b", null],
@@ -276,8 +276,19 @@ describe("coverPathsFromMaps / mapsFromCoverPaths", () => {
       b: { path: null, stamp: "s-b" },
     });
     const back = mapsFromCoverPaths(record);
-    assert.deepEqual([...back.thumbnailPaths.entries()], [...paths.entries()]);
-    assert.deepEqual([...back.thumbnailStamps.entries()], [...stamps.entries()]);
+    // Null covers are not warmed (#720 sticky-null residual).
+    assert.deepEqual([...back.thumbnailPaths.entries()], [["a", "/a"]]);
+    assert.deepEqual([...back.thumbnailStamps.entries()], [["a", "s-a"]]);
+  });
+
+  it("skips null cover paths when hydrating from snapshot (#720)", () => {
+    const back = mapsFromCoverPaths({
+      a: { path: "/a", stamp: "s-a" },
+      b: { path: null, stamp: "s-b" },
+    });
+    assert.equal(back.thumbnailPaths.has("b"), false);
+    assert.equal(back.thumbnailStamps.has("b"), false);
+    assert.equal(back.thumbnailPaths.get("a"), "/a");
   });
 
   it("skips path entries without stamps", () => {
