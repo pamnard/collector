@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createItemDetailReloadGate,
   runItemDetailVaultReload,
-} from "./useItemDetail";
+} from "./item-detail-reload-gate";
 
 describe("item detail vault reload after delete", () => {
   it("does not report Item not found after delete when vaultRevision reload fails", async () => {
