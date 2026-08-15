@@ -34,6 +34,10 @@ import {
   SIDEBAR_RAIL_WIDTH_PX,
   clampSidebarWidthPx,
 } from "../../lib/sidebar-width";
+import {
+  nextItemPruneSignal,
+  type ItemPruneSignal,
+} from "../../hooks/useItemPruneEffect";
 import { formatIndexingBannerLabel } from "@collector/core";
 import {
   isFolderFilter,
@@ -63,6 +67,8 @@ interface ShellContextValue {
   activeFilter: NavFilter;
   vaultRevision: number;
   refreshVault: () => void;
+  pruneItem: (itemId: string) => void;
+  itemPruneSignal: ItemPruneSignal | null;
   openCreate: (folderPath?: string) => void;
   dashboardCache: ReturnType<typeof useDashboardItems>;
   dashboardSort: DashboardItemSort;
@@ -93,6 +99,8 @@ function AppLayoutInner() {
   const [searchParams] = useSearchParams();
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const [vaultRevision, setVaultRevision] = useState(0);
+  const [itemPruneSignal, setItemPruneSignal] =
+    useState<ItemPruneSignal | null>(null);
   const bumpVaultRevision = useCallback(() => {
     invalidateItemPresentationCache();
     void getUiSession().snapshot.clearDashboardSnapshot();
@@ -225,6 +233,14 @@ function AppLayoutInner() {
     "",
     vaultRevision,
     dashboardSort,
+  );
+
+  const pruneItem = useCallback(
+    (itemId: string) => {
+      dashboardCache.pruneItem(itemId);
+      setItemPruneSignal((previous) => nextItemPruneSignal(previous, itemId));
+    },
+    [dashboardCache.pruneItem],
   );
 
   const indexingLabel = formatIndexingBannerLabel(indexSync);
@@ -387,6 +403,8 @@ function AppLayoutInner() {
         activeFilter,
         vaultRevision,
         refreshVault: bumpVaultRevision,
+        pruneItem,
+        itemPruneSignal,
         openCreate,
         dashboardCache,
         dashboardSort,

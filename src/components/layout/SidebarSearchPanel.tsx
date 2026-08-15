@@ -3,8 +3,11 @@ import { Search, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { ItemFile } from "@collector/shared";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
+import { useItemPruneEffect } from "../../hooks/useItemPruneEffect";
+import { filterOutItemId } from "../../lib/dashboard-commit";
 import { sidebarSearchCacheKey } from "../../lib/sidebar-search-cache-key";
 import { getCollectorService } from "../../services/collector-client";
+import { useShell } from "./AppLayout";
 import { Input } from "../ui/input";
 
 interface SidebarSearchPanelProps {
@@ -21,6 +24,7 @@ export function SidebarSearchPanel({
   searchIndexBuilding = false,
 }: SidebarSearchPanelProps) {
   const navigate = useNavigate();
+  const { itemPruneSignal } = useShell();
   const debouncedQuery = useDebouncedValue(searchQuery, 300);
   const [results, setResults] = useState<ItemFile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -66,6 +70,13 @@ export function SidebarSearchPanel({
     };
     // resultsCacheKey encodes query + vaultRevision (path ids change on move).
   }, [debouncedQuery, resultsCacheKey]);
+
+  useItemPruneEffect(itemPruneSignal, (itemId) => {
+    setResults((previous) => {
+      const next = filterOutItemId(previous, itemId);
+      return next.length === previous.length ? previous : next;
+    });
+  });
 
   const placeholder = searchIndexBuilding
     ? "Поиск по названию… (индекс строится)"

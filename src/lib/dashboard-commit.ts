@@ -188,3 +188,93 @@ export function zipIdStamps(
   }
   return out;
 }
+
+/** Drop one id from an ordered list of `{ id }` rows (search hits, teasers, …). */
+export function filterOutItemId<T extends { id: string }>(
+  items: readonly T[],
+  itemId: string,
+): T[] {
+  return items.filter((item) => item.id !== itemId);
+}
+
+/** Keep committed paint rows whose ids are still in the index page. */
+export function intersectCommittedWithPageIds(
+  committed: readonly ItemFile[],
+  pageItemIds: readonly string[],
+): ItemFile[] {
+  const allowed = new Set(pageItemIds);
+  return committed.filter((item) => allowed.has(item.id));
+}
+
+export interface DashboardListPruneInput {
+  itemIds: string[];
+  itemsById: ReadonlyMap<string, ItemFile>;
+  bodyStamps: ReadonlyMap<string, string>;
+  thumbnailPaths: ReadonlyMap<string, string | null>;
+  thumbnailStamps: ReadonlyMap<string, string>;
+  streamEndOffset: number;
+  totalCount: number;
+  committedItems: readonly ItemFile[];
+  committedTotalCount: number;
+}
+
+export type DashboardListPruneResult =
+  | { removed: false }
+  | {
+      removed: true;
+      itemIds: string[];
+      itemsById: Map<string, ItemFile>;
+      bodyStamps: Map<string, string>;
+      thumbnailPaths: Map<string, string | null>;
+      thumbnailStamps: Map<string, string>;
+      streamEndOffset: number;
+      totalCount: number;
+      committedItems: ItemFile[];
+      committedTotalCount: number;
+    };
+
+/**
+ * Synchronously remove one item id from dashboard working + committed lists.
+ * Idempotent when the id is already absent.
+ */
+export function pruneItemIdFromDashboardLists(
+  itemId: string,
+  input: DashboardListPruneInput,
+): DashboardListPruneResult {
+  const inIds = input.itemIds.includes(itemId);
+  const inBodies = input.itemsById.has(itemId);
+  const inCommitted = input.committedItems.some((item) => item.id === itemId);
+  if (!inIds && !inBodies && !inCommitted) {
+    return { removed: false };
+  }
+
+  const itemIds = input.itemIds.filter((id) => id !== itemId);
+  const removedFromIds = input.itemIds.length - itemIds.length;
+  const itemsById = new Map(input.itemsById);
+  itemsById.delete(itemId);
+  const bodyStamps = new Map(input.bodyStamps);
+  bodyStamps.delete(itemId);
+  const thumbnailPaths = new Map(input.thumbnailPaths);
+  thumbnailPaths.delete(itemId);
+  const thumbnailStamps = new Map(input.thumbnailStamps);
+  thumbnailStamps.delete(itemId);
+  const committedItems = filterOutItemId(input.committedItems, itemId);
+  const removedFromCommitted =
+    input.committedItems.length - committedItems.length;
+
+  return {
+    removed: true,
+    itemIds,
+    itemsById,
+    bodyStamps,
+    thumbnailPaths,
+    thumbnailStamps,
+    streamEndOffset: Math.min(input.streamEndOffset, itemIds.length),
+    totalCount: Math.max(0, input.totalCount - removedFromIds),
+    committedItems,
+    committedTotalCount: Math.max(
+      0,
+      input.committedTotalCount - Math.max(removedFromIds, removedFromCommitted),
+    ),
+  };
+}

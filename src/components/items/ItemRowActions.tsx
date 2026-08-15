@@ -39,7 +39,7 @@ export function ItemRowActions({
     ITEM_MOVE_BUSY_ID,
     ITEM_MOVE_ERROR_ID,
   ]);
-  const { vaultRevision } = useShell();
+  const { vaultRevision, pruneItem } = useShell();
   const folders = useFolderTree(vaultRevision);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -52,6 +52,7 @@ export function ItemRowActions({
     setIsDeleting(true);
     try {
       await getCollectorService().items.deleteItem(itemId);
+      pruneItem(itemId);
       onUpdated?.();
     } finally {
       setIsDeleting(false);

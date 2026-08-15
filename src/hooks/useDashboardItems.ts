@@ -16,9 +16,11 @@ import {
   zipIdStamps,
   itemCoverStamp,
   itemsBodiesEqual,
+  intersectCommittedWithPageIds,
   mergeCommittedThumbnailPaths,
   mergeCommittedThumbnailStamps,
   orderedIds,
+  pruneItemIdFromDashboardLists,
   shouldSkipEmptyCommit,
   snapshotToCacheEntry,
   thumbnailPathsEqual,
@@ -48,6 +50,7 @@ import {
 import {
   dashboardQueryCacheKey,
   getDashboardQueryCache,
+  removeItemIdFromDashboardQueryCache,
   setDashboardQueryCache,
   type DashboardQueryCacheEntry,
 } from "../services/dashboard-query-cache";
@@ -76,6 +79,8 @@ interface UseDashboardItemsResult {
   hasMore: boolean;
   error: string | null;
   loadMore: () => void;
+  /** Drop a deleted id from committed/working lists and query cache immediately. */
+  pruneItem: (itemId: string) => void;
 }
 
 function readInitialCacheEntry(
@@ -511,6 +516,17 @@ export function useDashboardItems(
         setLoadedItemIds([]);
         bodyStampsRef.current = new Map();
         setStreamWindowEnd(0);
+        setCommittedItems([]);
+        committedItemsRef.current = [];
+        setCommittedTotalCount(0);
+        committedTotalCountRef.current = 0;
+        setCommittedHasMore(false);
+        const emptyThumbs = new Map<string, string | null>();
+        const emptyStamps = new Map<string, string>();
+        setCommittedThumbnailPaths(emptyThumbs);
+        setCommittedThumbnailStamps(emptyStamps);
+        committedThumbnailPathsRef.current = emptyThumbs;
+        committedThumbnailStampsRef.current = emptyStamps;
         return;
       }
 
@@ -555,6 +571,32 @@ export function useDashboardItems(
         itemsByIdRef.current = kept;
         setItemsById(kept);
         setStreamWindowEnd(plan.preservedEnd);
+
+        const nextCommitted = intersectCommittedWithPageIds(
+          committedItemsRef.current,
+          page.itemIds,
+        );
+        const nextCommittedIds = nextCommitted.map((item) => item.id);
+        setCommittedItems(nextCommitted);
+        committedItemsRef.current = nextCommitted;
+        setCommittedTotalCount(page.totalCount);
+        committedTotalCountRef.current = page.totalCount;
+        setCommittedHasMore(plan.preservedEnd < page.totalCount);
+        const prunedPaths = mergeCommittedThumbnailPaths(
+          committedThumbnailPathsRef.current,
+          new Map(),
+          nextCommittedIds,
+        );
+        const prunedStamps = mergeCommittedThumbnailStamps(
+          committedThumbnailStampsRef.current,
+          new Map(),
+          nextCommittedIds,
+        );
+        setCommittedThumbnailPaths(prunedPaths);
+        setCommittedThumbnailStamps(prunedStamps);
+        committedThumbnailPathsRef.current = prunedPaths;
+        committedThumbnailStampsRef.current = prunedStamps;
+
         await streamWindow();
         return;
       }
@@ -984,6 +1026,63 @@ export function useDashboardItems(
   const showSkeleton =
     (isLoading && committedItems.length === 0) || isIndexingEmptyGrid;
 
+  const pruneItem = useCallback(
+    (itemId: string) => {
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
+
+      const pruned = pruneItemIdFromDashboardLists(itemId, {
+        itemIds: itemIdsRef.current,
+        itemsById: itemsByIdRef.current,
+        bodyStamps: bodyStampsRef.current,
+        thumbnailPaths: committedThumbnailPathsRef.current,
+        thumbnailStamps: committedThumbnailStampsRef.current,
+        streamEndOffset: streamEndOffsetRef.current,
+        totalCount: totalCountRef.current,
+        committedItems: committedItemsRef.current,
+        committedTotalCount: committedTotalCountRef.current,
+      });
+
+      removeItemIdFromDashboardQueryCache(itemId);
+
+      if (!pruned.removed) {
+        return;
+      }
+
+      itemIdsRef.current = pruned.itemIds;
+      itemsByIdRef.current = pruned.itemsById;
+      bodyStampsRef.current = pruned.bodyStamps;
+      streamEndOffsetRef.current = pruned.streamEndOffset;
+      totalCountRef.current = pruned.totalCount;
+      committedItemsRef.current = pruned.committedItems;
+      committedTotalCountRef.current = pruned.committedTotalCount;
+      committedThumbnailPathsRef.current = pruned.thumbnailPaths;
+      committedThumbnailStampsRef.current = pruned.thumbnailStamps;
+
+      setItemIds(pruned.itemIds);
+      setItemsById(pruned.itemsById);
+      setStreamEndOffset(pruned.streamEndOffset);
+      setTotalCount(pruned.totalCount);
+      setCommittedItems(pruned.committedItems);
+      setCommittedTotalCount(pruned.committedTotalCount);
+      setCommittedHasMore(
+        pruned.streamEndOffset < pruned.committedTotalCount,
+      );
+      setCommittedThumbnailPaths(pruned.thumbnailPaths);
+      setCommittedThumbnailStamps(pruned.thumbnailStamps);
+
+      writeQueryCache(
+        pruned.itemIds,
+        pruned.itemsById,
+        pruned.streamEndOffset,
+        pruned.totalCount,
+      );
+    },
+    [writeQueryCache],
+  );
+
   return {
     items: committedItems,
     thumbnailPaths: committedThumbnailPaths,
@@ -994,5 +1093,6 @@ export function useDashboardItems(
     hasMore: committedHasMore,
     error,
     loadMore,
+    pruneItem,
   };
 }
