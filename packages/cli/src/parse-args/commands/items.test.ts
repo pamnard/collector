@@ -14,6 +14,11 @@ import {
   parseUpdateItemSource,
 } from "./items.js";
 
+function expectCliUsage(fn: () => unknown, message: RegExp): void {
+  expect(fn).toThrow(CliUsageError);
+  expect(fn).toThrow(message);
+}
+
 describe("parse-args items commands (#718)", () => {
   describe("get-item / get-item-source / delete-item", () => {
     it("parses a single item id", () => {
@@ -32,10 +37,11 @@ describe("parse-args items commands (#718)", () => {
     });
 
     it("rejects missing or extra positional args", () => {
-      expect(() => parseGetItem([], [])).toThrow(CliUsageError);
-      expect(() => parseGetItem([], ["a", "b"])).toThrow(/get-item/);
-      expect(() => parseGetItemSource([], [])).toThrow(/get-item-source/);
-      expect(() => parseDeleteItem([], ["a", "b"])).toThrow(/delete-item/);
+      expectCliUsage(() => parseGetItem([], []), /get-item/);
+      expectCliUsage(() => parseGetItem([], ["a", "b"]), /get-item/);
+      expectCliUsage(() => parseGetItemSource([], []), /get-item-source/);
+      expectCliUsage(() => parseDeleteItem([], []), /delete-item/);
+      expectCliUsage(() => parseDeleteItem([], ["a", "b"]), /delete-item/);
     });
   });
 
@@ -86,18 +92,25 @@ describe("parse-args items commands (#718)", () => {
     });
 
     it("rejects positional rest and missing --title", () => {
-      expect(() => parseCreateItem(["create-item", "--title", "T"], ["x"])).toThrow(
+      expectCliUsage(
+        () => parseCreateItem(["create-item", "--title", "T"], ["x"]),
         /create-item/,
       );
-      expect(() => parseCreateItem(["create-item"], [])).toThrow(
+      expectCliUsage(
+        () => parseCreateItem(["create-item"], []),
         /requires --title/,
       );
     });
 
     it("rejects invalid --type", () => {
-      expect(() =>
-        parseCreateItem(["create-item", "--title", "T", "--type", "nope"], []),
-      ).toThrow(/Invalid --type/);
+      expectCliUsage(
+        () =>
+          parseCreateItem(
+            ["create-item", "--title", "T", "--type", "nope"],
+            [],
+          ),
+        /Invalid --type/,
+      );
     });
   });
 
@@ -133,14 +146,21 @@ describe("parse-args items commands (#718)", () => {
     });
 
     it("rejects missing --url value and missing field flags", () => {
-      expect(() =>
-        parseUpdateItem(["update-item", "id1", "--url"], ["id1"]),
-      ).toThrow(/Missing value for --url/);
-      expect(() => parseUpdateItem(["update-item"], [])).toThrow(/update-item/);
-      expect(() =>
-        parseUpdateItem(["update-item", "a", "b", "--title", "T"], ["a", "b"]),
-      ).toThrow(/update-item/);
-      expect(() => parseUpdateItem(["update-item", "id1"], ["id1"])).toThrow(
+      expectCliUsage(
+        () => parseUpdateItem(["update-item", "id1", "--url"], ["id1"]),
+        /Missing value for --url/,
+      );
+      expectCliUsage(() => parseUpdateItem(["update-item"], []), /update-item/);
+      expectCliUsage(
+        () =>
+          parseUpdateItem(
+            ["update-item", "a", "b", "--title", "T"],
+            ["a", "b"],
+          ),
+        /update-item/,
+      );
+      expectCliUsage(
+        () => parseUpdateItem(["update-item", "id1"], ["id1"]),
         /at least one field flag/,
       );
     });
@@ -166,10 +186,14 @@ describe("parse-args items commands (#718)", () => {
     });
 
     it("rejects missing id or --content", () => {
-      expect(() => parseUpdateItemSource([], [])).toThrow(/update-item-source/);
-      expect(() =>
-        parseUpdateItemSource(["update-item-source", "id1"], ["id1"]),
-      ).toThrow(/requires --content/);
+      expectCliUsage(
+        () => parseUpdateItemSource([], []),
+        /update-item-source/,
+      );
+      expectCliUsage(
+        () => parseUpdateItemSource(["update-item-source", "id1"], ["id1"]),
+        /requires --content/,
+      );
     });
   });
 
@@ -185,10 +209,12 @@ describe("parse-args items commands (#718)", () => {
     });
 
     it("rejects missing id or --folder", () => {
-      expect(() => parseMoveItem(["move-item", "--folder", "Inbox"], [])).toThrow(
+      expectCliUsage(
+        () => parseMoveItem(["move-item", "--folder", "Inbox"], []),
         /move-item/,
       );
-      expect(() => parseMoveItem(["move-item", "id1"], ["id1"])).toThrow(
+      expectCliUsage(
+        () => parseMoveItem(["move-item", "id1"], ["id1"]),
         /move-item/,
       );
     });

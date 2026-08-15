@@ -60,6 +60,18 @@ function okHealth(res: ServerResponse): void {
   );
 }
 
+const UNHEALTHY_HEALTH = {
+  ok: false,
+  status: "unhealthy",
+  open: true,
+  healthy: false,
+} as const;
+
+function unhealthyHealth503(res: ServerResponse): void {
+  res.writeHead(503, { "content-type": "application/json" });
+  res.end(JSON.stringify(UNHEALTHY_HEALTH));
+}
+
 function notFound(res: ServerResponse): void {
   res.writeHead(404);
   res.end();
@@ -174,6 +186,46 @@ describe("http-host-transport (#718)", () => {
       layer: "auth",
       code: "auth_failed",
     });
+  });
+
+  it("HTTP health dial times out when /health never responds", async () => {
+    const host = await listenMockHost((res, url) => {
+      if (url.pathname === "/health") {
+        return;
+      }
+      notFound(res);
+    });
+    closers.push(host.close);
+    await expect(
+      createHttpHostTransport({
+        baseUrl: host.baseUrl,
+        token: "t",
+        enableEvents: false,
+        connectTimeoutMs: 50,
+      }),
+    ).rejects.toMatchObject({
+      layer: "transport",
+      code: "timeout",
+      message: expect.stringMatching(/HTTP health dial.*timed out/),
+    });
+  });
+
+  it("HTTP health dial allows 503 with a body", async () => {
+    const host = await listenMockHost((res, url) => {
+      if (url.pathname === "/health") {
+        unhealthyHealth503(res);
+        return;
+      }
+      notFound(res);
+    });
+    closers.push(host.close);
+    const transport = await createHttpHostTransport({
+      baseUrl: host.baseUrl,
+      token: "t",
+      enableEvents: false,
+      connectTimeoutMs: 2_000,
+    });
+    closers.push(() => transport.close());
   });
 
   it("request times out when response never arrives", async () => {
@@ -313,16 +365,21 @@ describe("http-host-transport (#718)", () => {
     });
   });
 
-  it("health rejects non-OK (except 503) and 401", async () => {
-    let mode: "ok-once" | "auth" | "bad" = "ok-once";
+  it("health allows 503 with valid JSON and rejects 401 / other non-OK", async () => {
+    let mode: "ok-once" | "degraded" | "auth" | "bad" = "ok-once";
     const transport = await connectHttpOnly((res, url) => {
       if (url.pathname !== "/health") {
         notFound(res);
         return;
       }
       if (mode === "ok-once") {
-        mode = "auth";
+        mode = "degraded";
         okHealth(res);
+        return;
+      }
+      if (mode === "degraded") {
+        mode = "auth";
+        unhealthyHealth503(res);
         return;
       }
       if (mode === "auth") {
@@ -335,6 +392,7 @@ describe("http-host-transport (#718)", () => {
       res.end();
     });
 
+    await expect(transport.health()).resolves.toEqual(UNHEALTHY_HEALTH);
     await expect(transport.health()).rejects.toMatchObject({
       layer: "auth",
       code: "auth_failed",
