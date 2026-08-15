@@ -17,17 +17,19 @@ import type {
 } from "@collector/api";
 import {
   asCollectorApiError,
-  DASHBOARD_HYDRATE_CHUNK_SIZE,
-  DASHBOARD_HYDRATE_MAX_IDS,
   DASHBOARD_PREFETCH_SIZE,
   subscriptionFromTeardown,
 } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
+import type { HostWireClient } from "@collector/service/wire";
 import { bytesToBase64 } from "../bytes-to-base64.js";
 import type { HostSessionCtx } from "../host-session-ctx.js";
+import { hydrateHostItems } from "./items-hydrate.js";
 
-export function createHostItemsPort(ctx: HostSessionCtx): ItemsPort {
-  const { transport } = ctx;
+/** Thin query/search RPC wrappers. */
+function createItemsQueryMethods(
+  transport: HostWireClient,
+): Pick<ItemsPort, "searchItems" | "queryIndex"> {
   return {
     searchItems: async (
       query: string,
@@ -51,40 +53,26 @@ export function createHostItemsPort(ctx: HostSessionCtx): ItemsPort {
         page,
         sort,
       }) as Promise<IndexQueryResult>,
-    async *hydrate(
-      ids: string[],
-      options?: { signal?: AbortSignal },
-    ): AsyncIterable<ItemFile> {
-      if (!ids.length || options?.signal?.aborted) {
-        return;
-      }
-      if (ids.length > DASHBOARD_HYDRATE_MAX_IDS) {
-        throw new Error(
-          `hydrate: id list length ${ids.length} exceeds max ${DASHBOARD_HYDRATE_MAX_IDS}`,
-        );
-      }
-      for (
-        let offset = 0;
-        offset < ids.length;
-        offset += DASHBOARD_HYDRATE_CHUNK_SIZE
-      ) {
-        if (options?.signal?.aborted) {
-          return;
-        }
-        const chunk = ids.slice(offset, offset + DASHBOARD_HYDRATE_CHUNK_SIZE);
-        const items = (await transport.request("loadDashboardItems", {
-          itemIds: chunk,
-          offset: 0,
-          limit: chunk.length,
-        })) as ItemFile[];
-        for (const item of items) {
-          if (options?.signal?.aborted) {
-            return;
-          }
-          yield item;
-        }
-      }
-    },
+  };
+}
+
+/**
+ * Dashboard index / load surfaces.
+ * Hydrate + subscribe/stream keep local chunking and abort logic (#673).
+ */
+function createItemsDashboardMethods(
+  transport: HostWireClient,
+): Pick<
+  ItemsPort,
+  | "hydrate"
+  | "fetchDashboardIndexPage"
+  | "listDashboardItemIds"
+  | "subscribeDashboardLoad"
+  | "streamDashboardItems"
+  | "loadDashboardItems"
+> {
+  return {
+    hydrate: (ids, options) => hydrateHostItems(transport, ids, options),
     fetchDashboardIndexPage: async (
       filter: NavFilter,
       query: string | undefined,
@@ -178,6 +166,22 @@ export function createHostItemsPort(ctx: HostSessionCtx): ItemsPort {
         offset,
         limit,
       }) as Promise<ItemFile[]>,
+  };
+}
+
+/** Single-item reads and link helpers. */
+function createItemsReadMethods(
+  transport: HostWireClient,
+): Pick<
+  ItemsPort,
+  | "getItemById"
+  | "getAdjacentItems"
+  | "findSimilarItems"
+  | "resolveContentTextLinks"
+  | "listItemBacklinks"
+  | "getItemSource"
+> {
+  return {
     getItemById: async (itemId: string): Promise<GetItemResult> =>
       transport.request("getItemById", { itemId }) as Promise<GetItemResult>,
     getAdjacentItems: async (itemId: string): Promise<AdjacentItemsResult> =>
@@ -200,6 +204,21 @@ export function createHostItemsPort(ctx: HostSessionCtx): ItemsPort {
       }) as ReturnType<ItemsPort["listItemBacklinks"]>,
     getItemSource: async (itemId: string): Promise<string> =>
       transport.request("getItemSource", { itemId }) as Promise<string>,
+  };
+}
+
+/** Create / update / delete / import wrappers. */
+function createItemsWriteMethods(
+  transport: HostWireClient,
+): Pick<
+  ItemsPort,
+  | "updateItemSource"
+  | "createItem"
+  | "updateItem"
+  | "deleteItem"
+  | "importDroppedFiles"
+> {
+  return {
     updateItemSource: async (
       itemId: string,
       rawMarkdown: string,
@@ -235,5 +254,19 @@ export function createHostItemsPort(ctx: HostSessionCtx): ItemsPort {
           dataBase64: bytesToBase64(file.bytes),
         })),
       }) as Promise<ImportDroppedFilesResult>,
+  };
+}
+
+/**
+ * Host items port: domain-grouped thin `transport.request` wrappers (#673).
+ * Local logic lives only in hydrate / subscribe / stream helpers.
+ */
+export function createHostItemsPort(ctx: HostSessionCtx): ItemsPort {
+  const { transport } = ctx;
+  return {
+    ...createItemsQueryMethods(transport),
+    ...createItemsDashboardMethods(transport),
+    ...createItemsReadMethods(transport),
+    ...createItemsWriteMethods(transport),
   };
 }
