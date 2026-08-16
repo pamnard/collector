@@ -11,25 +11,22 @@ import { itemGridCoverSlot } from "./item-grid-cover-slot";
 export function useItemGridCover(args: {
   thumbnailPath: string | null | undefined;
   itemUrl: string | undefined;
-  optimisticPortrait: boolean;
   /** Near-viewport cards decode; offscreen cards defer until scroll. */
   shouldDecode: boolean;
 }): {
   coverSrc: string | null;
   coverSettled: boolean;
   isPortraitCover: boolean;
-  coverPending: boolean;
   showCover: boolean;
   loadCover: boolean;
-  pathUnresolved: boolean;
   onCoverImgLoad: (img: HTMLImageElement) => void;
   onCoverImgError: () => void;
   onCoverImgRef: (img: HTMLImageElement | null) => void;
 } {
-  const { thumbnailPath, itemUrl, optimisticPortrait, shouldDecode } = args;
+  const { thumbnailPath, itemUrl, shouldDecode } = args;
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
   const [coverSettled, setCoverSettled] = useState(false);
-  const [isPortraitCover, setIsPortraitCover] = useState(optimisticPortrait);
+  const [isPortraitCover, setIsPortraitCover] = useState(false);
   const coverSrcRef = useRef(coverSrc);
   const coverSettledRef = useRef(coverSettled);
 
@@ -37,7 +34,7 @@ export function useItemGridCover(args: {
     thumbnailPath === undefined
       ? null
       : resolveCoverSrc(thumbnailPath, itemUrl);
-  const { coverPending, showCover, loadCover } = itemGridCoverSlot({
+  const { showCover, loadCover } = itemGridCoverSlot({
     expectedCoverSrc,
     coverSrc,
     coverSettled,
@@ -78,14 +75,14 @@ export function useItemGridCover(args: {
     if (plan.kind === "defer") {
       setCoverSrc(null);
       setCoverSettled(false);
-      setIsPortraitCover(optimisticPortrait);
+      setIsPortraitCover(false);
       return;
     }
 
     setCoverSrc(plan.src);
     setCoverSettled(false);
-    setIsPortraitCover(optimisticPortrait);
-  }, [itemUrl, optimisticPortrait, shouldDecode, thumbnailPath]);
+    setIsPortraitCover(false);
+  }, [itemUrl, shouldDecode, thumbnailPath]);
 
   useEffect(() => {
     // Timeout follows in-flight loadCover even after leaving the near zone
@@ -140,10 +137,8 @@ export function useItemGridCover(args: {
     coverSrc,
     coverSettled,
     isPortraitCover,
-    coverPending,
     showCover,
     loadCover,
-    pathUnresolved: thumbnailPath === undefined,
     onCoverImgLoad,
     onCoverImgError,
     onCoverImgRef,

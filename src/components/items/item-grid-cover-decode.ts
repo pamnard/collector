@@ -1,6 +1,10 @@
-import { COVER_DOMINANT_RATIO } from "../../lib/teaser-layout/cover-image-form.ts";
+import {
+  COVER_DOMINANT_RATIO,
+  COVER_IMAGE_PROBE_TIMEOUT_MS,
+} from "../../lib/teaser-layout/cover-image-form.ts";
 
-export const ITEM_GRID_COVER_DECODE_TIMEOUT_MS = 4_000;
+/** Same bound as related cover probe — hang must not reserve layout. */
+export const ITEM_GRID_COVER_DECODE_TIMEOUT_MS = COVER_IMAGE_PROBE_TIMEOUT_MS;
 
 export function isPortraitNaturalSize(img: HTMLImageElement): boolean {
   if (img.naturalWidth === 0) {

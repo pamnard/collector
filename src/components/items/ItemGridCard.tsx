@@ -5,10 +5,7 @@ import { useMainScrollElement } from "../../hooks/useMainScrollElement";
 import { useNearViewportRef } from "../../hooks/useNearViewport";
 import { ItemGridCardMeta } from "./ItemGridCardMeta";
 import { textOnlyTeaserChromeClass } from "./text-only-teaser-chrome";
-import {
-  itemGridCoverImgClassName,
-  itemGridCoverSlotPending,
-} from "./item-grid-cover-slot";
+import { itemGridCoverImgClassName } from "./item-grid-cover-slot";
 import { useItemGridCover } from "./use-item-grid-cover";
 import {
   itemGridCardPropsAreEqual,
@@ -26,9 +23,6 @@ function ItemGridCardInner({
     root: scrollElement,
   });
 
-  const optimisticPortrait =
-    item.content_type === "image" || item.content_type === "video";
-
   const tags = useMemo(
     () =>
       item.tag_ids
@@ -40,30 +34,21 @@ function ItemGridCardInner({
   const {
     coverSrc,
     isPortraitCover,
-    coverPending,
     showCover,
     loadCover,
-    pathUnresolved,
     onCoverImgLoad,
     onCoverImgError,
     onCoverImgRef,
   } = useItemGridCover({
     thumbnailPath,
     itemUrl: item.url ?? undefined,
-    optimisticPortrait,
     shouldDecode: nearViewport,
   });
 
-  // Notes must not show an empty gray teaser while cover paths resolve.
-  const coverSlotPending = itemGridCoverSlotPending({
-    coverPending,
-    pathUnresolved,
-    optimisticPortrait,
-  });
-  const hasCover = showCover || coverSlotPending;
-  const overlayLayout = Boolean(
-    (showCover && isPortraitCover) || (coverSlotPending && optimisticPortrait),
-  );
+  // Cover chrome only after a successful settle — pending/timeout/error = text teaser.
+  const hasCover = showCover;
+  const overlayLayout = Boolean(showCover && isPortraitCover);
+  const decodingCover = Boolean(loadCover && coverSrc && !showCover);
 
   const meta = (
     <ItemGridCardMeta
@@ -92,47 +77,49 @@ function ItemGridCardInner({
       // leaves those masonry cards as blank 280px boxes.
       className={cn(
         "group flex cursor-pointer flex-col overflow-hidden",
+        decodingCover && "relative",
         !hasCover && "h-full",
         !hasCover && textOnlyTeaserChromeClass,
         hasCover && overlayLayout && "relative h-full",
       )}
     >
-      {hasCover && (
+      {decodingCover && coverSrc ? (
+        <img
+          ref={onCoverImgRef}
+          src={coverSrc}
+          alt=""
+          aria-hidden
+          className="pointer-events-none absolute h-px w-px opacity-0"
+          loading="eager"
+          decoding="async"
+          onLoad={(event) => onCoverImgLoad(event.currentTarget)}
+          onError={onCoverImgError}
+        />
+      ) : null}
+      {hasCover && coverSrc ? (
         <div
           className={cn(
             "relative overflow-hidden rounded-lg bg-neutral-100 dark:bg-neutral-700",
             !overlayLayout && "mb-4 shrink-0",
           )}
         >
-          {(loadCover || showCover) && coverSrc ? (
-            <img
-              ref={onCoverImgRef}
-              src={coverSrc}
-              alt=""
-              className={itemGridCoverImgClassName({ loadCover })}
-              loading="eager"
-              decoding="async"
-              onLoad={(event) => onCoverImgLoad(event.currentTarget)}
-              onError={onCoverImgError}
-            />
-          ) : null}
-          {!showCover ? (
-            <div
-              aria-hidden
-              className={
-                overlayLayout
-                  ? "aspect-[3/4] w-full animate-pulse bg-neutral-100 dark:bg-neutral-700"
-                  : "aspect-video w-full animate-pulse bg-neutral-100 dark:bg-neutral-700"
-              }
-            />
-          ) : null}
+          <img
+            ref={onCoverImgRef}
+            src={coverSrc}
+            alt=""
+            className={itemGridCoverImgClassName({ loadCover: false })}
+            loading="eager"
+            decoding="async"
+            onLoad={(event) => onCoverImgLoad(event.currentTarget)}
+            onError={onCoverImgError}
+          />
           {overlayLayout && (
             <div className="absolute inset-x-0 bottom-0 flex flex-col bg-gradient-to-t from-neutral-950/95 via-neutral-950/75 to-transparent p-5 pt-16 dark:from-white/95 dark:via-white/75 dark:to-transparent">
               {meta}
             </div>
           )}
         </div>
-      )}
+      ) : null}
 
       {!overlayLayout && meta}
     </div>

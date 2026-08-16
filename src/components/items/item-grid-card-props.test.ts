@@ -107,7 +107,7 @@ describe("itemGridCardPropsAreEqual", () => {
     );
   });
 
-  it("re-renders when content_type changes (portrait optimism)", () => {
+  it("re-renders when content_type changes (meta icon)", () => {
     assert.equal(
       itemGridCardPropsAreEqual(
         {

@@ -2,6 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { ItemFile } from "@collector/shared";
 import { relatedTeaserFromItem } from "./related-teaser";
 import { loadRelatedSemanticTeasers } from "./related-semantic-items";
+import {
+  COVER_IMAGE_PROBE_TIMEOUT_MS,
+  probeCoverImageFormInBrowser,
+} from "./teaser-layout/probe-cover-image-form";
 
 describe("relatedTeaserFromItem", () => {
   it("stores a display cover URL and measured form", () => {
@@ -154,6 +158,74 @@ describe("loadRelatedSemanticTeasers", () => {
       probeCoverImageForm: async () => null,
     });
     expect(bad).toBeNull();
+  });
+
+  it("finishes related load when browser probe times out on a remote cover", async () => {
+    vi.useFakeTimers();
+    type FakeImage = {
+      onload: ((this: FakeImage, ev: Event) => void) | null;
+      onerror: ((this: FakeImage, ev: Event) => void) | null;
+      src: string;
+      naturalWidth: number;
+      naturalHeight: number;
+    };
+    vi.stubGlobal(
+      "Image",
+      class {
+        onload: FakeImage["onload"] = null;
+        onerror: FakeImage["onerror"] = null;
+        naturalWidth = 0;
+        naturalHeight = 0;
+        #src = "";
+        get src() {
+          return this.#src;
+        }
+        set src(value: string) {
+          this.#src = value;
+        }
+      },
+    );
+
+    async function* hydrate(ids: string[]) {
+      for (const id of ids) {
+        yield {
+          id,
+          title: id,
+          thumbnail: null,
+          description: "",
+          content_type: "video",
+          created_at: "2020-01-01T00:00:00.000Z",
+          url: "https://www.youtube.com/watch?v=abcdefghijk",
+        } as ItemFile;
+      }
+    }
+
+    try {
+      const loadPromise = loadRelatedSemanticTeasers({
+        currentItemId: "self.md",
+        size: 1,
+        findSimilarItems: async () => [{ id: "yt.md", score: 0.9 }],
+        hydrate,
+        resolveThumbnailPaths: async () => new Map([["yt.md", null]]),
+        probeCoverImageForm: probeCoverImageFormInBrowser,
+      });
+      await vi.advanceTimersByTimeAsync(COVER_IMAGE_PROBE_TIMEOUT_MS);
+      const ok = await loadPromise;
+      expect(ok).toEqual([
+        {
+          id: "yt.md",
+          title: "yt.md",
+          thumbnail: "https://img.youtube.com/vi/abcdefghijk/mqdefault.jpg",
+          imageForm: null,
+          description: "",
+          createdAt: "2020-01-01T00:00:00.000Z",
+          contentType: "video",
+        },
+      ]);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
   });
 
   it("returns null when aborted after similar lookup", async () => {
