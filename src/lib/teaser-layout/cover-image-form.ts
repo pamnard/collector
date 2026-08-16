@@ -3,6 +3,9 @@ import type { ImageForm } from "./composition";
 /** Same threshold as collection grid covers (`useItemGridCover`). */
 export const COVER_DOMINANT_RATIO = 1.2;
 
+/** Bound for browser cover measure (related probe + grid decode). */
+export const COVER_IMAGE_PROBE_TIMEOUT_MS = 2_000;
+
 export type CoverImageForm = Exclude<ImageForm, "none">;
 
 /**

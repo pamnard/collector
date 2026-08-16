@@ -10,22 +10,10 @@ export function itemGridCoverSlot(args: {
   return { coverPending, showCover, loadCover };
 }
 
-/** Reserve a cover teaser while paths resolve — image/video only, not notes. */
-export function itemGridCoverSlotPending(args: {
-  coverPending: boolean;
-  pathUnresolved: boolean;
-  optimisticPortrait: boolean;
-}): boolean {
-  return (
-    args.coverPending || (args.pathUnresolved && args.optimisticPortrait)
-  );
-}
-
 /**
  * Cover `<img>` layout classes.
- * While decode is in flight (`loadCover`), keep the img out of document flow so the
- * aspect-ratio placeholder alone owns teaser height (avoids image+placeholder
- * masonry jumps when the browser already knows intrinsic dimensions).
+ * Settled covers own teaser height via intrinsic size (`h-auto`).
+ * In-flight decode uses a detached 1×1 img in ItemGridCard — not this helper.
  */
 export function itemGridCoverImgClassName(args: { loadCover: boolean }): string {
   if (args.loadCover) {

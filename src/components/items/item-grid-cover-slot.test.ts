@@ -3,7 +3,6 @@ import { describe, it } from "node:test";
 import {
   itemGridCoverImgClassName,
   itemGridCoverSlot,
-  itemGridCoverSlotPending,
 } from "./item-grid-cover-slot.ts";
 
 describe("itemGridCoverSlot", () => {
@@ -61,6 +60,16 @@ describe("itemGridCoverSlot", () => {
       { coverPending: false, showCover: false, loadCover: false },
     );
   });
+
+  it("does not treat pending alone as showCover (no optimistic chrome)", () => {
+    const pending = itemGridCoverSlot({
+      expectedCoverSrc: "https://img.youtube.com/vi/abc/mqdefault.jpg",
+      coverSrc: "https://img.youtube.com/vi/abc/mqdefault.jpg",
+      coverSettled: false,
+    });
+    assert.equal(pending.showCover, false);
+    assert.equal(pending.loadCover, true);
+  });
 });
 
 describe("itemGridCoverImgClassName", () => {
@@ -78,40 +87,5 @@ describe("itemGridCoverImgClassName", () => {
     assert.match(classes, /\bw-full\b/);
     assert.doesNotMatch(classes, /\babsolute\b/);
     assert.doesNotMatch(classes, /\bopacity-0\b/);
-  });
-});
-
-describe("itemGridCoverSlotPending", () => {
-  it("does not reserve a teaser for notes while cover path is unresolved", () => {
-    assert.equal(
-      itemGridCoverSlotPending({
-        coverPending: false,
-        pathUnresolved: true,
-        optimisticPortrait: false,
-      }),
-      false,
-    );
-  });
-
-  it("reserves a teaser for image/video while cover path is unresolved", () => {
-    assert.equal(
-      itemGridCoverSlotPending({
-        coverPending: false,
-        pathUnresolved: true,
-        optimisticPortrait: true,
-      }),
-      true,
-    );
-  });
-
-  it("keeps an in-flight decode teaser even for non-portrait items", () => {
-    assert.equal(
-      itemGridCoverSlotPending({
-        coverPending: true,
-        pathUnresolved: false,
-        optimisticPortrait: false,
-      }),
-      true,
-    );
   });
 });
