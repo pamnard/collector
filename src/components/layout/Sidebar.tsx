@@ -164,7 +164,7 @@ export function Sidebar({
             className="flex min-w-0 flex-1 flex-col overflow-hidden"
             inert={variant === "docked" && collapsed ? true : undefined}
           >
-            <div className="flex shrink-0 items-center gap-2 px-4 pt-5 pb-3 box-border">
+            <div className="box-border flex shrink-0 items-center gap-2 px-4 py-3">
               <div className="min-w-0 flex-1 text-sm font-medium text-neutral-900 dark:text-neutral-100">
                 {panelTitle(mode)}
               </div>
