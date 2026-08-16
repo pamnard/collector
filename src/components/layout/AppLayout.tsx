@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useRef,
   type ReactNode,
 } from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -18,11 +19,17 @@ import { useCreateItemShell } from "../../hooks/useCreateItemShell";
 import { useVaultShell } from "../../hooks/useVaultShell";
 import { useShellLayoutAlerts } from "../../hooks/useShellLayoutAlerts";
 import type { DashboardItemSort } from "@collector/api";
+import type {
+  Layout,
+  LayoutChangedMeta,
+} from "react-resizable-panels";
 import { useAppSettings } from "../../context/AppSettingsContext";
 import { useJobPermanentFailureAlerts } from "../../hooks/useJobPermanentFailureAlerts";
 import { useVaultIndexSyncStatus } from "../../hooks/useVaultIndexSyncStatus";
 import {
   SIDEBAR_RAIL_WIDTH_PX,
+  SIDEBAR_WIDTH_MAX,
+  SIDEBAR_WIDTH_MIN,
 } from "../../lib/sidebar-width";
 import {
   type ItemPruneSignal,
@@ -34,9 +41,14 @@ import {
   type ViewMode,
 } from "../../types/ui";
 import { parseSettingsSection } from "../../types/sidebar-mode";
-import { cn } from "../../lib/utils";
 import { AlertBusProvider } from "../alerts/AlertBusProvider";
 import { AlertHost } from "../alerts/AlertHost";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+  usePanelRef,
+} from "../ui/resizable";
 import { TooltipProvider } from "../ui/tooltip";
 import { SmokeUiReadyBeacon } from "../startup/SmokeUiReadyBeacon";
 import { Header } from "./Header";
@@ -101,13 +113,33 @@ function AppLayoutInner() {
     sidebarPinned,
     sidebarMode,
     setSidebarMode,
-    isSidebarResizing,
-    handleSidebarResizePointerDown,
+    persistSidebarWidth,
     handleToggleSidebarPin,
     handleExpandSidebar,
     handleCollapseAfterUse,
     markSidebarModeNavigation,
   } = useSidebarShell(pathname, locationKey);
+
+  const sidebarSizePxRef = useRef(sidebarWidthPx);
+  sidebarSizePxRef.current = sidebarWidthPx;
+  const sidebarPanelRef = usePanelRef();
+
+  const handleSidebarLayoutChanged = useCallback(
+    (_layout: Layout, meta: LayoutChangedMeta) => {
+      if (!meta.isUserInteraction) {
+        return;
+      }
+      requestAnimationFrame(() => {
+        const measured = sidebarPanelRef.current?.getSize().inPixels;
+        const next =
+          typeof measured === "number" && Number.isFinite(measured)
+            ? measured
+            : sidebarSizePxRef.current;
+        persistSidebarWidth(next);
+      });
+    },
+    [persistSidebarWidth, sidebarPanelRef],
+  );
 
   const {
     activeFilter,
@@ -187,16 +219,16 @@ function AppLayoutInner() {
       ? "settings"
       : "item";
 
-  // Scroll lives OUTSIDE the card (pre-#541 UX): the whole card moves with
-  // the page. Avoid overflow-hidden on a content-height shadowed card — that
-  // combo forced WebKitGTK to recomposite on every wheel frame (#541 / #806d74c).
-  // min-h-full + flex + footer mt-auto keeps the adjacent nav at the bottom
-  // when the page is short.
+  // Scroll lives outside the content surface (pre-#541 UX): the whole
+  // column moves with the page. Avoid overflow-hidden on a content-height
+  // shadowed surface — that combo forced WebKitGTK to recomposite on every
+  // wheel frame (#541 / #806d74c). min-h-full + flex + footer mt-auto keeps
+  // the adjacent nav at the bottom when the page is short.
   const mainColumn: ReactNode = (
     <main className="relative flex min-h-0 h-full flex-1 flex-col overflow-hidden">
       <MainScrollArea resetKey={`${locationKey}|${navFilterKey(activeFilter)}`}>
-        <div className="box-border flex min-h-full flex-col p-2">
-          <div className="flex min-h-full flex-1 flex-col rounded-lg bg-white dark:bg-neutral-800">
+        <div className="box-border flex min-h-full flex-col">
+          <div className="flex min-h-full flex-1 flex-col bg-white dark:bg-neutral-800">
             {showCardHeader ? (
               <Header
                 variant={headerVariant}
@@ -261,24 +293,52 @@ function AppLayoutInner() {
               className="h-screen overflow-hidden font-sans text-neutral-900 dark:text-neutral-100"
             >
               <SmokeUiReadyBeacon />
-              <div className="flex h-full w-full">
-                <div
-                  className={cn(
-                    "h-full shrink-0 overflow-hidden",
-                    !isSidebarResizing &&
-                      "transition-[width] duration-200 ease-linear",
-                  )}
-                  style={{
-                    width: sidebarCollapsed
-                      ? SIDEBAR_RAIL_WIDTH_PX
-                      : sidebarWidthPx,
-                  }}
+              {sidebarCollapsed ? (
+                <div className="flex h-full w-full">
+                  <div
+                    className="h-full shrink-0 overflow-hidden transition-[width] duration-200 ease-linear"
+                    style={{ width: SIDEBAR_RAIL_WIDTH_PX }}
+                  >
+                    <div className="h-full" style={{ width: sidebarWidthPx }}>
+                      <Sidebar
+                        variant="docked"
+                        isOpen
+                        collapsed
+                        pinned={sidebarPinned}
+                        onTogglePin={handleToggleSidebarPin}
+                        onCollapseAfterUse={handleCollapseAfterUse}
+                        onSidebarModeNavigation={markSidebarModeNavigation}
+                        onRequestExpand={handleExpandSidebar}
+                        onClose={() => setIsSidebarOpen(false)}
+                        {...sidebarProps}
+                      />
+                    </div>
+                  </div>
+                  <div className="min-h-0 min-w-0 flex-1">{mainColumn}</div>
+                </div>
+              ) : (
+                <ResizablePanelGroup
+                  orientation="horizontal"
+                  className="h-full w-full"
+                  resizeTargetMinimumSize={{ fine: 16, coarse: 24 }}
+                  onLayoutChanged={handleSidebarLayoutChanged}
                 >
-                  <div className="h-full" style={{ width: sidebarWidthPx }}>
+                  <ResizablePanel
+                    id="app-sidebar"
+                    panelRef={sidebarPanelRef}
+                    defaultSize={sidebarWidthPx}
+                    minSize={SIDEBAR_WIDTH_MIN}
+                    maxSize={SIDEBAR_WIDTH_MAX}
+                    groupResizeBehavior="preserve-pixel-size"
+                    className="h-full min-h-0 overflow-hidden"
+                    onResize={(panelSize) => {
+                      sidebarSizePxRef.current = panelSize.inPixels;
+                    }}
+                  >
                     <Sidebar
                       variant="docked"
                       isOpen
-                      collapsed={sidebarCollapsed}
+                      collapsed={false}
                       pinned={sidebarPinned}
                       onTogglePin={handleToggleSidebarPin}
                       onCollapseAfterUse={handleCollapseAfterUse}
@@ -287,20 +347,16 @@ function AppLayoutInner() {
                       onClose={() => setIsSidebarOpen(false)}
                       {...sidebarProps}
                     />
-                  </div>
-                </div>
-                {!sidebarCollapsed ? (
-                  <div
-                    role="separator"
-                    aria-orientation="vertical"
-                    aria-label="Изменить ширину сайдбара"
-                    className="relative z-10 w-px shrink-0 cursor-col-resize bg-transparent hover:bg-border data-[separator=active]:bg-border focus-visible:outline-hidden focus-visible:ring-0"
-                    data-separator={isSidebarResizing ? "active" : undefined}
-                    onPointerDown={handleSidebarResizePointerDown}
-                  />
-                ) : null}
-                <div className="min-h-0 min-w-0 flex-1">{mainColumn}</div>
-              </div>
+                  </ResizablePanel>
+                  <ResizableHandle aria-label="Изменить ширину сайдбара" />
+                  <ResizablePanel
+                    id="app-main"
+                    className="min-h-0 min-w-0"
+                  >
+                    {mainColumn}
+                  </ResizablePanel>
+                </ResizablePanelGroup>
+              )}
             </div>
           ) : (
             <div
