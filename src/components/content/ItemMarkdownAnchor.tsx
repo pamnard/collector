@@ -11,7 +11,7 @@ type ItemMarkdownAnchorProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
 };
 
 /** Translucent bottom border instead of native underline (#434324e). */
-const LINK_BORDER_CLASS =
+export const ITEM_MARKDOWN_LINK_BORDER_CLASS =
   "!border-b !border-indigo-400/50 !no-underline";
 
 /** Same border underline; redder text/border for missing targets. */
@@ -34,7 +34,7 @@ export function ItemMarkdownAnchor({
       <ExternalAnchor
         {...props}
         href={href}
-        className={cn(LINK_BORDER_CLASS, className)}
+        className={cn(ITEM_MARKDOWN_LINK_BORDER_CLASS, className)}
         onClick={onClick}
       >
         {children}
@@ -62,7 +62,7 @@ export function ItemMarkdownAnchor({
     <a
       {...props}
       href={href}
-      className={cn(LINK_BORDER_CLASS, className)}
+      className={cn(ITEM_MARKDOWN_LINK_BORDER_CLASS, className)}
       onClick={(event: MouseEvent<HTMLAnchorElement>) => {
         onClick?.(event);
         if (event.defaultPrevented || !href) {

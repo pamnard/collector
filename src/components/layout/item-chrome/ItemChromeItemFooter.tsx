@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ItemAdjacentNav } from "../../items/ItemAdjacentNav";
 import { ItemRelatedPanel } from "../../items/ItemRelatedPanel";
+import type { ItemLinksTabId } from "../../items/item-links-panel-tabs";
 import { useItemBacklinks } from "../../../hooks/useItemBacklinks";
 import { useRelatedSemanticTeasers } from "../../../hooks/useRelatedSemanticTeasers";
 import { useShell } from "../AppLayout";
@@ -21,17 +23,22 @@ export function ItemChromeItemFooter() {
   const itemAdjacent = useItemChromeAdjacent();
   const chromeItem = useItemChromeItem();
   const itemRef = onItemRoute ? chromeItem : null;
-  const relatedTeasers = useRelatedSemanticTeasers(itemRef, vaultRevision);
+  const { teasers: relatedTeasers, ready: relatedReady } =
+    useRelatedSemanticTeasers(itemRef, vaultRevision);
   const backlinks = useItemBacklinks(itemRef, vaultRevision);
+  const [preferredLinksTab, setPreferredLinksTab] =
+    useState<ItemLinksTabId>("related");
 
   const showAdjacent =
     onItemRoute &&
     itemAdjacent !== null &&
     Boolean(itemAdjacent.prev || itemAdjacent.next);
 
+  // Wait until both loads settle so Tabs don't mount on backlinks-only
+  // and then stick there when related arrives (#410).
+  const linksSettled = relatedReady && backlinks !== null;
   const showLinksPanel =
-    relatedTeasers !== null ||
-    (backlinks !== null && backlinks.length > 0);
+    linksSettled && (relatedTeasers !== null || backlinks.length > 0);
 
   if (!showLinksPanel && !showAdjacent) {
     return null;
@@ -39,10 +46,12 @@ export function ItemChromeItemFooter() {
 
   return (
     <div className="relative mt-auto shrink-0">
-      {showLinksPanel ? (
+      {showLinksPanel && backlinks !== null ? (
         <ItemRelatedPanel
           teasers={relatedTeasers}
-          backlinks={backlinks ?? []}
+          backlinks={backlinks}
+          preferredTab={preferredLinksTab}
+          onPreferredTabChange={setPreferredLinksTab}
           onNavigate={(itemId) => navigate(`/item/${itemId}`)}
         />
       ) : null}

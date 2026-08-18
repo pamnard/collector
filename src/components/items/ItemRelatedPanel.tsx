@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { BacklinkSource } from "@collector/api";
+import { itemPathHref } from "@collector/core";
 import type { RelatedTeaser } from "../../lib/related-teaser";
 import { boardSize, spanSize } from "../../lib/teaser-layout/board";
 import {
@@ -15,12 +16,20 @@ import {
 } from "../../lib/teaser-layout/pick-layout";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { itemLinksPanelTabs } from "./item-links-panel-tabs";
+import { cn } from "@/lib/utils";
+import { ITEM_MARKDOWN_LINK_BORDER_CLASS } from "../content/ItemMarkdownAnchor";
+import {
+  itemLinksPanelTabs,
+  resolveItemLinksTab,
+  type ItemLinksTabId,
+} from "./item-links-panel-tabs";
 import { RelatedTeaserSlot } from "./RelatedTeaserSlot";
 
 type ItemRelatedPanelProps = {
   teasers: RelatedTeaser[] | null;
   backlinks: BacklinkSource[];
+  preferredTab: ItemLinksTabId;
+  onPreferredTabChange: (tab: ItemLinksTabId) => void;
   onNavigate: (itemId: string) => void;
 };
 
@@ -38,6 +47,8 @@ export function slotGridStyle(assignment: LayoutSlotAssignment): CSSProperties {
 export function ItemRelatedPanel({
   teasers,
   backlinks,
+  preferredTab,
+  onPreferredTabChange,
   onNavigate,
 }: ItemRelatedPanelProps) {
   const measureRef = useRef<HTMLDivElement>(null);
@@ -100,6 +111,7 @@ export function ItemRelatedPanel({
   }
 
   const cols = size.cols;
+  const tabValue = resolveItemLinksTab(preferredTab, tabs);
 
   return (
     <div ref={measureRef} className="w-full">
@@ -110,8 +122,16 @@ export function ItemRelatedPanel({
         aria-label="Ссылки"
       >
         <div className="px-4 py-5 md:px-8 md:py-6">
-          <Tabs defaultValue={tabs.defaultTab} className="gap-3">
-            <TabsList variant="line" className="mb-1">
+          <Tabs
+            value={tabValue}
+            onValueChange={(value) => {
+              if (value === "related" || value === "backlinks") {
+                onPreferredTabChange(value);
+              }
+            }}
+            className="gap-3"
+          >
+            <TabsList className="mb-1">
               {tabs.showRelated ? (
                 <TabsTrigger value="related">Релевантные</TabsTrigger>
               ) : null}
@@ -169,14 +189,21 @@ export function ItemRelatedPanel({
                   }}
                 >
                   {backlinks.map((source) => (
-                    <button
-                      key={source.id}
-                      type="button"
-                      className="flex min-h-16 items-center rounded-md border border-neutral-200 px-3 py-2 text-left text-sm font-medium text-neutral-900 transition-colors hover:border-neutral-400 hover:bg-neutral-50 dark:border-neutral-600 dark:text-neutral-100 dark:hover:border-neutral-400 dark:hover:bg-neutral-700/40"
-                      onClick={() => onNavigate(source.id)}
-                    >
-                      {source.title}
-                    </button>
+                    <div key={source.id} className="min-w-0">
+                      <a
+                        href={itemPathHref(source.id)}
+                        className={cn(
+                          "inline text-base text-indigo-400 [box-decoration-break:clone]",
+                          ITEM_MARKDOWN_LINK_BORDER_CLASS,
+                        )}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          onNavigate(source.id);
+                        }}
+                      >
+                        {source.title}
+                      </a>
+                    </div>
                   ))}
                 </div>
               </TabsContent>
