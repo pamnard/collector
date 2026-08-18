@@ -20,28 +20,32 @@ const RELATED_SEMANTIC_ERROR_ID = "item-related-semantic-error";
 
 /**
  * Loads semantic related teasers for the item detail panel (#414).
- * Fail closed: errors and empty/shortfall → `null` (panel hidden).
+ * Fail closed: errors and empty/shortfall → `teasers: null`.
+ * `ready` is false while a load for the current item is in flight.
  * Covers: same `UiSession.thumbnails` batch as collection cards.
  */
 export function useRelatedSemanticTeasers(
   item: Pick<ItemChromeItemRef, "id"> | null,
   vaultRevision: number,
-): RelatedTeaser[] | null {
+): { teasers: RelatedTeaser[] | null; ready: boolean } {
   const alerts = useAlerts();
   const { itemPruneSignal } = useShell();
   useDismissAlertsOnUnmount([RELATED_SEMANTIC_ERROR_ID]);
   const [teasers, setTeasers] = useState<RelatedTeaser[] | null>(null);
+  const [ready, setReady] = useState(false);
 
   const itemId = item?.id ?? null;
 
   useEffect(() => {
     if (itemId === null) {
       setTeasers(null);
+      setReady(false);
       return;
     }
 
     const controller = new AbortController();
     setTeasers(null);
+    setReady(false);
     alerts.dismiss(RELATED_SEMANTIC_ERROR_ID);
 
     void (async () => {
@@ -62,6 +66,7 @@ export function useRelatedSemanticTeasers(
           return;
         }
         setTeasers(result);
+        setReady(true);
       } catch (err: unknown) {
         if (controller.signal.aborted) {
           return;
@@ -76,6 +81,7 @@ export function useRelatedSemanticTeasers(
           message: `Не удалось загрузить релевантные: ${message}`,
         });
         setTeasers(null);
+        setReady(true);
       }
     })();
 
@@ -97,5 +103,5 @@ export function useRelatedSemanticTeasers(
     });
   });
 
-  return teasers;
+  return { teasers, ready };
 }

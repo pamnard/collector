@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { itemLinksPanelTabs } from "./item-links-panel-tabs";
+import {
+  itemLinksPanelTabs,
+  resolveItemLinksTab,
+} from "./item-links-panel-tabs";
 
 describe("itemLinksPanelTabs (#410)", () => {
   it("hides the panel when both sides are empty", () => {
@@ -36,5 +39,35 @@ describe("itemLinksPanelTabs (#410)", () => {
       showBacklinks: true,
       defaultTab: "related",
     });
+  });
+});
+
+describe("resolveItemLinksTab (#410)", () => {
+  const both = {
+    showRelated: true,
+    showBacklinks: true,
+    defaultTab: "related" as const,
+  };
+
+  it("keeps the preferred tab when it is available", () => {
+    expect(resolveItemLinksTab("backlinks", both)).toBe("backlinks");
+    expect(resolveItemLinksTab("related", both)).toBe("related");
+  });
+
+  it("falls back when the preferred tab is missing", () => {
+    expect(
+      resolveItemLinksTab("backlinks", {
+        showRelated: true,
+        showBacklinks: false,
+        defaultTab: "related",
+      }),
+    ).toBe("related");
+    expect(
+      resolveItemLinksTab("related", {
+        showRelated: false,
+        showBacklinks: true,
+        defaultTab: "backlinks",
+      }),
+    ).toBe("backlinks");
   });
 });
