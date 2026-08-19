@@ -40,6 +40,7 @@
     "@collector/shared": "*",
     "@fontsource/golos-text": "^5.2.8",
     "@lezer/highlight": "^1.2.3",
+    "@mermaid-js/layout-elk": "^0.2.3",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.14.6",
     "class-variance-authority": "^0.7.1",

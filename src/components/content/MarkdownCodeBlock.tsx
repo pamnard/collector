@@ -8,7 +8,9 @@ import {
   type ReactNode,
 } from "react";
 import { Button } from "../ui/button";
+import { useTheme } from "../../hooks/useTheme";
 import { MermaidDiagram } from "./MermaidDiagram";
+import { mermaidChromeStyle } from "./mermaid-editorial-theme";
 
 function extractText(node: ReactNode): string {
   if (typeof node === "string") {
@@ -101,12 +103,16 @@ export function MarkdownPre({
   const codeText = extractText(child.props.children);
   const lines = splitLines(codeText);
   const language = extractLanguage(child.props.className);
+  const { theme } = useTheme();
 
   if (language === "mermaid") {
     return (
-      <div className="markdown-code-block markdown-mermaid not-prose">
-        <div className="markdown-code-block-toolbar">
-          <span className="markdown-code-block-language">mermaid</span>
+      <div
+        className="markdown-mermaid-block not-prose"
+        style={mermaidChromeStyle(theme)}
+      >
+        <div className="markdown-mermaid-toolbar">
+          <span className="markdown-mermaid-language">mermaid</span>
           <CopyCodeButton text={codeText} />
         </div>
         <MermaidDiagram source={codeText} />

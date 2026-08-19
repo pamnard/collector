@@ -1,9 +1,11 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useTheme } from "../../hooks/useTheme";
 import {
+  fixMermaidEdgeLabelsInDom,
   getMermaid,
   mermaidDisplayError,
   mermaidRenderDomId,
+  normalizeMermaidSvgForDisplay,
 } from "./mermaid-diagram";
 
 type MermaidDiagramProps = {
@@ -40,7 +42,11 @@ export function MermaidDiagram({ source }: MermaidDiagramProps) {
         if (cancelled) {
           return;
         }
-        setState({ status: "ok", svg, bindFunctions });
+        setState({
+          status: "ok",
+          svg: normalizeMermaidSvgForDisplay(svg, theme),
+          bindFunctions,
+        });
       } catch (error) {
         console.error("Mermaid diagram render failed", {
           error,
@@ -60,14 +66,16 @@ export function MermaidDiagram({ source }: MermaidDiagramProps) {
   }, [source, theme, baseId]);
 
   useLayoutEffect(() => {
-    if (state.status !== "ok" || !state.bindFunctions) {
+    if (state.status !== "ok") {
       return;
     }
     const el = containerRef.current;
-    if (el) {
-      state.bindFunctions(el);
+    if (!el) {
+      return;
     }
-  }, [state]);
+    fixMermaidEdgeLabelsInDom(el);
+    state.bindFunctions?.(el);
+  }, [state.status, state.status === "ok" ? state.svg : null, state.bindFunctions]);
 
   if (state.status === "loading") {
     return (
