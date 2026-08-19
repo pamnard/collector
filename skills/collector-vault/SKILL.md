@@ -18,7 +18,7 @@ MCP (`collector_*` tools) and CLI (`collector-cli <command>`) are **thin clients
 
 Do **not** create, edit, or delete vault `.md` files, `*.media/` sidecars, or `collector.db` on disk. Always go through MCP or CLI.
 
-Param-level API truth lives in the product tool catalog (`packages/mcp/src/tools-catalog.ts`) and CLI help — not in this skill. For the command map see [references/mcp-cli-map.md](references/mcp-cli-map.md). For common agent mistakes see [references/pitfalls.md](references/pitfalls.md).
+Param-level API truth lives in the product tool catalog (`packages/mcp/src/tools-catalog.ts`) and CLI help — not in this skill. For the command map see [references/mcp-cli-map.md](references/mcp-cli-map.md). For common agent mistakes see [references/pitfalls.md](references/pitfalls.md). For article-import rules see [references/import-rules.md](references/import-rules.md).
 
 ## When to use which channel
 
@@ -72,26 +72,18 @@ Use **source** get/update only when replacing the entire `.md` (frontmatter + bo
 
 ### Article / imported body
 
-When filling `content` from a web article (or similar):
+When filling `content` from a web article (or similar), follow [references/import-rules.md](references/import-rules.md).
 
-- Put the canonical link in the item **`url`** field (frontmatter), not as a “Source: …” / byline block at the **top** of the body.
-- Body must start with the article body itself — not duplicated metadata, not a second frontmatter block, not breadcrumbs, nav, share widgets, subscribe blocks, related-post lists, or footer chrome from the source page.
-- Do **not** duplicate the article title at the top of `content` when the item already has a `title` field. Keep the title in the item metadata; only include an in-body H1 if the user explicitly asked to preserve the page heading in the markdown body.
-- Preserve hyperlinks from the source page inside the markdown body:
-  - Keep absolute `http://...` and `https://...` links as web URLs.
-  - Do not rewrite them into local vault-style `(... .md)` links (or internal nodes) unless the user explicitly asked for internal/wikilink conversion and we can map targets.
-- Do **not** invent a provenance header. If the user asks for an explicit source line, put it at the **bottom** of the body — never at the top.
+Minimal invariant in the main skill:
+
+- canonical source URL belongs in item `url`
+- body starts with article content, not source-site chrome
+- do not duplicate the article title in `content`
+- preserve useful links as working links
 
 ### Import: local assets
 
-When importing a page, article, or other remote content into an item, **bring related assets (images, other fetchable binaries) into local item media**: download → `attach-media` / `collector_attach_media` → reference the attached files in the markdown body. The vault is meant to work offline; leaving body images on a third-party CDN is not acceptable.
-
-**If one download method fails — do not stop.** Try alternatives in order:
-1. Shell download (`curl`, `wget`)
-2. `WebFetch` to retrieve the binary or locate the direct URL
-3. `collector_attach_media` with `dataBase64` (fetch raw bytes, base64-encode, pass inline)
-
-A tool/environment block on one path is not a reason to skip images entirely. Only stop after exhausting all viable paths, and if still blocked — explicitly report what was tried and what remains for the user to do manually. Never silently record `image count = 0` and treat the import as complete.
+For asset-localisation rules and fallback order, follow [references/import-rules.md](references/import-rules.md).
 
 ### Move
 
@@ -124,7 +116,7 @@ List → create / rename / move / delete. **Delete folder is recursive** (tree +
 - Preserving source-site scaffolding instead of article content: duplicate frontmatter, breadcrumbs, nav menus, share controls, subscribe prompts, related-article rails, footer chrome
 - Rewriting source-page web links into local `(... .md)` links or vault-internal nodes without an explicit user request
 
-Details and edge cases: [references/pitfalls.md](references/pitfalls.md).
+Details and edge cases: [references/pitfalls.md](references/pitfalls.md), [references/import-rules.md](references/import-rules.md).
 
 ## After mutations
 
