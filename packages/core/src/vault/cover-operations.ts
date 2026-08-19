@@ -57,9 +57,15 @@ async function persistItemPresentation(
   };
   await writeItemFile(ctx.fs, vaultPath, updated);
 
-  const documentMarkdown = await ctx.fs.readText(
-    itemMarkdownPath(vaultPath, itemId),
-  );
+  const docPath = itemMarkdownPath(vaultPath, itemId);
+  const fileStat = await ctx.fs.stat(docPath);
+  if (fileStat.mtimeMs === null) {
+    throw new Error(
+      `persistItemPresentation: missing file mtimeMs for indexed item ${itemId}`,
+    );
+  }
+
+  const documentMarkdown = await ctx.fs.readText(docPath);
   const fts = ftsFieldsFromDocumentMarkdown(documentMarkdown);
   const sourceRef = await readItemSourceRef(ctx.fs, vaultPath, itemId);
   await ctx.index.upsertItem(
@@ -68,6 +74,7 @@ async function persistItemPresentation(
       content: fts.content,
       hasContentFile: fts.hasContentFile,
       sourceRef,
+      fileMtimeMs: fileStat.mtimeMs,
     },
     vaultId,
   );
