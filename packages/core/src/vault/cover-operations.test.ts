@@ -13,7 +13,7 @@ import {
 } from "./cover-operations.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import { createId } from "../util/ids.js";
-import { itemCoverPath } from "./paths.js";
+import { itemCoverPath, itemMarkdownPath } from "./paths.js";
 import { readItemFile, writeItemFile } from "./item-io.js";
 
 async function seedPhotoItem(
@@ -151,5 +151,15 @@ describe("cover operations", () => {
     expect((await readItemFile(fs, path, itemId, meta.id)).updated_at).toBe(
       touched.updated_at,
     );
+
+    // #735: persistItemPresentation must write file_mtime_ms — not NULL.
+    const docPath = itemMarkdownPath(path, itemId);
+    const stat = await fs.stat(docPath);
+    if (stat.mtimeMs === null) {
+      throw new Error(`missing mtimeMs for ${itemId} on disk`);
+    }
+    const stamps = await ctx.index.listItemPresentationStampsByIds(meta.id, [itemId]);
+    expect(stamps).toHaveLength(1);
+    expect(stamps[0]!).toBe(String(stat.mtimeMs));
   });
 });

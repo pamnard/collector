@@ -493,6 +493,22 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       return [{ generation: any ? max : null }] as T[];
     }
 
+    if (
+      normalized.startsWith(
+        "SELECT id, file_mtime_ms FROM items WHERE vault_id = ? AND id IN",
+      )
+    ) {
+      const vaultId = bindValues[0];
+      const ids = new Set(bindValues.slice(1).map(String));
+      const table = this.tables.get("items") ?? new Map();
+      return [...table.values()]
+        .filter((row) => row.vault_id === vaultId && ids.has(String(row.id)))
+        .map((row) => ({
+          id: row.id,
+          file_mtime_ms: row.file_mtime_ms ?? null,
+        })) as T[];
+    }
+
     throw new Error(`Unsupported select in MemorySqlAdapter: ${normalized.slice(0, 80)}`);
   }
 
