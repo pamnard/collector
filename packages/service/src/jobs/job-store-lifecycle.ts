@@ -1,4 +1,5 @@
 import type { SqlMigrator } from "@collector/db";
+import { VAULT_MUTATING_BULK_JOB_TYPE_IDS } from "@collector/shared";
 import type { JobRow } from "./job-store-types.js";
 import type { JobStoreQuery } from "./job-store-query.js";
 
@@ -28,13 +29,28 @@ export function createJobStoreLifecycle(
     }
   }
 
-  async function claimNext(nowIso: string): Promise<JobRow | null> {
+  async function claimNext(
+    nowIso: string,
+    options?: { skipVaultMutatingBulkJobs?: boolean },
+  ): Promise<JobRow | null> {
+    const skipVaultMutatingBulkJobs =
+      options?.skipVaultMutatingBulkJobs === true;
+    const excludeTypes = skipVaultMutatingBulkJobs
+      ? VAULT_MUTATING_BULK_JOB_TYPE_IDS
+      : [];
+    const params: unknown[] = [nowIso];
+    let typeFilter = "";
+    if (excludeTypes.length > 0) {
+      // Exclude by type only — priority must not open a second bulk-mutator slot.
+      typeFilter = ` AND type NOT IN (${excludeTypes.map(() => "?").join(", ")})`;
+      params.push(...excludeTypes);
+    }
     const candidates = await db.select<JobRow>(
       `SELECT * FROM jobs
-       WHERE status = 'pending' AND available_at <= ?
+       WHERE status = 'pending' AND available_at <= ?${typeFilter}
        ORDER BY priority DESC, created_at ASC
        LIMIT 1`,
-      [nowIso],
+      params,
     );
     const candidate = candidates[0];
     if (!candidate) {

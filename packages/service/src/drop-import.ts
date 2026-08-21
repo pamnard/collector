@@ -16,6 +16,7 @@ import {
   resolveDropTitle,
   serializeDocumentMarkdown,
   titleStemFromFilename,
+  yieldToEventLoop,
 } from "@collector/core";
 import {
   folderPathFromItemPath,
@@ -95,41 +96,46 @@ export function createDropImportService(
     const createdIds: string[] = [];
     const target = input.folder_path?.trim() || undefined;
 
-    for (const file of input.files) {
+    for (let i = 0; i < input.files.length; i += 1) {
+      const file = input.files[i];
+      if (file === undefined) {
+        throw new Error(`drop-import: missing file at index ${i}`);
+      }
       const classified = classifyDropFilename(file.name);
-      if (classified.kind === "skip") {
-        continue;
+      if (classified.kind !== "skip") {
+        const folder_path = resolveImportItemFolder(target, file.relativePath);
+
+        if (classified.kind === "media") {
+          const item = await deps.createItem({
+            title: titleStemFromFilename(file.name),
+            content_type: classified.contentType,
+            folder_path,
+            source_type: "import",
+          });
+          await deps.attachMediaFiles(item.id, [
+            { name: file.name, bytes: file.bytes },
+          ]);
+          createdIds.push(item.id);
+        } else {
+          const raw = decodeUtf8(file.bytes);
+          const title = resolveDropTitle(file.name, raw);
+          const item = await deps.createItem({
+            title,
+            content_type: "note",
+            folder_path,
+            source_type: "import",
+          });
+          await deps.updateItemSource(
+            item.id,
+            prepareDroppedNoteMarkdown(raw, title),
+          );
+          createdIds.push(item.id);
+        }
       }
 
-      const folder_path = resolveImportItemFolder(target, file.relativePath);
-
-      if (classified.kind === "media") {
-        const item = await deps.createItem({
-          title: titleStemFromFilename(file.name),
-          content_type: classified.contentType,
-          folder_path,
-          source_type: "import",
-        });
-        await deps.attachMediaFiles(item.id, [
-          { name: file.name, bytes: file.bytes },
-        ]);
-        createdIds.push(item.id);
-        continue;
+      if (i < input.files.length - 1) {
+        await yieldToEventLoop();
       }
-
-      const raw = decodeUtf8(file.bytes);
-      const title = resolveDropTitle(file.name, raw);
-      const item = await deps.createItem({
-        title,
-        content_type: "note",
-        folder_path,
-        source_type: "import",
-      });
-      await deps.updateItemSource(
-        item.id,
-        prepareDroppedNoteMarkdown(raw, title),
-      );
-      createdIds.push(item.id);
     }
 
     return { createdIds };

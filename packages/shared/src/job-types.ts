@@ -4,15 +4,58 @@
  * How to add a new job type:
  * 1. `defineJobType({ id, payload, timeoutMs?, maxAttempts? })` here (Zod schema for the payload).
  * 2. Append the def to `JOB_TYPE_CATALOG` (sole production type-id list).
- * 3. In the host: `registry.register(thatType, handler)` — no runner/poll edits.
- * 4. Enqueue with `{ type: id, payload }` — unknown types and invalid payloads fail fast.
+ * 3. If the job mutates the vault in bulk (import / sync / reindex family), also append
+ *    its id to `VAULT_MUTATING_BULK_JOB_TYPE_IDS` and enqueue at `JOB_PRIORITY_BULK`
+ *    (fail-fast otherwise) so it shares the single bulk-mutator runner slot.
+ * 4. In the host: `registry.register(thatType, handler)` — no runner/poll edits.
+ * 5. Enqueue with `{ type: id, payload }` — unknown types and invalid payloads fail fast.
  *    Optional `timeoutMs` / `maxAttempts` on the type override queue defaults (long-running /
  *    non-retryable contracts).
  *
  * Timers and RPC paths must only enqueue — never call business handlers directly (#639).
+ *
+ * Scheduling policy (#746): interactive vault open/browse/get stays preferred over
+ * bulk vault-mutating work. Bulk mutators enqueue at JOB_PRIORITY_BULK; the runner
+ * allows at most one such job in flight under default concurrency so the second
+ * slot remains available. JOB_PRIORITY_INTERACTIVE is reserved for future job-class
+ * paths that need to claim before bulk; today interactive create/update stay direct
+ * RPC (not jobs). Priority alone does not make sync SQLite non-blocking.
  */
 
 import { z } from "zod";
+
+/** Reserved for future interactive job-class paths (claim before bulk). Today interactive work is RPC, not queue. */
+export const JOB_PRIORITY_INTERACTIVE = 100;
+/** Vault-mutating bulk jobs (below default unset priority). */
+export const JOB_PRIORITY_BULK = -10;
+
+/** Production vault-mutating bulk types that share the single bulk mutator slot. */
+export const VAULT_MUTATING_BULK_JOB_TYPE_IDS = [
+  "dropImportBatch",
+  "syncPluginPull",
+  "vaultIndexSync",
+  "reindexVaultBatch",
+] as const;
+
+export type VaultMutatingBulkJobTypeId =
+  (typeof VAULT_MUTATING_BULK_JOB_TYPE_IDS)[number];
+
+const vaultMutatingBulkJobTypeIdSet: ReadonlySet<string> = new Set(
+  VAULT_MUTATING_BULK_JOB_TYPE_IDS,
+);
+
+export function isVaultMutatingBulkJobType(type: string): boolean {
+  return vaultMutatingBulkJobTypeIdSet.has(type);
+}
+
+/**
+ * Whether a job holds the single vault-mutating bulk runner slot.
+ * Slot membership is by type id so enqueue without BULK priority cannot bypass
+ * the semaphore; enqueue still requires priority === JOB_PRIORITY_BULK.
+ */
+export function isVaultMutatingBulkJob(job: { type: string }): boolean {
+  return isVaultMutatingBulkJobType(job.type);
+}
 
 export type JobTypeDef<T extends z.ZodTypeAny = z.ZodTypeAny> = {
   readonly id: string;

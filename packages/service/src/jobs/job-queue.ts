@@ -1,9 +1,11 @@
 import type { JobPermanentFailure } from "@collector/api";
 import {
+  JOB_PRIORITY_BULK,
   JOB_TYPE_CATALOG,
   dropImportBatchJobType,
   importFolderJobType,
   generateCoverJobType,
+  isVaultMutatingBulkJobType,
   refreshEmbeddingsJobType,
   reindexVaultBatchJobType,
   syncPluginPullJobType,
@@ -133,6 +135,13 @@ export async function createJobQueue(
         input.maxAttempts ?? typeMaxAttempts ?? DEFAULT_MAX_ATTEMPTS;
       if (maxAttempts < 1) {
         throw new Error("job enqueue maxAttempts must be >= 1");
+      }
+      if (isVaultMutatingBulkJobType(input.type)) {
+        if (input.priority !== JOB_PRIORITY_BULK) {
+          throw new Error(
+            `job type ${input.type} requires priority JOB_PRIORITY_BULK (${JOB_PRIORITY_BULK}); got ${String(input.priority)}`,
+          );
+        }
       }
       const nowIso = now().toISOString();
       const availableAt = new Date(now().getTime() + delayMs).toISOString();

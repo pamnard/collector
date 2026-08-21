@@ -1,10 +1,45 @@
 import { describe, expect, it } from "vitest";
 import {
+  JOB_PRIORITY_BULK,
+  JOB_PRIORITY_INTERACTIVE,
   JOB_TYPE_CATALOG,
+  VAULT_MUTATING_BULK_JOB_TYPE_IDS,
   defineJobType,
   importFolderJobType,
+  isVaultMutatingBulkJob,
+  isVaultMutatingBulkJobType,
   testNoopJobType,
 } from "./job-types.js";
+
+describe("job scheduling priorities (#746)", () => {
+  it("exports interactive high and bulk low priority constants", () => {
+    expect(JOB_PRIORITY_INTERACTIVE).toBe(100);
+    expect(JOB_PRIORITY_BULK).toBe(-10);
+    expect(JOB_PRIORITY_INTERACTIVE).toBeGreaterThan(JOB_PRIORITY_BULK);
+  });
+
+  it("classifies required vault-mutating bulk job types", () => {
+    for (const id of [
+      "dropImportBatch",
+      "syncPluginPull",
+      "vaultIndexSync",
+      "reindexVaultBatch",
+    ] as const) {
+      expect(VAULT_MUTATING_BULK_JOB_TYPE_IDS).toContain(id);
+      expect(isVaultMutatingBulkJobType(id)).toBe(true);
+    }
+    expect(isVaultMutatingBulkJobType("__test_noop")).toBe(false);
+  });
+
+  it("counts bulk mutator slot by type, not by priority alone", () => {
+    expect(isVaultMutatingBulkJob({ type: "vaultIndexSync" })).toBe(true);
+    expect(isVaultMutatingBulkJob({ type: "reindexVaultBatch" })).toBe(true);
+    expect(isVaultMutatingBulkJob({ type: "dropImportBatch" })).toBe(true);
+    expect(isVaultMutatingBulkJob({ type: "syncPluginPull" })).toBe(true);
+    expect(isVaultMutatingBulkJob({ type: "__test_noop" })).toBe(false);
+    expect(isVaultMutatingBulkJob({ type: "refreshEmbeddings" })).toBe(false);
+  });
+});
 
 describe("job type catalog (#629)", () => {
   it("includes __test_noop in JOB_TYPE_CATALOG", () => {

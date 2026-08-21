@@ -1,4 +1,5 @@
 import {
+  JOB_PRIORITY_BULK,
   vaultIndexSyncJobType,
   type VaultIndexSyncJobPayload,
 } from "@collector/shared";
@@ -22,6 +23,7 @@ export function enqueueVaultIndexSync(
   return queue.enqueue({
     type: "vaultIndexSync",
     payload,
+    priority: JOB_PRIORITY_BULK,
     idempotencyKey: `vaultIndexSync:${payload.vaultId}`,
   });
 }

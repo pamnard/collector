@@ -9,7 +9,12 @@ import {
   runJobsMigrations,
   runMigrations,
 } from "@collector/db";
-import { defineJobType, testNoopJobType } from "@collector/shared";
+import {
+  JOB_PRIORITY_BULK,
+  JOB_PRIORITY_INTERACTIVE,
+  defineJobType,
+  testNoopJobType,
+} from "@collector/shared";
 import { NodeSqliteExecutor } from "../host/node-sql.js";
 import {
   createJobQueue,
@@ -18,6 +23,10 @@ import {
 import { createJobRegistry } from "./job-registry.js";
 import { createJobRunner } from "./job-runner.js";
 import { createJobStore } from "./job-store.js";
+import { enqueueDropImportBatch } from "./handlers/drop-import-batch.js";
+import { enqueueReindexVaultBatch } from "./handlers/reindex-vault-batch.js";
+import { enqueueSyncPluginPull } from "./handlers/sync-plugin-pull.js";
+import { enqueueVaultIndexSync } from "./handlers/vault-index-sync.js";
 
 async function waitFor(
   predicate: () => Promise<boolean>,
@@ -560,6 +569,197 @@ describe("createJobQueue (#628 / #629)", () => {
     await queue.enqueue({ type: "recover", maxAttempts: 3 });
     await waitFor(async () => (await queue.stats()).succeeded === 1);
     expect(failures).toHaveLength(0);
+    await queue.stop();
+  });
+
+  it("claims higher priority before lower (#746)", async () => {
+    const dbPath = tempJobsPath();
+    const order: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const ordered = defineJobType({
+      id: "ordered",
+      payload: z.object({ label: z.string() }),
+    });
+    const registry = createJobRegistry([ordered]);
+    registry.register(ordered, async (job) => {
+      order.push(job.payload.label);
+      await gate;
+      return { status: "ok" };
+    });
+    const queue = await createJobQueue({
+      dbPath,
+      registry,
+      concurrency: 1,
+      pollIntervalMs: 20,
+      timeoutMs: 5000,
+    });
+    // Enqueue without start so both stay pending, then claim by priority.
+    await queue.enqueue({
+      type: "ordered",
+      payload: { label: "bulk" },
+      priority: JOB_PRIORITY_BULK,
+    });
+    await queue.enqueue({
+      type: "ordered",
+      payload: { label: "interactive" },
+      priority: JOB_PRIORITY_INTERACTIVE,
+    });
+    queue.start();
+    await waitFor(async () => order.length === 1);
+    expect(order).toEqual(["interactive"]);
+    release();
+    await waitFor(async () => (await queue.stats()).succeeded === 2);
+    expect(order).toEqual(["interactive", "bulk"]);
+    await queue.stop();
+  });
+
+  it("runs at most one low-priority vault-mutating job at a time (#746)", async () => {
+    const dbPath = tempJobsPath();
+    let releaseBulk!: () => void;
+    const bulkGate = new Promise<void>((resolve) => {
+      releaseBulk = resolve;
+    });
+    const started: string[] = [];
+    const bulkA = defineJobType({
+      id: "vaultIndexSync",
+      payload: z.object({
+        vaultId: z.string(),
+        vaultPath: z.string(),
+        reason: z.enum(["kickoff", "force", "recovery"]).default("kickoff"),
+      }),
+    });
+    const bulkB = defineJobType({
+      id: "reindexVaultBatch",
+      payload: z.object({
+        vaultId: z.string(),
+        vaultPath: z.string(),
+        itemIds: z.array(z.string()).default([]),
+        folderPaths: z.array(z.string()).default([]),
+      }),
+    });
+    const light = defineJobType({
+      id: "light",
+      payload: z.object({}),
+    });
+    const registry = createJobRegistry([bulkA, bulkB, light]);
+    registry.register(bulkA, async () => {
+      started.push("vaultIndexSync");
+      await bulkGate;
+      return { status: "ok" };
+    });
+    registry.register(bulkB, async () => {
+      started.push("reindexVaultBatch");
+      return { status: "ok" };
+    });
+    registry.register(light, async () => {
+      started.push("light");
+      return { status: "ok" };
+    });
+    const queue = await createJobQueue({
+      dbPath,
+      registry,
+      concurrency: 2,
+      pollIntervalMs: 20,
+      timeoutMs: 5000,
+    });
+    queue.start();
+
+    await queue.enqueue({
+      type: "vaultIndexSync",
+      payload: { vaultId: "v1", vaultPath: "/v", reason: "kickoff" },
+      priority: JOB_PRIORITY_BULK,
+    });
+    await waitFor(async () => started.includes("vaultIndexSync"));
+
+    await queue.enqueue({
+      type: "reindexVaultBatch",
+      payload: { vaultId: "v1", vaultPath: "/v", itemIds: [], folderPaths: [] },
+      priority: JOB_PRIORITY_BULK,
+    });
+    await queue.enqueue({ type: "light", priority: JOB_PRIORITY_BULK });
+
+    await waitFor(async () => started.includes("light"));
+    // Second bulk mutator must not start while the first holds the slot.
+    expect(started).toEqual(["vaultIndexSync", "light"]);
+    expect((await queue.stats()).running).toBe(1);
+    expect((await queue.stats()).pending).toBe(1);
+
+    releaseBulk();
+    await waitFor(async () => (await queue.stats()).succeeded === 3);
+    expect(started).toEqual(["vaultIndexSync", "light", "reindexVaultBatch"]);
+    await queue.stop();
+  });
+
+  it("production vault-mutating enqueue helpers set bulk priority (#746)", async () => {
+    const dbPath = tempJobsPath();
+    const queue = await createJobQueue({
+      dbPath,
+      registry: createHostJobRegistry(),
+      pollIntervalMs: 20,
+      timeoutMs: 1000,
+    });
+    // Do not start — inspect stored priority only.
+    const sync = await enqueueVaultIndexSync(queue, {
+      vaultId: "v1",
+      vaultPath: "/vault",
+      reason: "kickoff",
+    });
+    const reindex = await enqueueReindexVaultBatch(queue, {
+      vaultId: "v1",
+      vaultPath: "/vault",
+      itemIds: ["a"],
+      folderPaths: [],
+    });
+    const pull = await enqueueSyncPluginPull(queue, { pluginId: "telegram" });
+    const drop = await enqueueDropImportBatch(queue, {
+      vaultId: "v1",
+      stagingDir: "/tmp/stage",
+      paths: ["/tmp/stage/a.png"],
+    });
+
+    for (const id of [sync.id, reindex.id, pull.id, drop.id]) {
+      const job = await queue.getJob(id);
+      expect(job?.priority).toBe(JOB_PRIORITY_BULK);
+    }
+    await queue.stop();
+  });
+
+  it("rejects vault-mutating bulk enqueue without JOB_PRIORITY_BULK (#746)", async () => {
+    const dbPath = tempJobsPath();
+    const queue = await createJobQueue({
+      dbPath,
+      registry: createHostJobRegistry(),
+      pollIntervalMs: 20,
+      timeoutMs: 1000,
+    });
+    await expect(
+      queue.enqueue({
+        type: "vaultIndexSync",
+        payload: { vaultId: "v1", vaultPath: "/vault", reason: "kickoff" },
+      }),
+    ).rejects.toThrow(/requires priority JOB_PRIORITY_BULK/);
+    await expect(
+      queue.enqueue({
+        type: "vaultIndexSync",
+        payload: { vaultId: "v1", vaultPath: "/vault", reason: "kickoff" },
+        priority: 0,
+      }),
+    ).rejects.toThrow(/requires priority JOB_PRIORITY_BULK/);
+    await expect(
+      queue.enqueue({
+        type: "reindexVaultBatch",
+        payload: {
+          vaultId: "v1",
+          vaultPath: "/vault",
+          itemIds: [],
+          folderPaths: [],
+        },
+        priority: JOB_PRIORITY_INTERACTIVE,
+      }),
+    ).rejects.toThrow(/requires priority JOB_PRIORITY_BULK/);
     await queue.stop();
   });
 });
