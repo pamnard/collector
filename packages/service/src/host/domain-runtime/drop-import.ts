@@ -36,7 +36,7 @@ export function createDropImportRuntime(deps: DropImportRuntimeDeps) {
         if (paths.length === 0) {
           return { createdIds: [] };
         }
-        return enqueueAndAwaitResult({
+        return await enqueueAndAwaitResult({
           queue: deps.requireJobs(),
           label: "dropImportBatch",
           takeResult: takeDropImportResult,
