@@ -96,4 +96,43 @@ describe("NodeSqliteExecutor (worker-backed)", () => {
     await expect(sql.execute("NOT VALID SQL")).rejects.toThrow();
     await sql.close();
   });
+
+  it("preserves worker error name and stack on the proxy", async () => {
+    const sql = await NodeSqliteExecutor.open(tempDbPath());
+    let caught: unknown;
+    try {
+      await sql.execute("NOT VALID SQL");
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    const error = caught as Error;
+    expect(error.message.length).toBeGreaterThan(0);
+    expect(error.name.length).toBeGreaterThan(0);
+    expect(error.name).not.toBe("Error");
+    expect(error.stack).toMatch(/node-sql-worker|SqliteError|NOT VALID/i);
+    await sql.close();
+  });
+
+  it("fails pending execute and close fast when worker terminates mid-flight", async () => {
+    const sql = await NodeSqliteExecutor.open(tempDbPath());
+    await sql.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, payload TEXT)");
+    const payload = "x".repeat(256 * 1024);
+    const inFlight = Promise.all(
+      Array.from({ length: 40 }, () =>
+        sql.execute("INSERT INTO t (payload) VALUES (?)", [payload]),
+      ),
+    );
+
+    await sql.workerForTests.terminate();
+
+    await expect(inFlight).rejects.toThrow(/exited unexpectedly|closed/i);
+
+    const closeStarted = Date.now();
+    await sql.close();
+    expect(Date.now() - closeStarted).toBeLessThan(500);
+    await expect(sql.execute("SELECT 1")).rejects.toThrow(
+      /closed|exited unexpectedly/i,
+    );
+  });
 });

@@ -18,6 +18,24 @@ const port = parentPort;
 /** @type {import("better-sqlite3").Database | null} */
 let db = null;
 
+/**
+ * @param {unknown} err
+ * @returns {{ message: string, name: string, stack?: string }}
+ */
+function serializeError(err) {
+  if (err instanceof Error) {
+    return {
+      message: err.message,
+      name: err.name,
+      stack: err.stack,
+    };
+  }
+  return {
+    message: String(err),
+    name: "Error",
+  };
+}
+
 port.on("message", (msg) => {
   try {
     switch (msg.op) {
@@ -58,7 +76,6 @@ port.on("message", (msg) => {
         throw new Error(`Unknown SQLite worker op: ${String(msg.op)}`);
     }
   } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    port.postMessage({ id: msg.id, ok: false, error });
+    port.postMessage({ id: msg.id, ok: false, error: serializeError(err) });
   }
 });

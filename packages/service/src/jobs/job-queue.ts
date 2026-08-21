@@ -94,7 +94,16 @@ export async function createJobQueue(
   }
 
   const sql = await NodeSqliteExecutor.open(options.dbPath);
-  await runJobsMigrations(sql);
+  try {
+    await runJobsMigrations(sql);
+  } catch (err) {
+    console.error(
+      "[job-queue] runJobsMigrations failed; closing SQLite executor",
+      { dbPath: options.dbPath, err },
+    );
+    await sql.close();
+    throw err instanceof Error ? err : new Error(String(err));
+  }
   const store = createJobStore(sql);
   const runner = createJobRunner({
     store,

@@ -1,8 +1,9 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import * as db from "@collector/db";
 import {
   resetIndexSchema,
   runJobsMigrations,
@@ -79,6 +80,29 @@ describe("createJobQueue (#628 / #629)", () => {
     });
 
     await queue.stop();
+  });
+
+  it("closes SQLite executor when runJobsMigrations fails", async () => {
+    const dbPath = tempJobsPath();
+    const closeSpy = vi.spyOn(NodeSqliteExecutor.prototype, "close");
+    const migrationsSpy = vi
+      .spyOn(db, "runJobsMigrations")
+      .mockRejectedValue(new Error("migration boom"));
+
+    await expect(
+      createJobQueue({
+        dbPath,
+        registry: createHostJobRegistry(),
+      }),
+    ).rejects.toThrow(/migration boom/);
+
+    expect(closeSpy).toHaveBeenCalled();
+    migrationsSpy.mockRestore();
+    closeSpy.mockRestore();
+
+    // Worker must be released: a subsequent open on the same path succeeds.
+    const sql = await NodeSqliteExecutor.open(dbPath);
+    await sql.close();
   });
 
   it("burns attempt on retryable fail without retryAfterMs", async () => {
