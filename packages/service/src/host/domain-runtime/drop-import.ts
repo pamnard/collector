@@ -11,7 +11,6 @@ import {
 import {
   enqueueImportFolder,
   peekImportFolderResult,
-  takeImportFolderResult,
 } from "../../jobs/handlers/import-folder.js";
 import { enqueueAndAwaitResult } from "../../jobs/job-wait.js";
 import { mkdir, writeFile, rm } from "node:fs/promises";
@@ -22,8 +21,6 @@ export interface DropImportRuntimeDeps {
   resolveActiveVault: () => Promise<{ vault: { id: string } }>;
   requireJobs: () => JobQueue;
 }
-
-const TERMINAL = new Set(["succeeded", "failed", "cancelled"]);
 
 export function createDropImportRuntime(deps: DropImportRuntimeDeps) {
   return {
@@ -88,9 +85,9 @@ export function createDropImportRuntime(deps: DropImportRuntimeDeps) {
       if (!row) {
         throw new Error(`importFolder job not found: ${jobId}`);
       }
-      const result = TERMINAL.has(row.status)
-        ? takeImportFolderResult(jobId)
-        : peekImportFolderResult(jobId);
+      // Always peek: repeated polls after success must keep returning the same
+      // result snapshot (take would drain the mailbox on the first terminal poll).
+      const result = peekImportFolderResult(jobId);
       return {
         jobId,
         status: row.status as ImportFolderJobSnapshot["status"],

@@ -8,6 +8,7 @@ import type {
   CreateItemInput,
   ImportFolderFailure,
   ImportFolderResult,
+  ImportFolderResultStatus,
 } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
 import {
@@ -46,23 +47,43 @@ export function peekImportFolderResult(
   return importFolderResults.peek(jobId);
 }
 
-function emptyResult(): ImportFolderResult {
+type MutableImportFolderResult = {
+  createdIds: string[];
+  skippedIds: string[];
+  failures: ImportFolderFailure[];
+  failedCount: number;
+};
+
+function emptyMutableResult(): MutableImportFolderResult {
   return {
     createdIds: [],
     skippedIds: [],
     failures: [],
-    created: 0,
-    skipped: 0,
-    failed: 0,
+    failedCount: 0,
   };
 }
 
-function finalizeCounts(result: ImportFolderResult): ImportFolderResult {
+function deriveResultStatus(
+  result: MutableImportFolderResult,
+): ImportFolderResultStatus {
+  if (result.failedCount === 0) {
+    return "ok";
+  }
+  if (result.createdIds.length > 0 || result.skippedIds.length > 0) {
+    return "partial";
+  }
+  return "failed";
+}
+
+function finalizeResult(result: MutableImportFolderResult): ImportFolderResult {
   return {
-    ...result,
+    createdIds: result.createdIds,
+    skippedIds: result.skippedIds,
+    failures: result.failures,
     created: result.createdIds.length,
     skipped: result.skippedIds.length,
-    failed: result.failures.length,
+    failed: result.failedCount,
+    status: deriveResultStatus(result),
   };
 }
 
@@ -116,7 +137,7 @@ async function listSourceFiles(
   return out;
 }
 
-function pushFailure(
+function pushFailureSample(
   failures: ImportFolderFailure[],
   relativePath: string,
   error: string,
@@ -125,6 +146,34 @@ function pushFailure(
     return;
   }
   failures.push({ relativePath, error });
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Vault/index infrastructure failures must abort the job; per-file import
+ * validation/content errors may continue after structured logging.
+ */
+export function isFatalImportFolderError(error: unknown): boolean {
+  const message = errorMessage(error);
+  if (/active vault mismatch/i.test(message)) {
+    return true;
+  }
+  if (/no active vault/i.test(message)) {
+    return true;
+  }
+  if (/SQLITE_/i.test(message)) {
+    return true;
+  }
+  if (/database is (closed|locked|not open)/i.test(message)) {
+    return true;
+  }
+  if (/index (is )?(closed|unavailable|not (ready|open))/i.test(message)) {
+    return true;
+  }
+  return false;
 }
 
 export function createImportFolderHandler(deps: {
@@ -141,6 +190,8 @@ export function createImportFolderHandler(deps: {
     vaultId: string,
     url: string,
   ) => Promise<string | null>;
+  /** Fail-fast when active vault ≠ payload vaultId (create/import bind to active). */
+  assertActiveVault: (vaultId: string) => Promise<void>;
 }): TypedJobHandler<typeof importFolderJobType.payload> {
   const importer = createDropImportService(deps);
   return async (job): Promise<JobHandlerResult> => {
@@ -153,7 +204,9 @@ export function createImportFolderHandler(deps: {
       throw new Error(`importFolder sourceDirAbs is not a directory: ${sourceDirAbs}`);
     }
 
-    const result = emptyResult();
+    await deps.assertActiveVault(vaultId);
+
+    const result = emptyMutableResult();
     const files = await listSourceFiles(sourceDirAbs);
     const folder_path = targetFolderPath?.trim() || undefined;
 
@@ -163,11 +216,14 @@ export function createImportFolderHandler(deps: {
         continue;
       }
 
+      await deps.assertActiveVault(vaultId);
+
       const bytes = new Uint8Array(await readFile(file.absPath));
 
       if (classified.kind === "note") {
         const url = canonicalUrlFromNoteBytes(bytes);
         if (url) {
+          // Index lookup: infrastructure failure aborts (no per-file swallow).
           const existingId = await deps.findItemIdByUrl(vaultId, url);
           if (existingId) {
             result.skippedIds.push(existingId);
@@ -192,15 +248,31 @@ export function createImportFolderHandler(deps: {
           result.createdIds.push(id);
         }
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : String(error);
-        pushFailure(result.failures, file.relativePath, message);
+        if (isFatalImportFolderError(error)) {
+          console.error("[importFolder] fatal infrastructure error", {
+            jobId: job.id,
+            vaultId,
+            relativePath: file.relativePath,
+            error: errorMessage(error),
+          });
+          importFolderResults.set(job.id, finalizeResult(result));
+          throw error;
+        }
+        const message = errorMessage(error);
+        console.error("[importFolder] per-file import failed", {
+          jobId: job.id,
+          vaultId,
+          relativePath: file.relativePath,
+          error: message,
+        });
+        result.failedCount += 1;
+        pushFailureSample(result.failures, file.relativePath, message);
       }
 
       await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
     }
 
-    importFolderResults.set(job.id, finalizeCounts(result));
+    importFolderResults.set(job.id, finalizeResult(result));
     return { status: "ok" };
   };
 }

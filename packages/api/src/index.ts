@@ -29,6 +29,7 @@ export type {
   ImportFolderJobSnapshot,
   ImportFolderJobStatus,
   ImportFolderResult,
+  ImportFolderResultStatus,
   IndexSyncPhase,
   IndexSyncProgress,
   MediaWithPath,

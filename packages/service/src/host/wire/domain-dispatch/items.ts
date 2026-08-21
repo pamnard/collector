@@ -234,6 +234,9 @@ export const ITEMS_DISPATCH = {
         "sourceDirAbs",
         M.importFolder,
       );
+      if (p.targetFolderPath !== undefined && typeof p.targetFolderPath !== "string") {
+        badRequest(`${M.importFolder}: targetFolderPath must be a string`);
+      }
       const targetFolderPath =
         typeof p.targetFolderPath === "string" ? p.targetFolderPath : undefined;
       await runtime.ensureInitialized();

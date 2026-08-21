@@ -310,6 +310,9 @@ export function createServiceDomainRuntime(
     updateItemSource: (itemId, raw) =>
       itemsSearch.updateItemSource(itemId, raw),
     findItemIdByUrl: (vaultId, url) => getIndex().findItemIdByUrl(vaultId, url),
+    assertActiveVault: async (vaultId) => {
+      await requireActiveVaultPath(vaultId);
+    },
   });
 
   const dropImport = createDropImportRuntime({

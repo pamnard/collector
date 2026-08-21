@@ -138,7 +138,14 @@ export async function runCollectorCli(
         const snapshot = await client.items.getImportFolderJob(jobId);
         if (terminal.has(snapshot.status)) {
           io.stdout(JSON.stringify(snapshot, null, 2));
-          return snapshot.status === "succeeded" ? 0 : 1;
+          if (snapshot.status !== "succeeded") {
+            return 1;
+          }
+          // Do not mask partial/total file failures as CLI success.
+          if (!snapshot.result || snapshot.result.failed > 0) {
+            return 1;
+          }
+          return 0;
         }
         await new Promise((resolve) => setTimeout(resolve, delayMs));
         delayMs = Math.min(delayMs * 2, 2_000);

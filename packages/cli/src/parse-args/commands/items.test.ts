@@ -250,10 +250,18 @@ describe("parse-args items commands (#718)", () => {
       });
     });
 
-    it("rejects missing --path and positional args", () => {
+    it("rejects missing --path, relative --path, and positional args", () => {
       expectCliUsage(
         () => parseImportFolder(["import-folder"], []),
         /import-folder requires --path/,
+      );
+      expectCliUsage(
+        () =>
+          parseImportFolder(
+            ["import-folder", "--path", "relative/notes"],
+            [],
+          ),
+        /absolute/,
       );
       expectCliUsage(
         () =>

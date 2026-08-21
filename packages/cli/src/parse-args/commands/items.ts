@@ -6,6 +6,7 @@ import {
   readOptAllowLeadingDash,
 } from "../helpers.js";
 import { CliUsageError, type CliCommand } from "../types.js";
+import { isAbsolute } from "node:path";
 
 export const CREATE_ITEM_FLAGS = new Set([
   "--title",
@@ -157,6 +158,11 @@ export function parseImportFolder(argv: string[], rest: string[]): CliCommand {
   const sourceDirAbs = readOpt(argv, "--path");
   if (!sourceDirAbs) {
     throw new CliUsageError("import-folder requires --path");
+  }
+  if (!isAbsolute(sourceDirAbs)) {
+    throw new CliUsageError(
+      "import-folder --path must be an absolute directory path",
+    );
   }
   const folder_path = readOpt(argv, "--folder");
   return {

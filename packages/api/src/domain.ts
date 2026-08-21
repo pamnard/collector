@@ -84,13 +84,19 @@ export interface ImportFolderFailure {
   error: string;
 }
 
+export type ImportFolderResultStatus = "ok" | "partial" | "failed";
+
 export interface ImportFolderResult {
   createdIds: string[];
   skippedIds: string[];
+  /** Sample of failures (capped); see {@link failed} for the true count. */
   failures: ImportFolderFailure[];
   created: number;
   skipped: number;
+  /** Total failure count (not capped by the failures sample). */
   failed: number;
+  /** ok when failed===0; partial when some succeeded/skipped with failures; failed when only failures. */
+  status: ImportFolderResultStatus;
 }
 
 export type ImportFolderJobStatus =
