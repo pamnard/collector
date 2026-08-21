@@ -2,24 +2,40 @@ import type { SqlReader } from "@collector/db";
 import type { ItemEmbeddingRefreshInput } from "../adapters/types.js";
 import { sqlInPlaceholders } from "../index/sql-index-helpers.js";
 import { buildEmbedText } from "./build-embed-text.js";
+import { EMBED_MIN_TITLE_CHARS } from "./constants.js";
 
 export type EmbeddingReconcileTickOptions = {
   vaultId: string;
   modelId: string;
   /** Max refresh inputs to return this tick. */
   batchSize: number;
-  /** Max missing/stale candidate rows to scan this tick. */
+  /** Max missing/stale candidates with enough signal to scan this tick. */
   scanLimit: number;
+  /**
+   * Keyset cursor: only consider item ids strictly greater than this.
+   * Omit / undefined to scan from the start. Empty string is invalid.
+   */
+  afterItemId?: string;
 };
 
 export type EmbeddingReconcileTickStats = {
   scanned: number;
   skippedNoSignal: number;
+  /** Signal candidates beyond batchSize (not returned this tick). */
+  deferred: number;
+  /** True when deferred > 0. */
+  batchFull: boolean;
 };
 
 export type EmbeddingReconcileTickResult = {
   inputs: ItemEmbeddingRefreshInput[];
   stats: EmbeddingReconcileTickStats;
+  /**
+   * Keyset cursor for the next tick: last consumed item id (enqueued or
+   * skipped-no-signal). Null when the scan window is empty (caller should
+   * wrap to the start on the next attempt).
+   */
+  nextAfterItemId: string | null;
 };
 
 type CandidateRow = {
@@ -33,6 +49,10 @@ type CandidateRow = {
 /**
  * Select index items missing an embedding (or stale model_id) that have enough
  * signal for buildEmbedText, for a bounded refreshEmbeddings enqueue (#742).
+ *
+ * Signal is filtered in SQL *before* LIMIT so empty-title rows cannot fill the
+ * scan window and starve later items. Keyset `afterItemId` advances past
+ * already-consumed ids across ticks (including permanent enqueue failures).
  */
 export async function planEmbeddingReconcileTick(
   db: SqlReader,
@@ -50,6 +70,22 @@ export async function planEmbeddingReconcileTick(
   if (!options.modelId.trim()) {
     throw new Error("embedding reconcile modelId is required");
   }
+  if (options.afterItemId !== undefined && !options.afterItemId.trim()) {
+    throw new Error("embedding reconcile afterItemId must be non-empty when set");
+  }
+
+  const afterItemId = options.afterItemId;
+  const params: Array<string | number> = [
+    options.vaultId,
+    options.modelId,
+    EMBED_MIN_TITLE_CHARS,
+  ];
+  let afterClause = "";
+  if (afterItemId !== undefined) {
+    afterClause = "AND i.id > ?";
+    params.push(afterItemId);
+  }
+  params.push(options.scanLimit);
 
   const candidates = await db.select<CandidateRow>(
     `SELECT i.id AS item_id,
@@ -62,9 +98,11 @@ export async function planEmbeddingReconcileTick(
      LEFT JOIN items_fts f ON f.item_id = i.id
      WHERE i.vault_id = ?
        AND (e.item_id IS NULL OR e.model_id != ?)
+       AND LENGTH(TRIM(i.title)) >= ?
+       ${afterClause}
      ORDER BY i.id ASC
      LIMIT ?`,
-    [options.vaultId, options.modelId, options.scanLimit],
+    params,
   );
 
   const tagsByItemId = await loadTagNamesByItemId(
@@ -74,6 +112,8 @@ export async function planEmbeddingReconcileTick(
 
   const inputs: ItemEmbeddingRefreshInput[] = [];
   let skippedNoSignal = 0;
+  let deferred = 0;
+  let lastConsumedId: string | null = null;
 
   for (const row of candidates) {
     const tagNames = tagsByItemId.get(row.item_id) ?? [];
@@ -87,10 +127,13 @@ export async function planEmbeddingReconcileTick(
         body,
       }) === null
     ) {
+      // Defense in depth: SQL already requires a non-empty trimmed title.
       skippedNoSignal += 1;
+      lastConsumedId = row.item_id;
       continue;
     }
     if (inputs.length >= options.batchSize) {
+      deferred += 1;
       continue;
     }
     const input: ItemEmbeddingRefreshInput = {
@@ -104,6 +147,7 @@ export async function planEmbeddingReconcileTick(
       input.body = body;
     }
     inputs.push(input);
+    lastConsumedId = row.item_id;
   }
 
   return {
@@ -111,7 +155,10 @@ export async function planEmbeddingReconcileTick(
     stats: {
       scanned: candidates.length,
       skippedNoSignal,
+      deferred,
+      batchFull: deferred > 0,
     },
+    nextAfterItemId: lastConsumedId,
   };
 }
 

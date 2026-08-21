@@ -10,6 +10,7 @@ import {
 describe("createEmbeddingReconcileScheduler (#742)", () => {
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("documents default interval and batch caps", () => {
@@ -18,7 +19,7 @@ describe("createEmbeddingReconcileScheduler (#742)", () => {
     expect(DEFAULT_EMBEDDING_RECONCILE_SCAN_LIMIT).toBe(200);
   });
 
-  it("runTick enqueues per item and logs scanned/enqueued/skipped/errors", async () => {
+  it("runTick enqueues per item and logs scanned/enqueued/skipped/deferred/errors", async () => {
     const planTick = vi.fn(async () => ({
       inputs: [
         {
@@ -36,7 +37,13 @@ describe("createEmbeddingReconcileScheduler (#742)", () => {
           contentRevision: 2,
         },
       ],
-      stats: { scanned: 3, skippedNoSignal: 1 },
+      stats: {
+        scanned: 3,
+        skippedNoSignal: 1,
+        deferred: 0,
+        batchFull: false,
+      },
+      nextAfterItemId: "b.md",
     }));
     const enqueueRefresh = vi.fn(async (_vaultId: string, inputs: { itemId: string }[]) => {
       if (inputs[0]?.itemId === "b.md") {
@@ -72,16 +79,170 @@ describe("createEmbeddingReconcileScheduler (#742)", () => {
       scanned: 3,
       enqueued: 1,
       skippedNoSignal: 1,
+      deferred: 0,
+      batchFull: false,
       errors: 1,
     });
     expect(logTick).toHaveBeenCalledWith(log);
     scheduler.dispose();
   });
 
+  it("default logTick uses console.error when errors > 0", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const planTick = vi.fn(async () => ({
+      inputs: [
+        {
+          itemId: "a.md",
+          title: "Garden",
+          description: "plants",
+          tagNames: [] as string[],
+          contentRevision: 1,
+        },
+      ],
+      stats: {
+        scanned: 1,
+        skippedNoSignal: 0,
+        deferred: 0,
+        batchFull: false,
+      },
+      nextAfterItemId: "a.md",
+    }));
+    const scheduler = createEmbeddingReconcileScheduler({
+      isHealthy: () => true,
+      resolveActiveVaultId: () => "v1",
+      getDb: () => ({}) as never,
+      getModelId: () => EMBEDDING_MODEL_ID,
+      enqueueRefresh: async () => {
+        throw new Error("enqueue failed");
+      },
+      planTick,
+    });
+
+    await scheduler.runTick();
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[collector] embedding reconcile tick",
+      expect.objectContaining({ errors: 1 }),
+    );
+    expect(infoSpy).not.toHaveBeenCalledWith(
+      "[collector] embedding reconcile tick",
+      expect.anything(),
+    );
+    scheduler.dispose();
+  });
+
+  it("advances keyset cursor across ticks and wraps past the end", async () => {
+    const planTick = vi
+      .fn()
+      .mockResolvedValueOnce({
+        inputs: [
+          {
+            itemId: "a.md",
+            title: "A",
+            description: "a",
+            tagNames: [] as string[],
+            contentRevision: 1,
+          },
+        ],
+        stats: {
+          scanned: 2,
+          skippedNoSignal: 0,
+          deferred: 1,
+          batchFull: true,
+        },
+        nextAfterItemId: "a.md",
+      })
+      .mockResolvedValueOnce({
+        inputs: [
+          {
+            itemId: "b.md",
+            title: "B",
+            description: "b",
+            tagNames: [] as string[],
+            contentRevision: 1,
+          },
+        ],
+        stats: {
+          scanned: 1,
+          skippedNoSignal: 0,
+          deferred: 0,
+          batchFull: false,
+        },
+        nextAfterItemId: "b.md",
+      })
+      .mockResolvedValueOnce({
+        inputs: [],
+        stats: {
+          scanned: 0,
+          skippedNoSignal: 0,
+          deferred: 0,
+          batchFull: false,
+        },
+        nextAfterItemId: null,
+      })
+      .mockResolvedValueOnce({
+        inputs: [
+          {
+            itemId: "a.md",
+            title: "A",
+            description: "a",
+            tagNames: [] as string[],
+            contentRevision: 1,
+          },
+        ],
+        stats: {
+          scanned: 1,
+          skippedNoSignal: 0,
+          deferred: 0,
+          batchFull: false,
+        },
+        nextAfterItemId: "a.md",
+      });
+
+    const scheduler = createEmbeddingReconcileScheduler({
+      isHealthy: () => true,
+      resolveActiveVaultId: () => "v1",
+      getDb: () => ({}) as never,
+      getModelId: () => EMBEDDING_MODEL_ID,
+      enqueueRefresh: async () => undefined,
+      planTick,
+    });
+
+    const first = await scheduler.runTick();
+    expect(first?.batchFull).toBe(true);
+    expect(first?.deferred).toBe(1);
+    expect(planTick).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.not.objectContaining({ afterItemId: expect.anything() }),
+    );
+
+    await scheduler.runTick();
+    expect(planTick).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ afterItemId: "a.md" }),
+    );
+
+    // Past end: empty scan with cursor → wrap and rescan from start in same tick.
+    const wrapped = await scheduler.runTick();
+    expect(planTick).toHaveBeenCalledTimes(4);
+    expect(planTick.mock.calls[2]?.[1]).toEqual(
+      expect.objectContaining({ afterItemId: "b.md" }),
+    );
+    expect(planTick.mock.calls[3]?.[1]).not.toHaveProperty("afterItemId");
+    expect(wrapped?.enqueued).toBe(1);
+    scheduler.dispose();
+  });
+
   it("runTick is a no-op when host is unhealthy or vault missing", async () => {
     const planTick = vi.fn(async () => ({
       inputs: [],
-      stats: { scanned: 0, skippedNoSignal: 0 },
+      stats: {
+        scanned: 0,
+        skippedNoSignal: 0,
+        deferred: 0,
+        batchFull: false,
+      },
+      nextAfterItemId: null,
     }));
     const enqueueRefresh = vi.fn(async () => undefined);
 
@@ -110,11 +271,17 @@ describe("createEmbeddingReconcileScheduler (#742)", () => {
     noVault.dispose();
   });
 
-  it("start arms interval and dispose clears it", async () => {
+  it("start wakes immediately and arms interval; dispose clears it", async () => {
     vi.useFakeTimers();
     const planTick = vi.fn(async () => ({
       inputs: [],
-      stats: { scanned: 0, skippedNoSignal: 0 },
+      stats: {
+        scanned: 0,
+        skippedNoSignal: 0,
+        deferred: 0,
+        batchFull: false,
+      },
+      nextAfterItemId: null,
     }));
     const logTick = vi.fn();
     const scheduler = createEmbeddingReconcileScheduler({
@@ -128,9 +295,12 @@ describe("createEmbeddingReconcileScheduler (#742)", () => {
       logTick,
     });
     scheduler.start();
+    await vi.waitFor(() => {
+      expect(planTick).toHaveBeenCalledTimes(1);
+    });
     await vi.advanceTimersByTimeAsync(5_000);
     await vi.waitFor(() => {
-      expect(planTick).toHaveBeenCalled();
+      expect(planTick).toHaveBeenCalledTimes(2);
     });
     scheduler.dispose();
     planTick.mockClear();
@@ -154,7 +324,7 @@ describe("createEmbeddingReconcileScheduler (#742)", () => {
       intervalMs: 1_000,
     });
     scheduler.start();
-    await vi.advanceTimersByTimeAsync(1_000);
+    // Immediate wake from start() surfaces the planning failure.
     await vi.waitFor(() => {
       expect(onTickError).toHaveBeenCalled();
     });

@@ -118,7 +118,10 @@ describe("planEmbeddingReconcileTick (#742)", () => {
     expect(result.stats).toEqual({
       scanned: 1,
       skippedNoSignal: 0,
+      deferred: 0,
+      batchFull: false,
     });
+    expect(result.nextAfterItemId).toBe("a.md");
   });
 
   it("skips when vector is present for the current model", async () => {
@@ -141,7 +144,10 @@ describe("planEmbeddingReconcileTick (#742)", () => {
     expect(result.stats).toEqual({
       scanned: 0,
       skippedNoSignal: 0,
+      deferred: 0,
+      batchFull: false,
     });
+    expect(result.nextAfterItemId).toBeNull();
   });
 
   it("enqueues when stored model_id differs from current engine", async () => {
@@ -163,9 +169,10 @@ describe("planEmbeddingReconcileTick (#742)", () => {
     expect(result.inputs.map((input) => input.itemId)).toEqual(["a.md"]);
     expect(result.stats.scanned).toBe(1);
     expect(result.stats.skippedNoSignal).toBe(0);
+    expect(result.nextAfterItemId).toBe("a.md");
   });
 
-  it("skips items that correctly have no embed signal", async () => {
+  it("excludes no-signal items from the SQL scan window", async () => {
     const sql = await openDb();
     await insertItem({
       id: "empty.md",
@@ -182,8 +189,120 @@ describe("planEmbeddingReconcileTick (#742)", () => {
 
     expect(result.inputs).toEqual([]);
     expect(result.stats).toEqual({
-      scanned: 1,
-      skippedNoSignal: 1,
+      scanned: 0,
+      skippedNoSignal: 0,
+      deferred: 0,
+      batchFull: false,
     });
+    expect(result.nextAfterItemId).toBeNull();
+  });
+
+  it("does not let no-signal head fill scanLimit and starve later signal items", async () => {
+    const sql = await openDb();
+    // Lexicographically first ids: empty titles fill an ASC window if unfiltered.
+    await insertItem({ id: "a-empty.md", title: "" });
+    await insertItem({ id: "b-empty.md", title: "" });
+    await insertItem({ id: "c-empty.md", title: "" });
+    await insertItem({
+      id: "z-signal.md",
+      title: "Late signal item",
+      description: "should still enqueue",
+    });
+
+    const result = await planEmbeddingReconcileTick(sql, {
+      vaultId: "v1",
+      modelId: EMBEDDING_MODEL_ID,
+      batchSize: 1,
+      scanLimit: 2,
+    });
+
+    expect(result.inputs.map((input) => input.itemId)).toEqual(["z-signal.md"]);
+    expect(result.stats).toEqual({
+      scanned: 1,
+      skippedNoSignal: 0,
+      deferred: 0,
+      batchFull: false,
+    });
+    expect(result.nextAfterItemId).toBe("z-signal.md");
+  });
+
+  it("defers signal items beyond batchSize and advances keyset past enqueued ids", async () => {
+    const sql = await openDb();
+    await insertItem({
+      id: "a.md",
+      title: "First",
+      description: "one",
+    });
+    await insertItem({
+      id: "b.md",
+      title: "Second",
+      description: "two",
+    });
+    await insertItem({
+      id: "c.md",
+      title: "Third",
+      description: "three",
+    });
+
+    const first = await planEmbeddingReconcileTick(sql, {
+      vaultId: "v1",
+      modelId: EMBEDDING_MODEL_ID,
+      batchSize: 1,
+      scanLimit: 10,
+    });
+    expect(first.inputs.map((input) => input.itemId)).toEqual(["a.md"]);
+    expect(first.stats).toEqual({
+      scanned: 3,
+      skippedNoSignal: 0,
+      deferred: 2,
+      batchFull: true,
+    });
+    expect(first.nextAfterItemId).toBe("a.md");
+
+    const second = await planEmbeddingReconcileTick(sql, {
+      vaultId: "v1",
+      modelId: EMBEDDING_MODEL_ID,
+      batchSize: 1,
+      scanLimit: 10,
+      afterItemId: first.nextAfterItemId!,
+    });
+    expect(second.inputs.map((input) => input.itemId)).toEqual(["b.md"]);
+    expect(second.stats.deferred).toBe(1);
+    expect(second.stats.batchFull).toBe(true);
+    expect(second.nextAfterItemId).toBe("b.md");
+
+    const third = await planEmbeddingReconcileTick(sql, {
+      vaultId: "v1",
+      modelId: EMBEDDING_MODEL_ID,
+      batchSize: 1,
+      scanLimit: 10,
+      afterItemId: second.nextAfterItemId!,
+    });
+    expect(third.inputs.map((input) => input.itemId)).toEqual(["c.md"]);
+    expect(third.stats.batchFull).toBe(false);
+    expect(third.nextAfterItemId).toBe("c.md");
+
+    const pastEnd = await planEmbeddingReconcileTick(sql, {
+      vaultId: "v1",
+      modelId: EMBEDDING_MODEL_ID,
+      batchSize: 1,
+      scanLimit: 10,
+      afterItemId: third.nextAfterItemId!,
+    });
+    expect(pastEnd.inputs).toEqual([]);
+    expect(pastEnd.nextAfterItemId).toBeNull();
+  });
+
+  it("rejects empty afterItemId", async () => {
+    const sql = await openDb();
+    await expect(
+      planEmbeddingReconcileTick(sql, {
+        vaultId: "v1",
+        modelId: EMBEDDING_MODEL_ID,
+        batchSize: 1,
+        scanLimit: 10,
+        afterItemId: "  ",
+      }),
+    ).rejects.toThrow(/afterItemId/);
   });
 });

@@ -33,6 +33,8 @@ export type EmbeddingReconcileTickLog = {
   scanned: number;
   enqueued: number;
   skippedNoSignal: number;
+  deferred: number;
+  batchFull: boolean;
   errors: number;
 };
 
@@ -97,11 +99,17 @@ export function createEmbeddingReconcileScheduler(
   let disposed = false;
   let timer: ReturnType<typeof setInterval> | null = null;
   let tickInFlight = false;
+  /** Keyset cursor: advance past consumed ids so permanent fails cannot HOL-block. */
+  let scanAfterItemId: string | undefined;
 
   const logTick =
     deps.logTick ??
     ((log: EmbeddingReconcileTickLog) => {
-      console.info("[collector] embedding reconcile tick", log);
+      if (log.errors > 0) {
+        console.error("[collector] embedding reconcile tick", log);
+      } else {
+        console.info("[collector] embedding reconcile tick", log);
+      }
     });
 
   const onTickError =
@@ -109,6 +117,37 @@ export function createEmbeddingReconcileScheduler(
     ((error: unknown) => {
       console.error("[collector] embedding reconcile tick failed", error);
     });
+
+  async function planWithWrap(
+    vaultId: string,
+  ): Promise<EmbeddingReconcileTickResult> {
+    const baseOptions: EmbeddingReconcileTickOptions = {
+      vaultId,
+      modelId: deps.getModelId(),
+      batchSize,
+      scanLimit,
+    };
+    if (scanAfterItemId !== undefined) {
+      baseOptions.afterItemId = scanAfterItemId;
+    }
+
+    let planned = await planTick(deps.getDb(), baseOptions);
+    if (
+      planned.inputs.length === 0 &&
+      planned.stats.scanned === 0 &&
+      scanAfterItemId !== undefined
+    ) {
+      // Past end of keyset — wrap to the start once this tick.
+      scanAfterItemId = undefined;
+      planned = await planTick(deps.getDb(), {
+        vaultId,
+        modelId: deps.getModelId(),
+        batchSize,
+        scanLimit,
+      });
+    }
+    return planned;
+  }
 
   async function runTick(): Promise<EmbeddingReconcileTickLog | null> {
     if (disposed || !deps.isHealthy()) {
@@ -119,16 +158,13 @@ export function createEmbeddingReconcileScheduler(
       return null;
     }
 
-    const planned = await planTick(deps.getDb(), {
-      vaultId,
-      modelId: deps.getModelId(),
-      batchSize,
-      scanLimit,
-    });
+    const planned = await planWithWrap(vaultId);
 
     let enqueued = 0;
     let errors = 0;
     // Per-item enqueue so idempotency keys match write-path single-item jobs.
+    // Per-item catch continues the bulk backstop; failures stay error-severity
+    // via structured per-item logs and error-level tick summary when errors > 0.
     for (const input of planned.inputs) {
       try {
         await deps.enqueueRefresh(vaultId, [input]);
@@ -143,11 +179,20 @@ export function createEmbeddingReconcileScheduler(
       }
     }
 
+    // Advance past consumed ids (including enqueue failures) so permanently
+    // broken head items do not monopolize every subsequent tick.
+    scanAfterItemId =
+      planned.nextAfterItemId === null
+        ? undefined
+        : planned.nextAfterItemId;
+
     const log: EmbeddingReconcileTickLog = {
       vaultId,
       scanned: planned.stats.scanned,
       enqueued,
       skippedNoSignal: planned.stats.skippedNoSignal,
+      deferred: planned.stats.deferred,
+      batchFull: planned.stats.batchFull,
       errors,
     };
     logTick(log);
@@ -179,6 +224,8 @@ export function createEmbeddingReconcileScheduler(
         return;
       }
       timer = setIntervalFn(wake, intervalMs);
+      // Immediate first tick so catch-up does not wait a full interval.
+      wake();
     },
     dispose() {
       disposed = true;
