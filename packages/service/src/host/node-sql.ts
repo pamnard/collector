@@ -20,7 +20,6 @@ type WorkerResponse =
   | { id: number; ok: false; error: string };
 
 function workerScriptUrl(): URL {
-  // Sibling .mjs loads under vitest (src/) and after build (dist/) alike.
   return new URL("./node-sql-worker.mjs", import.meta.url);
 }
 
@@ -72,19 +71,17 @@ export class NodeSqliteExecutor implements ClosableSqlExecutor {
   }
 
   async execute(query: string, bindValues: unknown[] = []): Promise<number> {
-    const changes = await this.#request("execute", {
+    return this.#request<number>("execute", {
       query,
       bind: bindValues,
     });
-    return changes as number;
   }
 
   async select<T>(query: string, bindValues: unknown[] = []): Promise<T[]> {
-    const rows = await this.#request("select", {
+    return this.#request<T[]>("select", {
       query,
       bind: bindValues,
     });
-    return rows as T[];
   }
 
   async close(): Promise<void> {
@@ -100,16 +97,19 @@ export class NodeSqliteExecutor implements ClosableSqlExecutor {
     }
   }
 
-  #request(
+  #request<T = unknown>(
     op: "open" | "execute" | "select" | "close",
     fields: Record<string, unknown>,
-  ): Promise<unknown> {
+  ): Promise<T> {
     if (this.#closed && op !== "close") {
       return Promise.reject(new Error("NodeSqliteExecutor is closed"));
     }
     const id = this.#nextId++;
     return new Promise((resolve, reject) => {
-      this.#pending.set(id, { resolve, reject });
+      this.#pending.set(id, {
+        resolve: (value) => resolve(value as T),
+        reject,
+      });
       this.#worker.postMessage({ id, op, ...fields });
     });
   }

@@ -54,6 +54,10 @@ export function createJobPoll(deps: {
         if (!job) {
           break;
         }
+        // claimNext awaits; stop may have begun meanwhile — do not start new work.
+        if (isStopped()) {
+          break;
+        }
         claimed += 1;
         const run = executeJob(job).finally(() => {
           inFlight.delete(run);
@@ -78,7 +82,19 @@ export function createJobPoll(deps: {
   }
 
   async function waitForIdle(): Promise<void> {
-    await Promise.allSettled([...inFlight]);
+    for (;;) {
+      if (tickRunning) {
+        await new Promise<void>((resolve) => {
+          setImmediate(resolve);
+        });
+        continue;
+      }
+      const pending = [...inFlight];
+      if (pending.length === 0) {
+        return;
+      }
+      await Promise.allSettled(pending);
+    }
   }
 
   return {
