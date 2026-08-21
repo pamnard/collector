@@ -16,6 +16,15 @@ export interface UiSessionThumbnailResolveProgressiveOptions {
   concurrency?: number;
 }
 
+/** Chosen detail-hero file and whether it is image or video. */
+export type ItemHeroMediaKind = "image" | "video";
+
+export interface ItemHeroMedia {
+  kind: ItemHeroMediaKind;
+  filePath: string;
+  displayPath: string | null;
+}
+
 export interface UiSessionThumbnailPaths {
   resolveItemThumbnailPath(item: ItemFile): Promise<string | null>;
   resolveItemThumbnailPaths(
@@ -26,6 +35,7 @@ export interface UiSessionThumbnailPaths {
     items: ItemFile[],
     options: UiSessionThumbnailResolveProgressiveOptions,
   ): Promise<void>;
+  resolveItemHeroMedia(item: ItemFile): Promise<ItemHeroMedia | null>;
 }
 
 export interface UiSessionSettingsSync {
@@ -53,4 +63,5 @@ export const UI_SESSION_THUMBNAIL_KEYS = [
   "resolveItemThumbnailPath",
   "resolveItemThumbnailPaths",
   "resolveItemThumbnailPathsProgressive",
+  "resolveItemHeroMedia",
 ] as const satisfies readonly (keyof UiSessionThumbnailPaths)[];

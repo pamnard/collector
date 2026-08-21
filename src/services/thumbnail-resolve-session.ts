@@ -5,6 +5,7 @@
 
 import type {
   ActiveVaultResult,
+  ItemHeroMedia,
   UiSessionThumbnailPaths,
   UiSessionThumbnailResolveProgressiveOptions,
 } from "@collector/api";
@@ -14,6 +15,14 @@ import * as devMockCollector from "../dev/mock-collector";
 
 export interface ThumbnailResolveSessionDeps {
   resolveActiveVault: () => Promise<ActiveVaultResult>;
+}
+
+function assertDevMockThumbnailSession(): void {
+  if (!isDevMock()) {
+    throw new Error(
+      "createThumbnailResolveSession is DevMock-only; use host thumbnails port (#555)",
+    );
+  }
 }
 
 /** DevMock (and tests): resolve via mock collector only (#555). */
@@ -28,11 +37,7 @@ export function createThumbnailResolveSession(
       return;
     }
 
-    if (!isDevMock()) {
-      throw new Error(
-        "createThumbnailResolveSession is DevMock-only; use host thumbnails port (#555)",
-      );
-    }
+    assertDevMockThumbnailSession();
 
     for (const item of items) {
       if (options.signal?.aborted) {
@@ -65,6 +70,10 @@ export function createThumbnailResolveSession(
     async resolveItemThumbnailPath(item: ItemFile): Promise<string | null> {
       const paths = await resolveItemThumbnailPaths([item]);
       return paths.get(item.id) ?? null;
+    },
+    async resolveItemHeroMedia(item: ItemFile): Promise<ItemHeroMedia | null> {
+      assertDevMockThumbnailSession();
+      return devMockCollector.resolveItemHeroMedia(item);
     },
   };
 }

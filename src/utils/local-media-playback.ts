@@ -19,16 +19,6 @@ export function isYouTubeItemUrl(url: string | null | undefined): boolean {
   return getYouTubeThumbnail(url) !== null;
 }
 
-/**
- * Local vault video item (detail hero play affordance).
- * YouTube / remote bookmark items stay on external-link behavior.
- */
-export function isLocalVideoItem(
-  item: Pick<ItemFile, "content_type" | "url">,
-): boolean {
-  return item.content_type === "video" && !isYouTubeItemUrl(item.url);
-}
-
 export function pickPlayableMedia(
   files: ReadonlyArray<{ media_type: string; absolute_path: string }>,
   prefer?: PlayableMediaKind,

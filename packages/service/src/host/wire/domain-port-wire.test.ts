@@ -59,6 +59,7 @@ describe("domain port→wire map (#366)", () => {
     expect(catalog.has("startVaultFilesystemWatcher")).toBe(true);
     expect(catalog.has("stopVaultFilesystemWatcher")).toBe(true);
     expect(catalog.has("isVaultFilesystemWatcherActive")).toBe(true);
+    expect(catalog.has("resolveItemHeroMedia")).toBe(true);
     // No handlers → coverage assert is a no-op (catalog is derived).
     expect(() => assertHostPortWireCoverage()).not.toThrow();
   });

@@ -3,7 +3,7 @@
  * Host injects vault accessors + cover/thumbnail adapters (Tauri/DOM stay outside).
  */
 
-import type { AttachMediaFileInput, MediaWithPath } from "@collector/api";
+import type { AttachMediaFileInput, ItemHeroMedia, MediaWithPath } from "@collector/api";
 import type {
   ItemFile,
   MediaFileMeta,
@@ -17,6 +17,7 @@ import {
   listItemMediaWithPaths,
   readItemFile,
   replaceMediaFile,
+  resolveItemHeroMedia,
   touchItemUpdatedAt,
   type VaultContext,
 } from "@collector/core";
@@ -46,6 +47,7 @@ export interface MediaCoverService {
   resolveItemThumbnailPaths(
     items: ItemFile[],
   ): Promise<Map<string, string | null>>;
+  resolveItemHeroMedia(item: ItemFile): Promise<ItemHeroMedia | null>;
   setItemCoverFromMedia(itemId: string, mediaId: string): Promise<ItemFile>;
   attachMediaFiles(
     itemId: string,
@@ -258,6 +260,10 @@ export function createMediaCoverService(
     listItemMedia,
     resolveItemThumbnailPath,
     resolveItemThumbnailPaths,
+    resolveItemHeroMedia: async (item) => {
+      const { path } = await deps.resolveActiveVault();
+      return resolveItemHeroMedia(deps.getContext().fs, path, item.id);
+    },
     setItemCoverFromMedia: async (itemId, mediaId) => {
       const item = await setItemCoverFromMedia(itemId, mediaId);
       const { vault } = await deps.resolveActiveVault();

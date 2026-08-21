@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type {
   ActiveVaultResult,
+  ItemHeroMedia,
   UiSessionThumbnailPaths,
   UiSessionThumbnailResolveProgressiveOptions,
 } from "@collector/api";
@@ -86,6 +87,11 @@ export function createNodeThumbnailPaths(
     async resolveItemThumbnailPath(item: ItemFile): Promise<string | null> {
       const paths = await resolveItemThumbnailPaths([item]);
       return paths.get(item.id) ?? null;
+    },
+    async resolveItemHeroMedia(item: ItemFile): Promise<ItemHeroMedia | null> {
+      return (await transport.request("resolveItemHeroMedia", {
+        item: { id: item.id },
+      })) as ItemHeroMedia | null;
     },
   };
 }

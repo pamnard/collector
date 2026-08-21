@@ -19,11 +19,23 @@ export const WATCHER_WIRE_METHODS = [
 
 export type WatcherWireMethod = (typeof WATCHER_WIRE_METHODS)[number];
 
-export type DomainWireMethod = HostWirePortMethod | WatcherWireMethod;
+/** Host-only UiSession wire methods (not MediaPort keys). */
+export const UI_SESSION_HOST_WIRE_METHODS = [
+  "resolveItemHeroMedia",
+] as const;
+
+export type UiSessionHostWireMethod =
+  (typeof UI_SESSION_HOST_WIRE_METHODS)[number];
+
+export type DomainWireMethod =
+  | HostWirePortMethod
+  | WatcherWireMethod
+  | UiSessionHostWireMethod;
 
 const DOMAIN_WIRE_METHOD_LIST: readonly DomainWireMethod[] = [
   ...HOST_WIRE_PORT_METHODS,
   ...WATCHER_WIRE_METHODS,
+  ...UI_SESSION_HOST_WIRE_METHODS,
 ];
 
 /** Identity map for wire method string literals (stable keys for call sites). */

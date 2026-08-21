@@ -208,6 +208,7 @@ export type { MediaWithPath } from "./vault/media-operations.js";
 export {
   bareMediaFileId,
   findFirstGalleryImagePath,
+  findFirstGalleryVideoPath,
   listMediaFiles,
   mediaFilePath,
 } from "./vault/media-io.js";
@@ -226,6 +227,11 @@ export type {
   ThumbnailResolveItem,
   ThumbnailResolveResult,
 } from "./vault/thumbnail-resolve.js";
+export { resolveItemHeroMedia } from "./vault/hero-image-resolve.js";
+export type {
+  ItemHeroMedia,
+  ItemHeroMediaKind,
+} from "./vault/hero-image-resolve.js";
 export { vaultHasLegacyItemsLayout } from "./vault/assert-vault-layout.js";
 export {
   allocateUuidMarkdownName,

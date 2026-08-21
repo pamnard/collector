@@ -1,9 +1,9 @@
 import { FoldVertical, Play, UnfoldVertical } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ItemFile } from "@collector/shared";
+import type { ItemHeroMedia } from "@collector/api";
 import { useDetailHeroExpanded } from "../../hooks/useDetailHeroExpanded";
 import { toDisplayAssetSrc } from "../../utils/asset-src";
-import { isLocalVideoItem } from "../../utils/local-media-playback";
 import { getUiSession } from "../../services/collector-client";
 import { AspectRatio } from "../ui/aspect-ratio";
 import { Button } from "../ui/button";
@@ -14,28 +14,33 @@ interface ItemDetailHeroProps {
   playError?: string | null;
 }
 
-/** Cover / first image as detail page header. Renders nothing if none. */
+/** Cover / first gallery media as detail page header. Renders nothing if none. */
 export function ItemDetailHero({
   item,
   onPlayLocalVideo,
   playError,
 }: ItemDetailHeroProps) {
-  const [src, setSrc] = useState<string | null>(null);
+  const [hero, setHero] = useState<ItemHeroMedia | null>(null);
   const { expanded, setExpanded } = useDetailHeroExpanded();
-  const canPlayLocalVideo = Boolean(onPlayLocalVideo) && isLocalVideoItem(item);
+  const canPlayLocalVideo =
+    Boolean(onPlayLocalVideo) && hero?.kind === "video";
+  const displaySrc =
+    hero?.displayPath !== null && hero?.displayPath !== undefined
+      ? toDisplayAssetSrc(hero.displayPath)
+      : null;
 
   useEffect(() => {
     let cancelled = false;
-    setSrc(null);
+    setHero(null);
 
     void getUiSession()
-      .thumbnails.resolveItemThumbnailPath(item)
+      .thumbnails.resolveItemHeroMedia(item)
       .catch(() => null)
-      .then((path) => {
-        if (cancelled || !path) {
+      .then((media) => {
+        if (cancelled || !media) {
           return;
         }
-        setSrc(toDisplayAssetSrc(path));
+        setHero(media);
       });
 
     return () => {
@@ -43,22 +48,28 @@ export function ItemDetailHero({
     };
   }, [item.id, item.thumbnail, item.updated_at]);
 
-  if (!src) {
+  if (!hero || (!displaySrc && hero.kind !== "video")) {
     return null;
   }
 
   return (
     <div className="min-w-0">
       <div className="group relative mx-auto w-full max-w-[900px]">
-        {expanded ? (
-          <img src={src} alt="" className="h-auto w-full rounded-lg" />
+        {displaySrc ? (
+          expanded ? (
+            <img src={displaySrc} alt="" className="h-auto w-full rounded-lg" />
+          ) : (
+            <AspectRatio ratio={16 / 9}>
+              <img
+                src={displaySrc}
+                alt=""
+                className="absolute inset-0 h-full w-full rounded-lg object-cover"
+              />
+            </AspectRatio>
+          )
         ) : (
           <AspectRatio ratio={16 / 9}>
-            <img
-              src={src}
-              alt=""
-              className="absolute inset-0 h-full w-full rounded-lg object-cover"
-            />
+            <div className="absolute inset-0 rounded-lg bg-neutral-900" />
           </AspectRatio>
         )}
         <Button

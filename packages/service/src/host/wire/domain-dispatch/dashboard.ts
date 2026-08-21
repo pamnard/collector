@@ -82,4 +82,16 @@ export const DASHBOARD_DISPATCH = {
       return Array.from(resolved, ([id, path]) => ({ id, path }));
     },
   },
+  [M.resolveItemHeroMedia]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.resolveItemHeroMedia);
+      if (!p.item || typeof p.item !== "object" || Array.isArray(p.item)) {
+        badRequest(`${M.resolveItemHeroMedia}: item object required`);
+      }
+      const item = p.item as Record<string, unknown>;
+      const id = requireString(item.id, "item.id", M.resolveItemHeroMedia);
+      await runtime.ensureInitialized();
+      return runtime.mediaCover.resolveItemHeroMedia({ id } as ItemFile);
+    },
+  },
 } satisfies DomainDispatchGroup;
