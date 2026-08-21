@@ -30,7 +30,7 @@ export function SidebarSearchPanel({
   searchIndexBuilding = false,
 }: SidebarSearchPanelProps) {
   const navigate = useNavigate();
-  const { itemPruneSignal } = useShell();
+  const { itemPruneSignal, sidebarSearchLiveSeq } = useShell();
   const debouncedQuery = useDebouncedValue(searchQuery, 300);
   const [results, setResults] = useState<ItemFile[]>([]);
   const [loadedIdCount, setLoadedIdCount] = useState(0);
@@ -39,6 +39,8 @@ export function SidebarSearchPanel({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const loadMoreAbortRef = useRef<AbortController | null>(null);
+  const softAbortRef = useRef<AbortController | null>(null);
+  const lastSoftSeqRef = useRef(sidebarSearchLiveSeq);
   const resultsCacheKey = sidebarSearchCacheKey(
     debouncedQuery.trim(),
     vaultRevision,
@@ -49,6 +51,8 @@ export function SidebarSearchPanel({
     const query = debouncedQuery.trim();
     loadMoreAbortRef.current?.abort();
     loadMoreAbortRef.current = null;
+    softAbortRef.current?.abort();
+    softAbortRef.current = null;
 
     if (!query) {
       setResults([]);
@@ -99,6 +103,45 @@ export function SidebarSearchPanel({
     };
     // resultsCacheKey encodes query + vaultRevision (path ids change on move).
   }, [debouncedQuery, resultsCacheKey]);
+
+  // Soft refetch on item*/move/delete without cold loading flash (#756).
+  useEffect(() => {
+    if (sidebarSearchLiveSeq === lastSoftSeqRef.current) {
+      return;
+    }
+    lastSoftSeqRef.current = sidebarSearchLiveSeq;
+    const query = debouncedQuery.trim();
+    if (!query || isLoading) {
+      return;
+    }
+    softAbortRef.current?.abort();
+    const controller = new AbortController();
+    softAbortRef.current = controller;
+    const limit = Math.max(loadedIdCount, SIDEBAR_SEARCH_PAGE_SIZE);
+    void fetchSidebarSearchPage(
+      getCollectorService().items,
+      query,
+      nextSidebarSearchPage(0, limit),
+      { signal: controller.signal },
+    )
+      .then((page) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setResults(page.items);
+        setLoadedIdCount(page.fetchedIdCount);
+        setTotalCount(page.totalCount);
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      controller.abort();
+    };
+  }, [sidebarSearchLiveSeq, debouncedQuery, isLoading, loadedIdCount]);
 
   useItemPruneEffect(itemPruneSignal, (itemId) => {
     setResults((previous) => {

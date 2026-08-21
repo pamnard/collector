@@ -103,7 +103,12 @@ describe("generateCover job (#636 / #640)", () => {
       "note.md",
       new Uint8Array([9, 9, 9]),
     );
-    expect(onVaultPresentationChanged).toHaveBeenCalledWith("vault-1");
+    expect(onVaultPresentationChanged).toHaveBeenCalledWith({
+      vaultId: "vault-1",
+      kind: "itemCoverChanged",
+      itemId: "note.md",
+      folderPath: "",
+    });
   });
 
   it("returns retryable fail when cover generation yields null", async () => {

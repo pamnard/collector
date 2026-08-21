@@ -319,6 +319,33 @@ export interface VaultsPort {
   setDefaultVault(vaultId: string): Promise<void>;
 }
 
+/**
+ * Vault presentation change kind (#756).
+ * Mirrored from `@collector/service` vault-presentation-changed contract.
+ */
+export type VaultPresentationChangeKind =
+  | "itemUpserted"
+  | "itemDeleted"
+  | "itemMoved"
+  | "itemCoverChanged"
+  | "folderChanged";
+
+/**
+ * Richer vaultPresentationChanged payload (#756).
+ * Host writers emit scoped events; UI applies incremental updates by relevance.
+ */
+export type VaultPresentationChangedPayload = {
+  vaultId: string;
+  kind: VaultPresentationChangeKind;
+  itemId?: string;
+  /** Upsert / delete / cover — item’s folder. folderChanged — affected folder node. */
+  folderPath?: string;
+  /** Move: source folder. */
+  fromFolderPath?: string;
+  /** Move: destination folder. */
+  toFolderPath?: string;
+};
+
 /** Index sync status port (#361). */
 export interface IndexPort {
   subscribeVaultIndexSyncStatus(
@@ -326,11 +353,11 @@ export interface IndexPort {
   ): Subscription;
   getVaultIndexSyncStatus(): VaultIndexSyncStatus;
   /**
-   * Fires after successful vault presentation writes (item/cover/move) (#623).
-   * UI invalidates presentation caches; writer path is source-agnostic.
+   * Fires after successful vault presentation writes (item/cover/move/folder) (#623 / #756).
+   * UI applies scoped live updates; writer path is source-agnostic.
    */
   subscribeVaultPresentationChanged(
-    onUpdate: (payload: { vaultId: string }) => void,
+    onUpdate: (payload: VaultPresentationChangedPayload) => void,
   ): Subscription;
 }
 

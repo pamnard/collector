@@ -31,7 +31,6 @@ export function useItemDetailSaves(options: {
   setMode: Dispatch<SetStateAction<ItemDetailMode>>;
   setIsSaving: Dispatch<SetStateAction<boolean>>;
   setError: (message: string | null) => void;
-  refreshVault: () => void;
   navigate: NavigateFunction;
 }) {
   const {
@@ -53,7 +52,6 @@ export function useItemDetailSaves(options: {
     setMode,
     setIsSaving,
     setError,
-    refreshVault,
     navigate,
   } = options;
 
@@ -99,7 +97,6 @@ export function useItemDetailSaves(options: {
         setFormValues,
       });
       setMode("view");
-      refreshVault();
       if (updated.id !== id) {
         navigate(`/item/${updated.id}`, { replace: true });
       }
@@ -135,7 +132,6 @@ export function useItemDetailSaves(options: {
       setSourceText(null);
       setSourceBaseline(null);
       setMode("view");
-      refreshVault();
       if (updated.id !== id) {
         navigate(`/item/${updated.id}`, { replace: true });
       }

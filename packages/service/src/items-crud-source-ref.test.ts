@@ -40,8 +40,11 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
     deleteItem.mockReset();
     upsertItem.mockResolvedValue({ id: "Inbox/n.md" });
     readItemRawMarkdown.mockResolvedValue("raw-md");
-    readItemFile.mockResolvedValue({ id: "Inbox/n.md" });
-    writeItemRawMarkdown.mockResolvedValue({ id: "Inbox/n.md" });
+    readItemFile.mockResolvedValue({ id: "Inbox/n.md", folder_path: "Inbox" });
+    writeItemRawMarkdown.mockResolvedValue({
+      id: "Inbox/n.md",
+      folder_path: "Inbox",
+    });
     deleteItem.mockResolvedValue(undefined);
   });
 
@@ -110,7 +113,12 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
     });
 
     expect(onVaultPresentationChanged).toHaveBeenCalledTimes(1);
-    expect(onVaultPresentationChanged).toHaveBeenCalledWith(vaultId);
+    expect(onVaultPresentationChanged).toHaveBeenCalledWith({
+      vaultId,
+      kind: "itemUpserted",
+      itemId: "Inbox/n.md",
+      folderPath: "Inbox",
+    });
     expect(writeItemRawMarkdown).not.toHaveBeenCalled();
   });
 
@@ -118,6 +126,10 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
     const onVaultPresentationChanged = vi.fn();
     const vaultId = "00000000-0000-4000-8000-000000000001";
     readItemRawMarkdown.mockResolvedValue("DIRTY body");
+    writeItemRawMarkdown.mockResolvedValue({
+      id: "Inbox/n.md",
+      folder_path: "Inbox",
+    });
     const crud = createItemsCrud(
       {
         resolveActiveVault: async () => ({
@@ -144,7 +156,12 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
 
     expect(writeItemRawMarkdown).toHaveBeenCalledTimes(1);
     expect(onVaultPresentationChanged).toHaveBeenCalledTimes(1);
-    expect(onVaultPresentationChanged).toHaveBeenCalledWith(vaultId);
+    expect(onVaultPresentationChanged).toHaveBeenCalledWith({
+      vaultId,
+      kind: "itemUpserted",
+      itemId: "Inbox/n.md",
+      folderPath: "Inbox",
+    });
   });
 
   it("rolls back created item when localize fails (#739)", async () => {

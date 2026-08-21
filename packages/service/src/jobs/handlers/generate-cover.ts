@@ -7,6 +7,8 @@ import {
 import type { JobQueue, EnqueueResult } from "../job-queue.js";
 import type { TypedJobHandler } from "../job-registry.js";
 import type { JobHandlerResult } from "../job-types.js";
+import type { VaultPresentationChangedPayload } from "../../vault-presentation-changed.js";
+import { folderPathFromItemPath } from "@collector/shared";
 
 export type GenerateCoverFromMedia = (
   data: Uint8Array,
@@ -18,7 +20,9 @@ export function createGenerateCoverHandler(deps: {
   getContext: () => VaultContext;
   resolveVaultPath: (vaultId: string) => Promise<string>;
   generateCoverFromMedia: GenerateCoverFromMedia;
-  onVaultPresentationChanged?: (vaultId: string) => void;
+  onVaultPresentationChanged?: (
+    payload: VaultPresentationChangedPayload,
+  ) => void;
 }): TypedJobHandler<typeof generateCoverJobType.payload> {
   return async (job): Promise<JobHandlerResult> => {
     const {
@@ -44,7 +48,12 @@ export function createGenerateCoverHandler(deps: {
       };
     }
     await applyItemCover(ctx, vaultPath, vaultId, itemId, cover);
-    deps.onVaultPresentationChanged?.(vaultId);
+    deps.onVaultPresentationChanged?.({
+      vaultId,
+      kind: "itemCoverChanged",
+      itemId,
+      folderPath: folderPathFromItemPath(itemId),
+    });
     return { status: "ok" };
   };
 }

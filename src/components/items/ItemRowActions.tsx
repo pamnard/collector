@@ -44,7 +44,7 @@ export function ItemRowActions({
     ITEM_LINT_BUSY_ID,
     ITEM_LINT_ERROR_ID,
   ]);
-  const { vaultRevision, pruneItem, refreshVault } = useShell();
+  const { vaultRevision, pruneItem } = useShell();
   const folders = useFolderTree(vaultRevision);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -94,7 +94,6 @@ export function ItemRowActions({
     if (updated === undefined) {
       return;
     }
-    refreshVault();
     onUpdated?.();
   };
 

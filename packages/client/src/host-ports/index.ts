@@ -2,6 +2,7 @@ import type {
   IndexPort,
   Subscription,
   VaultIndexSyncStatus,
+  VaultPresentationChangedPayload,
 } from "@collector/api";
 import { subscriptionFromTeardown } from "@collector/api";
 import { SERVICE_HOST_EVENTS } from "@collector/service/wire";
@@ -36,12 +37,12 @@ export function createHostIndexPort(ctx: HostSessionCtx): IndexPort {
       return ctx.cachedSyncStatus;
     },
     subscribeVaultPresentationChanged(
-      onUpdate: (payload: { vaultId: string }) => void,
+      onUpdate: (payload: VaultPresentationChangedPayload) => void,
     ): Subscription {
       const unsubEvent = transport.onEvent(
         SERVICE_HOST_EVENTS.vaultPresentationChanged,
         (payload) => {
-          onUpdate(payload as { vaultId: string });
+          onUpdate(payload as VaultPresentationChangedPayload);
         },
       );
       return subscriptionFromTeardown(unsubEvent);

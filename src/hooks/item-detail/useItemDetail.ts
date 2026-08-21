@@ -37,7 +37,7 @@ export function useItemDetail(): UseItemDetailResult {
   const params = useParams();
   const id = params["*"];
   const navigate = useNavigate();
-  const { refreshVault, vaultRevision, pruneItem } = useShell();
+  const { vaultRevision, pruneItem, itemLiveSignal } = useShell();
   const { error, setError } = useItemDetailError();
   const [item, setItem] = useState<ItemFile | null>(null);
   const [content, setContent] = useState<string | null>(null);
@@ -55,6 +55,7 @@ export function useItemDetail(): UseItemDetailResult {
   const { reloadGateRef } = useItemDetailLoad({
     id,
     vaultRevision,
+    itemLiveSignal,
     setError,
     setItem,
     setContent,
@@ -84,7 +85,6 @@ export function useItemDetail(): UseItemDetailResult {
     setMode,
     setIsSaving,
     setError,
-    refreshVault,
     navigate,
   });
 
@@ -101,7 +101,6 @@ export function useItemDetail(): UseItemDetailResult {
     try {
       await getCollectorService().items.deleteItem(id);
       pruneItem(id);
-      refreshVault();
       navigate("/");
     } catch (err: unknown) {
       reloadGateRef.current.clearLeavingAfterDelete();
@@ -123,7 +122,7 @@ export function useItemDetail(): UseItemDetailResult {
       setContent,
       setItemTagNames,
       setFormValues,
-    }).finally(() => refreshVault());
+    });
   };
 
   return {

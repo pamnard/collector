@@ -11,6 +11,7 @@ import type {
   UpdateItemInput,
 } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
+import { folderPathFromItemPath } from "@collector/shared";
 import {
   createFolder as createFolderOnVault,
   deleteItem as deleteItemOnDisk,
@@ -32,6 +33,7 @@ import {
 } from "@collector/core";
 import { getBacklinksForTarget } from "./backlinks-reverse-cache.js";
 import type { ItemsSearchServiceDeps } from "./items-search.js";
+import type { VaultPresentationChangedPayload } from "./vault-presentation-changed.js";
 
 export type ItemsCrud = {
   getItemById(itemId: string): Promise<GetItemResult>;
@@ -172,10 +174,31 @@ export function createItemsCrud(
     };
   };
 
+  const notifyItemUpserted = (
+    vaultId: string,
+    item: ItemFile,
+    move?: { fromFolderPath: string; toFolderPath: string },
+  ): void => {
+    const payload: VaultPresentationChangedPayload = {
+      vaultId,
+      kind: "itemUpserted",
+      itemId: item.id,
+      folderPath: item.folder_path,
+      ...(move
+        ? {
+            fromFolderPath: move.fromFolderPath,
+            toFolderPath: move.toFolderPath,
+          }
+        : {}),
+    };
+    deps.onVaultPresentationChanged?.(payload);
+  };
+
   const persistNormalizedSource = async (
     itemId: string,
     rawMarkdown: string,
     itemUrl?: string | null,
+    move?: { fromFolderPath: string; toFolderPath: string },
   ): Promise<ItemFile> => {
     const { vault } = await deps.resolveActiveVault();
     const { item, wrote } = await applyNormalizedSource(
@@ -183,8 +206,9 @@ export function createItemsCrud(
       rawMarkdown,
       itemUrl,
     );
-    if (wrote) {
-      deps.onVaultPresentationChanged?.(vault.id);
+    // Move always changes presentation even when body bytes are unchanged.
+    if (wrote || move) {
+      notifyItemUpserted(vault.id, item, move);
     }
     return item;
   };
@@ -226,6 +250,7 @@ export function createItemsCrud(
       sourceRef: input.sourceRef,
     });
     // Localize after create; on failure roll back so remotes never remain (#739).
+    // Create always notifies presentation even when normalize/localize is a no-op (#756).
     try {
       const raw = await readItemRawMarkdown(ctx.fs, path, created.id);
       const { item } = await applyNormalizedSource(
@@ -233,7 +258,7 @@ export function createItemsCrud(
         raw,
         created.url,
       );
-      deps.onVaultPresentationChanged?.(vault.id);
+      notifyItemUpserted(vault.id, item);
       return item;
     } catch (error) {
       console.error("createItem: localize failed; rolling back item", {
@@ -256,10 +281,17 @@ export function createItemsCrud(
 
     let current = existing;
     let currentContent = existingContent;
+    let move:
+      | { fromFolderPath: string; toFolderPath: string }
+      | undefined;
     if (
       input.folder_path !== undefined &&
       input.folder_path !== existing.folder_path
     ) {
+      move = {
+        fromFolderPath: existing.folder_path,
+        toFolderPath: input.folder_path,
+      };
       current = await moveItemToFolder(
         ctx,
         path,
@@ -298,14 +330,20 @@ export function createItemsCrud(
       input.content !== undefined ? (input.content ?? "") : (currentContent ?? "");
     const markdown = serializeItemDocument(nextItem, body, maps.byId);
     // Same normalize + localize + write path as updateItemSource (every note persist).
-    return persistNormalizedSource(nextItem.id, markdown, nextItem.url);
+    return persistNormalizedSource(nextItem.id, markdown, nextItem.url, move);
   };
 
   const deleteItem = async (itemId: string): Promise<void> => {
     const { vault, path } = await deps.resolveActiveVault();
+    const folderPath = folderPathFromItemPath(itemId);
     await deleteItemOnDisk(deps.getContext(), path, itemId);
     deps.onItemDeleted?.(itemId);
-    deps.onVaultPresentationChanged?.(vault.id);
+    deps.onVaultPresentationChanged?.({
+      vaultId: vault.id,
+      kind: "itemDeleted",
+      itemId,
+      folderPath,
+    });
   };
 
   return {

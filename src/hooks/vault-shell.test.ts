@@ -1,13 +1,25 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { Subscription } from "@collector/api";
+import type { Subscription, VaultPresentationChangedPayload } from "@collector/api";
 import {
   createCoalescedVaultRevisionBump,
-  subscribeVaultPresentationRevision,
+  createTrailingPresentationBatch,
+  planVaultPresentationBatch,
+  subscribeVaultPresentationChanged,
+  VAULT_PRESENTATION_BATCH_MS,
   VAULT_REVISION_BUMP_COALESCE_MS,
   type VaultPresentationIndex,
 } from "./vault-shell.ts";
 import { nextItemPruneSignal } from "./useItemPruneEffect.ts";
+import {
+  dashboardLiveActionForEvent,
+  folderCountPatchPlanForEvent,
+  isVaultPresentationPayload,
+  openItemAffectedByEvent,
+  sidebarSearchAffectedByEvent,
+} from "../lib/vault-presentation-affects.ts";
+import { patchFolderTreeItemCounts } from "../lib/folder-tree-count-patch.ts";
+import type { FolderTreeNode } from "@collector/core";
 
 function subscriptionFrom(teardown: () => void): Subscription {
   const unsub = () => {
@@ -17,9 +29,18 @@ function subscriptionFrom(teardown: () => void): Subscription {
   return unsub as Subscription;
 }
 
-describe("subscribeVaultPresentationRevision (#669)", () => {
-  it("calls onBump when vault presentation changes", () => {
-    let listener: (() => void) | undefined;
+const baseUpsert = (folderPath: string): VaultPresentationChangedPayload => ({
+  vaultId: "v",
+  kind: "itemUpserted",
+  itemId: `${folderPath}/n.md`,
+  folderPath,
+});
+
+describe("subscribeVaultPresentationChanged (#756)", () => {
+  it("forwards the full payload to the listener", () => {
+    let listener:
+      | ((payload: VaultPresentationChangedPayload) => void)
+      | undefined;
     const index: VaultPresentationIndex = {
       subscribeVaultPresentationChanged: (onUpdate) => {
         listener = onUpdate;
@@ -28,13 +49,13 @@ describe("subscribeVaultPresentationRevision (#669)", () => {
         });
       },
     };
-    let bumps = 0;
-    const unsubscribe = subscribeVaultPresentationRevision(index, () => {
-      bumps += 1;
+    const received: VaultPresentationChangedPayload[] = [];
+    const unsubscribe = subscribeVaultPresentationChanged(index, (payload) => {
+      received.push(payload);
     });
     assert.equal(typeof listener, "function");
-    listener?.();
-    assert.equal(bumps, 1);
+    listener?.(baseUpsert("Inbox"));
+    assert.deepEqual(received, [baseUpsert("Inbox")]);
     unsubscribe();
     assert.equal(listener, undefined);
   });
@@ -69,7 +90,7 @@ describe("createCoalescedVaultRevisionBump (#653)", () => {
     assert.equal(bumps, 1);
   });
 
-  it("coalesces presentation-changed + refreshVault after one delete into a single bump", () => {
+  it("coalesces rapid full-wipe bumps into a single bump", () => {
     let bumps = 0;
     let t = 0;
     const bump = createCoalescedVaultRevisionBump(
@@ -80,27 +101,10 @@ describe("createCoalescedVaultRevisionBump (#653)", () => {
       () => t,
     );
 
-    // Host vaultPresentationChanged mid/after deleteItem.
     bump();
-    // Explicit refreshVault from useItemDetail / ItemRowActions onUpdated.
     t = 40;
     bump();
 
-    assert.equal(bumps, 1);
-  });
-
-  it("still bumps once for MCP deletes that only emit presentation-changed", () => {
-    let bumps = 0;
-    let t = 0;
-    const bump = createCoalescedVaultRevisionBump(
-      () => {
-        bumps += 1;
-      },
-      VAULT_REVISION_BUMP_COALESCE_MS,
-      () => t,
-    );
-
-    bump();
     assert.equal(bumps, 1);
   });
 
@@ -120,38 +124,212 @@ describe("createCoalescedVaultRevisionBump (#653)", () => {
     bump();
     assert.equal(bumps, 2);
   });
+});
 
-  it("wires presentation subscription through the same coalesced bump (#653)", () => {
-    let listener: (() => void) | undefined;
-    const index: VaultPresentationIndex = {
-      subscribeVaultPresentationChanged: (onUpdate) => {
-        listener = onUpdate;
-        return subscriptionFrom(() => {
-          listener = undefined;
-        });
+describe("trailing presentation batch (#756)", () => {
+  it("flushes accumulated events once after the quiet window", () => {
+    const flushes: unknown[][] = [];
+    const timers: Array<{ fn: () => void; ms: number }> = [];
+    const batch = createTrailingPresentationBatch(
+      (entries) => {
+        flushes.push(entries);
       },
-    };
-
-    let bumps = 0;
-    let t = 0;
-    const bump = createCoalescedVaultRevisionBump(
+      VAULT_PRESENTATION_BATCH_MS,
+      (fn, ms) => {
+        timers.push({ fn, ms });
+        return timers.length as unknown as ReturnType<typeof setTimeout>;
+      },
       () => {
-        bumps += 1;
+        timers.pop();
       },
-      VAULT_REVISION_BUMP_COALESCE_MS,
-      () => t,
     );
-    subscribeVaultPresentationRevision(index, bump);
 
-    // Delete: presentation event then explicit refreshVault.
-    listener?.();
-    t = 10;
-    bump();
-    assert.equal(bumps, 1);
+    batch.push(baseUpsert("A"));
+    batch.push(baseUpsert("B"));
+    assert.equal(flushes.length, 0);
+    assert.equal(timers.length, 1);
+    timers[0]?.fn();
+    assert.equal(flushes.length, 1);
+    assert.equal(flushes[0]?.length, 2);
+  });
 
-    // External MCP delete: presentation only.
-    t = VAULT_REVISION_BUMP_COALESCE_MS + 10;
-    listener?.();
-    assert.equal(bumps, 2);
+  it("plans full wipe for folderChanged or broken payloads", () => {
+    assert.deepEqual(
+      planVaultPresentationBatch([
+        { vaultId: "v", kind: "folderChanged", folderPath: "A" },
+      ]),
+      { type: "fullWipe" },
+    );
+    assert.deepEqual(planVaultPresentationBatch([{ vaultId: "v" }]), {
+      type: "fullWipe",
+    });
+    const upsert = baseUpsert("Inbox");
+    assert.deepEqual(planVaultPresentationBatch([upsert]), {
+      type: "incremental",
+      events: [upsert],
+    });
+  });
+});
+
+describe("dashboardLiveActionForEvent (#756)", () => {
+  it("ignores unrelated folder while viewing folder A or search-driven all", () => {
+    assert.equal(
+      dashboardLiveActionForEvent(
+        { type: "folder", folderPath: "A" },
+        baseUpsert("B"),
+      ),
+      "ignore",
+    );
+  });
+
+  it("soft-refreshes or prunes the active folder without treating cover as list refetch", () => {
+    assert.equal(
+      dashboardLiveActionForEvent(
+        { type: "folder", folderPath: "A" },
+        baseUpsert("A"),
+      ),
+      "softRefresh",
+    );
+    assert.equal(
+      dashboardLiveActionForEvent(
+        { type: "folder", folderPath: "A" },
+        {
+          vaultId: "v",
+          kind: "itemDeleted",
+          itemId: "A/x.md",
+          folderPath: "A",
+        },
+      ),
+      "prune",
+    );
+    assert.equal(
+      dashboardLiveActionForEvent("all", {
+        vaultId: "v",
+        kind: "itemCoverChanged",
+        itemId: "A/x.md",
+        folderPath: "A",
+      }),
+      "coverPatch",
+    );
+  });
+
+  it("move out of active folder prunes; move into soft-refreshes", () => {
+    assert.equal(
+      dashboardLiveActionForEvent(
+        { type: "folder", folderPath: "A" },
+        {
+          vaultId: "v",
+          kind: "itemMoved",
+          itemId: "B/x.md",
+          fromFolderPath: "A",
+          toFolderPath: "B",
+        },
+      ),
+      "prune",
+    );
+    assert.equal(
+      dashboardLiveActionForEvent(
+        { type: "folder", folderPath: "A" },
+        {
+          vaultId: "v",
+          kind: "itemMoved",
+          itemId: "A/x.md",
+          fromFolderPath: "B",
+          toFolderPath: "A",
+        },
+      ),
+      "softRefresh",
+    );
+  });
+});
+
+describe("sidebar / detail relevance (#756)", () => {
+  it("sidebar search soft-refetches on item mutations when query is non-empty", () => {
+    assert.equal(sidebarSearchAffectedByEvent("", baseUpsert("A")), false);
+    assert.equal(sidebarSearchAffectedByEvent("note", baseUpsert("A")), true);
+    assert.equal(
+      sidebarSearchAffectedByEvent("note", {
+        vaultId: "v",
+        kind: "itemCoverChanged",
+        itemId: "A/x.md",
+        folderPath: "A",
+      }),
+      false,
+    );
+  });
+
+  it("open item surfaces reload only for matching itemId", () => {
+    assert.equal(openItemAffectedByEvent("A/x.md", baseUpsert("A")), false);
+    assert.equal(
+      openItemAffectedByEvent("A/x.md", {
+        vaultId: "v",
+        kind: "itemUpserted",
+        itemId: "A/x.md",
+        folderPath: "A",
+      }),
+      true,
+    );
+  });
+
+  it("rejects broken payloads", () => {
+    assert.equal(isVaultPresentationPayload({ vaultId: "v" }), false);
+    assert.equal(isVaultPresentationPayload(baseUpsert("A")), true);
+  });
+});
+
+describe("folder tree count patch (#756)", () => {
+  it("patches counts on a folder and ancestors without replacing unrelated nodes", () => {
+    const child: FolderTreeNode = {
+      name: "Child",
+      path: "A/Child",
+      item_count: 1,
+      children: [],
+    };
+    const a: FolderTreeNode = {
+      name: "A",
+      path: "A",
+      item_count: 2,
+      children: [child],
+    };
+    const b: FolderTreeNode = {
+      name: "B",
+      path: "B",
+      item_count: 5,
+      children: [],
+    };
+    const tree = [a, b];
+    const deltas = new Map<string, number>([
+      ["A/Child", 1],
+      ["A", 1],
+      ["", 1],
+    ]);
+    const next = patchFolderTreeItemCounts(tree, deltas);
+    assert.notEqual(next, tree);
+    assert.equal(next[1], b);
+    assert.equal(next[0]?.item_count, 3);
+    assert.equal(next[0]?.children[0]?.item_count, 2);
+    assert.equal(next[0]?.children[0]?.path, "A/Child");
+  });
+
+  it("plans delete/move deltas and recount for upsert", () => {
+    const del = folderCountPatchPlanForEvent({
+      vaultId: "v",
+      kind: "itemDeleted",
+      itemId: "A/x.md",
+      folderPath: "A",
+    });
+    assert.equal(del.type, "deltas");
+    if (del.type === "deltas") {
+      assert.equal(del.deltas.get("A"), -1);
+    }
+    assert.equal(folderCountPatchPlanForEvent(baseUpsert("A")).type, "recount");
+    assert.equal(
+      folderCountPatchPlanForEvent({
+        vaultId: "v",
+        kind: "folderChanged",
+        folderPath: "A",
+      }).type,
+      "reload",
+    );
   });
 });

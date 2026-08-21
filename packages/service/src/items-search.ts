@@ -24,6 +24,7 @@ import {
   type UpdateItemInput,
 } from "@collector/api";
 import type { ItemFile, VaultMeta } from "@collector/shared";
+import type { VaultPresentationChangedPayload } from "./vault-presentation-changed.js";
 import {
   type AdjacentItemAnchor,
   type IndexSyncProgress,
@@ -99,8 +100,10 @@ export interface ItemsSearchServiceDeps {
   ) => () => void;
   /** Optional UI cache hook after delete. */
   onItemDeleted?: (itemId: string) => void;
-  /** After successful item create/update/delete/source write (#623). */
-  onVaultPresentationChanged?: (vaultId: string) => void;
+  /** After successful item create/update/delete/source write (#623 / #756). */
+  onVaultPresentationChanged?: (
+    payload: VaultPresentationChangedPayload,
+  ) => void;
   createItemId?: () => string;
   syncRepublishThrottleMs?: number;
   findSimilarItems: (

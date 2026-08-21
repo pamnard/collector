@@ -141,7 +141,6 @@ interface SidebarCollectionsProps {
   isSettings: boolean;
   onSelect: (filter: NavFilter) => void;
   vaultRevision: number;
-  refreshVault: () => void;
 }
 
 type LeafDialog =
@@ -153,7 +152,6 @@ export function SidebarCollections({
   isSettings,
   onSelect,
   vaultRevision,
-  refreshVault,
 }: SidebarCollectionsProps) {
   const { openCreate } = useShell();
   const folders = useFolderTree(vaultRevision);
@@ -221,7 +219,6 @@ export function SidebarCollections({
     if (newPath === undefined) {
       return;
     }
-    refreshVault();
     applyNavRewrite(
       rewriteFolderNavFilterAfterMove(activeFilter, folderPath, newPath),
     );
@@ -240,7 +237,6 @@ export function SidebarCollections({
       return;
     }
     setLeafDialog(null);
-    refreshVault();
     applyNavRewrite(
       rewriteFolderNavFilterAfterMove(activeFilter, folderPath, newPath),
     );
@@ -263,7 +259,6 @@ export function SidebarCollections({
     }
     setLeafDialog(null);
     setCreateFolderOpen(false);
-    refreshVault();
     onSelect({ type: "folder", folderPath: newPath });
   };
 
@@ -278,7 +273,6 @@ export function SidebarCollections({
         run: () => deleteFolderAt(folderPath),
       });
       setDeleteSourcePath(null);
-      refreshVault();
       applyNavRewrite(clearFolderNavFilterAfterDelete(activeFilter, folderPath));
     } finally {
       setIsDeletingFolder(false);

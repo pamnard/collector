@@ -22,11 +22,13 @@ export function useItemBacklinks(
   vaultRevision: number,
 ): BacklinkSource[] | null {
   const alerts = useAlerts();
-  const { itemPruneSignal } = useShell();
+  const { itemPruneSignal, itemLiveSignal } = useShell();
   useDismissAlertsOnUnmount([ITEM_BACKLINKS_ERROR_ID]);
   const [backlinks, setBacklinks] = useState<BacklinkSource[] | null>(null);
 
   const itemId = item?.id ?? null;
+  const matchedLiveSeq =
+    itemId && itemLiveSignal?.itemId === itemId ? itemLiveSignal.seq : 0;
 
   useEffect(() => {
     if (itemId === null) {
@@ -66,7 +68,7 @@ export function useItemBacklinks(
     return () => {
       controller.abort();
     };
-  }, [alerts, itemId, vaultRevision]);
+  }, [alerts, itemId, vaultRevision, matchedLiveSeq]);
 
   useItemPruneEffect(itemPruneSignal, (prunedId) => {
     setBacklinks((previous) => {

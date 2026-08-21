@@ -48,6 +48,7 @@ export {
 
 export {
   createVaultPresentationChangedStore,
+  type VaultPresentationChangeKind,
   type VaultPresentationChangedPayload,
   type VaultPresentationChangedStore,
 } from "./vault-presentation-changed.js";

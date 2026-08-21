@@ -88,8 +88,8 @@ export function createDomainServices(deps: DomainServicesDeps): DomainServices {
     kickoffVaultIndexSync: deps.vaultSync.kickoffVaultIndexSync,
     buildSearchFtsQuery,
     addVaultSyncListener: deps.vaultSync.addVaultSyncListener,
-    onVaultPresentationChanged: (vaultId) =>
-      deps.vaultPresentationChanged.notify(vaultId),
+    onVaultPresentationChanged: (payload) =>
+      deps.vaultPresentationChanged.notify(payload),
     findSimilarItems: (itemId, limit) =>
       deps.itemEmbeddings.findSimilarItems(itemId, limit),
     normalizeMarkdown,
@@ -104,8 +104,8 @@ export function createDomainServices(deps: DomainServicesDeps): DomainServices {
     getContext: deps.getContext,
     kickoffVaultIndexSync: deps.vaultSync.kickoffVaultIndexSync,
     addVaultSyncListener: deps.vaultSync.addVaultSyncListener,
-    onVaultPresentationChanged: (vaultId) =>
-      deps.vaultPresentationChanged.notify(vaultId),
+    onVaultPresentationChanged: (payload) =>
+      deps.vaultPresentationChanged.notify(payload),
   });
 
   const mediaCover = createMediaCoverService({
@@ -115,8 +115,8 @@ export function createDomainServices(deps: DomainServicesDeps): DomainServices {
     waitForCoverJob: (jobId) => waitForJobTerminal(deps.requireJobs(), jobId),
     resolveThumbnailPathsBatch: (vaultPath, items) =>
       resolveItemThumbnailPathsBatch(deps.getContext().fs, vaultPath, items),
-    onVaultPresentationChanged: (vaultId) =>
-      deps.vaultPresentationChanged.notify(vaultId),
+    onVaultPresentationChanged: (payload) =>
+      deps.vaultPresentationChanged.notify(payload),
   });
 
   return {

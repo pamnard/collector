@@ -37,7 +37,6 @@ interface AppSidebarProps {
   activeFilter: NavFilter;
   onFilterSelect: (filter: NavFilter) => void;
   vaultRevision: number;
-  refreshVault: () => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
   searchIndexBuilding?: boolean;
@@ -73,7 +72,6 @@ export function Sidebar({
   activeFilter,
   onFilterSelect,
   vaultRevision,
-  refreshVault,
   searchQuery,
   onSearchChange,
   searchIndexBuilding = false,
@@ -204,7 +202,6 @@ export function Sidebar({
                       isSettings={isSettings}
                       onSelect={goToDashboard}
                       vaultRevision={vaultRevision}
-                      refreshVault={refreshVault}
                     />
                   </div>
                 ) : null}

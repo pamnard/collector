@@ -3,6 +3,9 @@ import type { Tag } from "@collector/shared";
 
 const listTagsWithCounts = vi.fn();
 const createTagOnVault = vi.fn();
+const createFolderOnVault = vi.fn();
+const renameFolderOnVault = vi.fn();
+const deleteFolderOnVault = vi.fn();
 const reconcileFolderTreeFromDisk = vi.fn();
 const moveItemToFolder = vi.fn();
 
@@ -12,6 +15,9 @@ vi.mock("@collector/core", async (importOriginal) => {
     ...actual,
     listTagsWithCounts: (...args: unknown[]) => listTagsWithCounts(...args),
     createTag: (...args: unknown[]) => createTagOnVault(...args),
+    createFolder: (...args: unknown[]) => createFolderOnVault(...args),
+    renameFolder: (...args: unknown[]) => renameFolderOnVault(...args),
+    deleteFolder: (...args: unknown[]) => deleteFolderOnVault(...args),
     reconcileFolderTreeFromDisk: (...args: unknown[]) =>
       reconcileFolderTreeFromDisk(...args),
     moveItemToFolder: (...args: unknown[]) => moveItemToFolder(...args),
@@ -30,13 +36,18 @@ describe("createTagsFoldersService", () => {
   };
   const ctx = { fs: {}, index: {} } as never;
   const kickoff = vi.fn();
+  const onVaultPresentationChanged = vi.fn();
 
   beforeEach(() => {
     listTagsWithCounts.mockReset();
     createTagOnVault.mockReset();
+    createFolderOnVault.mockReset();
+    renameFolderOnVault.mockReset();
+    deleteFolderOnVault.mockReset();
     reconcileFolderTreeFromDisk.mockReset();
     moveItemToFolder.mockReset();
     kickoff.mockReset();
+    onVaultPresentationChanged.mockReset();
   });
 
   function createService() {
@@ -45,6 +56,7 @@ describe("createTagsFoldersService", () => {
       getContext: () => ctx,
       kickoffVaultIndexSync: kickoff,
       addVaultSyncListener: () => () => {},
+      onVaultPresentationChanged,
     });
   }
 
@@ -93,11 +105,11 @@ describe("createTagsFoldersService", () => {
     reconcileFolderTreeFromDisk.mockResolvedValue([
       { name: "Inbox", path: "Inbox", item_count: 1, children: [] },
     ]);
-    moveItemToFolder.mockResolvedValue({ id: "a.md" });
+    moveItemToFolder.mockResolvedValue({ id: "Inbox/a.md", folder_path: "Inbox" });
 
     const service = createService();
     const tree = await service.listFolderTree();
-    const moved = await service.moveItemToFolderPath("a.md", "Inbox");
+    const moved = await service.moveItemToFolderPath("Projects/a.md", "Inbox");
 
     expect(reconcileFolderTreeFromDisk).toHaveBeenCalledWith(
       ctx,
@@ -109,9 +121,43 @@ describe("createTagsFoldersService", () => {
       ctx,
       "/vault",
       "v1",
-      "a.md",
+      "Projects/a.md",
       "Inbox",
     );
-    expect(moved).toEqual({ id: "a.md" });
+    expect(moved).toEqual({ id: "Inbox/a.md", folder_path: "Inbox" });
+    expect(onVaultPresentationChanged).toHaveBeenCalledWith({
+      vaultId: "v1",
+      kind: "itemMoved",
+      itemId: "Inbox/a.md",
+      fromFolderPath: "Projects",
+      toFolderPath: "Inbox",
+    });
+  });
+
+  it("emits folderChanged on create/rename/delete folder (#756)", async () => {
+    createFolderOnVault.mockResolvedValue("Projects/New");
+    renameFolderOnVault.mockResolvedValue("Projects/Renamed");
+    deleteFolderOnVault.mockResolvedValue(undefined);
+
+    const service = createService();
+    await service.createFolder("Projects/New");
+    await service.renameFolder("Projects/New", "Projects/Renamed");
+    await service.deleteFolder("Projects/Renamed");
+
+    expect(onVaultPresentationChanged).toHaveBeenNthCalledWith(1, {
+      vaultId: "v1",
+      kind: "folderChanged",
+      folderPath: "Projects/New",
+    });
+    expect(onVaultPresentationChanged).toHaveBeenNthCalledWith(2, {
+      vaultId: "v1",
+      kind: "folderChanged",
+      folderPath: "Projects/Renamed",
+    });
+    expect(onVaultPresentationChanged).toHaveBeenNthCalledWith(3, {
+      vaultId: "v1",
+      kind: "folderChanged",
+      folderPath: "Projects/Renamed",
+    });
   });
 });
