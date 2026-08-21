@@ -274,12 +274,15 @@ export type {
 export {
   EMBEDDING_DIMS,
   EMBEDDING_MODEL_ID,
+  planEmbeddingReconcileTick,
 } from "./embeddings/index.js";
 export type {
   EmbeddingEngine,
+  EmbeddingReconcileTickOptions,
+  EmbeddingReconcileTickResult,
+  EmbeddingReconcileTickStats,
   SimilarItemHit,
 } from "./embeddings/index.js";
-
 export { extractTextLinks } from "./links/extract-text-links.js";
 export type {
   ExtractedTextLink,
