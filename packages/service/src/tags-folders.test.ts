@@ -160,4 +160,80 @@ describe("createTagsFoldersService", () => {
       folderPath: "Projects/Renamed",
     });
   });
+
+  it("kicks index sync only after folder mutators finish (#758)", async () => {
+    createFolderOnVault.mockResolvedValue("Projects/New");
+    renameFolderOnVault.mockResolvedValue("Projects/Renamed");
+    deleteFolderOnVault.mockResolvedValue(undefined);
+    moveItemToFolder.mockResolvedValue({
+      id: "Inbox/a.md",
+      folder_path: "Inbox",
+    });
+
+    const service = createService();
+
+    await service.renameFolder("Projects/Old", "Projects/Renamed");
+    expect(renameFolderOnVault).toHaveBeenCalledTimes(1);
+    expect(kickoff).toHaveBeenCalledTimes(1);
+    expect(kickoff.mock.invocationCallOrder[0]).toBeGreaterThan(
+      renameFolderOnVault.mock.invocationCallOrder[0]!,
+    );
+    expect(onVaultPresentationChanged.mock.invocationCallOrder[0]).toBeGreaterThan(
+      kickoff.mock.invocationCallOrder[0]!,
+    );
+
+    kickoff.mockClear();
+    onVaultPresentationChanged.mockClear();
+    await service.createFolder("Projects/New");
+    expect(kickoff.mock.invocationCallOrder[0]).toBeGreaterThan(
+      createFolderOnVault.mock.invocationCallOrder[0]!,
+    );
+
+    kickoff.mockClear();
+    await service.deleteFolder("Projects/New");
+    expect(kickoff.mock.invocationCallOrder[0]).toBeGreaterThan(
+      deleteFolderOnVault.mock.invocationCallOrder[0]!,
+    );
+
+    kickoff.mockClear();
+    await service.moveItemToFolderPath("Projects/a.md", "Inbox");
+    expect(kickoff.mock.invocationCallOrder[0]).toBeGreaterThan(
+      moveItemToFolder.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("does not kick sync when renameFolder fails before rewrite completes (#758)", async () => {
+    renameFolderOnVault.mockRejectedValue(
+      new Error("UNIQUE constraint failed: Items.id"),
+    );
+
+    await expect(
+      createService().renameFolder("Projects/Old", "Projects/New"),
+    ).rejects.toThrow("UNIQUE constraint failed: Items.id");
+
+    expect(kickoff).not.toHaveBeenCalled();
+    expect(onVaultPresentationChanged).not.toHaveBeenCalled();
+  });
+
+  it("renameFolder race repro: pre-mutation kickoff would collide with rewrite (#758)", async () => {
+    const events: string[] = [];
+    kickoff.mockImplementation(() => {
+      events.push("kickoff");
+    });
+    renameFolderOnVault.mockImplementation(async () => {
+      // Concurrent sync (started by an early kickoff) upserts the new PKs
+      // before rewriteItemIds runs — the UNIQUE failure this issue targets.
+      if (events.includes("kickoff")) {
+        throw new Error("UNIQUE constraint failed: Items.id");
+      }
+      events.push("rename");
+      return "Projects/Renamed";
+    });
+
+    await expect(
+      createService().renameFolder("Projects/Old", "Projects/Renamed"),
+    ).resolves.toBe("Projects/Renamed");
+
+    expect(events).toEqual(["rename", "kickoff"]);
+  });
 });

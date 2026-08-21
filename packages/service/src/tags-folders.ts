@@ -303,14 +303,17 @@ export function createTagsFoldersService(
     return subscriptionFromTeardown(linked.unsubscribe);
   };
 
+  // Folder / item-path mutators must finish disk + index rewrite before
+  // kickoffVaultIndexSync (and layout guard). Kicking sync first races
+  // rewriteItemIds → UNIQUE Items.id while the UI still shows busy (#758).
   const createFolder = async (folderPath: string): Promise<string> => {
     const { vault, path } = await deps.resolveActiveVault();
-    deps.kickoffVaultIndexSync(vault.id, path);
     const created = await createFolderOnVault(
       deps.getContext(),
       path,
       folderPath,
     );
+    deps.kickoffVaultIndexSync(vault.id, path);
     deps.onVaultPresentationChanged?.({
       vaultId: vault.id,
       kind: "folderChanged",
@@ -324,7 +327,6 @@ export function createTagsFoldersService(
     newPath: string,
   ): Promise<string> => {
     const { vault, path } = await deps.resolveActiveVault();
-    deps.kickoffVaultIndexSync(vault.id, path);
     const renamed = await renameFolderOnVault(
       deps.getContext(),
       path,
@@ -332,6 +334,7 @@ export function createTagsFoldersService(
       oldPath,
       newPath,
     );
+    deps.kickoffVaultIndexSync(vault.id, path);
     deps.onVaultPresentationChanged?.({
       vaultId: vault.id,
       kind: "folderChanged",
@@ -342,8 +345,8 @@ export function createTagsFoldersService(
 
   const deleteFolder = async (folderPath: string): Promise<void> => {
     const { vault, path } = await deps.resolveActiveVault();
-    deps.kickoffVaultIndexSync(vault.id, path);
     await deleteFolderOnVault(deps.getContext(), path, vault.id, folderPath);
+    deps.kickoffVaultIndexSync(vault.id, path);
     deps.onVaultPresentationChanged?.({
       vaultId: vault.id,
       kind: "folderChanged",
@@ -356,7 +359,6 @@ export function createTagsFoldersService(
     folderPath: string,
   ): Promise<ItemFile> => {
     const { vault, path } = await deps.resolveActiveVault();
-    deps.kickoffVaultIndexSync(vault.id, path);
     const fromFolderPath = folderPathFromItemPath(itemId);
     const moved = await moveItemToFolder(
       deps.getContext(),
@@ -365,6 +367,7 @@ export function createTagsFoldersService(
       itemId,
       folderPath,
     );
+    deps.kickoffVaultIndexSync(vault.id, path);
     deps.onVaultPresentationChanged?.({
       vaultId: vault.id,
       kind: "itemMoved",
