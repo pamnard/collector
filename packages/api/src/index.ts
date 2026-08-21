@@ -111,6 +111,8 @@ export {
   type UiSessionSettingsSync,
   type UiSessionThumbnailPaths,
   type UiSessionThumbnailResolveProgressiveOptions,
+  type ItemHeroMedia,
+  type ItemHeroMediaKind,
 } from "./ui-session.js";
 
 export {

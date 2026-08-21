@@ -1,4 +1,5 @@
 import type {
+  ItemHeroMedia,
   UiSessionThumbnailPaths,
   UiSessionThumbnailResolveProgressiveOptions,
   VaultIndexSyncStatus,
@@ -25,6 +26,7 @@ function createNullThumbnailPaths(): UiSessionThumbnailPaths {
         options.onResolved(item.id, null);
       }
     },
+    resolveItemHeroMedia: async (): Promise<ItemHeroMedia | null> => null,
   };
 }
 

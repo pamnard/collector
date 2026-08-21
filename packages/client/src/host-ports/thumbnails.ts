@@ -5,6 +5,7 @@
  */
 
 import type {
+  ItemHeroMedia,
   UiSessionThumbnailPaths,
   UiSessionThumbnailResolveProgressiveOptions,
 } from "@collector/api";
@@ -62,6 +63,11 @@ export function createHostThumbnailsPort(
         item: { id: item.id, thumbnail: item.thumbnail ?? null },
       })) as string | null;
       return path;
+    },
+    async resolveItemHeroMedia(item: ItemFile): Promise<ItemHeroMedia | null> {
+      return (await transport.request("resolveItemHeroMedia", {
+        item: { id: item.id },
+      })) as ItemHeroMedia | null;
     },
   };
 }

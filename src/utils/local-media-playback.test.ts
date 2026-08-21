@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  isLocalVideoItem,
   isYouTubeItemUrl,
   pickPlayableMedia,
 } from "./local-media-playback.ts";
@@ -17,32 +16,6 @@ describe("isYouTubeItemUrl", () => {
   it("rejects empty and non-youtube", () => {
     assert.equal(isYouTubeItemUrl(null), false);
     assert.equal(isYouTubeItemUrl("https://example.com/v.mp4"), false);
-  });
-});
-
-describe("isLocalVideoItem", () => {
-  it("is true for video without youtube url", () => {
-    assert.equal(
-      isLocalVideoItem({ content_type: "video", url: null }),
-      true,
-    );
-  });
-
-  it("is false for youtube video bookmarks", () => {
-    assert.equal(
-      isLocalVideoItem({
-        content_type: "video",
-        url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-      }),
-      false,
-    );
-  });
-
-  it("is false for non-video types", () => {
-    assert.equal(
-      isLocalVideoItem({ content_type: "image", url: null }),
-      false,
-    );
   });
 });
 

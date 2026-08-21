@@ -173,6 +173,34 @@ export async function findFirstGalleryImagePath(
   vaultRootPath: string,
   itemRelativePath: string,
 ): Promise<string | null> {
+  return findFirstGalleryPathByMediaType(
+    fs,
+    vaultRootPath,
+    itemRelativePath,
+    "image",
+  );
+}
+
+/** Lex-min gallery video entry (#711 ordering), same scan rules as images. */
+export async function findFirstGalleryVideoPath(
+  fs: FileSystemAdapter,
+  vaultRootPath: string,
+  itemRelativePath: string,
+): Promise<string | null> {
+  return findFirstGalleryPathByMediaType(
+    fs,
+    vaultRootPath,
+    itemRelativePath,
+    "video",
+  );
+}
+
+async function findFirstGalleryPathByMediaType(
+  fs: FileSystemAdapter,
+  vaultRootPath: string,
+  itemRelativePath: string,
+  mediaType: "image" | "video",
+): Promise<string | null> {
   const root = itemMediaRoot(vaultRootPath, itemRelativePath);
   if (!(await fs.exists(root))) {
     return null;
@@ -185,8 +213,7 @@ export async function findFirstGalleryImagePath(
     if (shouldSkipMediaDirEntry(name) || entry.isDirectory) {
       continue;
     }
-    // Stored names keep the original extension (bare or `{id}-{filename}`).
-    if (inferMediaType(name) !== "image") {
+    if (inferMediaType(name) !== mediaType) {
       continue;
     }
     if (bestName === null || name < bestName) {

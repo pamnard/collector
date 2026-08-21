@@ -12,7 +12,7 @@ import {
   serializeDocumentMarkdown,
 } from "@collector/core";
 import type { ItemFile, VaultMeta } from "@collector/shared";
-import type { DashboardItemSort } from "@collector/api";
+import type { DashboardItemSort, ItemHeroMedia } from "@collector/api";
 import type { NavFilter } from "../types/ui";
 import { isFolderFilter, isTagFilter } from "../types/ui";
 import type { UpdateItemInput } from "../types/item";
@@ -414,6 +414,54 @@ export async function resolveItemThumbnailPath(
     const relativePath = resolveItemThumbnailAbsolutePath("", item.id, item.thumbnail);
     return relativePath ? devVaultFsUrl(relativePath) : null;
   }
+  return null;
+}
+
+/** Gallery image → gallery video → cover URL (DevMock disk vault). */
+export async function resolveItemHeroMedia(
+  item: ItemFile,
+): Promise<ItemHeroMedia | null> {
+  ensureWarmedUp();
+  if (!mockStore.isDiskVault()) {
+    return null;
+  }
+
+  const media = await listItemMedia(item.id);
+  const byPath = (a: { absolute_path: string }, b: { absolute_path: string }) =>
+    a.absolute_path.localeCompare(b.absolute_path);
+
+  const images = media
+    .filter((entry) => entry.media_type === "image")
+    .sort(byPath);
+  if (images[0]) {
+    return {
+      kind: "image",
+      filePath: images[0].absolute_path,
+      displayPath: images[0].absolute_path,
+    };
+  }
+
+  const videos = media
+    .filter((entry) => entry.media_type === "video")
+    .sort(byPath);
+  if (videos[0]) {
+    const coverUrl = mockStore.getThumbnailUrl(item.id) ?? null;
+    return {
+      kind: "video",
+      filePath: videos[0].absolute_path,
+      displayPath: coverUrl,
+    };
+  }
+
+  const coverUrl = mockStore.getThumbnailUrl(item.id) ?? null;
+  if (coverUrl) {
+    return {
+      kind: "image",
+      filePath: coverUrl,
+      displayPath: coverUrl,
+    };
+  }
+
   return null;
 }
 

@@ -14,6 +14,15 @@ vi.mock("../dev/mock-collector", () => ({
   resolveItemThumbnailPath: vi.fn(async (item: ItemFile) =>
     item.id ? `/mock/${item.id}` : null,
   ),
+  resolveItemHeroMedia: vi.fn(async (item: ItemFile) =>
+    item.id
+      ? {
+          kind: "image" as const,
+          filePath: `/mock-hero/${item.id}`,
+          displayPath: `/mock-hero/${item.id}`,
+        }
+      : null,
+  ),
 }));
 
 import { isDevMock } from "../dev/is-dev-mock";
