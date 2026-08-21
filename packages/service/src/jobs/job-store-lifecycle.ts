@@ -15,6 +15,19 @@ export function createJobStoreLifecycle(
     );
   }
 
+  /** Return a single claimed (running) job to pending — e.g. stop after claim, before execute. */
+  async function releaseClaim(id: string, nowIso: string): Promise<void> {
+    const changes = await db.execute(
+      `UPDATE jobs
+       SET status = 'pending', started_at = NULL, updated_at = ?
+       WHERE id = ? AND status = 'running'`,
+      [nowIso, id],
+    );
+    if (changes === 0) {
+      throw new Error(`releaseClaim: job not running: ${id}`);
+    }
+  }
+
   async function claimNext(nowIso: string): Promise<JobRow | null> {
     const candidates = await db.select<JobRow>(
       `SELECT * FROM jobs
@@ -105,6 +118,7 @@ export function createJobStoreLifecycle(
 
   return {
     reclaimRunning,
+    releaseClaim,
     claimNext,
     markSucceeded,
     markFailed,

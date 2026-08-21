@@ -93,8 +93,17 @@ export async function createJobQueue(
     throw new Error("job queue timeoutMs must be >= 1");
   }
 
-  const sql = NodeSqliteExecutor.open(options.dbPath);
-  await runJobsMigrations(sql);
+  const sql = await NodeSqliteExecutor.open(options.dbPath);
+  try {
+    await runJobsMigrations(sql);
+  } catch (err) {
+    console.error(
+      "[job-queue] runJobsMigrations failed; closing SQLite executor",
+      { dbPath: options.dbPath, err },
+    );
+    await sql.close();
+    throw err instanceof Error ? err : new Error(String(err));
+  }
   const store = createJobStore(sql);
   const runner = createJobRunner({
     store,

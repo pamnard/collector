@@ -166,7 +166,7 @@ export function createServiceDomainRuntime(
       await mkdir(configDir, { recursive: true });
       await migrateLegacyUnifiedProfileLayout(fs, layout);
     },
-    openSql: async () => NodeSqliteExecutor.open(dbPath),
+    openSql: () => NodeSqliteExecutor.open(dbPath),
     onUnhealthyRebuildStart: async () => {
       await resetOnUnhealthyRebuild();
       vaultsHolder.current?.clearActiveVault();
