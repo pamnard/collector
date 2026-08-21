@@ -3,6 +3,7 @@ import { unionFlagSets } from "../helpers.js";
 import { parseHealth, parseSearch } from "./health-search.js";
 import {
   CREATE_ITEM_FLAGS,
+  IMPORT_FOLDER_FLAGS,
   MOVE_ITEM_FLAGS,
   UPDATE_ITEM_FLAGS,
   UPDATE_ITEM_SOURCE_FLAGS,
@@ -10,6 +11,7 @@ import {
   parseDeleteItem,
   parseGetItem,
   parseGetItemSource,
+  parseImportFolder,
   parseMoveItem,
   parseUpdateItem,
   parseUpdateItemSource,
@@ -44,6 +46,7 @@ export const ALL_COMMAND_FLAGS = unionFlagSets(
   UPDATE_ITEM_SOURCE_FLAGS,
   CREATE_TAG_FLAGS,
   MOVE_ITEM_FLAGS,
+  IMPORT_FOLDER_FLAGS,
   ATTACH_MEDIA_FLAGS,
   REPLACE_MEDIA_FLAGS,
 );
@@ -57,6 +60,7 @@ export const COMMAND_PARSERS: Record<string, CommandParser> = {
   "update-item": parseUpdateItem,
   "update-item-source": parseUpdateItemSource,
   "delete-item": parseDeleteItem,
+  "import-folder": parseImportFolder,
   "create-tag": parseCreateTag,
   "delete-tag": parseDeleteTag,
   "create-folder": parseCreateFolder,

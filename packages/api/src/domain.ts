@@ -71,6 +71,58 @@ export interface ImportDroppedFilesResult {
   createdIds: string[];
 }
 
+/** Host-path folder bulk import (#747). */
+export interface ImportFolderInput {
+  /** Absolute path on the host filesystem. */
+  sourceDirAbs: string;
+  /** Target vault folder; omit/empty → Inbox via createItem. */
+  targetFolderPath?: string;
+}
+
+export interface ImportFolderFailure {
+  relativePath: string;
+  error: string;
+}
+
+export type ImportFolderResultStatus = "ok" | "partial" | "failed";
+
+export interface ImportFolderResult {
+  createdIds: string[];
+  skippedIds: string[];
+  /** Sample of failures (capped); see {@link failed} for the true count. */
+  failures: ImportFolderFailure[];
+  created: number;
+  skipped: number;
+  /** Total failure count (not capped by the failures sample). */
+  failed: number;
+  /** ok when failed===0; partial when some succeeded/skipped with failures; failed when only failures. */
+  status: ImportFolderResultStatus;
+}
+
+export type ImportFolderJobStatus =
+  | "pending"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+
+export interface ImportFolderJobSnapshot {
+  jobId: string;
+  /**
+   * Job-row lifecycle status from the host queue.
+   * Dual-status contract:
+   * - Row `succeeded` + {@link result}.status `partial`|`failed` — handler
+   *   finished; per-file import errors without abort.
+   * - Row `failed` + {@link result}.status `failed` (or `result` null) —
+   *   infrastructure abort / non-retryable fail; do not treat mailbox
+   *   `ok` as success when the row is not `succeeded`.
+   * Treat row `succeeded` as "handler finished", then inspect `result`.
+   */
+  status: ImportFolderJobStatus;
+  result: ImportFolderResult | null;
+  error: string | null;
+}
+
 export interface UpdateItemInput {
   title?: string;
   description?: string;

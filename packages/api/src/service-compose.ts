@@ -41,6 +41,8 @@ export const ITEMS_PORT_KEYS = [
   "updateItem",
   "deleteItem",
   "importDroppedFiles",
+  "importFolder",
+  "getImportFolderJob",
 ] as const satisfies readonly (keyof ItemsPort)[];
 
 export const TAGS_PORT_KEYS = [

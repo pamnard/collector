@@ -31,6 +31,12 @@ export type CliCommand =
       rawMarkdown: string;
     }
   | { name: "delete-item"; itemId: string }
+  | {
+      name: "import-folder";
+      sourceDirAbs: string;
+      folder_path?: string;
+      wait: boolean;
+    }
   | { name: "create-tag"; tagName: string; color?: string | null }
   | { name: "delete-tag"; tagId: string }
   | { name: "create-folder"; folderPath: string }

@@ -2,10 +2,12 @@
  * Typed background job catalog (#629).
  *
  * How to add a new job type:
- * 1. `defineJobType({ id, payload })` here (Zod schema for the payload).
+ * 1. `defineJobType({ id, payload, timeoutMs?, maxAttempts? })` here (Zod schema for the payload).
  * 2. Append the def to `JOB_TYPE_CATALOG` (sole production type-id list).
  * 3. In the host: `registry.register(thatType, handler)` — no runner/poll edits.
  * 4. Enqueue with `{ type: id, payload }` — unknown types and invalid payloads fail fast.
+ *    Optional `timeoutMs` / `maxAttempts` on the type override queue defaults (long-running /
+ *    non-retryable contracts).
  *
  * Timers and RPC paths must only enqueue — never call business handlers directly (#639).
  */
@@ -15,16 +17,39 @@ import { z } from "zod";
 export type JobTypeDef<T extends z.ZodTypeAny = z.ZodTypeAny> = {
   readonly id: string;
   readonly payload: T;
+  /**
+   * Per-type run timeout. When set, overrides the queue default for this type
+   * so long-running work (e.g. folder import) is not killed at 60s.
+   */
+  readonly timeoutMs?: number;
+  /**
+   * Default maxAttempts when enqueue omits it. Use 1 for non-retryable types
+   * where a timed-out Promise.race must not re-enter the same tree.
+   */
+  readonly maxAttempts?: number;
 };
 
 export function defineJobType<T extends z.ZodTypeAny>(def: {
   id: string;
   payload: T;
+  timeoutMs?: number;
+  maxAttempts?: number;
 }): JobTypeDef<T> {
   if (!def.id) {
     throw new Error("job type id must be non-empty");
   }
-  return { id: def.id, payload: def.payload };
+  if (def.timeoutMs !== undefined && def.timeoutMs < 1) {
+    throw new Error(`job type ${def.id} timeoutMs must be >= 1`);
+  }
+  if (def.maxAttempts !== undefined && def.maxAttempts < 1) {
+    throw new Error(`job type ${def.id} maxAttempts must be >= 1`);
+  }
+  return {
+    id: def.id,
+    payload: def.payload,
+    ...(def.timeoutMs !== undefined ? { timeoutMs: def.timeoutMs } : {}),
+    ...(def.maxAttempts !== undefined ? { maxAttempts: def.maxAttempts } : {}),
+  };
 }
 
 export const testNoopJobPayloadSchema = z.object({
@@ -134,6 +159,28 @@ export const dropImportBatchJobType = defineJobType({
   payload: dropImportBatchJobPayloadSchema,
 });
 
+/** Host-path folder bulk import (#747). Large trees may run for hours. */
+export const IMPORT_FOLDER_JOB_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
+/** Host-path folder bulk import (#747). */
+export const importFolderJobPayloadSchema = z.object({
+  vaultId: z.string().min(1),
+  sourceDirAbs: z.string().min(1),
+  targetFolderPath: z.string().optional(),
+});
+export type ImportFolderJobPayload = z.infer<
+  typeof importFolderJobPayloadSchema
+>;
+export const importFolderJobType = defineJobType({
+  id: "importFolder",
+  payload: importFolderJobPayloadSchema,
+  // Explicit long-running contract: do not inherit the 60s queue default.
+  timeoutMs: IMPORT_FOLDER_JOB_TIMEOUT_MS,
+  // Never retry: Promise.race timeouts do not cancel the in-flight handler,
+  // and notes without a canonical url are not idempotent across re-runs.
+  maxAttempts: 1,
+});
+
 /**
  * Production catalog — the single explicit list of job type ids (#629).
  * Phase B types join here; test suites may pass a local catalog to
@@ -147,6 +194,7 @@ export const JOB_TYPE_CATALOG = [
   syncPluginPullJobType,
   generateCoverJobType,
   dropImportBatchJobType,
+  importFolderJobType,
 ] as const;
 
 export type JobTypeId = (typeof JOB_TYPE_CATALOG)[number]["id"];

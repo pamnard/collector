@@ -62,6 +62,19 @@ export async function listVaultItemIds(
   return rows.map((row) => row.id);
 }
 
+/** First item id with exact canonical url in the vault (#747). */
+export async function findItemIdByUrl(
+  selector: SqlIndexSelector,
+  vaultId: string,
+  url: string,
+): Promise<string | null> {
+  const rows = await selector.select<SqlSelectRow>(
+    "SELECT id FROM items WHERE vault_id = ? AND url = ? LIMIT 1",
+    [vaultId, url],
+  );
+  return rows[0]?.id ?? null;
+}
+
 export async function listItemFilesByIds(
   selector: SqlIndexSelector,
   vaultId: string,

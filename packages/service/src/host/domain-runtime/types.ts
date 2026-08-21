@@ -2,7 +2,7 @@ import type { SyncPluginsPort, TelegramSyncPort } from "@collector/api";
 import type { createAppSettingsService } from "../../app-settings.js";
 import type { createCredentialsService } from "../../credentials.js";
 import type { createDashboardSnapshotService } from "../../dashboard-snapshot.js";
-import type { createDropImportService } from "../../drop-import.js";
+import type { createDropImportRuntime } from "./drop-import.js";
 import type { createItemsSearchService } from "../../items-search.js";
 import type { createMediaCoverService } from "../../media-cover.js";
 import type { createTagsFoldersService } from "../../tags-folders.js";
@@ -34,7 +34,7 @@ export interface ServiceDomainRuntime {
   itemsSearch: ReturnType<typeof createItemsSearchService>;
   tagsFolders: ReturnType<typeof createTagsFoldersService>;
   mediaCover: ReturnType<typeof createMediaCoverService>;
-  dropImport: ReturnType<typeof createDropImportService>;
+  dropImport: ReturnType<typeof createDropImportRuntime>;
   vaults: ReturnType<typeof createVaultsService>;
   appSettings: ReturnType<typeof createAppSettingsService>;
   credentials: ReturnType<typeof createCredentialsService>;

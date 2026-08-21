@@ -820,6 +820,11 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     return indexQueries.listVaultItemIds(this.selector, vaultId);
   }
 
+  /** Exact canonical url lookup for folder-import idempotency (#747). */
+  async findItemIdByUrl(vaultId: string, url: string): Promise<string | null> {
+    return indexQueries.findItemIdByUrl(this.selector, vaultId, url);
+  }
+
   override async listItemFilesByIds(
     vaultId: string,
     itemIds: string[],

@@ -226,4 +226,32 @@ export const ITEMS_DISPATCH = {
       return runtime.dropImport.importDroppedFiles({ folder_path, files });
     },
   },
+  [M.importFolder]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.importFolder);
+      const sourceDirAbs = requireString(
+        p.sourceDirAbs,
+        "sourceDirAbs",
+        M.importFolder,
+      );
+      if (p.targetFolderPath !== undefined && typeof p.targetFolderPath !== "string") {
+        badRequest(`${M.importFolder}: targetFolderPath must be a string`);
+      }
+      const targetFolderPath =
+        typeof p.targetFolderPath === "string" ? p.targetFolderPath : undefined;
+      await runtime.ensureInitialized();
+      return runtime.dropImport.importFolder({
+        sourceDirAbs,
+        ...(targetFolderPath === undefined ? {} : { targetFolderPath }),
+      });
+    },
+  },
+  [M.getImportFolderJob]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.getImportFolderJob);
+      const jobId = requireString(p.jobId, "jobId", M.getImportFolderJob);
+      await runtime.ensureInitialized();
+      return runtime.dropImport.getImportFolderJob(jobId);
+    },
+  },
 } satisfies DomainDispatchGroup;

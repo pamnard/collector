@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   JOB_TYPE_CATALOG,
   defineJobType,
+  importFolderJobType,
   testNoopJobType,
 } from "./job-types.js";
 
@@ -39,5 +40,12 @@ describe("job type catalog (#629)", () => {
     });
     expect(t.id).toBe("example");
     expect(t.payload.parse({})).toEqual({});
+  });
+
+  it("importFolder declares a long-running non-retryable contract (#747)", () => {
+    expect(importFolderJobType.timeoutMs).toBeGreaterThanOrEqual(
+      60 * 60 * 1000,
+    );
+    expect(importFolderJobType.maxAttempts).toBe(1);
   });
 });

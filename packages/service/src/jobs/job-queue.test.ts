@@ -471,6 +471,61 @@ describe("createJobQueue (#628 / #629)", () => {
     await queue.stop();
   });
 
+  it("uses per-type timeoutMs instead of the queue default (#747)", async () => {
+    const dbPath = tempJobsPath();
+    const long = defineJobType({
+      id: "long-type",
+      payload: z.object({}),
+      timeoutMs: 2_000,
+    });
+    const registry = createJobRegistry([long]);
+    registry.register(long, async () => {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      return { status: "ok" };
+    });
+    const queue = await createJobQueue({
+      dbPath,
+      registry,
+      pollIntervalMs: 20,
+      // Would fail the 150ms handler if used instead of the type timeout.
+      timeoutMs: 40,
+    });
+    queue.start();
+
+    await queue.enqueue({ type: "long-type" });
+    await waitFor(async () => (await queue.stats()).succeeded === 1);
+    await queue.stop();
+  });
+
+  it("uses per-type maxAttempts when enqueue omits it (#747)", async () => {
+    const dbPath = tempJobsPath();
+    let calls = 0;
+    const once = defineJobType({
+      id: "once-type",
+      payload: z.object({}),
+      maxAttempts: 1,
+    });
+    const registry = createJobRegistry([once]);
+    registry.register(once, async () => {
+      calls += 1;
+      return { status: "fail", retryable: true, error: "retry me" };
+    });
+    const queue = await createJobQueue({
+      dbPath,
+      registry,
+      pollIntervalMs: 20,
+      timeoutMs: 1000,
+    });
+    queue.start();
+
+    const { id } = await queue.enqueue({ type: "once-type" });
+    await waitFor(async () => (await queue.stats()).failed === 1);
+    const row = await queue.getJob(id);
+    expect(row?.max_attempts).toBe(1);
+    expect(calls).toBe(1);
+    await queue.stop();
+  });
+
   it("does not invoke onPermanentFailure for transient retry (#630)", async () => {
     const dbPath = tempJobsPath();
     const failures: unknown[] = [];

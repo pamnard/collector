@@ -158,4 +158,51 @@ describe("runCollectorCli unit smoke", () => {
     expect(JSON.parse(stdout.join("\n")).title).toBe("CLI note");
     expect(close).toHaveBeenCalledTimes(1);
   });
+
+  it("import-folder --wait exits 1 when result.failed > 0", async () => {
+    const close = vi.fn(async () => undefined);
+    const importFolder = vi.fn(async () => ({ jobId: "job-1" }));
+    const getImportFolderJob = vi.fn(async () => ({
+      jobId: "job-1",
+      status: "succeeded",
+      result: {
+        createdIds: [],
+        skippedIds: [],
+        failures: [{ relativePath: "a.md", error: "boom" }],
+        created: 0,
+        skipped: 0,
+        failed: 1,
+        status: "failed",
+      },
+      error: null,
+    }));
+    createHttpHostTransport.mockResolvedValue({});
+    createCollectorHostServiceClient.mockReturnValue({
+      health: vi.fn(),
+      close,
+      items: { importFolder, getImportFolderJob },
+      tags: {},
+      folders: {},
+      media: {},
+    });
+    const stdout: string[] = [];
+    const code = await runCollectorCli(
+      [
+        ...BASE,
+        "--data-dir",
+        "/tmp/collector-data",
+        "import-folder",
+        "--path",
+        "/abs/notes",
+        "--wait",
+      ],
+      {
+        stdout: (line) => stdout.push(line),
+        stderr: () => {},
+      },
+    );
+    expect(code).toBe(1);
+    expect(JSON.parse(stdout.join("\n")).result.failed).toBe(1);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
 });

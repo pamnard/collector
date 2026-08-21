@@ -5,6 +5,8 @@ import type {
   FolderTreeNode,
   ImportDroppedFilesInput,
   ImportDroppedFilesResult,
+  ImportFolderInput,
+  ImportFolderJobSnapshot,
   IndexSyncProgress,
   MediaWithPath,
   NavFilter,
@@ -242,6 +244,13 @@ export interface ItemsPort {
   importDroppedFiles(
     input: ImportDroppedFilesInput,
   ): Promise<ImportDroppedFilesResult>;
+  /**
+   * Enqueue host-path folder import and return immediately (#747).
+   * Poll {@link ItemsPort.getImportFolderJob} for status/result.
+   */
+  importFolder(input: ImportFolderInput): Promise<{ jobId: string }>;
+  /** Snapshot of an {@link ItemsPort.importFolder} job (#747). */
+  getImportFolderJob(jobId: string): Promise<ImportFolderJobSnapshot>;
 }
 
 /** Tags port (#361). */
