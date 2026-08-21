@@ -17,6 +17,7 @@ import {
   writeItemFile,
 } from "./item-io.js";
 import { deleteItem } from "./item-operations.js";
+import { refreshItemEmbeddingAfterWrite } from "./item-embedding-refresh.js";
 import { ftsFieldsFromDocumentMarkdown } from "./frontmatter.js";
 import {
   basename,
@@ -236,6 +237,13 @@ export async function moveItemToFolder(
       fileMtimeMs: fileStat.mtimeMs,
     },
     vaultId,
+  );
+  await refreshItemEmbeddingAfterWrite(
+    ctx,
+    vaultPath,
+    vaultId,
+    updated,
+    fts.content,
   );
   return updated;
 }
