@@ -10,7 +10,6 @@ import { itemGridCoverSlot } from "./item-grid-cover-slot";
 
 export function useItemGridCover(args: {
   thumbnailPath: string | null | undefined;
-  itemUrl: string | undefined;
   /** Near-viewport cards decode; offscreen cards defer until scroll. */
   shouldDecode: boolean;
 }): {
@@ -23,7 +22,7 @@ export function useItemGridCover(args: {
   onCoverImgError: () => void;
   onCoverImgRef: (img: HTMLImageElement | null) => void;
 } {
-  const { thumbnailPath, itemUrl, shouldDecode } = args;
+  const { thumbnailPath, shouldDecode } = args;
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
   const [coverSettled, setCoverSettled] = useState(false);
   const [isPortraitCover, setIsPortraitCover] = useState(false);
@@ -31,9 +30,7 @@ export function useItemGridCover(args: {
   const coverSettledRef = useRef(coverSettled);
 
   const expectedCoverSrc =
-    thumbnailPath === undefined
-      ? null
-      : resolveCoverSrc(thumbnailPath, itemUrl);
+    thumbnailPath === undefined ? null : resolveCoverSrc(thumbnailPath);
   const { showCover, loadCover } = itemGridCoverSlot({
     expectedCoverSrc,
     coverSrc,
@@ -50,9 +47,7 @@ export function useItemGridCover(args: {
 
   useEffect(() => {
     const resolvedSrc =
-      thumbnailPath === undefined
-        ? null
-        : resolveCoverSrc(thumbnailPath, itemUrl);
+      thumbnailPath === undefined ? null : resolveCoverSrc(thumbnailPath);
     const plan = planItemGridCoverDecode({
       thumbnailPath,
       resolvedSrc,
@@ -82,7 +77,7 @@ export function useItemGridCover(args: {
     setCoverSrc(plan.src);
     setCoverSettled(false);
     setIsPortraitCover(false);
-  }, [itemUrl, shouldDecode, thumbnailPath]);
+  }, [shouldDecode, thumbnailPath]);
 
   useEffect(() => {
     // Timeout follows in-flight loadCover even after leaving the near zone

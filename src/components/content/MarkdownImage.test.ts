@@ -6,15 +6,13 @@ import {
 } from "../../utils/asset-src";
 import { resolveMarkdownImageSrc } from "./MarkdownImage";
 
-describe("resolveMarkdownImageSrc (#590)", () => {
+describe("resolveMarkdownImageSrc (#590 / #739)", () => {
   beforeEach(() => {
     clearHostMediaCredentials();
   });
 
-  it("leaves https URLs unchanged", () => {
-    expect(resolveMarkdownImageSrc("https://example.com/a.png")).toBe(
-      "https://example.com/a.png",
-    );
+  it("returns empty src for remote https images (#739)", () => {
+    expect(resolveMarkdownImageSrc("https://example.com/a.png")).toBe("");
   });
 
   it("maps disk paths to host /media/file when credentials are set", () => {

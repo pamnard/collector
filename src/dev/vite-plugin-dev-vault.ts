@@ -136,14 +136,7 @@ async function resolveThumbnailUrl(
     return vaultFsUrl(relative(vaultRoot, galleryAbs).replace(/\\/g, "/"));
   }
 
-  if (
-    item.thumbnail &&
-    (item.thumbnail.startsWith("http://") ||
-      item.thumbnail.startsWith("https://"))
-  ) {
-    return item.thumbnail;
-  }
-
+  // Remote http(s) thumbnails are not display assets (#739).
   return null;
 }
 

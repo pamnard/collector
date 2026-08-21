@@ -1,40 +1,45 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import { getYouTubeThumbnail } from "./youtube-thumbnail.ts";
+import { describe, it } from "vitest";
+import { parseYouTubeVideoId, isYouTubeWatchUrl } from "./youtube-thumbnail.ts";
 
-describe("getYouTubeThumbnail", () => {
-  it("resolves watch, short, and youtu.be URLs", () => {
+describe("parseYouTubeVideoId", () => {
+  it("extracts ids from common YouTube URL shapes", () => {
     assert.equal(
-      getYouTubeThumbnail("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
-      "https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg",
+      parseYouTubeVideoId("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+      "dQw4w9WgXcQ",
     );
+    assert.equal(parseYouTubeVideoId("https://youtu.be/dQw4w9WgXcQ"), "dQw4w9WgXcQ");
     assert.equal(
-      getYouTubeThumbnail("https://youtu.be/dQw4w9WgXcQ"),
-      "https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg",
-    );
-    assert.equal(
-      getYouTubeThumbnail("https://www.youtube.com/shorts/dQw4w9WgXcQ"),
-      "https://img.youtube.com/vi/dQw4w9WgXcQ/mqdefault.jpg",
+      parseYouTubeVideoId("https://www.youtube.com/shorts/dQw4w9WgXcQ"),
+      "dQw4w9WgXcQ",
     );
   });
 
   it("does not treat Reddit (or other) URLs with a path substring v/ as YouTube", () => {
     assert.equal(
-      getYouTubeThumbnail(
-        "https://www.reddit.com/r/aigamedev/comments/1s76q5f/finally_figured_out_how_to_make_decent_animations/",
+      parseYouTubeVideoId(
+        "https://www.reddit.com/r/aigamedev/comments/1abc/v/title/",
       ),
       null,
     );
     assert.equal(
-      getYouTubeThumbnail(
-        "https://www.reddit.com/r/aigamedev/comments/1rf8t2x/released_a_super_early_testing_build_of_my_hex/",
+      parseYouTubeVideoId(
+        "https://example.com/watch?v=dQw4w9WgXcQ",
       ),
       null,
     );
   });
 
-  it("returns null for unrelated hosts and garbage", () => {
-    assert.equal(getYouTubeThumbnail("https://example.com/watch?v=abc"), null);
-    assert.equal(getYouTubeThumbnail("not-a-url"), null);
+  it("returns null for non-YouTube / invalid", () => {
+    assert.equal(parseYouTubeVideoId("https://example.com/watch?v=abc"), null);
+    assert.equal(parseYouTubeVideoId("not-a-url"), null);
+  });
+
+  it("isYouTubeWatchUrl mirrors id parse", () => {
+    assert.equal(
+      isYouTubeWatchUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+      true,
+    );
+    assert.equal(isYouTubeWatchUrl("https://example.com"), false);
   });
 });

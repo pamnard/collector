@@ -45,8 +45,8 @@ describe("resolveThumbnailCandidate (#383)", () => {
     ).toBe(join(vault, "notes", "thumb.jpg"));
   });
 
-  it("returns remote http thumbnail without requiring a local file", () => {
+  it("returns null for remote http thumbnail (#739)", () => {
     const url = "https://example.com/cover.jpg";
-    expect(resolveThumbnailCandidate(vault, "item.md", url)).toBe(url);
+    expect(resolveThumbnailCandidate(vault, "item.md", url)).toBeNull();
   });
 });

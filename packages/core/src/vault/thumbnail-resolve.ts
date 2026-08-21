@@ -3,7 +3,8 @@
  * host thumbnail resolve / cover paths).
  *
  * Cover membership is on disk (#276): `media/<noteUuid>/cover.webp`, then
- * gallery image. Frontmatter paths are not the SoT.
+ * gallery image. Frontmatter paths are not the SoT. Remote http(s) is never
+ * a display source (#739) — localize at ingest/save instead.
  *
  * Issue #255: domain host must not stub this to null.
  * Issue #544: progressive emit + bounded parallel resolve.
@@ -50,15 +51,8 @@ async function resolveOneThumbnail(
     return galleryImage;
   }
 
-  // Remote URL only — not a vault file path (#276: no FM attachment addresses).
-  if (
-    item.thumbnail &&
-    (item.thumbnail.startsWith("http://") ||
-      item.thumbnail.startsWith("https://"))
-  ) {
-    return item.thumbnail;
-  }
-
+  // Remote http(s) thumbnails are not display assets (#739). Cover/gallery on
+  // disk only; FM `thumbnail` URLs must be localized at ingest/save.
   return null;
 }
 

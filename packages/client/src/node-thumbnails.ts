@@ -22,11 +22,12 @@ export function resolveThumbnailCandidate(
   if (!thumbnail) {
     return null;
   }
+  if (thumbnail.startsWith("http://") || thumbnail.startsWith("https://")) {
+    // Remote URLs are not vault display assets (#739).
+    return null;
+  }
   if (thumbnail.startsWith("/") || /^[A-Za-z]:/.test(thumbnail)) {
     return existsSync(thumbnail) ? thumbnail : null;
-  }
-  if (thumbnail.startsWith("http://") || thumbnail.startsWith("https://")) {
-    return thumbnail;
   }
   const folder = dirname(itemId);
   const candidate =

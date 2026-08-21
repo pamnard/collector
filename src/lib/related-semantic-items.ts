@@ -75,10 +75,7 @@ export async function loadRelatedSemanticTeasers(options: {
 
   const resolved = ordered.map((item) => ({
     item,
-    thumbnail: resolveCoverSrc(
-      paths.get(item.id) ?? null,
-      item.url ?? undefined,
-    ),
+    thumbnail: resolveCoverSrc(paths.get(item.id) ?? null),
   }));
 
   const imageForms = await Promise.all(
