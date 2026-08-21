@@ -1,5 +1,6 @@
 import type { SyncNowResult } from "@collector/api";
 import {
+  JOB_PRIORITY_BULK,
   syncPluginPullJobType,
   type SyncPluginPullJobPayload,
 } from "@collector/shared";
@@ -51,6 +52,7 @@ export function enqueueSyncPluginPull(
   return queue.enqueue({
     type: "syncPluginPull",
     payload,
+    priority: JOB_PRIORITY_BULK,
     idempotencyKey: `syncPluginPull:${payload.pluginId}`,
   });
 }

@@ -10,9 +10,49 @@
  *    non-retryable contracts).
  *
  * Timers and RPC paths must only enqueue — never call business handlers directly (#639).
+ *
+ * Scheduling policy (#746): interactive vault open/browse/get stays preferred over
+ * bulk vault-mutating work. Bulk mutators enqueue at JOB_PRIORITY_BULK; the runner
+ * allows at most one such job in flight under default concurrency so the second
+ * slot remains available. Interactive create/update stay direct RPC (not jobs).
+ * Priority alone does not make sync SQLite non-blocking.
  */
 
 import { z } from "zod";
+
+/** Interactive-class jobs (claim before bulk). */
+export const JOB_PRIORITY_INTERACTIVE = 100;
+/** Vault-mutating bulk jobs (below default unset priority). */
+export const JOB_PRIORITY_BULK = -10;
+
+/** Production vault-mutating bulk types that share the single bulk mutator slot. */
+export const VAULT_MUTATING_BULK_JOB_TYPE_IDS = [
+  "dropImportBatch",
+  "syncPluginPull",
+  "vaultIndexSync",
+  "reindexVaultBatch",
+] as const;
+
+export type VaultMutatingBulkJobTypeId =
+  (typeof VAULT_MUTATING_BULK_JOB_TYPE_IDS)[number];
+
+const vaultMutatingBulkJobTypeIdSet: ReadonlySet<string> = new Set(
+  VAULT_MUTATING_BULK_JOB_TYPE_IDS,
+);
+
+export function isVaultMutatingBulkJobType(type: string): boolean {
+  return vaultMutatingBulkJobTypeIdSet.has(type);
+}
+
+export function isLowPriorityVaultMutatingJob(job: {
+  type: string;
+  priority: number;
+}): boolean {
+  return (
+    isVaultMutatingBulkJobType(job.type) &&
+    job.priority <= JOB_PRIORITY_BULK
+  );
+}
 
 export type JobTypeDef<T extends z.ZodTypeAny = z.ZodTypeAny> = {
   readonly id: string;

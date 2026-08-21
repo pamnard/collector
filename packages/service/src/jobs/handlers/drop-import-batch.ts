@@ -5,6 +5,7 @@ import type {
 } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
 import {
+  JOB_PRIORITY_BULK,
   dropImportBatchJobType,
   type DropImportBatchJobPayload,
 } from "@collector/shared";
@@ -67,5 +68,6 @@ export function enqueueDropImportBatch(
   return queue.enqueue({
     type: "dropImportBatch",
     payload,
+    priority: JOB_PRIORITY_BULK,
   });
 }

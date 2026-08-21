@@ -1,4 +1,8 @@
 import type { SqlMigrator } from "@collector/db";
+import {
+  JOB_PRIORITY_BULK,
+  VAULT_MUTATING_BULK_JOB_TYPE_IDS,
+} from "@collector/shared";
 import type { JobRow } from "./job-store-types.js";
 import type { JobStoreQuery } from "./job-store-query.js";
 
@@ -28,13 +32,27 @@ export function createJobStoreLifecycle(
     }
   }
 
-  async function claimNext(nowIso: string): Promise<JobRow | null> {
+  async function claimNext(
+    nowIso: string,
+    options?: { skipLowPriorityVaultMutators?: boolean },
+  ): Promise<JobRow | null> {
+    const skipLowPriorityVaultMutators =
+      options?.skipLowPriorityVaultMutators === true;
+    const excludeTypes = skipLowPriorityVaultMutators
+      ? VAULT_MUTATING_BULK_JOB_TYPE_IDS
+      : [];
+    const params: unknown[] = [nowIso];
+    let typeFilter = "";
+    if (excludeTypes.length > 0) {
+      typeFilter = ` AND (type NOT IN (${excludeTypes.map(() => "?").join(", ")}) OR priority > ?)`;
+      params.push(...excludeTypes, JOB_PRIORITY_BULK);
+    }
     const candidates = await db.select<JobRow>(
       `SELECT * FROM jobs
-       WHERE status = 'pending' AND available_at <= ?
+       WHERE status = 'pending' AND available_at <= ?${typeFilter}
        ORDER BY priority DESC, created_at ASC
        LIMIT 1`,
-      [nowIso],
+      params,
     );
     const candidate = candidates[0];
     if (!candidate) {

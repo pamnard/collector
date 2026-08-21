@@ -4,6 +4,7 @@ import {
   type VaultContext,
 } from "@collector/core";
 import {
+  JOB_PRIORITY_BULK,
   reindexVaultBatchJobType,
   type ReindexVaultBatchJobPayload,
 } from "@collector/shared";
@@ -89,6 +90,7 @@ export function enqueueReindexVaultBatch(
   return queue.enqueue({
     type: "reindexVaultBatch",
     payload,
+    priority: JOB_PRIORITY_BULK,
     idempotencyKey: batchIdempotencyKey(
       payload.vaultId,
       payload.itemIds,

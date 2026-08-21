@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as concurrency from "@collector/core";
 import {
   createDropImportService,
   resolveImportItemFolder,
@@ -183,5 +184,35 @@ describe("createDropImportService", () => {
         content_type: "image",
       }),
     );
+  });
+
+  it("yields to the event loop between files (#746)", async () => {
+    const yieldSpy = vi
+      .spyOn(concurrency, "yieldToEventLoop")
+      .mockResolvedValue(undefined);
+
+    await service().importDroppedFiles({
+      files: [
+        {
+          relativePath: "a.png",
+          name: "a.png",
+          bytes: new Uint8Array([1]),
+        },
+        {
+          relativePath: "b.png",
+          name: "b.png",
+          bytes: new Uint8Array([2]),
+        },
+        {
+          relativePath: "c.md",
+          name: "c.md",
+          bytes: new TextEncoder().encode("# c\n"),
+        },
+      ],
+    });
+
+    // Yield once after each file except the last.
+    expect(yieldSpy).toHaveBeenCalledTimes(2);
+    yieldSpy.mockRestore();
   });
 });
