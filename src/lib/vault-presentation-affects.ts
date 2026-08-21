@@ -7,6 +7,7 @@ import { folderParentPath } from "@collector/shared";
 import { isFolderFilter, isTagFilter, type NavFilter } from "../types/ui.ts";
 
 const KNOWN_KINDS = new Set<VaultPresentationChangedPayload["kind"]>([
+  "itemCreated",
   "itemUpserted",
   "itemDeleted",
   "itemMoved",
@@ -109,7 +110,7 @@ export function dashboardLiveActionForEvent(
     return "ignore";
   }
 
-  if (event.kind === "itemUpserted") {
+  if (event.kind === "itemCreated" || event.kind === "itemUpserted") {
     if (filter === "all") {
       return "softRefresh";
     }
@@ -133,6 +134,7 @@ export function sidebarSearchAffectedByEvent(
     return false;
   }
   return (
+    event.kind === "itemCreated" ||
     event.kind === "itemUpserted" ||
     event.kind === "itemDeleted" ||
     event.kind === "itemMoved"
@@ -179,9 +181,9 @@ function addAncestorDeltas(
 }
 
 /**
- * Hierarchical item_count rollup patch plan.
- * itemUpserted without move fields may be create or update — recount via
- * listFolderTree (no vaultRevision) so counts stay correct without +1 on edits.
+ * Hierarchical item_count rollup patch plan (#759).
+ * itemCreated → ±1 (create); itemUpserted without move → none (edit);
+ * move fields / itemMoved / itemDeleted → deltas; folderChanged → reload.
  */
 export function folderCountPatchPlanForEvent(
   event: VaultPresentationChangedPayload,
@@ -203,9 +205,12 @@ export function folderCountPatchPlanForEvent(
     addAncestorDeltas(deltas, event.toFolderPath, 1);
     return deltas.size > 0 ? { type: "deltas", deltas } : { type: "none" };
   }
-  if (event.kind === "itemUpserted") {
-    return { type: "recount" };
+  if (event.kind === "itemCreated") {
+    const deltas = new Map<string, number>();
+    addAncestorDeltas(deltas, event.folderPath, 1);
+    return deltas.size > 0 ? { type: "deltas", deltas } : { type: "none" };
   }
+  // Edit upsert: counts unchanged.
   return { type: "none" };
 }
 

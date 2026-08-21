@@ -8,6 +8,7 @@ import type { Subscription } from "@collector/api";
 import { subscriptionFromTeardown } from "@collector/api";
 
 export type VaultPresentationChangeKind =
+  | "itemCreated"
   | "itemUpserted"
   | "itemDeleted"
   | "itemMoved"

@@ -324,6 +324,7 @@ export interface VaultsPort {
  * Mirrored from `@collector/service` vault-presentation-changed contract.
  */
 export type VaultPresentationChangeKind =
+  | "itemCreated"
   | "itemUpserted"
   | "itemDeleted"
   | "itemMoved"
