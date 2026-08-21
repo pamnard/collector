@@ -4,8 +4,11 @@
  * How to add a new job type:
  * 1. `defineJobType({ id, payload, timeoutMs?, maxAttempts? })` here (Zod schema for the payload).
  * 2. Append the def to `JOB_TYPE_CATALOG` (sole production type-id list).
- * 3. In the host: `registry.register(thatType, handler)` — no runner/poll edits.
- * 4. Enqueue with `{ type: id, payload }` — unknown types and invalid payloads fail fast.
+ * 3. If the job mutates the vault in bulk (import / sync / reindex family), also append
+ *    its id to `VAULT_MUTATING_BULK_JOB_TYPE_IDS` and enqueue at `JOB_PRIORITY_BULK`
+ *    (fail-fast otherwise) so it shares the single bulk-mutator runner slot.
+ * 4. In the host: `registry.register(thatType, handler)` — no runner/poll edits.
+ * 5. Enqueue with `{ type: id, payload }` — unknown types and invalid payloads fail fast.
  *    Optional `timeoutMs` / `maxAttempts` on the type override queue defaults (long-running /
  *    non-retryable contracts).
  *
@@ -50,10 +53,7 @@ export function isVaultMutatingBulkJobType(type: string): boolean {
  * Slot membership is by type id so enqueue without BULK priority cannot bypass
  * the semaphore; enqueue still requires priority === JOB_PRIORITY_BULK.
  */
-export function isLowPriorityVaultMutatingJob(job: {
-  type: string;
-  priority?: number;
-}): boolean {
+export function isVaultMutatingBulkJob(job: { type: string }): boolean {
   return isVaultMutatingBulkJobType(job.type);
 }
 

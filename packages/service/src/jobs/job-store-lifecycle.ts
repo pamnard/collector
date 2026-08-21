@@ -31,11 +31,11 @@ export function createJobStoreLifecycle(
 
   async function claimNext(
     nowIso: string,
-    options?: { skipLowPriorityVaultMutators?: boolean },
+    options?: { skipVaultMutatingBulkJobs?: boolean },
   ): Promise<JobRow | null> {
-    const skipLowPriorityVaultMutators =
-      options?.skipLowPriorityVaultMutators === true;
-    const excludeTypes = skipLowPriorityVaultMutators
+    const skipVaultMutatingBulkJobs =
+      options?.skipVaultMutatingBulkJobs === true;
+    const excludeTypes = skipVaultMutatingBulkJobs
       ? VAULT_MUTATING_BULK_JOB_TYPE_IDS
       : [];
     const params: unknown[] = [nowIso];

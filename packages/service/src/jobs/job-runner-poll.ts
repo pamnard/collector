@@ -1,4 +1,4 @@
-import { isLowPriorityVaultMutatingJob } from "@collector/shared";
+import { isVaultMutatingBulkJob } from "@collector/shared";
 import type { JobStore } from "./job-store.js";
 import type { ExecuteJob } from "./job-runner-execute.js";
 
@@ -16,7 +16,7 @@ export function createJobPoll(deps: {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let tickRunning = false;
   const inFlight = new Set<Promise<void>>();
-  let lowPriorityVaultMutatorsInFlight = 0;
+  let vaultMutatingBulkJobsInFlight = 0;
 
   function clearPollTimer(): void {
     if (timer) {
@@ -53,7 +53,7 @@ export function createJobPoll(deps: {
     try {
       while (!isStopped() && inFlight.size < concurrency) {
         const job = await store.claimNext(now().toISOString(), {
-          skipLowPriorityVaultMutators: lowPriorityVaultMutatorsInFlight >= 1,
+          skipVaultMutatingBulkJobs: vaultMutatingBulkJobsInFlight >= 1,
         });
         if (!job) {
           break;
@@ -65,14 +65,14 @@ export function createJobPoll(deps: {
           break;
         }
         claimed += 1;
-        const holdsBulkSlot = isLowPriorityVaultMutatingJob(job);
+        const holdsBulkSlot = isVaultMutatingBulkJob(job);
         if (holdsBulkSlot) {
-          lowPriorityVaultMutatorsInFlight += 1;
+          vaultMutatingBulkJobsInFlight += 1;
         }
         const run = executeJob(job).finally(() => {
           inFlight.delete(run);
           if (holdsBulkSlot) {
-            lowPriorityVaultMutatorsInFlight -= 1;
+            vaultMutatingBulkJobsInFlight -= 1;
           }
           wake();
         });
