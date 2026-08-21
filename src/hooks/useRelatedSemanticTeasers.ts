@@ -29,12 +29,14 @@ export function useRelatedSemanticTeasers(
   vaultRevision: number,
 ): { teasers: RelatedTeaser[] | null; ready: boolean } {
   const alerts = useAlerts();
-  const { itemPruneSignal } = useShell();
+  const { itemPruneSignal, itemLiveSignal } = useShell();
   useDismissAlertsOnUnmount([RELATED_SEMANTIC_ERROR_ID]);
   const [teasers, setTeasers] = useState<RelatedTeaser[] | null>(null);
   const [ready, setReady] = useState(false);
 
   const itemId = item?.id ?? null;
+  const matchedLiveSeq =
+    itemId && itemLiveSignal?.itemId === itemId ? itemLiveSignal.seq : 0;
 
   useEffect(() => {
     if (itemId === null) {
@@ -88,7 +90,7 @@ export function useRelatedSemanticTeasers(
     return () => {
       controller.abort();
     };
-  }, [alerts, itemId, vaultRevision]);
+  }, [alerts, itemId, vaultRevision, matchedLiveSeq]);
 
   useItemPruneEffect(itemPruneSignal, (prunedId) => {
     setTeasers((previous) => {

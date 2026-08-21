@@ -8,10 +8,12 @@ import type { ItemChromeDomain } from "./types";
 export function useItemAdjacent(
   domain: ItemChromeDomain | null,
 ): AdjacentItemsResult | null {
-  const { vaultRevision, itemPruneSignal } = useShell();
+  const { vaultRevision, itemPruneSignal, itemLiveSignal } = useShell();
   const [adjacent, setAdjacent] = useState<AdjacentItemsResult | null>(null);
   const itemId = domain?.item?.id ?? null;
   const mode = domain?.mode ?? null;
+  const matchedLiveSeq =
+    itemId && itemLiveSignal?.itemId === itemId ? itemLiveSignal.seq : 0;
 
   useEffect(() => {
     if (itemId === null || mode !== "view") {
@@ -35,7 +37,7 @@ export function useItemAdjacent(
     return () => {
       cancelled = true;
     };
-  }, [itemId, mode, vaultRevision]);
+  }, [itemId, mode, vaultRevision, matchedLiveSeq]);
 
   useItemPruneEffect(itemPruneSignal, (prunedId) => {
     setAdjacent((previous) => {

@@ -34,7 +34,7 @@ import type { PlayableMediaKind } from "../utils/local-media-playback";
 
 export function ItemDetailPage() {
   const navigate = useNavigate();
-  const { vaultRevision, refreshVault } = useShell();
+  const { vaultRevision } = useShell();
   const folders = useFolderTree(vaultRevision);
   const detail = useItemDetail();
   const {
@@ -75,7 +75,6 @@ export function ItemDetailPage() {
     onSource: switchToSource,
     onLinted: () => {
       handleItemUpdated();
-      refreshVault();
     },
   });
 
@@ -124,14 +123,13 @@ export function ItemDetailPage() {
         return;
       }
       setMoveOpen(false);
-      refreshVault();
       if (updated.id !== item.id) {
         navigate(`/item/${updated.id}`, { replace: true });
         return;
       }
       handleItemUpdated();
     },
-    [alerts, handleItemUpdated, item, navigate, refreshVault, setMoveOpen],
+    [alerts, handleItemUpdated, item, navigate, setMoveOpen],
   );
 
   const handlePlayHeroVideo = useCallback(() => {

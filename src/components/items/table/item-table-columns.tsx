@@ -27,7 +27,7 @@ export interface ItemTableSelectionColumnDeps {
 
 export interface ItemTableColumnDeps {
   tagsById: Map<string, TagWithCount>;
-  onUpdated: () => void;
+  onUpdated?: () => void;
   selection: ItemTableSelectionColumnDeps;
   sort: ItemTableSortColumnDeps;
 }

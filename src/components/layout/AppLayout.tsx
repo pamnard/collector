@@ -16,7 +16,13 @@ import { useDashboardItems } from "../../hooks/useDashboardItems";
 import { useSidebarShell } from "../../hooks/useSidebarShell";
 import { useDashboardShellSort } from "../../hooks/useDashboardShellSort";
 import { useCreateItemShell } from "../../hooks/useCreateItemShell";
-import { useVaultShell } from "../../hooks/useVaultShell";
+import {
+  type ItemPruneSignal,
+} from "../../hooks/useItemPruneEffect";
+import {
+  useVaultShell,
+  type ItemLiveSignal,
+} from "../../hooks/useVaultShell";
 import { useShellLayoutAlerts } from "../../hooks/useShellLayoutAlerts";
 import type { DashboardItemSort } from "@collector/api";
 import type {
@@ -31,9 +37,6 @@ import {
   SIDEBAR_WIDTH_MAX,
   SIDEBAR_WIDTH_MIN,
 } from "../../lib/sidebar-width";
-import {
-  type ItemPruneSignal,
-} from "../../hooks/useItemPruneEffect";
 import {
   isFolderFilter,
   navFilterKey,
@@ -67,6 +70,8 @@ interface ShellContextValue {
   refreshVault: () => void;
   pruneItem: (itemId: string) => void;
   itemPruneSignal: ItemPruneSignal | null;
+  itemLiveSignal: ItemLiveSignal | null;
+  sidebarSearchLiveSeq: number;
   openCreate: (folderPath?: string) => void;
   dashboardCache: ReturnType<typeof useDashboardItems>;
   dashboardSort: DashboardItemSort;
@@ -101,7 +106,10 @@ function AppLayoutInner() {
     vaultRevision,
     bumpVaultRevision,
     itemPruneSignal,
+    itemLiveSignal,
+    sidebarSearchLiveSeq,
     setDashboardPrune,
+    setDashboardLiveHandler,
     pruneItem,
   } = useVaultShell();
 
@@ -159,7 +167,7 @@ function AppLayoutInner() {
     openCreate,
     closeCreate,
     handleCreated,
-  } = useCreateItemShell({ bumpVaultRevision, navigate });
+  } = useCreateItemShell({ navigate });
 
   const indexSync = useVaultIndexSyncStatus();
   const searchIndexBuilding =
@@ -176,6 +184,7 @@ function AppLayoutInner() {
   );
 
   setDashboardPrune(dashboardCache.pruneItem);
+  setDashboardLiveHandler(dashboardCache.applyPresentationEvents);
 
   useShellLayoutAlerts({
     dashboardLoading: dashboardCache.isLoading,
@@ -191,7 +200,6 @@ function AppLayoutInner() {
     activeFilter,
     onFilterSelect: setActiveFilter,
     vaultRevision,
-    refreshVault: bumpVaultRevision,
     searchQuery,
     onSearchChange: setSearchQuery,
     searchIndexBuilding,
@@ -279,6 +287,8 @@ function AppLayoutInner() {
         refreshVault: bumpVaultRevision,
         pruneItem,
         itemPruneSignal,
+        itemLiveSignal,
+        sidebarSearchLiveSeq,
         openCreate,
         dashboardCache,
         dashboardSort,

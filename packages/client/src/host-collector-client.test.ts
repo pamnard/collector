@@ -197,7 +197,7 @@ describe("CollectorHostServiceClient", () => {
         expect(before.stamps).toHaveLength(before.ids.length);
         const beforeStamp = before.stamps[before.ids.indexOf(created.id)];
 
-        const presentationEvents: Array<{ vaultId: string }> = [];
+        const presentationEvents: Array<{ vaultId: string; kind: string }> = [];
         const unsubPresentation = client.index.subscribeVaultPresentationChanged(
           (payload) => {
             presentationEvents.push(payload);
@@ -213,6 +213,7 @@ describe("CollectorHostServiceClient", () => {
         await vi.waitFor(() => {
           expect(presentationEvents.length).toBeGreaterThanOrEqual(1);
         });
+        expect(presentationEvents[0]?.kind).toBe("itemUpserted");
         unsubPresentation.unsubscribe();
 
         const after = await client.items.queryIndex("all", undefined, {

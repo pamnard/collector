@@ -62,6 +62,9 @@ import {
 } from "../services/dashboard-query-cache";
 import { reportServiceError } from "../services/runtime-error";
 import { useVaultIndexSyncStatus } from "./useVaultIndexSyncStatus";
+import { dashboardLiveActionForEvent } from "../lib/vault-presentation-affects";
+import { itemIdToPruneFromPresentationEvent } from "../lib/presentation-prune-item-id";
+import type { VaultPresentationChangedPayload } from "@collector/api";
 
 export { DASHBOARD_PREFETCH_SIZE } from "../services/collector-client";
 
@@ -87,6 +90,10 @@ interface UseDashboardItemsResult {
   loadMore: () => void;
   /** Drop a deleted id from committed/working lists and query cache immediately. */
   pruneItem: (itemId: string) => void;
+  /** Scoped live updates from vaultPresentationChanged (#756). */
+  applyPresentationEvents: (
+    events: VaultPresentationChangedPayload[],
+  ) => void;
 }
 
 function readInitialCacheEntry(
@@ -1000,6 +1007,92 @@ export function useDashboardItems(
     [applyListSnapshot, writeQueryCache],
   );
 
+  const refreshCoverForItem = useCallback((itemId: string) => {
+    const item = itemsByIdRef.current.get(itemId);
+    if (!item) {
+      return;
+    }
+    const requestVersion = requestVersionRef.current;
+    const cacheKeyForFlight = queryKeyRef.current;
+    void resolveDashboardCoverPathsProgressive([item], {
+      onResolved: (id, path) => {
+        if (id !== itemId) {
+          return;
+        }
+        if (requestVersionRef.current !== requestVersion) {
+          return;
+        }
+        const stamp = `${item.thumbnail ?? ""}:${item.updated_at}`;
+        const nextPaths = new Map(committedThumbnailPathsRef.current);
+        const nextStamps = new Map(committedThumbnailStampsRef.current);
+        nextPaths.set(itemId, path);
+        nextStamps.set(itemId, stamp);
+        const result = applyDashboardQueryCacheCoverFlightPatch({
+          flightKey: cacheKeyForFlight,
+          flightVersion: requestVersion,
+          getLiveKey: () => queryKeyRef.current,
+          getLiveVersion: () => requestVersionRef.current,
+          thumbnailPaths: nextPaths,
+          thumbnailStamps: nextStamps,
+          rewriteFull: () => {
+            setDashboardQueryCache(
+              cacheKeyForFlight,
+              buildDashboardQueryCacheEntry({
+                itemIds: itemIdsRef.current,
+                itemsById: itemsByIdRef.current,
+                bodyStamps: bodyStampsRef.current,
+                streamEndOffset: streamEndOffsetRef.current,
+                totalCount: totalCountRef.current,
+                thumbnailPaths: nextPaths,
+                thumbnailStamps: nextStamps,
+              }),
+            );
+          },
+        });
+        if (result === "skipped") {
+          return;
+        }
+        setCommittedThumbnailPaths(nextPaths);
+        setCommittedThumbnailStamps(nextStamps);
+        committedThumbnailPathsRef.current = nextPaths;
+        committedThumbnailStampsRef.current = nextStamps;
+      },
+    });
+  }, []);
+
+  const applyPresentationEvents = useCallback(
+    (events: VaultPresentationChangedPayload[]) => {
+      let softRefresh = false;
+      for (const event of events) {
+        const action = dashboardLiveActionForEvent(filterRef.current, event);
+        if (action === "ignore") {
+          continue;
+        }
+        if (action === "prune") {
+          const pruneId = itemIdToPruneFromPresentationEvent(event);
+          if (pruneId) {
+            pruneItem(pruneId);
+          }
+          continue;
+        }
+        if (action === "coverPatch") {
+          if (event.itemId) {
+            refreshCoverForItem(event.itemId);
+          }
+          continue;
+        }
+        if (action === "softRefresh") {
+          softRefresh = true;
+        }
+      }
+      if (softRefresh) {
+        // Same soft path as index-sync republish: no cache clear, no cold load.
+        syncRepublishRef.current?.flush();
+      }
+    },
+    [pruneItem, refreshCoverForItem],
+  );
+
   return {
     items: committedItems,
     thumbnailPaths: committedThumbnailPaths,
@@ -1011,5 +1104,6 @@ export function useDashboardItems(
     error,
     loadMore,
     pruneItem,
+    applyPresentationEvents,
   };
 }

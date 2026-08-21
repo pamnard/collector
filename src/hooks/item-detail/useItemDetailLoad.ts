@@ -8,6 +8,7 @@ import {
 import type { ItemFile } from "@collector/shared";
 import type { ItemDetailMode } from "../../components/layout/item-chrome";
 import type { ItemFormValues } from "../../types/item";
+import type { ItemLiveSignal } from "../useVaultShell";
 import {
   createItemDetailReloadGate,
   runItemDetailVaultReload,
@@ -19,6 +20,7 @@ import { applyItemDetailIdentityChange } from "./reset-item-detail-edit-session"
 export function useItemDetailLoad(options: {
   id: string | undefined;
   vaultRevision: number;
+  itemLiveSignal: ItemLiveSignal | null;
   setError: (message: string | null) => void;
   setItem: Dispatch<SetStateAction<ItemFile | null>>;
   setContent: Dispatch<SetStateAction<string | null>>;
@@ -31,6 +33,7 @@ export function useItemDetailLoad(options: {
   const {
     id,
     vaultRevision,
+    itemLiveSignal,
     setError,
     setItem,
     setContent,
@@ -43,6 +46,8 @@ export function useItemDetailLoad(options: {
 
   const loadedIdRef = useRef<string | undefined>(undefined);
   const reloadGateRef = useRef(createItemDetailReloadGate());
+  const matchedLiveSeq =
+    id && itemLiveSignal?.itemId === id ? itemLiveSignal.seq : 0;
 
   useEffect(() => {
     if (!id) {
@@ -87,6 +92,7 @@ export function useItemDetailLoad(options: {
   }, [
     id,
     vaultRevision,
+    matchedLiveSeq,
     setError,
     setItem,
     setContent,

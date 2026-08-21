@@ -20,7 +20,6 @@ const DASHBOARD_IMPORT_ERROR_ID = "dashboard-import-error";
 export function DashboardPage() {
   const {
     viewMode,
-    refreshVault,
     dashboardCache: dashboard,
     activeFilter,
   } = useShell();
@@ -94,7 +93,7 @@ export function DashboardPage() {
           folder_path: targetFolderPath,
           files,
         });
-        refreshVault();
+        // Presentation events soft-refresh the affected dashboard (#756).
       } catch (err: unknown) {
         alerts.upsert(DASHBOARD_IMPORT_ERROR_ID, {
           tone: "danger",
@@ -104,7 +103,7 @@ export function DashboardPage() {
         setIsImporting(false);
       }
     },
-    [alerts, isImporting, refreshVault, targetFolderPath],
+    [alerts, isImporting, targetFolderPath],
   );
 
   return (
@@ -126,7 +125,7 @@ export function DashboardPage() {
       {viewMode === "grid" ? (
         <ItemGridView dashboard={dashboard} />
       ) : (
-        <ItemTableView dashboard={dashboard} onUpdated={refreshVault} />
+        <ItemTableView dashboard={dashboard} />
       )}
 
       {isDragging && !isImporting && (

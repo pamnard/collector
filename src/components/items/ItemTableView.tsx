@@ -37,7 +37,7 @@ import { cn } from "../../lib/utils";
 
 interface ItemTableViewProps {
   dashboard: ReturnType<typeof useDashboardItems>;
-  onUpdated: () => void;
+  onUpdated?: () => void;
 }
 
 const ROW_ESTIMATE_PX = 40;

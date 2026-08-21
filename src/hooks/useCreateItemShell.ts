@@ -2,7 +2,6 @@ import { useCallback, useState } from "react";
 import type { NavigateFunction } from "react-router-dom";
 
 export type UseCreateItemShellInput = {
-  bumpVaultRevision: () => void;
   navigate: NavigateFunction;
 };
 
@@ -15,7 +14,6 @@ export type UseCreateItemShellResult = {
 };
 
 export function useCreateItemShell({
-  bumpVaultRevision,
   navigate,
 }: UseCreateItemShellInput): UseCreateItemShellResult {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -37,10 +35,10 @@ export function useCreateItemShell({
     (itemId: string) => {
       setIsCreateOpen(false);
       setCreateFolderPath(undefined);
-      bumpVaultRevision();
+      // Presentation events apply scoped live updates (#756); no full wipe.
       navigate(`/item/${itemId}`);
     },
-    [bumpVaultRevision, navigate],
+    [navigate],
   );
 
   return {
