@@ -4,6 +4,8 @@
  * Hard size cap + basic SSRF / content-type gates (same class as Telegram downloads).
  */
 
+import { normalizeRemoteHttpUrl } from "@collector/core";
+
 export const REMOTE_DISPLAY_ASSET_MAX_BYTES = 20 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_REDIRECTS = 5;
@@ -15,11 +17,9 @@ const BLOCKED_HOSTS = new Set([
 ]);
 
 function normalizeFetchUrl(url: string): URL {
-  const trimmed = url.trim();
-  const withScheme = trimmed.startsWith("//") ? `https:${trimmed}` : trimmed;
   let parsed: URL;
   try {
-    parsed = new URL(withScheme);
+    parsed = new URL(normalizeRemoteHttpUrl(url));
   } catch (error) {
     throw new Error(
       `fetchRemoteBytes: invalid URL ${url}: ${

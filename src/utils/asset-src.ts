@@ -41,20 +41,8 @@ function readHostMediaEnv(): { baseUrl: string; token: string } | null {
   return { baseUrl, token };
 }
 
-function isAllowedHttpDisplaySrc(pathOrUrl: string): boolean {
-  if (
-    pathOrUrl.startsWith("blob:") ||
-    pathOrUrl.startsWith("data:") ||
-    pathOrUrl.startsWith("/__dev/")
-  ) {
-    return true;
-  }
-  if (
-    !pathOrUrl.startsWith("http://") &&
-    !pathOrUrl.startsWith("https://")
-  ) {
-    return true;
-  }
+/** Host `/media/file` URLs only — caller already knows this is http(s). */
+function isHostMediaFileUrl(pathOrUrl: string): boolean {
   const host = readHostMediaEnv();
   if (!host) {
     return false;
@@ -87,11 +75,7 @@ export function toDisplayAssetSrc(pathOrUrl: string): string {
     pathOrUrl.startsWith("http://") ||
     pathOrUrl.startsWith("https://")
   ) {
-    if (!isAllowedHttpDisplaySrc(pathOrUrl)) {
-      // Fail closed without crashing the React tree (#739 review).
-      return "";
-    }
-    return pathOrUrl;
+    return isHostMediaFileUrl(pathOrUrl) ? pathOrUrl : "";
   }
   const host = readHostMediaEnv();
   if (host) {

@@ -1,5 +1,5 @@
 import type { ItemFile } from "@collector/shared";
-import { isYouTubeWatchUrl } from "./youtube-thumbnail";
+import { parseYouTubeVideoId } from "@collector/core";
 
 export type PlayableMediaKind = "video" | "audio";
 
@@ -12,10 +12,7 @@ export interface PlayableMediaRef {
  * Remote YouTube URL → no in-app overlay player.
  */
 export function isYouTubeItemUrl(url: string | null | undefined): boolean {
-  if (!url) {
-    return false;
-  }
-  return isYouTubeWatchUrl(url);
+  return Boolean(url && parseYouTubeVideoId(url));
 }
 
 export function pickPlayableMedia(

@@ -23,13 +23,6 @@ import {
   youtubeTeaserDownloadUrl,
 } from "./youtube-video-id.js";
 
-export {
-  isRemoteHttpUrl,
-  normalizeRemoteHttpUrl,
-  parseYouTubeVideoId,
-  youtubeTeaserDownloadUrl,
-} from "./youtube-video-id.js";
-
 export interface MarkdownRemoteImageRef {
   /** Exact destination URL token as written (may be protocol-relative). */
   rawUrl: string;
@@ -263,11 +256,12 @@ export function extractMarkdownRemoteImageRefs(
 export function rewriteMarkdownRemoteImageUrls(
   body: string,
   replacements: ReadonlyMap<string, string>,
+  knownRefs?: readonly MarkdownRemoteImageRef[],
 ): string {
   if (replacements.size === 0) {
     return body;
   }
-  const refs = extractMarkdownRemoteImageRefs(body);
+  const refs = knownRefs ?? extractMarkdownRemoteImageRefs(body);
   if (refs.length === 0) {
     return body;
   }
@@ -347,23 +341,44 @@ async function downloadOrThrow(
 ): Promise<Uint8Array> {
   const fetchUrl = normalizeRemoteHttpUrl(url);
   try {
-    const bytes = await fetchBytes(fetchUrl);
-    if (!bytes || bytes.byteLength === 0) {
-      throw new Error(`${role}: empty response from ${fetchUrl}`);
-    }
-    return bytes;
+    return await fetchBytes(fetchUrl);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error("localizeRemoteDisplayAssets: download failed", {
-      role,
-      url: fetchUrl,
-      error: message,
-    });
     throw new Error(
       `localizeRemoteDisplayAssets: failed to download ${role} from ${fetchUrl}: ${message}`,
       { cause: error },
     );
   }
+}
+
+function documentFrontmatter(
+  known: object,
+  properties: Record<string, unknown>,
+  options?: { clearThumbnail?: boolean },
+): Record<string, unknown> {
+  const frontmatter: Record<string, unknown> = { ...properties };
+  for (const [key, value] of Object.entries(known)) {
+    if (value === undefined) {
+      continue;
+    }
+    if (options?.clearThumbnail && key === "thumbnail") {
+      continue;
+    }
+    frontmatter[key] = value;
+  }
+  if (options?.clearThumbnail) {
+    frontmatter.thumbnail = null;
+  }
+  return frontmatter;
+}
+
+function bodyMightContainRemoteImage(body: string): boolean {
+  return (
+    /https?:\/\//i.test(body) ||
+    /\]\(\s*\/\//.test(body) ||
+    /\]:\s*https?:\/\//i.test(body) ||
+    /\]:\s*\/\//.test(body)
+  );
 }
 
 /**
@@ -386,13 +401,30 @@ export async function localizeRemoteDisplayAssets(
   const parsed = parseDocumentMarkdown(options.rawMarkdown);
   const { known, properties } = partitionDocumentFrontmatter(parsed.frontmatter);
 
+  const fmThumbnail =
+    typeof known.thumbnail === "string" ? known.thumbnail : null;
+  const needsFmThumbnail = Boolean(fmThumbnail && isRemoteHttpUrl(fmThumbnail));
+  const itemUrl =
+    options.itemUrl !== undefined
+      ? options.itemUrl
+      : typeof known.url === "string"
+        ? known.url
+        : null;
+  const teaserUrl = itemUrl ? youtubeTeaserDownloadUrl(itemUrl) : null;
+  const needsBodyScan = bodyMightContainRemoteImage(parsed.body);
+
+  if (!needsFmThumbnail && !teaserUrl && !needsBodyScan) {
+    return { text: options.rawMarkdown, changed: false };
+  }
+
   let body = parsed.body;
   let changed = false;
 
-  const remoteImageRefs = extractMarkdownRemoteImageRefs(body);
+  const remoteImageRefs = needsBodyScan
+    ? extractMarkdownRemoteImageRefs(body)
+    : [];
   const uniqueRemoteUrls = [...new Set(remoteImageRefs.map((r) => r.rawUrl))];
 
-  // Phase 1: download everything first (no disk mutation yet).
   const downloadedImages = new Map<string, Uint8Array>();
   for (const remoteUrl of uniqueRemoteUrls) {
     downloadedImages.set(
@@ -401,10 +433,8 @@ export async function localizeRemoteDisplayAssets(
     );
   }
 
-  const fmThumbnail =
-    typeof known.thumbnail === "string" ? known.thumbnail : null;
   let fmThumbnailBytes: Uint8Array | null = null;
-  if (fmThumbnail && isRemoteHttpUrl(fmThumbnail)) {
+  if (needsFmThumbnail && fmThumbnail) {
     fmThumbnailBytes = await downloadOrThrow(
       fetchBytes,
       fmThumbnail,
@@ -412,21 +442,18 @@ export async function localizeRemoteDisplayAssets(
     );
   }
 
-  const itemUrl =
-    options.itemUrl !== undefined
-      ? options.itemUrl
-      : typeof known.url === "string"
-        ? known.url
-        : null;
-  const teaserUrl = itemUrl ? youtubeTeaserDownloadUrl(itemUrl) : null;
-  const coverPath = itemCoverPath(vaultPath, itemId);
-  const hasCover = await ctx.fs.exists(coverPath);
   let teaserBytes: Uint8Array | null = null;
-  if (teaserUrl && !hasCover && !fmThumbnailBytes) {
-    teaserBytes = await downloadOrThrow(fetchBytes, teaserUrl, "YouTube teaser");
+  if (teaserUrl && !fmThumbnailBytes) {
+    const hasCover = await ctx.fs.exists(itemCoverPath(vaultPath, itemId));
+    if (!hasCover) {
+      teaserBytes = await downloadOrThrow(
+        fetchBytes,
+        teaserUrl,
+        "YouTube teaser",
+      );
+    }
   }
 
-  // Phase 2: attach / cover write with cleanup on failure.
   const attachedMediaIds: string[] = [];
   const urlToLocal = new Map<string, string>();
 
@@ -439,17 +466,18 @@ export async function localizeRemoteDisplayAssets(
         mediaType: inferMediaType(filename),
       });
       attachedMediaIds.push(media.id);
-      const absolute = mediaFilePath(
-        vaultPath,
-        itemId,
-        media.id,
-        media.filename,
+      urlToLocal.set(
+        remoteUrl,
+        mediaFilePath(vaultPath, itemId, media.id, media.filename),
       );
-      urlToLocal.set(remoteUrl, absolute);
     }
 
     if (urlToLocal.size > 0) {
-      const nextBody = rewriteMarkdownRemoteImageUrls(body, urlToLocal);
+      const nextBody = rewriteMarkdownRemoteImageUrls(
+        body,
+        urlToLocal,
+        remoteImageRefs,
+      );
       if (nextBody !== body) {
         body = nextBody;
         changed = true;
@@ -469,34 +497,17 @@ export async function localizeRemoteDisplayAssets(
       changed = true;
     }
 
-    if (clearThumbnail) {
-      const frontmatter: Record<string, unknown> = { ...properties };
-      for (const [key, value] of Object.entries(known)) {
-        if (value !== undefined && key !== "thumbnail") {
-          frontmatter[key] = value;
-        }
-      }
-      frontmatter.thumbnail = null;
-      return {
-        text: serializeDocumentMarkdown(frontmatter, body),
-        changed: true,
-      };
+    if (!changed) {
+      return { text: options.rawMarkdown, changed: false };
     }
 
-    if (changed) {
-      const frontmatter: Record<string, unknown> = { ...properties };
-      for (const [key, value] of Object.entries(known)) {
-        if (value !== undefined) {
-          frontmatter[key] = value;
-        }
-      }
-      return {
-        text: serializeDocumentMarkdown(frontmatter, body),
-        changed: true,
-      };
-    }
-
-    return { text: options.rawMarkdown, changed: false };
+    return {
+      text: serializeDocumentMarkdown(
+        documentFrontmatter(known, properties, { clearThumbnail }),
+        body,
+      ),
+      changed: true,
+    };
   } catch (error) {
     for (const mediaId of attachedMediaIds) {
       try {
@@ -513,17 +524,5 @@ export async function localizeRemoteDisplayAssets(
       }
     }
     throw error;
-  }
-}
-
-/** Reject remote http(s) left in asset fields after localization should have run. */
-export function assertNoRemoteDisplayAssetUrl(
-  value: string | null | undefined,
-  field: string,
-): void {
-  if (value && isRemoteHttpUrl(value)) {
-    throw new Error(
-      `assertNoRemoteDisplayAssetUrl: ${field} must not be a remote URL (#739): ${value}`,
-    );
   }
 }

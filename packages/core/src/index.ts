@@ -236,7 +236,6 @@ export {
   youtubeTeaserDownloadUrl,
 } from "./vault/youtube-video-id.js";
 export {
-  assertNoRemoteDisplayAssetUrl,
   extractMarkdownRemoteImageRefs,
   filenameFromRemoteImageUrl,
   localizeRemoteDisplayAssets,

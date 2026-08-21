@@ -14,8 +14,8 @@ import {
   extractMarkdownRemoteImageRefs,
   localizeRemoteDisplayAssets,
   rewriteMarkdownRemoteImageUrls,
-  youtubeTeaserDownloadUrl,
 } from "./remote-display-assets.js";
+import { youtubeTeaserDownloadUrl } from "./youtube-video-id.js";
 import { readItemRawMarkdown } from "./item-io.js";
 import { serializeDocumentMarkdown } from "./frontmatter.js";
 
