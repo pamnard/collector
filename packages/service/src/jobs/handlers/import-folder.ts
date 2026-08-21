@@ -99,7 +99,10 @@ function deriveResultStatus(
   return "failed";
 }
 
-function finalizeResult(result: MutableImportFolderResult): ImportFolderResult {
+function finalizeResult(
+  result: MutableImportFolderResult,
+  options?: { forceStatus?: ImportFolderResultStatus },
+): ImportFolderResult {
   return {
     createdIds: result.createdIds,
     skippedIds: result.skippedIds,
@@ -107,7 +110,7 @@ function finalizeResult(result: MutableImportFolderResult): ImportFolderResult {
     created: result.createdIds.length,
     skipped: result.skippedIds.length,
     failed: result.failedCount,
-    status: deriveResultStatus(result),
+    status: options?.forceStatus ?? deriveResultStatus(result),
   };
 }
 
@@ -319,7 +322,11 @@ export function createImportFolderHandler(deps: {
             relativePath: file.relativePath,
             error: errorMessage(error),
           });
-          importFolderResults.set(job.id, finalizeResult(result));
+          // Job row will be `failed`; never leave mailbox status as `ok`.
+          importFolderResults.set(
+            job.id,
+            finalizeResult(result, { forceStatus: "failed" }),
+          );
           return nonRetryableFail(errorMessage(error));
         }
         const message = errorMessage(error);

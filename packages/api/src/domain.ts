@@ -110,10 +110,13 @@ export interface ImportFolderJobSnapshot {
   jobId: string;
   /**
    * Job-row lifecycle status from the host queue.
-   * Note the dual-status contract: the row may be `succeeded` while
-   * {@link result}.status is `partial` or `failed` (per-file import errors
-   * that did not abort the job). Treat `status === "succeeded"` as
-   * "handler finished", and inspect `result` for import outcome.
+   * Dual-status contract:
+   * - Row `succeeded` + {@link result}.status `partial`|`failed` — handler
+   *   finished; per-file import errors without abort.
+   * - Row `failed` + {@link result}.status `failed` (or `result` null) —
+   *   infrastructure abort / non-retryable fail; do not treat mailbox
+   *   `ok` as success when the row is not `succeeded`.
+   * Treat row `succeeded` as "handler finished", then inspect `result`.
    */
   status: ImportFolderJobStatus;
   result: ImportFolderResult | null;

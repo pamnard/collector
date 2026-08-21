@@ -337,7 +337,7 @@ describe("importFolder job (#747)", () => {
     expect(takeImportFolderResult("job-folder-fatal-mid")).toMatchObject({
       created: 0,
       failed: 0,
-      status: "ok",
+      status: "failed",
     });
   });
 
