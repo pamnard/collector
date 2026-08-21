@@ -11,6 +11,7 @@ import type {
 } from "@collector/api";
 import { asCollectorApiError, subscriptionFromTeardown } from "@collector/api";
 import type { ItemFile, Tag, VaultMeta } from "@collector/shared";
+import { folderPathFromItemPath } from "@collector/shared";
 import {
   createFolder as createFolderOnVault,
   createTag as createTagOnVault,
@@ -24,6 +25,8 @@ import {
   type IndexSyncProgress,
   type VaultContext,
 } from "@collector/core";
+
+import type { VaultPresentationChangedPayload } from "./vault-presentation-changed.js";
 
 export type { ServiceSubscribeHandlers } from "@collector/api";
 
@@ -41,7 +44,9 @@ export interface TagsFoldersServiceDeps {
     listener: VaultSyncBatchListener,
   ) => () => void;
   syncRepublishThrottleMs?: number;
-  onVaultPresentationChanged?: (vaultId: string) => void;
+  onVaultPresentationChanged?: (
+    payload: VaultPresentationChangedPayload,
+  ) => void;
 }
 
 function createThrottledPublisher(
@@ -301,7 +306,17 @@ export function createTagsFoldersService(
   const createFolder = async (folderPath: string): Promise<string> => {
     const { vault, path } = await deps.resolveActiveVault();
     deps.kickoffVaultIndexSync(vault.id, path);
-    return createFolderOnVault(deps.getContext(), path, folderPath);
+    const created = await createFolderOnVault(
+      deps.getContext(),
+      path,
+      folderPath,
+    );
+    deps.onVaultPresentationChanged?.({
+      vaultId: vault.id,
+      kind: "folderChanged",
+      folderPath: created,
+    });
+    return created;
   };
 
   const renameFolder = async (
@@ -310,19 +325,30 @@ export function createTagsFoldersService(
   ): Promise<string> => {
     const { vault, path } = await deps.resolveActiveVault();
     deps.kickoffVaultIndexSync(vault.id, path);
-    return renameFolderOnVault(
+    const renamed = await renameFolderOnVault(
       deps.getContext(),
       path,
       vault.id,
       oldPath,
       newPath,
     );
+    deps.onVaultPresentationChanged?.({
+      vaultId: vault.id,
+      kind: "folderChanged",
+      folderPath: renamed,
+    });
+    return renamed;
   };
 
   const deleteFolder = async (folderPath: string): Promise<void> => {
     const { vault, path } = await deps.resolveActiveVault();
     deps.kickoffVaultIndexSync(vault.id, path);
     await deleteFolderOnVault(deps.getContext(), path, vault.id, folderPath);
+    deps.onVaultPresentationChanged?.({
+      vaultId: vault.id,
+      kind: "folderChanged",
+      folderPath,
+    });
   };
 
   const moveItemToFolderPath = async (
@@ -331,6 +357,7 @@ export function createTagsFoldersService(
   ): Promise<ItemFile> => {
     const { vault, path } = await deps.resolveActiveVault();
     deps.kickoffVaultIndexSync(vault.id, path);
+    const fromFolderPath = folderPathFromItemPath(itemId);
     const moved = await moveItemToFolder(
       deps.getContext(),
       path,
@@ -338,7 +365,13 @@ export function createTagsFoldersService(
       itemId,
       folderPath,
     );
-    deps.onVaultPresentationChanged?.(vault.id);
+    deps.onVaultPresentationChanged?.({
+      vaultId: vault.id,
+      kind: "itemMoved",
+      itemId: moved.id,
+      fromFolderPath,
+      toFolderPath: folderPath,
+    });
     return moved;
   };
 

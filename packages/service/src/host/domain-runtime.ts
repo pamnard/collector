@@ -299,8 +299,8 @@ export function createServiceDomainRuntime(
     getContext,
     resolveVaultPath: requireActiveVaultPath,
     generateCoverFromMedia,
-    onVaultPresentationChanged: (vaultId) =>
-      vaultPresentationChanged.notify(vaultId),
+    onVaultPresentationChanged: (payload) =>
+      vaultPresentationChanged.notify(payload),
   });
 
   phaseBHandlerBindings.refreshEmbeddings = createRefreshEmbeddingsHandler({

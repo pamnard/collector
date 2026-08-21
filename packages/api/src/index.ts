@@ -90,6 +90,8 @@ export {
   type TelegramSyncSettings,
   type TelegramSyncSettingsPatch,
   type VaultIndexSyncStatus,
+  type VaultPresentationChangeKind,
+  type VaultPresentationChangedPayload,
   type VaultsPort,
 } from "./service-api.js";
 

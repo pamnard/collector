@@ -21,7 +21,9 @@ import {
   touchItemUpdatedAt,
   type VaultContext,
 } from "@collector/core";
+import { folderPathFromItemPath } from "@collector/shared";
 import type { TerminalJobStatus } from "./jobs/job-wait.js";
+import type { VaultPresentationChangedPayload } from "./vault-presentation-changed.js";
 
 export type ResolveThumbnailPathsBatch = (
   vaultPath: string,
@@ -38,7 +40,9 @@ export interface MediaCoverServiceDeps {
   /** Wait until generateCover leaves pending/running. */
   waitForCoverJob: (jobId: string) => Promise<TerminalJobStatus>;
   resolveThumbnailPathsBatch: ResolveThumbnailPathsBatch;
-  onVaultPresentationChanged?: (vaultId: string) => void;
+  onVaultPresentationChanged?: (
+    payload: VaultPresentationChangedPayload,
+  ) => void;
 }
 
 export interface MediaCoverService {
@@ -82,7 +86,12 @@ export function createMediaCoverService(
     invalidateThumbnailPathCache(itemId);
     await touchItemUpdatedAt(deps.getContext(), path, vault.id, itemId);
     await enqueuePreferredCover(itemId);
-    deps.onVaultPresentationChanged?.(vault.id);
+    deps.onVaultPresentationChanged?.({
+      vaultId: vault.id,
+      kind: "itemCoverChanged",
+      itemId,
+      folderPath: folderPathFromItemPath(itemId),
+    });
   };
 
   const listItemMedia = async (itemId: string): Promise<MediaWithPath[]> => {
@@ -267,7 +276,12 @@ export function createMediaCoverService(
     setItemCoverFromMedia: async (itemId, mediaId) => {
       const item = await setItemCoverFromMedia(itemId, mediaId);
       const { vault } = await deps.resolveActiveVault();
-      deps.onVaultPresentationChanged?.(vault.id);
+      deps.onVaultPresentationChanged?.({
+        vaultId: vault.id,
+        kind: "itemCoverChanged",
+        itemId: item.id,
+        folderPath: item.folder_path,
+      });
       return item;
     },
     attachMediaFiles,
