@@ -97,7 +97,10 @@ export function createDropImportService(
     const target = input.folder_path?.trim() || undefined;
 
     for (let i = 0; i < input.files.length; i += 1) {
-      const file = input.files[i]!;
+      const file = input.files[i];
+      if (file === undefined) {
+        throw new Error(`drop-import: missing file at index ${i}`);
+      }
       const classified = classifyDropFilename(file.name);
       if (classified.kind !== "skip") {
         const folder_path = resolveImportItemFolder(target, file.relativePath);

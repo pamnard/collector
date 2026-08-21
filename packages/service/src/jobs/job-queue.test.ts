@@ -726,4 +726,40 @@ describe("createJobQueue (#628 / #629)", () => {
     }
     await queue.stop();
   });
+
+  it("rejects vault-mutating bulk enqueue without JOB_PRIORITY_BULK (#746)", async () => {
+    const dbPath = tempJobsPath();
+    const queue = await createJobQueue({
+      dbPath,
+      registry: createHostJobRegistry(),
+      pollIntervalMs: 20,
+      timeoutMs: 1000,
+    });
+    await expect(
+      queue.enqueue({
+        type: "vaultIndexSync",
+        payload: { vaultId: "v1", vaultPath: "/vault", reason: "kickoff" },
+      }),
+    ).rejects.toThrow(/requires priority JOB_PRIORITY_BULK/);
+    await expect(
+      queue.enqueue({
+        type: "vaultIndexSync",
+        payload: { vaultId: "v1", vaultPath: "/vault", reason: "kickoff" },
+        priority: 0,
+      }),
+    ).rejects.toThrow(/requires priority JOB_PRIORITY_BULK/);
+    await expect(
+      queue.enqueue({
+        type: "reindexVaultBatch",
+        payload: {
+          vaultId: "v1",
+          vaultPath: "/vault",
+          itemIds: [],
+          folderPaths: [],
+        },
+        priority: JOB_PRIORITY_INTERACTIVE,
+      }),
+    ).rejects.toThrow(/requires priority JOB_PRIORITY_BULK/);
+    await queue.stop();
+  });
 });

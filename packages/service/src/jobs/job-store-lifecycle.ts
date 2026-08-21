@@ -1,8 +1,5 @@
 import type { SqlMigrator } from "@collector/db";
-import {
-  JOB_PRIORITY_BULK,
-  VAULT_MUTATING_BULK_JOB_TYPE_IDS,
-} from "@collector/shared";
+import { VAULT_MUTATING_BULK_JOB_TYPE_IDS } from "@collector/shared";
 import type { JobRow } from "./job-store-types.js";
 import type { JobStoreQuery } from "./job-store-query.js";
 
@@ -44,8 +41,9 @@ export function createJobStoreLifecycle(
     const params: unknown[] = [nowIso];
     let typeFilter = "";
     if (excludeTypes.length > 0) {
-      typeFilter = ` AND (type NOT IN (${excludeTypes.map(() => "?").join(", ")}) OR priority > ?)`;
-      params.push(...excludeTypes, JOB_PRIORITY_BULK);
+      // Exclude by type only — priority must not open a second bulk-mutator slot.
+      typeFilter = ` AND type NOT IN (${excludeTypes.map(() => "?").join(", ")})`;
+      params.push(...excludeTypes);
     }
     const candidates = await db.select<JobRow>(
       `SELECT * FROM jobs
