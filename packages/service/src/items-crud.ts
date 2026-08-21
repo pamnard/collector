@@ -135,29 +135,43 @@ export function createItemsCrud(
     return readItemRawMarkdown(ctx.fs, path, itemId);
   };
 
-  /** Normalize and write only when text changes. Caller owns presentation notify. */
+  /** Normalize, localize remote display assets (#739), write when text changes. */
   const applyNormalizedSource = async (
     itemId: string,
     rawMarkdown: string,
+    itemUrl?: string | null,
   ): Promise<{ item: ItemFile; wrote: boolean }> => {
     const { vault, path } = await deps.resolveActiveVault();
     const ctx = deps.getContext();
-    const { text } = deps.normalizeMarkdown(rawMarkdown);
+    const { text: normalized } = deps.normalizeMarkdown(rawMarkdown);
+    const localized = await deps.localizeRemoteDisplayAssets({
+      itemId,
+      rawMarkdown: normalized,
+      itemUrl,
+    });
+    const text = localized.text;
     const existing = await readItemRawMarkdown(ctx.fs, path, itemId);
-    if (text === existing) {
+    if (text === existing && !localized.changed) {
       return {
         item: await readItemFile(ctx.fs, path, itemId, vault.id),
         wrote: false,
       };
     }
-    const item = await writeItemRawMarkdown(
-      ctx,
-      path,
-      vault.id,
-      itemId,
-      text,
-    );
-    return { item, wrote: true };
+    if (text !== existing) {
+      const item = await writeItemRawMarkdown(
+        ctx,
+        path,
+        vault.id,
+        itemId,
+        text,
+      );
+      return { item, wrote: true };
+    }
+    // Cover/media localized on disk without markdown text change (e.g. YouTube teaser).
+    return {
+      item: await readItemFile(ctx.fs, path, itemId, vault.id),
+      wrote: true,
+    };
   };
 
   const notifyItemUpserted = (
@@ -183,10 +197,15 @@ export function createItemsCrud(
   const persistNormalizedSource = async (
     itemId: string,
     rawMarkdown: string,
+    itemUrl?: string | null,
     move?: { fromFolderPath: string; toFolderPath: string },
   ): Promise<ItemFile> => {
     const { vault } = await deps.resolveActiveVault();
-    const { item, wrote } = await applyNormalizedSource(itemId, rawMarkdown);
+    const { item, wrote } = await applyNormalizedSource(
+      itemId,
+      rawMarkdown,
+      itemUrl,
+    );
     // Move always changes presentation even when body bytes are unchanged.
     if (wrote || move) {
       notifyItemUpserted(vault.id, item, move);
@@ -230,13 +249,25 @@ export function createItemsCrud(
       content: input.content ?? null,
       sourceRef: input.sourceRef,
     });
-    // Same serialize→normalize→write path as update: upsert wrote the document;
-    // applyNormalizedSource autofixes before leaving dirty body on disk.
-    const raw = await readItemRawMarkdown(ctx.fs, path, created.id);
-    const { item } = await applyNormalizedSource(created.id, raw);
-    // Create always changes vault presentation (new item), even when normalize is a no-op.
-    notifyItemUpserted(vault.id, item);
-    return item;
+    // Localize after create; on failure roll back so remotes never remain (#739).
+    // Create always notifies presentation even when normalize/localize is a no-op (#756).
+    try {
+      const raw = await readItemRawMarkdown(ctx.fs, path, created.id);
+      const { item } = await applyNormalizedSource(
+        created.id,
+        raw,
+        created.url,
+      );
+      notifyItemUpserted(vault.id, item);
+      return item;
+    } catch (error) {
+      console.error("createItem: localize failed; rolling back item", {
+        itemId: created.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      await deleteItemOnDisk(ctx, path, created.id);
+      throw error;
+    }
   };
 
   const updateItem = async (
@@ -298,8 +329,8 @@ export function createItemsCrud(
     const body =
       input.content !== undefined ? (input.content ?? "") : (currentContent ?? "");
     const markdown = serializeItemDocument(nextItem, body, maps.byId);
-    // Same normalize + write path as updateItemSource (every note persist).
-    return persistNormalizedSource(nextItem.id, markdown, move);
+    // Same normalize + localize + write path as updateItemSource (every note persist).
+    return persistNormalizedSource(nextItem.id, markdown, nextItem.url, move);
   };
 
   const deleteItem = async (itemId: string): Promise<void> => {
@@ -321,8 +352,10 @@ export function createItemsCrud(
     resolveContentTextLinks,
     listItemBacklinks,
     getItemSource,
-    updateItemSource: (itemId, rawMarkdown) =>
-      persistNormalizedSource(itemId, rawMarkdown),
+    updateItemSource: async (itemId, rawMarkdown) => {
+      const { item } = await getItemById(itemId);
+      return persistNormalizedSource(itemId, rawMarkdown, item.url);
+    },
     createItem,
     updateItem,
     deleteItem,

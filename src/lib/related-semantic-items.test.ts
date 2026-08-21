@@ -2,10 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { ItemFile } from "@collector/shared";
 import { relatedTeaserFromItem } from "./related-teaser";
 import { loadRelatedSemanticTeasers } from "./related-semantic-items";
-import {
-  COVER_IMAGE_PROBE_TIMEOUT_MS,
-  probeCoverImageFormInBrowser,
-} from "./teaser-layout/probe-cover-image-form";
 
 describe("relatedTeaserFromItem", () => {
   it("stores a display cover URL and measured form", () => {
@@ -78,7 +74,7 @@ describe("loadRelatedSemanticTeasers", () => {
     }
 
     const probe = vi.fn(async (src: string) => {
-      expect(src).toBe("https://host/media/a.webp");
+      expect(src).toBe("/vault/media/a/cover.webp");
       return "portrait" as const;
     });
 
@@ -97,7 +93,7 @@ describe("loadRelatedSemanticTeasers", () => {
         for (const item of items) {
           map.set(
             item.id,
-            item.id === "a.md" ? "https://host/media/a.webp" : null,
+            item.id === "a.md" ? "/vault/media/a/cover.webp" : null,
           );
         }
         return map;
@@ -110,7 +106,7 @@ describe("loadRelatedSemanticTeasers", () => {
       {
         id: "a.md",
         title: "a.md",
-        thumbnail: "https://host/media/a.webp",
+        thumbnail: "/vault/media/a/cover.webp",
         imageForm: "portrait",
         description: "",
         createdAt: "2020-01-01T00:00:00.000Z",
@@ -160,32 +156,7 @@ describe("loadRelatedSemanticTeasers", () => {
     expect(bad).toBeNull();
   });
 
-  it("finishes related load when browser probe times out on a remote cover", async () => {
-    vi.useFakeTimers();
-    type FakeImage = {
-      onload: ((this: FakeImage, ev: Event) => void) | null;
-      onerror: ((this: FakeImage, ev: Event) => void) | null;
-      src: string;
-      naturalWidth: number;
-      naturalHeight: number;
-    };
-    vi.stubGlobal(
-      "Image",
-      class {
-        onload: FakeImage["onload"] = null;
-        onerror: FakeImage["onerror"] = null;
-        naturalWidth = 0;
-        naturalHeight = 0;
-        #src = "";
-        get src() {
-          return this.#src;
-        }
-        set src(value: string) {
-          this.#src = value;
-        }
-      },
-    );
-
+  it("returns text-only teasers when YouTube items have no local cover (#739)", async () => {
     async function* hydrate(ids: string[]) {
       for (const id of ids) {
         yield {
@@ -200,32 +171,30 @@ describe("loadRelatedSemanticTeasers", () => {
       }
     }
 
-    try {
-      const loadPromise = loadRelatedSemanticTeasers({
-        currentItemId: "self.md",
-        size: 1,
-        findSimilarItems: async () => [{ id: "yt.md", score: 0.9 }],
-        hydrate,
-        resolveThumbnailPaths: async () => new Map([["yt.md", null]]),
-        probeCoverImageForm: probeCoverImageFormInBrowser,
-      });
-      await vi.advanceTimersByTimeAsync(COVER_IMAGE_PROBE_TIMEOUT_MS);
-      const ok = await loadPromise;
-      expect(ok).toEqual([
-        {
-          id: "yt.md",
-          title: "yt.md",
-          thumbnail: "https://img.youtube.com/vi/abcdefghijk/mqdefault.jpg",
-          imageForm: null,
-          description: "",
-          createdAt: "2020-01-01T00:00:00.000Z",
-          contentType: "video",
-        },
-      ]);
-    } finally {
-      vi.useRealTimers();
-      vi.unstubAllGlobals();
-    }
+    const probe = vi.fn(async () => {
+      throw new Error("probe must not run without a local cover");
+    });
+
+    const ok = await loadRelatedSemanticTeasers({
+      currentItemId: "self.md",
+      size: 1,
+      findSimilarItems: async () => [{ id: "yt.md", score: 0.9 }],
+      hydrate,
+      resolveThumbnailPaths: async () => new Map([["yt.md", null]]),
+      probeCoverImageForm: probe,
+    });
+    expect(ok).toEqual([
+      {
+        id: "yt.md",
+        title: "yt.md",
+        thumbnail: null,
+        imageForm: null,
+        description: "",
+        createdAt: "2020-01-01T00:00:00.000Z",
+        contentType: "video",
+      },
+    ]);
+    expect(probe).not.toHaveBeenCalled();
   });
 
   it("returns null when aborted after similar lookup", async () => {

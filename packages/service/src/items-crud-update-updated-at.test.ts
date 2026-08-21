@@ -76,6 +76,10 @@ describe("createItemsCrud updateItem updated_at (#652)", () => {
         getContext: () => ctx,
         getIndex: () => index,
         normalizeMarkdown: (raw) => ({ text: raw, changed: false }),
+        localizeRemoteDisplayAssets: async ({ rawMarkdown }) => ({
+          text: rawMarkdown,
+          changed: false,
+        }),
       } as never,
       () => "unused",
     );

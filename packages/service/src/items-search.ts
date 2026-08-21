@@ -115,6 +115,15 @@ export interface ItemsSearchServiceDeps {
    * graph of this module so the Vite UI never pulls `node:fs` via `@collector/core/node`.
    */
   normalizeMarkdown: (raw: string) => { text: string; changed: boolean };
+  /**
+   * Download remote markdown images / FM thumbnails / YouTube teasers into
+   * note media and rewrite the document (#739). Required on every note persist.
+   */
+  localizeRemoteDisplayAssets: (input: {
+    itemId: string;
+    rawMarkdown: string;
+    itemUrl?: string | null;
+  }) => Promise<{ text: string; changed: boolean }>;
 }
 
 export interface ItemsSearchService {

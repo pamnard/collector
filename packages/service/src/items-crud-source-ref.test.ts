@@ -4,6 +4,7 @@ const upsertItem = vi.fn();
 const readItemRawMarkdown = vi.fn();
 const readItemFile = vi.fn();
 const writeItemRawMarkdown = vi.fn();
+const deleteItem = vi.fn();
 
 vi.mock("@collector/core", async () => {
   const actual = await vi.importActual<typeof import("@collector/core")>(
@@ -15,6 +16,7 @@ vi.mock("@collector/core", async () => {
     readItemRawMarkdown: (...args: unknown[]) => readItemRawMarkdown(...args),
     readItemFile: (...args: unknown[]) => readItemFile(...args),
     writeItemRawMarkdown: (...args: unknown[]) => writeItemRawMarkdown(...args),
+    deleteItem: (...args: unknown[]) => deleteItem(...args),
     resolveOrCreateInboxFolder: vi.fn(async () => "Inbox"),
     createFolder: vi.fn(async () => undefined),
   };
@@ -35,6 +37,7 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
     readItemRawMarkdown.mockReset();
     readItemFile.mockReset();
     writeItemRawMarkdown.mockReset();
+    deleteItem.mockReset();
     upsertItem.mockResolvedValue({ id: "Inbox/n.md" });
     readItemRawMarkdown.mockResolvedValue("raw-md");
     readItemFile.mockResolvedValue({ id: "Inbox/n.md", folder_path: "Inbox" });
@@ -42,6 +45,7 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
       id: "Inbox/n.md",
       folder_path: "Inbox",
     });
+    deleteItem.mockResolvedValue(undefined);
   });
 
   it("forwards sourceRef to upsertItem", async () => {
@@ -54,6 +58,10 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
         getContext: () => ({ fs: {}, index: {} }),
         getIndex: () => ({}),
         normalizeMarkdown: testNormalizeMarkdown,
+        localizeRemoteDisplayAssets: async ({ rawMarkdown }) => ({
+          text: rawMarkdown,
+          changed: false,
+        }),
       } as never,
       () => "n",
     );
@@ -90,6 +98,10 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
         getIndex: () => ({}),
         onVaultPresentationChanged,
         normalizeMarkdown: testNormalizeMarkdown,
+        localizeRemoteDisplayAssets: async ({ rawMarkdown }) => ({
+          text: rawMarkdown,
+          changed: false,
+        }),
       } as never,
       () => "n",
     );
@@ -128,6 +140,10 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
         getIndex: () => ({}),
         onVaultPresentationChanged,
         normalizeMarkdown: testNormalizeMarkdown,
+        localizeRemoteDisplayAssets: async ({ rawMarkdown }) => ({
+          text: rawMarkdown,
+          changed: false,
+        }),
       } as never,
       () => "n",
     );
@@ -146,5 +162,44 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
       itemId: "Inbox/n.md",
       folderPath: "Inbox",
     });
+  });
+
+  it("rolls back created item when localize fails (#739)", async () => {
+    const onVaultPresentationChanged = vi.fn();
+    upsertItem.mockResolvedValue({ id: "Inbox/n.md", url: null });
+    readItemRawMarkdown.mockResolvedValue(
+      "![x](https://cdn.example/x.png)\n",
+    );
+    const crud = createItemsCrud(
+      {
+        resolveActiveVault: async () => ({
+          path: "/vault",
+          vault: { id: "00000000-0000-4000-8000-000000000001" },
+        }),
+        getContext: () => ({ fs: {}, index: {} }),
+        getIndex: () => ({}),
+        onVaultPresentationChanged,
+        normalizeMarkdown: testNormalizeMarkdown,
+        localizeRemoteDisplayAssets: async () => {
+          throw new Error("download failed");
+        },
+      } as never,
+      () => "n",
+    );
+
+    await expect(
+      crud.createItem({
+        title: "Bad remote",
+        content_type: "note",
+        content: "![x](https://cdn.example/x.png)",
+      }),
+    ).rejects.toThrow(/download failed/);
+
+    expect(deleteItem).toHaveBeenCalledWith(
+      expect.anything(),
+      "/vault",
+      "Inbox/n.md",
+    );
+    expect(onVaultPresentationChanged).not.toHaveBeenCalled();
   });
 });

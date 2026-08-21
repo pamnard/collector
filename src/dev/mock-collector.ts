@@ -405,9 +405,12 @@ export async function resolveItemThumbnailPath(
   }
   if (
     item.thumbnail.startsWith("https://") ||
-    item.thumbnail.startsWith("http://") ||
-    item.thumbnail.startsWith("/")
+    item.thumbnail.startsWith("http://")
   ) {
+    // Remote URLs are not vault display assets (#739).
+    return null;
+  }
+  if (item.thumbnail.startsWith("/")) {
     return item.thumbnail;
   }
   if (mockStore.isDiskVault()) {

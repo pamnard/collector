@@ -17,6 +17,7 @@ import { createMediaCoverService } from "../../media-cover.js";
 import { createVaultsService } from "../../vaults.js";
 import { enqueueGenerateCover } from "../../jobs/handlers/generate-cover.js";
 import { waitForJobTerminal } from "../../jobs/job-wait.js";
+import { createLocalizeItemRemoteDisplayAssets } from "../../localize-item-remote-display-assets.js";
 
 export interface DomainServicesDeps {
   dataDir: string;
@@ -92,6 +93,10 @@ export function createDomainServices(deps: DomainServicesDeps): DomainServices {
     findSimilarItems: (itemId, limit) =>
       deps.itemEmbeddings.findSimilarItems(itemId, limit),
     normalizeMarkdown,
+    localizeRemoteDisplayAssets: createLocalizeItemRemoteDisplayAssets({
+      getContext: deps.getContext,
+      resolveActiveVault: () => vaults.resolveActiveVault(),
+    }),
   });
 
   const tagsFolders = createTagsFoldersService({
