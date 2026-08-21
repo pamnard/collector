@@ -258,7 +258,13 @@ export function createItemsCrud(
         raw,
         created.url,
       );
-      notifyItemUpserted(vault.id, item);
+      // Create is distinct from edit so UI can ±1 folder counts (#759).
+      deps.onVaultPresentationChanged?.({
+        vaultId: vault.id,
+        kind: "itemCreated",
+        itemId: item.id,
+        folderPath: item.folder_path,
+      });
       return item;
     } catch (error) {
       console.error("createItem: localize failed; rolling back item", {

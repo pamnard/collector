@@ -311,7 +311,20 @@ describe("folder tree count patch (#756)", () => {
     assert.equal(next[0]?.children[0]?.path, "A/Child");
   });
 
-  it("plans delete/move deltas and recount for upsert", () => {
+  it("plans create/delete/move deltas; edit upsert leaves counts alone (#759)", () => {
+    const created = folderCountPatchPlanForEvent({
+      vaultId: "v",
+      kind: "itemCreated",
+      itemId: "A/Child/x.md",
+      folderPath: "A/Child",
+    });
+    assert.equal(created.type, "deltas");
+    if (created.type === "deltas") {
+      assert.equal(created.deltas.get("A/Child"), 1);
+      assert.equal(created.deltas.get("A"), 1);
+      assert.equal(created.deltas.get(""), 1);
+    }
+
     const del = folderCountPatchPlanForEvent({
       vaultId: "v",
       kind: "itemDeleted",
@@ -322,7 +335,21 @@ describe("folder tree count patch (#756)", () => {
     if (del.type === "deltas") {
       assert.equal(del.deltas.get("A"), -1);
     }
-    assert.equal(folderCountPatchPlanForEvent(baseUpsert("A")).type, "recount");
+
+    const moved = folderCountPatchPlanForEvent({
+      vaultId: "v",
+      kind: "itemMoved",
+      itemId: "B/x.md",
+      fromFolderPath: "A",
+      toFolderPath: "B",
+    });
+    assert.equal(moved.type, "deltas");
+    if (moved.type === "deltas") {
+      assert.equal(moved.deltas.get("A"), -1);
+      assert.equal(moved.deltas.get("B"), 1);
+    }
+
+    assert.equal(folderCountPatchPlanForEvent(baseUpsert("A")).type, "none");
     assert.equal(
       folderCountPatchPlanForEvent({
         vaultId: "v",

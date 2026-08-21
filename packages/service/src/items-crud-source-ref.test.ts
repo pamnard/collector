@@ -115,7 +115,7 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
     expect(onVaultPresentationChanged).toHaveBeenCalledTimes(1);
     expect(onVaultPresentationChanged).toHaveBeenCalledWith({
       vaultId,
-      kind: "itemUpserted",
+      kind: "itemCreated",
       itemId: "Inbox/n.md",
       folderPath: "Inbox",
     });
@@ -158,7 +158,7 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
     expect(onVaultPresentationChanged).toHaveBeenCalledTimes(1);
     expect(onVaultPresentationChanged).toHaveBeenCalledWith({
       vaultId,
-      kind: "itemUpserted",
+      kind: "itemCreated",
       itemId: "Inbox/n.md",
       folderPath: "Inbox",
     });
