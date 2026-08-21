@@ -213,7 +213,7 @@ describe("createJobQueue (#628 / #629)", () => {
     expect((await queue2.stats()).pending).toBe(1);
     queue2.start();
     await waitFor(async () => (await queue2.stats()).succeeded === 1);
-    const sql = NodeSqliteExecutor.open(dbPath);
+    const sql = await NodeSqliteExecutor.open(dbPath);
     const rows = await sql.select<{ id: string; status: string }>(
       "SELECT id, status FROM jobs WHERE id = ?",
       [id],
@@ -225,7 +225,7 @@ describe("createJobQueue (#628 / #629)", () => {
 
   it("reclaims running jobs after crash-style reopen (#640)", async () => {
     const dbPath = tempJobsPath();
-    const sql = NodeSqliteExecutor.open(dbPath);
+    const sql = await NodeSqliteExecutor.open(dbPath);
     await runJobsMigrations(sql);
     await sql.execute(
       `INSERT INTO jobs (
@@ -266,7 +266,7 @@ describe("createJobQueue (#628 / #629)", () => {
     const jobsPath = join(dir, "jobs.db");
     const indexPath = join(dir, "collector.db");
 
-    const jobsSql = NodeSqliteExecutor.open(jobsPath);
+    const jobsSql = await NodeSqliteExecutor.open(jobsPath);
     await runJobsMigrations(jobsSql);
     await jobsSql.execute(
       `INSERT INTO jobs (
@@ -276,13 +276,13 @@ describe("createJobQueue (#628 / #629)", () => {
     );
     await jobsSql.close();
 
-    const indexSql = NodeSqliteExecutor.open(indexPath);
+    const indexSql = await NodeSqliteExecutor.open(indexPath);
     await runMigrations(indexSql);
     await resetIndexSchema(indexSql);
     await runMigrations(indexSql);
     await indexSql.close();
 
-    const jobsAgain = NodeSqliteExecutor.open(jobsPath);
+    const jobsAgain = await NodeSqliteExecutor.open(jobsPath);
     const rows = await jobsAgain.select<{ id: string }>(
       "SELECT id FROM jobs WHERE id = 'j1'",
     );
@@ -348,7 +348,7 @@ describe("createJobQueue (#628 / #629)", () => {
       return { status: "ok" };
     });
 
-    const sql = NodeSqliteExecutor.open(dbPath);
+    const sql = await NodeSqliteExecutor.open(dbPath);
     await runJobsMigrations(sql);
     const store = createJobStore(sql);
     await store.insertJob({

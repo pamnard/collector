@@ -45,7 +45,7 @@ import { connectCollectorHostService } from "./host-collector-client-node.js";
 
 /** Legacy incomplete schema — migrate leaves it unhealthy until rebuild. */
 async function writeLegacyBrokenIndexDb(dbPath: string): Promise<void> {
-  const db = NodeSqliteExecutor.open(dbPath);
+  const db = await NodeSqliteExecutor.open(dbPath);
   await db.execute(`CREATE TABLE schema_migrations (
     version INTEGER PRIMARY KEY,
     applied_at TEXT NOT NULL
