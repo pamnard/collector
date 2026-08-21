@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,6 +12,7 @@ import { importFolderJobType } from "@collector/shared";
 import { createJobQueue, type JobQueue } from "../job-queue.js";
 import { createJobRegistry } from "../job-registry.js";
 import {
+  ImportFolderFatalError,
   createImportFolderHandler,
   enqueueImportFolder,
   isFatalImportFolderError,
@@ -181,18 +188,21 @@ describe("importFolder job (#747)", () => {
     expect(mailbox!.created).toBe(0);
   });
 
-  it("rejects relative and non-directory source paths", async () => {
-    await expect(
-      handler()({
-        id: "job-rel",
-        type: "importFolder",
-        attempts: 0,
-        payload: {
-          vaultId: "vault-1",
-          sourceDirAbs: "relative/notes",
-        },
-      }),
-    ).rejects.toThrow(/must be absolute/);
+  it("rejects relative and non-directory source paths as non-retryable fail", async () => {
+    const relative = await handler()({
+      id: "job-rel",
+      type: "importFolder",
+      attempts: 0,
+      payload: {
+        vaultId: "vault-1",
+        sourceDirAbs: "relative/notes",
+      },
+    });
+    expect(relative).toEqual({
+      status: "fail",
+      retryable: false,
+      error: expect.stringMatching(/must be absolute/),
+    });
 
     const filePath = join(
       mkdtempSync(join(tmpdir(), "collector-import-folder-file-")),
@@ -201,20 +211,23 @@ describe("importFolder job (#747)", () => {
     dirs.push(join(filePath, ".."));
     writeFileSync(filePath, "---\ntitle: X\n---\n");
 
-    await expect(
-      handler()({
-        id: "job-file",
-        type: "importFolder",
-        attempts: 0,
-        payload: {
-          vaultId: "vault-1",
-          sourceDirAbs: filePath,
-        },
-      }),
-    ).rejects.toThrow(/not a directory/);
+    const notDir = await handler()({
+      id: "job-file",
+      type: "importFolder",
+      attempts: 0,
+      payload: {
+        vaultId: "vault-1",
+        sourceDirAbs: filePath,
+      },
+    });
+    expect(notDir).toEqual({
+      status: "fail",
+      retryable: false,
+      error: expect.stringMatching(/not a directory/),
+    });
   });
 
-  it("aborts on vault mismatch without swallowing as per-file failure", async () => {
+  it("aborts on vault mismatch as non-retryable fail (no retry burn)", async () => {
     const sourceDir = mkdtempSync(
       join(tmpdir(), "collector-import-folder-vault-"),
     );
@@ -224,27 +237,118 @@ describe("importFolder job (#747)", () => {
       "---\ntitle: One\n---\nbody\n",
     );
     assertActiveVault.mockRejectedValue(
-      new Error("active vault mismatch for job: vault-1"),
+      new ImportFolderFatalError(
+        "active_vault_mismatch",
+        "active vault mismatch for job: vault-1",
+      ),
     );
 
-    await expect(
-      handler()({
-        id: "job-vault-mismatch",
+    const result = await handler()({
+      id: "job-vault-mismatch",
+      type: "importFolder",
+      attempts: 0,
+      payload: {
+        vaultId: "vault-1",
+        sourceDirAbs: sourceDir,
+      },
+    });
+    expect(result).toEqual({
+      status: "fail",
+      retryable: false,
+      error: expect.stringMatching(/active vault mismatch/),
+    });
+    expect(createItem).not.toHaveBeenCalled();
+    expect(takeImportFolderResult("job-vault-mismatch")).toBeNull();
+  });
+
+  it("counts unreadable files as failed and continues the job", async () => {
+    const sourceDir = mkdtempSync(
+      join(tmpdir(), "collector-import-folder-io-"),
+    );
+    dirs.push(sourceDir);
+    const badPath = join(sourceDir, "bad.md");
+    writeFileSync(badPath, "---\ntitle: Bad\n---\n");
+    chmodSync(badPath, 0);
+    writeFileSync(
+      join(sourceDir, "good.md"),
+      "---\ntitle: Good\n---\nbody\n",
+    );
+
+    const logSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const result = await handler()({
+        id: "job-folder-io",
         type: "importFolder",
         attempts: 0,
         payload: {
           vaultId: "vault-1",
           sourceDirAbs: sourceDir,
         },
-      }),
-    ).rejects.toThrow(/active vault mismatch/);
-    expect(createItem).not.toHaveBeenCalled();
-    expect(takeImportFolderResult("job-vault-mismatch")).toBeNull();
+      });
+      expect(result).toEqual({ status: "ok" });
+    } finally {
+      chmodSync(badPath, 0o644);
+      logSpy.mockRestore();
+    }
+
+    expect(createItem).toHaveBeenCalledTimes(1);
+    const mailbox = takeImportFolderResult("job-folder-io");
+    expect(mailbox).toMatchObject({
+      created: 1,
+      failed: 1,
+      status: "partial",
+    });
+    expect(mailbox!.failures[0]?.relativePath).toBe("bad.md");
   });
 
-  it("classifies vault/index errors as fatal", () => {
+  it("returns non-retryable fail when import hits typed fatal mid-job", async () => {
+    const sourceDir = mkdtempSync(
+      join(tmpdir(), "collector-import-folder-fatal-mid-"),
+    );
+    dirs.push(sourceDir);
+    writeFileSync(
+      join(sourceDir, "one.md"),
+      "---\ntitle: One\n---\nbody\n",
+    );
+    createItem.mockRejectedValue(
+      new ImportFolderFatalError("index_unavailable", "index is unavailable"),
+    );
+
+    const logSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const result = await handler()({
+        id: "job-folder-fatal-mid",
+        type: "importFolder",
+        attempts: 0,
+        payload: {
+          vaultId: "vault-1",
+          sourceDirAbs: sourceDir,
+        },
+      });
+      expect(result).toEqual({
+        status: "fail",
+        retryable: false,
+        error: "index is unavailable",
+      });
+    } finally {
+      logSpy.mockRestore();
+    }
+
+    expect(takeImportFolderResult("job-folder-fatal-mid")).toMatchObject({
+      created: 0,
+      failed: 0,
+      status: "ok",
+    });
+  });
+
+  it("classifies vault/index errors as fatal via typed code or known signals", () => {
     expect(
-      isFatalImportFolderError(new Error("active vault mismatch for job: v")),
+      isFatalImportFolderError(
+        new ImportFolderFatalError(
+          "active_vault_mismatch",
+          "active vault mismatch",
+        ),
+      ),
     ).toBe(true);
     expect(isFatalImportFolderError(new Error("SQLITE_BUSY: database"))).toBe(
       true,
@@ -301,6 +405,8 @@ describe("importFolder job (#747)", () => {
     expect(deduped).toBe(false);
     expect(id).toMatch(/\S/);
     expect(peekImportFolderResult(id)).toBeNull();
+    const enqueued = await queue.getJob(id);
+    expect(enqueued?.max_attempts).toBe(1);
 
     releaseImport?.();
     await waitFor(async () => (await queue.stats()).succeeded === 1);

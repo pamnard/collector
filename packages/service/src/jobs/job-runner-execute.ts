@@ -55,6 +55,9 @@ export function createExecuteJob(deps: {
       return;
     }
 
+    // Per-type timeout (e.g. importFolder hours) overrides the queue default.
+    const effectiveTimeoutMs = entry.type.timeoutMs ?? timeoutMs;
+
     let result: JobHandlerResult;
     try {
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -73,8 +76,10 @@ export function createExecuteJob(deps: {
           }),
         new Promise<JobHandlerResult>((_, reject) => {
           timeoutId = setTimeout(() => {
-            reject(new Error(`job timed out after ${timeoutMs}ms`));
-          }, timeoutMs);
+            reject(
+              new Error(`job timed out after ${effectiveTimeoutMs}ms`),
+            );
+          }, effectiveTimeoutMs);
         }),
       ]);
     } catch (err) {

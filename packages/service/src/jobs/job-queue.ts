@@ -119,7 +119,9 @@ export async function createJobQueue(
       if (delayMs < 0) {
         throw new Error("job enqueue delayMs must be >= 0");
       }
-      const maxAttempts = input.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+      const typeMaxAttempts = registry.requireEntry(input.type).type.maxAttempts;
+      const maxAttempts =
+        input.maxAttempts ?? typeMaxAttempts ?? DEFAULT_MAX_ATTEMPTS;
       if (maxAttempts < 1) {
         throw new Error("job enqueue maxAttempts must be >= 1");
       }

@@ -108,6 +108,13 @@ export type ImportFolderJobStatus =
 
 export interface ImportFolderJobSnapshot {
   jobId: string;
+  /**
+   * Job-row lifecycle status from the host queue.
+   * Note the dual-status contract: the row may be `succeeded` while
+   * {@link result}.status is `partial` or `failed` (per-file import errors
+   * that did not abort the job). Treat `status === "succeeded"` as
+   * "handler finished", and inspect `result` for import outcome.
+   */
   status: ImportFolderJobStatus;
   result: ImportFolderResult | null;
   error: string | null;
