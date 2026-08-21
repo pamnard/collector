@@ -6,6 +6,14 @@ export {
   fingerprintEmbedText,
   needsRecompute,
 } from "./invalidation.js";
+export {
+  planEmbeddingReconcileTick,
+} from "./embedding-reconcile.js";
+export type {
+  EmbeddingReconcileTickOptions,
+  EmbeddingReconcileTickResult,
+  EmbeddingReconcileTickStats,
+} from "./embedding-reconcile.js";
 export type {
   EmbeddingEngine,
   EmbedTextMode,

@@ -19,6 +19,7 @@ import {
 import { createCollectorIndexBoot } from "../index-boot.js";
 import { createDashboardSnapshotService } from "../dashboard-snapshot.js";
 import { createItemEmbeddingsService } from "../embeddings/item-embeddings-service.js";
+import { createEmbeddingReconcileScheduler } from "../embeddings/embedding-reconcile-scheduler.js";
 import { createVaultPresentationChangedStore } from "../vault-presentation-changed.js";
 import { generateCoverFromMedia } from "./node-cover.js";
 import { NodeSqliteExecutor } from "./node-sql.js";
@@ -195,22 +196,30 @@ export function createServiceDomainRuntime(
   });
 
   function getIndex(): SqlVaultIndexStore {
+    return new SqlVaultIndexStore(requireSqlSession());
+  }
+
+  function requireSqlSession() {
     const session = indexBoot.getSql();
     if (!session || !indexBoot.isHealthy()) {
       throw new Error("Collector database is not initialized");
     }
-    return new SqlVaultIndexStore(session);
+    return session;
   }
 
   const itemEmbeddings = createItemEmbeddingsService({
-    getDb: () => {
-      const session = indexBoot.getSql();
-      if (!session || !indexBoot.isHealthy()) {
-        throw new Error("Collector database is not initialized");
-      }
-      return session;
-    },
+    getDb: requireSqlSession,
   });
+
+  async function enqueueEmbeddingRefresh(
+    vaultId: string,
+    inputs: import("@collector/core").ItemEmbeddingRefreshInput[],
+  ): Promise<void> {
+    if (inputs.length === 0) {
+      return;
+    }
+    await enqueueRefreshEmbeddings(requireJobs(), { vaultId, inputs });
+  }
 
   function getContext() {
     return {
@@ -218,18 +227,21 @@ export function createServiceDomainRuntime(
       index: getIndex(),
       embeddings: itemEmbeddings,
       embeddingRefreshJobs: {
-        enqueue: async (
-          vaultId: string,
-          inputs: import("@collector/core").ItemEmbeddingRefreshInput[],
-        ) => {
-          if (inputs.length === 0) {
-            return;
-          }
-          await enqueueRefreshEmbeddings(requireJobs(), { vaultId, inputs });
-        },
+        enqueue: enqueueEmbeddingRefresh,
       },
     };
   }
+
+  // Periodic catch-up for missing/stale item embeddings (#742).
+  // Defaults: interval 3 min, batchSize 50, scanLimit 200 — see scheduler module.
+  const embeddingReconcile = createEmbeddingReconcileScheduler({
+    isHealthy: () => indexBoot.isHealthy() && !runtimeClosed,
+    resolveActiveVaultId: () =>
+      vaultsHolder.current?.getActiveVaultEntry()?.meta.id ?? null,
+    getDb: requireSqlSession,
+    getModelId: () => itemEmbeddings.engine.modelId,
+    enqueueRefresh: enqueueEmbeddingRefresh,
+  });
 
   async function ensureInitialized(): Promise<void> {
     await indexBoot.ensureHealthy();
@@ -357,11 +369,13 @@ export function createServiceDomainRuntime(
         });
         jobsQueue.start();
       }
+      embeddingReconcile.start();
     },
     ensureInitialized,
     isHealthy: () => indexBoot.isHealthy(),
     async close() {
       runtimeClosed = true;
+      embeddingReconcile.dispose();
       vaultLayoutGuard.dispose();
       syncPluginWake.dispose();
       await Promise.allSettled([...vaultSyncController.vaultSyncPromises.values()]);
