@@ -384,4 +384,57 @@ describe("folder operations", () => {
     expect(await fs.exists(mediaRoot)).toBe(true);
     expect(itemMediaRoot(path, moved.id)).toBe(mediaRoot);
   });
+
+  it("moveItemToFolder enqueues embedding refresh for the new item id (#740)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-folder-move-embed-"));
+    const sql = new MemorySqlAdapter();
+    const enqueued: Array<{ vaultId: string; itemIds: string[] }> = [];
+    const ctx = {
+      fs,
+      index: new SqlVaultIndexStore(sql),
+      embeddingRefreshJobs: {
+        enqueue: async (
+          vaultId: string,
+          inputs: Array<{ itemId: string }>,
+        ) => {
+          enqueued.push({
+            vaultId,
+            itemIds: inputs.map((input) => input.itemId),
+          });
+        },
+      },
+    };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const uuid = createId();
+    const itemId = `Inbox/${uuid}.md`;
+    const newId = `Archive/${uuid}.md`;
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Port checker",
+        description: "CLI tool for listening TCP ports",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      content: "Find which process holds a listening port.",
+    });
+    enqueued.length = 0;
+
+    await createFolder(ctx, path, "Archive");
+    const moved = await moveItemToFolder(ctx, path, meta.id, itemId, "Archive");
+    expect(moved.id).toBe(newId);
+    expect(enqueued).toEqual([{ vaultId: meta.id, itemIds: [newId] }]);
+  });
 });
