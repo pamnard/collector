@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#3f3f46"/>
+  <text x="256" y="270" text-anchor="middle" fill="#e2e8f0" font-size="28" font-family="sans-serif">square</text>
+</svg>

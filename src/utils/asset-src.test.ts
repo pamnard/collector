@@ -26,13 +26,11 @@ describe("toDisplayAssetSrc (#739)", () => {
     expect(toDisplayAssetSrc("/__dev/thumb.jpg")).toBe("/__dev/thumb.jpg");
   });
 
-  it("rejects remote http(s) display assets", () => {
-    expect(() => toDisplayAssetSrc("https://example.com/a.png")).toThrow(
-      /remote display asset URL is not allowed/,
-    );
-    expect(() =>
+  it("rejects remote http(s) display assets without throwing", () => {
+    expect(toDisplayAssetSrc("https://example.com/a.png")).toBe("");
+    expect(
       toDisplayAssetSrc("https://img.youtube.com/vi/abc/mqdefault.jpg"),
-    ).toThrow(/remote display asset URL is not allowed/);
+    ).toBe("");
   });
 
   it("returns disk paths unchanged without host credentials (DevMock)", () => {

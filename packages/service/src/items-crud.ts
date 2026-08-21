@@ -225,16 +225,24 @@ export function createItemsCrud(
       content: input.content ?? null,
       sourceRef: input.sourceRef,
     });
-    // Same serialize→normalize→localize→write path as update.
-    const raw = await readItemRawMarkdown(ctx.fs, path, created.id);
-    const { item } = await applyNormalizedSource(
-      created.id,
-      raw,
-      created.url,
-    );
-    // Create always changes vault presentation (new item), even when normalize is a no-op.
-    deps.onVaultPresentationChanged?.(vault.id);
-    return item;
+    // Localize after create; on failure roll back so remotes never remain (#739).
+    try {
+      const raw = await readItemRawMarkdown(ctx.fs, path, created.id);
+      const { item } = await applyNormalizedSource(
+        created.id,
+        raw,
+        created.url,
+      );
+      deps.onVaultPresentationChanged?.(vault.id);
+      return item;
+    } catch (error) {
+      console.error("createItem: localize failed; rolling back item", {
+        itemId: created.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      await deleteItemOnDisk(ctx, path, created.id);
+      throw error;
+    }
   };
 
   const updateItem = async (
@@ -306,7 +314,10 @@ export function createItemsCrud(
     resolveContentTextLinks,
     listItemBacklinks,
     getItemSource,
-    updateItemSource: persistNormalizedSource,
+    updateItemSource: async (itemId, rawMarkdown) => {
+      const { item } = await getItemById(itemId);
+      return persistNormalizedSource(itemId, rawMarkdown, item.url);
+    },
     createItem,
     updateItem,
     deleteItem,

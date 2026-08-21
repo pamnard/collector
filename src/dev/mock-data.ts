@@ -36,6 +36,8 @@ interface ItemSeed {
   url?: string | null;
   tagIndexes: number[];
   folder_path: string;
+  /** Local DevMock cover under `/__dev/mock-covers/` (#739). */
+  coverFixture?: string;
 }
 
 const ITEM_SEEDS: ItemSeed[] = [
@@ -60,6 +62,7 @@ const ITEM_SEEDS: ItemSeed[] = [
     url: YOUTUBE_URLS[0],
     tagIndexes: [2],
     folder_path: "reading",
+    coverFixture: "landscape.svg",
   },
   {
     title: "Gangnam Style",
@@ -68,6 +71,7 @@ const ITEM_SEEDS: ItemSeed[] = [
     url: YOUTUBE_URLS[1],
     tagIndexes: [2],
     folder_path: "reading",
+    coverFixture: "landscape.svg",
   },
   {
     title: "Me at the zoo",
@@ -76,6 +80,7 @@ const ITEM_SEEDS: ItemSeed[] = [
     url: YOUTUBE_URLS[2],
     tagIndexes: [2, 0],
     folder_path: "Inbox",
+    coverFixture: "square.svg",
   },
   {
     title: "Tall cover image sample",
@@ -83,6 +88,7 @@ const ITEM_SEEDS: ItemSeed[] = [
     content_type: "image",
     tagIndexes: [3],
     folder_path: "projects/research",
+    coverFixture: "portrait.svg",
   },
   {
     title: "Wide cover image sample",
@@ -90,6 +96,7 @@ const ITEM_SEEDS: ItemSeed[] = [
     content_type: "image",
     tagIndexes: [3],
     folder_path: "projects/research",
+    coverFixture: "landscape.svg",
   },
   {
     title: "Podcast episode: local-first apps",
@@ -134,6 +141,7 @@ const ITEM_SEEDS: ItemSeed[] = [
     content_type: "article",
     tagIndexes: [3, 1, 0],
     folder_path: "projects/collector",
+    coverFixture: "portrait.svg",
   },
   {
     title: "Meow",
@@ -142,6 +150,7 @@ const ITEM_SEEDS: ItemSeed[] = [
     url: YOUTUBE_URLS[3],
     tagIndexes: [2],
     folder_path: "Inbox",
+    coverFixture: "landscape.svg",
   },
   {
     title: "React 19 release notes",
@@ -156,6 +165,7 @@ const ITEM_SEEDS: ItemSeed[] = [
     content_type: "note",
     tagIndexes: [3],
     folder_path: "projects/collector",
+    coverFixture: "square.svg",
   },
   {
     title: "Bookmark without cover",
@@ -178,6 +188,7 @@ const ITEM_SEEDS: ItemSeed[] = [
     content_type: "image",
     tagIndexes: [3],
     folder_path: "Inbox",
+    coverFixture: "square.svg",
   },
   {
     title: "Long title that should wrap nicely on the card without breaking the masonry column layout in the dashboard",
@@ -257,6 +268,7 @@ const ITEM_SEEDS: ItemSeed[] = [
     content_type: "image",
     tagIndexes: [3, 2],
     folder_path: "reading",
+    coverFixture: "square.svg",
   },
 ];
 
@@ -273,7 +285,9 @@ function buildItems(): ItemFile[] {
       source_type: seed.url?.includes("youtube") ? "youtube" : "manual",
       metadata: {},
       properties: {},
-      thumbnail: null,
+      thumbnail: seed.coverFixture
+        ? `/__dev/mock-covers/${seed.coverFixture}`
+        : null,
       tag_ids: seed.tagIndexes.map((tagIndex) => TAG_DEFS[tagIndex].id),
       collection_ids: [],
       folder_path: seed.folder_path,

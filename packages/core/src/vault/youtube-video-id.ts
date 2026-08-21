@@ -4,7 +4,21 @@
  */
 
 export function isRemoteHttpUrl(value: string): boolean {
-  return value.startsWith("http://") || value.startsWith("https://");
+  const lower = value.trim().toLowerCase();
+  return (
+    lower.startsWith("http://") ||
+    lower.startsWith("https://") ||
+    lower.startsWith("//")
+  );
+}
+
+/** Normalize protocol-relative and mixed-case remote URLs for fetch. */
+export function normalizeRemoteHttpUrl(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("//")) {
+    return `https:${trimmed}`;
+  }
+  return trimmed;
 }
 
 /**

@@ -11,10 +11,8 @@ describe("resolveMarkdownImageSrc (#590 / #739)", () => {
     clearHostMediaCredentials();
   });
 
-  it("rejects remote https image src (#739)", () => {
-    expect(() =>
-      resolveMarkdownImageSrc("https://example.com/a.png"),
-    ).toThrow(/remote display asset URL is not allowed/);
+  it("returns empty src for remote https images (#739)", () => {
+    expect(resolveMarkdownImageSrc("https://example.com/a.png")).toBe("");
   });
 
   it("maps disk paths to host /media/file when credentials are set", () => {

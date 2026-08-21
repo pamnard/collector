@@ -54,6 +54,32 @@ describe("remote display asset helpers (#739)", () => {
     );
   });
 
+  it("preserves image titles when rewriting", () => {
+    const body = '![a](https://cdn.example/a.png "title")';
+    const next = rewriteMarkdownRemoteImageUrls(
+      body,
+      new Map([["https://cdn.example/a.png", "/vault/media/id/a.png"]]),
+    );
+    expect(next).toBe('![a](/vault/media/id/a.png "title")');
+  });
+
+  it("extracts reference-style, protocol-relative, and HTTPS case", () => {
+    const body = [
+      "![one][ref]",
+      "",
+      "![two](HTTPS://cdn.example/Two.PNG)",
+      "",
+      "![three](//cdn.example/three.jpg)",
+      "",
+      "[ref]: https://cdn.example/ref.png",
+    ].join("\n");
+    expect(extractMarkdownRemoteImageRefs(body).map((r) => r.rawUrl)).toEqual([
+      "https://cdn.example/ref.png",
+      "HTTPS://cdn.example/Two.PNG",
+      "//cdn.example/three.jpg",
+    ]);
+  });
+
   it("builds YouTube teaser download URL without using it for display", () => {
     expect(
       youtubeTeaserDownloadUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
@@ -237,5 +263,58 @@ describe("localizeRemoteDisplayAssets (#739)", () => {
     });
 
     expect(result.changed).toBe(false);
+  });
+
+  it("does not leave attached media when a later download fails", async () => {
+    const { ctx, path, vaultId, itemId } = await seedNote(
+      "Partial",
+      "![a](https://cdn.example/a.png)\n![b](https://cdn.example/b.png)",
+    );
+    let calls = 0;
+    await expect(
+      localizeRemoteDisplayAssets({
+        ctx,
+        vaultPath: path,
+        vaultId,
+        itemId,
+        rawMarkdown: await readItemRawMarkdown(fs, path, itemId),
+        fetchBytes: async () => {
+          calls += 1;
+          if (calls === 1) {
+            return new Uint8Array([1, 2, 3]);
+          }
+          throw new Error("second failed");
+        },
+        encodeCoverWebp: async () => new Uint8Array([9]),
+      }),
+    ).rejects.toThrow(/second failed/);
+
+    expect(await listMediaFiles(fs, path, itemId)).toEqual([]);
+    const raw = await readItemRawMarkdown(fs, path, itemId);
+    expect(raw).toContain("https://cdn.example/a.png");
+  });
+
+  it("cleans up attached media when cover encode fails after attach", async () => {
+    const { ctx, path, vaultId, itemId } = await seedNote(
+      "Encode fail",
+      "body",
+    );
+    const raw =
+      "---\ntitle: Encode fail\nthumbnail: https://cdn.example/thumb.jpg\n---\n\n![a](https://cdn.example/a.png)\n";
+    await expect(
+      localizeRemoteDisplayAssets({
+        ctx,
+        vaultPath: path,
+        vaultId,
+        itemId,
+        rawMarkdown: raw,
+        fetchBytes: async () => new Uint8Array([1, 2, 3, 4]),
+        encodeCoverWebp: async () => {
+          throw new Error("encode blew up");
+        },
+      }),
+    ).rejects.toThrow(/encode blew up/);
+
+    expect(await listMediaFiles(fs, path, itemId)).toEqual([]);
   });
 });

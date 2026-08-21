@@ -231,6 +231,7 @@ export type {
 } from "./vault/thumbnail-resolve.js";
 export {
   isRemoteHttpUrl,
+  normalizeRemoteHttpUrl,
   parseYouTubeVideoId,
   youtubeTeaserDownloadUrl,
 } from "./vault/youtube-video-id.js";

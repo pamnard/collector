@@ -88,9 +88,8 @@ export function toDisplayAssetSrc(pathOrUrl: string): string {
     pathOrUrl.startsWith("https://")
   ) {
     if (!isAllowedHttpDisplaySrc(pathOrUrl)) {
-      throw new Error(
-        `toDisplayAssetSrc: remote display asset URL is not allowed (#739): ${pathOrUrl}`,
-      );
+      // Fail closed without crashing the React tree (#739 review).
+      return "";
     }
     return pathOrUrl;
   }

@@ -13,27 +13,29 @@ import {
   partitionDocumentFrontmatter,
   serializeDocumentMarkdown,
 } from "./frontmatter.js";
-import { attachMediaFile } from "./media-operations.js";
+import { attachMediaFile, deleteMediaFile } from "./media-operations.js";
 import { applyItemCover } from "./cover-operations.js";
 import { mediaFilePath } from "./media-io.js";
 import { itemCoverPath } from "./paths.js";
 import {
   isRemoteHttpUrl,
+  normalizeRemoteHttpUrl,
   youtubeTeaserDownloadUrl,
 } from "./youtube-video-id.js";
 
 export {
   isRemoteHttpUrl,
+  normalizeRemoteHttpUrl,
   parseYouTubeVideoId,
   youtubeTeaserDownloadUrl,
 } from "./youtube-video-id.js";
 
 export interface MarkdownRemoteImageRef {
-  /** Exact destination string as written in `![…](…)`. */
+  /** Exact destination URL token as written (may be protocol-relative). */
   rawUrl: string;
-  /** Start index of the destination inside `body` (after `](`). */
+  /** Start index of the destination span inside `body` (after `](`). */
   urlStart: number;
-  /** End index (exclusive) of the destination inside `body`. */
+  /** End index (exclusive) of the destination span inside `body`. */
   urlEnd: number;
 }
 
@@ -95,80 +97,169 @@ function findFenceClose(body: string, from: number, marker: string): number {
   return body.length;
 }
 
+function parseDestinationUrl(rawDest: string): string | null {
+  let raw = rawDest.trim();
+  if (raw.startsWith("<") && raw.endsWith(">")) {
+    raw = raw.slice(1, -1).trim();
+  }
+  const space = raw.search(/\s/);
+  if (space !== -1) {
+    raw = raw.slice(0, space).trim();
+  }
+  return isRemoteHttpUrl(raw) ? raw : null;
+}
+
 /**
- * Collect `![…](http(s)://…)` destinations in document order (code fences skipped).
+ * Collect remote image destinations: inline `![…](http…)` / `![…](//…)` and
+ * reference-style `![…][id]` with `[id]: http…` (code fences skipped).
  */
 export function extractMarkdownRemoteImageRefs(
   body: string,
 ): MarkdownRemoteImageRef[] {
   const refs: MarkdownRemoteImageRef[] = [];
-  let i = 0;
-  while (i < body.length) {
-    const fence = isFenceOpener(body, i);
-    if (fence) {
-      i = findFenceClose(body, fence.end, fence.marker);
-      continue;
-    }
-    if (body[i] === "`") {
-      i = skipInlineCode(body, i);
-      continue;
-    }
-    if (body[i] === "!" && body[i + 1] === "[" && body[i + 2] === "[") {
-      const close = body.indexOf("]]", i + 3);
-      i = close === -1 ? body.length : close + 2;
-      continue;
-    }
-    if (body[i] === "!" && body[i + 1] === "[") {
-      const labelClose = body.indexOf("]", i + 2);
-      if (labelClose === -1) {
-        i += 1;
+  const definitions = new Map<string, { url: string; start: number; end: number }>();
+
+  // Pass 1: reference definitions `[id]: url` (line-start).
+  {
+    let i = 0;
+    while (i < body.length) {
+      const fence = isFenceOpener(body, i);
+      if (fence) {
+        i = findFenceClose(body, fence.end, fence.marker);
         continue;
       }
-      if (body[labelClose + 1] !== "(") {
-        i += 1;
+      if (body[i] === "`") {
+        i = skipInlineCode(body, i);
         continue;
       }
-      const urlStart = labelClose + 2;
-      let j = urlStart;
-      let depth = 1;
-      while (j < body.length && depth > 0) {
-        const ch = body[j]!;
-        if (ch === "(") {
-          depth += 1;
-        } else if (ch === ")") {
-          depth -= 1;
-          if (depth === 0) {
-            break;
+      const atLineStart = i === 0 || body[i - 1] === "\n";
+      if (atLineStart && body[i] === "[") {
+        const labelClose = body.indexOf("]", i + 1);
+        if (
+          labelClose !== -1 &&
+          body[labelClose + 1] === ":" &&
+          !body.slice(i + 1, labelClose).includes("\n")
+        ) {
+          const label = body.slice(i + 1, labelClose).trim().toLowerCase();
+          let valueStart = labelClose + 2;
+          while (
+            valueStart < body.length &&
+            (body[valueStart] === " " || body[valueStart] === "\t")
+          ) {
+            valueStart += 1;
           }
-        } else if (ch === "\n") {
-          break;
+          let valueEnd = valueStart;
+          while (valueEnd < body.length && body[valueEnd] !== "\n") {
+            valueEnd += 1;
+          }
+          const url = parseDestinationUrl(body.slice(valueStart, valueEnd));
+          if (label && url) {
+            definitions.set(label, { url, start: valueStart, end: valueEnd });
+          }
+          i = valueEnd;
+          continue;
         }
-        j += 1;
       }
-      if (depth !== 0) {
-        i += 1;
+      i += 1;
+    }
+  }
+
+  // Pass 2: inline images + reference images.
+  {
+    let i = 0;
+    while (i < body.length) {
+      const fence = isFenceOpener(body, i);
+      if (fence) {
+        i = findFenceClose(body, fence.end, fence.marker);
         continue;
       }
-      let raw = body.slice(urlStart, j).trim();
-      if (raw.startsWith("<") && raw.endsWith(">")) {
-        raw = raw.slice(1, -1).trim();
+      if (body[i] === "`") {
+        i = skipInlineCode(body, i);
+        continue;
       }
-      const space = raw.search(/\s/);
-      if (space !== -1) {
-        raw = raw.slice(0, space).trim();
+      if (body[i] === "!" && body[i + 1] === "[" && body[i + 2] === "[") {
+        const close = body.indexOf("]]", i + 3);
+        i = close === -1 ? body.length : close + 2;
+        continue;
       }
-      if (isRemoteHttpUrl(raw)) {
-        refs.push({ rawUrl: raw, urlStart, urlEnd: j });
+      if (body[i] === "!" && body[i + 1] === "[") {
+        const labelClose = body.indexOf("]", i + 2);
+        if (labelClose === -1) {
+          i += 1;
+          continue;
+        }
+        const after = body[labelClose + 1];
+        if (after === "(") {
+          const urlStart = labelClose + 2;
+          let j = urlStart;
+          let depth = 1;
+          while (j < body.length && depth > 0) {
+            const ch = body[j]!;
+            if (ch === "(") {
+              depth += 1;
+            } else if (ch === ")") {
+              depth -= 1;
+              if (depth === 0) {
+                break;
+              }
+            } else if (ch === "\n") {
+              break;
+            }
+            j += 1;
+          }
+          if (depth !== 0) {
+            i += 1;
+            continue;
+          }
+          const url = parseDestinationUrl(body.slice(urlStart, j));
+          if (url) {
+            refs.push({ rawUrl: url, urlStart, urlEnd: j });
+          }
+          i = j + 1;
+          continue;
+        }
+        if (after === "[") {
+          const refClose = body.indexOf("]", labelClose + 2);
+          if (refClose === -1) {
+            i += 1;
+            continue;
+          }
+          const refLabel = body
+            .slice(labelClose + 2, refClose)
+            .trim()
+            .toLowerCase();
+          const def = definitions.get(refLabel);
+          if (def) {
+            refs.push({
+              rawUrl: def.url,
+              urlStart: def.start,
+              urlEnd: def.end,
+            });
+          }
+          i = refClose + 1;
+          continue;
+        }
+        // Shortcut reference `![label]` → `[label]: url`
+        const shortcut = body.slice(i + 2, labelClose).trim().toLowerCase();
+        const def = definitions.get(shortcut);
+        if (def && (after === undefined || /\s/.test(after) || after === "\n")) {
+          refs.push({
+            rawUrl: def.url,
+            urlStart: def.start,
+            urlEnd: def.end,
+          });
+        }
+        i = labelClose + 1;
+        continue;
       }
-      i = j + 1;
-      continue;
+      i += 1;
     }
-    i += 1;
   }
+
   return refs;
 }
 
-/** Rewrite every occurrence of `fromUrl` destinations that match remote refs. */
+/** Rewrite remote image URL tokens to local paths; preserve titles / definition tails. */
 export function rewriteMarkdownRemoteImageUrls(
   body: string,
   replacements: ReadonlyMap<string, string>,
@@ -180,15 +271,30 @@ export function rewriteMarkdownRemoteImageUrls(
   if (refs.length === 0) {
     return body;
   }
+  // Dedupe by span so shared reference definitions are rewritten once.
+  const uniqueRefs: MarkdownRemoteImageRef[] = [];
+  const seenSpans = new Set<string>();
+  for (const ref of refs) {
+    const key = `${ref.urlStart}:${ref.urlEnd}`;
+    if (seenSpans.has(key)) {
+      continue;
+    }
+    seenSpans.add(key);
+    uniqueRefs.push(ref);
+  }
+
   let out = body;
-  // Apply from the end so earlier offsets stay valid.
-  for (let index = refs.length - 1; index >= 0; index -= 1) {
-    const ref = refs[index]!;
+  for (let index = uniqueRefs.length - 1; index >= 0; index -= 1) {
+    const ref = uniqueRefs[index]!;
     const local = replacements.get(ref.rawUrl);
     if (!local) {
       continue;
     }
-    out = `${out.slice(0, ref.urlStart)}${local}${out.slice(ref.urlEnd)}`;
+    const span = out.slice(ref.urlStart, ref.urlEnd);
+    if (!span.includes(ref.rawUrl)) {
+      continue;
+    }
+    out = `${out.slice(0, ref.urlStart)}${span.replace(ref.rawUrl, local)}${out.slice(ref.urlEnd)}`;
   }
   return out;
 }
@@ -196,7 +302,7 @@ export function rewriteMarkdownRemoteImageUrls(
 export function filenameFromRemoteImageUrl(url: string): string {
   let pathname: string;
   try {
-    pathname = new URL(url).pathname;
+    pathname = new URL(normalizeRemoteHttpUrl(url)).pathname;
   } catch (error) {
     throw new Error(
       `localizeRemoteDisplayAssets: invalid image URL ${url}: ${
@@ -239,21 +345,22 @@ async function downloadOrThrow(
   url: string,
   role: string,
 ): Promise<Uint8Array> {
+  const fetchUrl = normalizeRemoteHttpUrl(url);
   try {
-    const bytes = await fetchBytes(url);
+    const bytes = await fetchBytes(fetchUrl);
     if (!bytes || bytes.byteLength === 0) {
-      throw new Error(`${role}: empty response from ${url}`);
+      throw new Error(`${role}: empty response from ${fetchUrl}`);
     }
     return bytes;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("localizeRemoteDisplayAssets: download failed", {
       role,
-      url,
+      url: fetchUrl,
       error: message,
     });
     throw new Error(
-      `localizeRemoteDisplayAssets: failed to download ${role} from ${url}: ${message}`,
+      `localizeRemoteDisplayAssets: failed to download ${role} from ${fetchUrl}: ${message}`,
       { cause: error },
     );
   }
@@ -262,6 +369,7 @@ async function downloadOrThrow(
 /**
  * Download remote markdown images + FM thumbnail + YouTube teaser into note media.
  * Rewrites the document to local paths. Fails hard on any download error (#739).
+ * Downloads complete before any attach; attached media is cleaned up on failure.
  */
 export async function localizeRemoteDisplayAssets(
   options: LocalizeRemoteDisplayAssetsOptions,
@@ -283,52 +391,25 @@ export async function localizeRemoteDisplayAssets(
 
   const remoteImageRefs = extractMarkdownRemoteImageRefs(body);
   const uniqueRemoteUrls = [...new Set(remoteImageRefs.map((r) => r.rawUrl))];
-  const urlToLocal = new Map<string, string>();
 
+  // Phase 1: download everything first (no disk mutation yet).
+  const downloadedImages = new Map<string, Uint8Array>();
   for (const remoteUrl of uniqueRemoteUrls) {
-    const bytes = await downloadOrThrow(
-      fetchBytes,
+    downloadedImages.set(
       remoteUrl,
-      "markdown image",
+      await downloadOrThrow(fetchBytes, remoteUrl, "markdown image"),
     );
-    const filename = filenameFromRemoteImageUrl(remoteUrl);
-    const media = await attachMediaFile(ctx, vaultPath, itemId, {
-      filename,
-      data: bytes,
-      mediaType: inferMediaType(filename),
-    });
-    const absolute = mediaFilePath(
-      vaultPath,
-      itemId,
-      media.id,
-      media.filename,
-    );
-    urlToLocal.set(remoteUrl, absolute);
-  }
-
-  if (urlToLocal.size > 0) {
-    const nextBody = rewriteMarkdownRemoteImageUrls(body, urlToLocal);
-    if (nextBody !== body) {
-      body = nextBody;
-      changed = true;
-    }
   }
 
   const fmThumbnail =
     typeof known.thumbnail === "string" ? known.thumbnail : null;
-  let clearThumbnail = false;
-
+  let fmThumbnailBytes: Uint8Array | null = null;
   if (fmThumbnail && isRemoteHttpUrl(fmThumbnail)) {
-    const bytes = await downloadOrThrow(
+    fmThumbnailBytes = await downloadOrThrow(
       fetchBytes,
       fmThumbnail,
       "frontmatter thumbnail",
     );
-    const filename = filenameFromRemoteImageUrl(fmThumbnail);
-    const cover = await encodeCoverWebp(bytes, filename);
-    await applyItemCover(ctx, vaultPath, vaultId, itemId, cover);
-    clearThumbnail = true;
-    changed = true;
   }
 
   const itemUrl =
@@ -340,44 +421,99 @@ export async function localizeRemoteDisplayAssets(
   const teaserUrl = itemUrl ? youtubeTeaserDownloadUrl(itemUrl) : null;
   const coverPath = itemCoverPath(vaultPath, itemId);
   const hasCover = await ctx.fs.exists(coverPath);
-
-  if (teaserUrl && !hasCover) {
-    const bytes = await downloadOrThrow(
-      fetchBytes,
-      teaserUrl,
-      "YouTube teaser",
-    );
-    const cover = await encodeCoverWebp(bytes, "mqdefault.jpg");
-    await applyItemCover(ctx, vaultPath, vaultId, itemId, cover);
-    changed = true;
+  let teaserBytes: Uint8Array | null = null;
+  if (teaserUrl && !hasCover && !fmThumbnailBytes) {
+    teaserBytes = await downloadOrThrow(fetchBytes, teaserUrl, "YouTube teaser");
   }
 
-  if (clearThumbnail) {
-    const frontmatter: Record<string, unknown> = { ...properties };
-    for (const [key, value] of Object.entries(known)) {
-      if (value !== undefined && key !== "thumbnail") {
-        frontmatter[key] = value;
+  // Phase 2: attach / cover write with cleanup on failure.
+  const attachedMediaIds: string[] = [];
+  const urlToLocal = new Map<string, string>();
+
+  try {
+    for (const [remoteUrl, bytes] of downloadedImages) {
+      const filename = filenameFromRemoteImageUrl(remoteUrl);
+      const media = await attachMediaFile(ctx, vaultPath, itemId, {
+        filename,
+        data: bytes,
+        mediaType: inferMediaType(filename),
+      });
+      attachedMediaIds.push(media.id);
+      const absolute = mediaFilePath(
+        vaultPath,
+        itemId,
+        media.id,
+        media.filename,
+      );
+      urlToLocal.set(remoteUrl, absolute);
+    }
+
+    if (urlToLocal.size > 0) {
+      const nextBody = rewriteMarkdownRemoteImageUrls(body, urlToLocal);
+      if (nextBody !== body) {
+        body = nextBody;
+        changed = true;
       }
     }
-    frontmatter.thumbnail = null;
-    const text = serializeDocumentMarkdown(frontmatter, body);
-    return { text, changed: true };
-  }
 
-  if (changed) {
-    const frontmatter: Record<string, unknown> = { ...properties };
-    for (const [key, value] of Object.entries(known)) {
-      if (value !== undefined) {
-        frontmatter[key] = value;
+    let clearThumbnail = false;
+    if (fmThumbnailBytes && fmThumbnail) {
+      const filename = filenameFromRemoteImageUrl(fmThumbnail);
+      const cover = await encodeCoverWebp(fmThumbnailBytes, filename);
+      await applyItemCover(ctx, vaultPath, vaultId, itemId, cover);
+      clearThumbnail = true;
+      changed = true;
+    } else if (teaserBytes) {
+      const cover = await encodeCoverWebp(teaserBytes, "mqdefault.jpg");
+      await applyItemCover(ctx, vaultPath, vaultId, itemId, cover);
+      changed = true;
+    }
+
+    if (clearThumbnail) {
+      const frontmatter: Record<string, unknown> = { ...properties };
+      for (const [key, value] of Object.entries(known)) {
+        if (value !== undefined && key !== "thumbnail") {
+          frontmatter[key] = value;
+        }
+      }
+      frontmatter.thumbnail = null;
+      return {
+        text: serializeDocumentMarkdown(frontmatter, body),
+        changed: true,
+      };
+    }
+
+    if (changed) {
+      const frontmatter: Record<string, unknown> = { ...properties };
+      for (const [key, value] of Object.entries(known)) {
+        if (value !== undefined) {
+          frontmatter[key] = value;
+        }
+      }
+      return {
+        text: serializeDocumentMarkdown(frontmatter, body),
+        changed: true,
+      };
+    }
+
+    return { text: options.rawMarkdown, changed: false };
+  } catch (error) {
+    for (const mediaId of attachedMediaIds) {
+      try {
+        await deleteMediaFile(ctx, vaultPath, itemId, mediaId);
+      } catch (cleanupError) {
+        console.error("localizeRemoteDisplayAssets: cleanup failed", {
+          itemId,
+          mediaId,
+          error:
+            cleanupError instanceof Error
+              ? cleanupError.message
+              : String(cleanupError),
+        });
       }
     }
-    return {
-      text: serializeDocumentMarkdown(frontmatter, body),
-      changed: true,
-    };
+    throw error;
   }
-
-  return { text: options.rawMarkdown, changed: false };
 }
 
 /** Reject remote http(s) left in asset fields after localization should have run. */
