@@ -342,7 +342,11 @@ export function createServiceDomainRuntime(
     return vault.id;
   };
 
-  const { syncPlugins, telegramSync, syncPluginWake } = createSyncPluginRuntime({
+  const {
+    syncPlugins,
+    telegramSync,
+    syncPluginWake: syncPluginWakeInner,
+  } = createSyncPluginRuntime({
     fs,
     dataDir,
     credentials,
@@ -354,6 +358,18 @@ export function createServiceDomainRuntime(
     jobPermanentFailure,
     wakePolicies: options.wakePolicies,
   });
+
+  // Boot order: open()/start() may run before ensureActiveVault. Wake again on
+  // vault-ready (same signal as sync plugins) so reconcile does not wait a full interval.
+  const syncPluginWake: typeof syncPluginWakeInner = {
+    register: (pluginId, policy) =>
+      syncPluginWakeInner.register(pluginId, policy),
+    dispose: () => syncPluginWakeInner.dispose(),
+    async notifyVaultReady() {
+      await syncPluginWakeInner.notifyVaultReady();
+      embeddingReconcile.wake();
+    },
+  };
 
   return {
     dataDir,

@@ -331,4 +331,48 @@ describe("createEmbeddingReconcileScheduler (#742)", () => {
     expect(String(onTickError.mock.calls[0]?.[0])).toContain("plan failed");
     scheduler.dispose();
   });
+
+  it("wake after start re-runs when vault becomes available (boot order)", async () => {
+    vi.useFakeTimers();
+    let vaultId: string | null = null;
+    let resolveCalls = 0;
+    const planTick = vi.fn(async () => ({
+      inputs: [],
+      stats: {
+        scanned: 0,
+        missing: 0,
+        staleModel: 0,
+        enqueued: 0,
+        skippedNoSignal: 0,
+        deferred: 0,
+        batchFull: false,
+      },
+      nextAfterItemId: null,
+    }));
+    const scheduler = createEmbeddingReconcileScheduler({
+      isHealthy: () => true,
+      resolveActiveVaultId: () => {
+        resolveCalls += 1;
+        return vaultId;
+      },
+      getDb: () => ({}) as never,
+      getModelId: () => EMBEDDING_MODEL_ID,
+      enqueueRefresh: async () => undefined,
+      planTick,
+      intervalMs: 60_000,
+    });
+    scheduler.start();
+    // First wake from start() sees no vault and skips planning.
+    await vi.waitFor(() => {
+      expect(resolveCalls).toBeGreaterThan(0);
+    });
+    expect(planTick).not.toHaveBeenCalled();
+    // Simulate ensureActiveVault / notifyVaultReady after open().
+    vaultId = "v1";
+    scheduler.wake();
+    await vi.waitFor(() => {
+      expect(planTick).toHaveBeenCalledTimes(1);
+    });
+    scheduler.dispose();
+  });
 });

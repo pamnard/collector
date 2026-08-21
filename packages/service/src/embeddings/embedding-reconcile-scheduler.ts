@@ -66,6 +66,12 @@ export interface EmbeddingReconcileSchedulerDeps {
 export interface EmbeddingReconcileScheduler {
   start(): void;
   dispose(): void;
+  /**
+   * Schedule a tick soon. No-op until `start()` (timer armed) or after dispose.
+   * Host calls this on vault-ready so the first useful catch-up is not delayed
+   * by a full interval after boot (`open` runs before ensureActiveVault).
+   */
+  wake(): void;
   /** Exposed for tests / manual wake. */
   runTick(): Promise<EmbeddingReconcileTickLog | null>;
 }
@@ -215,6 +221,13 @@ export function createEmbeddingReconcileScheduler(
     })();
   };
 
+  function publicWake(): void {
+    if (disposed || timer === null) {
+      return;
+    }
+    wake();
+  }
+
   return {
     start() {
       if (disposed) {
@@ -234,6 +247,7 @@ export function createEmbeddingReconcileScheduler(
         timer = null;
       }
     },
+    wake: publicWake,
     runTick,
   };
 }
