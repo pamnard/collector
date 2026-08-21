@@ -330,4 +330,29 @@ describe("parseCliArgs (#172/#173 / #550 G)", () => {
       parseCliArgs([...BASE, "--data-dir", "/data", "update-item", "id1"]),
     ).toThrow(/at least one field flag/);
   });
+
+  it("parses import-folder with --wait before value flags (#747)", () => {
+    expect(
+      parseCliArgs([
+        ...BASE,
+        "--data-dir",
+        "/data",
+        "import-folder",
+        "--wait",
+        "--path",
+        "/abs/notes",
+        "--folder",
+        "Archive",
+      ]),
+    ).toEqual({
+      command: {
+        name: "import-folder",
+        sourceDirAbs: "/abs/notes",
+        folder_path: "Archive",
+        wait: true,
+      },
+      baseUrl: "http://127.0.0.1:9",
+      dataDir: "/data",
+    });
+  });
 });

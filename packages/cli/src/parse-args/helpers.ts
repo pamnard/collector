@@ -8,6 +8,9 @@ export const ENDPOINT_FLAGS = new Set([
   "--token",
 ]);
 
+/** Flags that take no value (must not consume the next argv slot). */
+export const BOOLEAN_FLAGS = new Set(["--wait"]);
+
 export function readOpt(argv: string[], name: string): string | undefined {
   const idx = argv.indexOf(name);
   if (idx < 0) {
@@ -47,6 +50,9 @@ export function stripKnownOpts(argv: string[], flags: Set<string>): string[] {
   const out: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
+    if (BOOLEAN_FLAGS.has(arg)) {
+      continue;
+    }
     if (flags.has(arg) || ENDPOINT_FLAGS.has(arg)) {
       i += 1;
       continue;
