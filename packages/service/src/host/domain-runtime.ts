@@ -48,6 +48,7 @@ import {
 import {
   createDropImportBatchHandler,
 } from "../jobs/handlers/drop-import-batch.js";
+import { createImportFolderHandler } from "../jobs/handlers/import-folder.js";
 import { reportEnqueueFailure } from "../job-permanent-failure.js";
 import { createVaultIndexSyncStatusStore } from "../sync-status.js";
 import { createDomainServices } from "./domain-runtime/domain-services.js";
@@ -300,6 +301,15 @@ export function createServiceDomainRuntime(
       mediaCover.attachMediaFiles(itemId, files),
     updateItemSource: (itemId, raw) =>
       itemsSearch.updateItemSource(itemId, raw),
+  });
+
+  phaseBHandlerBindings.importFolder = createImportFolderHandler({
+    createItem: (input) => itemsSearch.createItem(input),
+    attachMediaFiles: (itemId, files) =>
+      mediaCover.attachMediaFiles(itemId, files),
+    updateItemSource: (itemId, raw) =>
+      itemsSearch.updateItemSource(itemId, raw),
+    findItemIdByUrl: (vaultId, url) => getIndex().findItemIdByUrl(vaultId, url),
   });
 
   const dropImport = createDropImportRuntime({

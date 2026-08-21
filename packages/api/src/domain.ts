@@ -71,6 +71,42 @@ export interface ImportDroppedFilesResult {
   createdIds: string[];
 }
 
+/** Host-path folder bulk import (#747). */
+export interface ImportFolderInput {
+  /** Absolute path on the host filesystem. */
+  sourceDirAbs: string;
+  /** Target vault folder; omit/empty → Inbox via createItem. */
+  targetFolderPath?: string;
+}
+
+export interface ImportFolderFailure {
+  relativePath: string;
+  error: string;
+}
+
+export interface ImportFolderResult {
+  createdIds: string[];
+  skippedIds: string[];
+  failures: ImportFolderFailure[];
+  created: number;
+  skipped: number;
+  failed: number;
+}
+
+export type ImportFolderJobStatus =
+  | "pending"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+
+export interface ImportFolderJobSnapshot {
+  jobId: string;
+  status: ImportFolderJobStatus;
+  result: ImportFolderResult | null;
+  error: string | null;
+}
+
 export interface UpdateItemInput {
   title?: string;
   description?: string;

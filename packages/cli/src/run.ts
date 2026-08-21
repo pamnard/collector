@@ -120,6 +120,30 @@ export async function runCollectorCli(
       io.stdout(JSON.stringify({ ok: true, deleted: cmd.itemId }));
       return 0;
     }
+    if (cmd.name === "import-folder") {
+      const { jobId } = await client.items.importFolder({
+        sourceDirAbs: cmd.sourceDirAbs,
+        ...(cmd.folder_path === undefined
+          ? {}
+          : { targetFolderPath: cmd.folder_path }),
+      });
+      if (!cmd.wait) {
+        io.stdout(JSON.stringify({ jobId }, null, 2));
+        return 0;
+      }
+      const terminal = new Set(["succeeded", "failed", "cancelled"]);
+      let delayMs = 100;
+      // Long-running folder imports must not inherit the 120s job-wait ceiling.
+      for (;;) {
+        const snapshot = await client.items.getImportFolderJob(jobId);
+        if (terminal.has(snapshot.status)) {
+          io.stdout(JSON.stringify(snapshot, null, 2));
+          return snapshot.status === "succeeded" ? 0 : 1;
+        }
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        delayMs = Math.min(delayMs * 2, 2_000);
+      }
+    }
     if (cmd.name === "create-tag") {
       const tag = await client.tags.createTag({
         name: cmd.tagName,

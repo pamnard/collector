@@ -8,6 +8,8 @@ import type {
   GetItemResult,
   ImportDroppedFilesInput,
   ImportDroppedFilesResult,
+  ImportFolderInput,
+  ImportFolderJobSnapshot,
   IndexQueryResult,
   ItemsPort,
   NavFilter,
@@ -217,6 +219,8 @@ function createItemsWriteMethods(
   | "updateItem"
   | "deleteItem"
   | "importDroppedFiles"
+  | "importFolder"
+  | "getImportFolderJob"
 > {
   return {
     updateItemSource: (
@@ -254,6 +258,19 @@ function createItemsWriteMethods(
           dataBase64: bytesToBase64(file.bytes),
         })),
       }) as Promise<ImportDroppedFilesResult>,
+    importFolder: async (
+      input: ImportFolderInput,
+    ): Promise<{ jobId: string }> =>
+      transport.request("importFolder", {
+        sourceDirAbs: input.sourceDirAbs,
+        ...(input.targetFolderPath === undefined
+          ? {}
+          : { targetFolderPath: input.targetFolderPath }),
+      }) as Promise<{ jobId: string }>,
+    getImportFolderJob: (jobId: string): Promise<ImportFolderJobSnapshot> =>
+      transport.request("getImportFolderJob", {
+        jobId,
+      }) as Promise<ImportFolderJobSnapshot>,
   };
 }
 

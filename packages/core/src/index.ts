@@ -144,6 +144,8 @@ export { reconcileIndexFolderPrefixFromFilesystem } from "./vault/folder-prefix-
 export {
   createSingleFlight,
   DISK_ITEM_READ_CONCURRENCY,
+  INDEX_SYNC_YIELD_MS,
+  yieldToEventLoop,
 } from "./util/concurrency.js";
 
 export { createTwoPhaseBootGate } from "./util/boot-gate.js";

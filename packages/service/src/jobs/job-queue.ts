@@ -2,6 +2,7 @@ import type { JobPermanentFailure } from "@collector/api";
 import {
   JOB_TYPE_CATALOG,
   dropImportBatchJobType,
+  importFolderJobType,
   generateCoverJobType,
   refreshEmbeddingsJobType,
   reindexVaultBatchJobType,
@@ -225,5 +226,6 @@ export function createHostJobRegistry(): JobRegistry {
     dropImportBatchJobType,
     boundPhaseBHandler("dropImportBatch"),
   );
+  registry.register(importFolderJobType, boundPhaseBHandler("importFolder"));
   return registry;
 }

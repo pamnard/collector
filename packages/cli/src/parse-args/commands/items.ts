@@ -145,3 +145,24 @@ export function parseMoveItem(argv: string[], rest: string[]): CliCommand {
   }
   return { name: "move-item", itemId, folderPath };
 }
+
+export const IMPORT_FOLDER_FLAGS = new Set(["--path", "--folder", "--wait"]);
+
+export function parseImportFolder(argv: string[], rest: string[]): CliCommand {
+  if (rest.length > 0) {
+    throw new CliUsageError(
+      "Usage: collector-cli import-folder --path <abs-dir> [--folder <vault-folder>] [--wait]",
+    );
+  }
+  const sourceDirAbs = readOpt(argv, "--path");
+  if (!sourceDirAbs) {
+    throw new CliUsageError("import-folder requires --path");
+  }
+  const folder_path = readOpt(argv, "--folder");
+  return {
+    name: "import-folder",
+    sourceDirAbs,
+    wait: hasFlag(argv, "--wait"),
+    ...(folder_path === undefined ? {} : { folder_path }),
+  };
+}

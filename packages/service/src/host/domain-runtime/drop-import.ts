@@ -1,18 +1,29 @@
-import type { ImportDroppedFilesInput } from "@collector/api";
+import type {
+  ImportDroppedFilesInput,
+  ImportFolderInput,
+  ImportFolderJobSnapshot,
+} from "@collector/api";
 import type { JobQueue } from "../../jobs/job-queue.js";
 import {
   enqueueDropImportBatch,
   takeDropImportResult,
 } from "../../jobs/handlers/drop-import-batch.js";
+import {
+  enqueueImportFolder,
+  peekImportFolderResult,
+  takeImportFolderResult,
+} from "../../jobs/handlers/import-folder.js";
 import { enqueueAndAwaitResult } from "../../jobs/job-wait.js";
 import { mkdir, writeFile, rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 
 export interface DropImportRuntimeDeps {
   dataDir: string;
   resolveActiveVault: () => Promise<{ vault: { id: string } }>;
   requireJobs: () => JobQueue;
 }
+
+const TERMINAL = new Set(["succeeded", "failed", "cancelled"]);
 
 export function createDropImportRuntime(deps: DropImportRuntimeDeps) {
   return {
@@ -52,6 +63,40 @@ export function createDropImportRuntime(deps: DropImportRuntimeDeps) {
       } finally {
         await rm(stagingDir, { recursive: true, force: true });
       }
+    },
+
+    /** Fire-and-forget host folder import (#747). */
+    async importFolder(input: ImportFolderInput): Promise<{ jobId: string }> {
+      if (!isAbsolute(input.sourceDirAbs)) {
+        throw new Error(
+          `importFolder sourceDirAbs must be absolute: ${input.sourceDirAbs}`,
+        );
+      }
+      const active = await deps.resolveActiveVault();
+      const { id } = await enqueueImportFolder(deps.requireJobs(), {
+        vaultId: active.vault.id,
+        sourceDirAbs: input.sourceDirAbs,
+        ...(input.targetFolderPath?.trim()
+          ? { targetFolderPath: input.targetFolderPath.trim() }
+          : {}),
+      });
+      return { jobId: id };
+    },
+
+    async getImportFolderJob(jobId: string): Promise<ImportFolderJobSnapshot> {
+      const row = await deps.requireJobs().getJob(jobId);
+      if (!row) {
+        throw new Error(`importFolder job not found: ${jobId}`);
+      }
+      const result = TERMINAL.has(row.status)
+        ? takeImportFolderResult(jobId)
+        : peekImportFolderResult(jobId);
+      return {
+        jobId,
+        status: row.status as ImportFolderJobSnapshot["status"],
+        result,
+        error: row.last_error,
+      };
     },
   };
 }

@@ -11,6 +11,8 @@ import type {
   CollectorService,
   ImportDroppedFilesInput,
   ImportDroppedFilesResult,
+  ImportFolderInput,
+  ImportFolderJobSnapshot,
   NavFilter as ApiNavFilter,
   Subscription,
   SyncNowResult,
@@ -330,6 +332,10 @@ export function createDevMockCollectorService(): CollectorService {
       deleteItem: async (_itemId) => refuseUnsupported(),
       importDroppedFiles: async (_input: ImportDroppedFilesInput) =>
         refuseUnsupported() as Promise<ImportDroppedFilesResult>,
+      importFolder: async (_input: ImportFolderInput) =>
+        refuseUnsupported() as Promise<{ jobId: string }>,
+      getImportFolderJob: async (_jobId: string) =>
+        refuseUnsupported() as Promise<ImportFolderJobSnapshot>,
     },
     tags: {
       subscribeTags,

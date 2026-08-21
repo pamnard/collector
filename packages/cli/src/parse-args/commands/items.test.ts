@@ -9,6 +9,7 @@ import {
   parseDeleteItem,
   parseGetItem,
   parseGetItemSource,
+  parseImportFolder,
   parseMoveItem,
   parseUpdateItem,
   parseUpdateItemSource,
@@ -216,6 +217,51 @@ describe("parse-args items commands (#718)", () => {
       expectCliUsage(
         () => parseMoveItem(["move-item", "id1"], ["id1"]),
         /move-item/,
+      );
+    });
+  });
+
+  describe("import-folder", () => {
+    it("parses --path, optional --folder, and --wait", () => {
+      expect(
+        parseImportFolder(
+          [
+            "import-folder",
+            "--path",
+            "/abs/notes",
+            "--folder",
+            "Inbox",
+            "--wait",
+          ],
+          [],
+        ),
+      ).toEqual({
+        name: "import-folder",
+        sourceDirAbs: "/abs/notes",
+        folder_path: "Inbox",
+        wait: true,
+      });
+      expect(
+        parseImportFolder(["import-folder", "--path", "/abs/notes"], []),
+      ).toEqual({
+        name: "import-folder",
+        sourceDirAbs: "/abs/notes",
+        wait: false,
+      });
+    });
+
+    it("rejects missing --path and positional args", () => {
+      expectCliUsage(
+        () => parseImportFolder(["import-folder"], []),
+        /import-folder requires --path/,
+      );
+      expectCliUsage(
+        () =>
+          parseImportFolder(
+            ["import-folder", "--path", "/abs"],
+            ["extra"],
+          ),
+        /import-folder/,
       );
     });
   });

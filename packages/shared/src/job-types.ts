@@ -134,6 +134,20 @@ export const dropImportBatchJobType = defineJobType({
   payload: dropImportBatchJobPayloadSchema,
 });
 
+/** Host-path folder bulk import (#747). */
+export const importFolderJobPayloadSchema = z.object({
+  vaultId: z.string().min(1),
+  sourceDirAbs: z.string().min(1),
+  targetFolderPath: z.string().optional(),
+});
+export type ImportFolderJobPayload = z.infer<
+  typeof importFolderJobPayloadSchema
+>;
+export const importFolderJobType = defineJobType({
+  id: "importFolder",
+  payload: importFolderJobPayloadSchema,
+});
+
 /**
  * Production catalog — the single explicit list of job type ids (#629).
  * Phase B types join here; test suites may pass a local catalog to
@@ -147,6 +161,7 @@ export const JOB_TYPE_CATALOG = [
   syncPluginPullJobType,
   generateCoverJobType,
   dropImportBatchJobType,
+  importFolderJobType,
 ] as const;
 
 export type JobTypeId = (typeof JOB_TYPE_CATALOG)[number]["id"];

@@ -28,6 +28,7 @@ export const phaseBHandlerBindings: {
   syncPluginPull: AnyTypedHandler | null;
   generateCover: AnyTypedHandler | null;
   dropImportBatch: AnyTypedHandler | null;
+  importFolder: AnyTypedHandler | null;
 } = {
   vaultIndexSync: null,
   reindexVaultBatch: null,
@@ -35,6 +36,7 @@ export const phaseBHandlerBindings: {
   syncPluginPull: null,
   generateCover: null,
   dropImportBatch: null,
+  importFolder: null,
 };
 
 export function boundPhaseBHandler(
