@@ -55,7 +55,9 @@ export function createJobPoll(deps: {
           break;
         }
         // claimNext awaits; stop may have begun meanwhile — do not start new work.
+        // Job is already `running` in the store; release before break or it orphans until reclaim.
         if (isStopped()) {
+          await store.releaseClaim(job.id, now().toISOString());
           break;
         }
         claimed += 1;

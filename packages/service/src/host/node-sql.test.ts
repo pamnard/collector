@@ -135,4 +135,47 @@ describe("NodeSqliteExecutor (worker-backed)", () => {
       /closed|exited unexpectedly/i,
     );
   });
+
+  it("close() fails fast when worker terminates before close reply", async () => {
+    const sql = await NodeSqliteExecutor.open(tempDbPath());
+    const worker = sql.workerForTests;
+
+    let resolveClosePosted!: () => void;
+    const closePosted = new Promise<void>((resolve) => {
+      resolveClosePosted = resolve;
+    });
+    const originalPost = worker.postMessage.bind(worker);
+    worker.postMessage = ((value: unknown, transfer?: Transferable[]) => {
+      originalPost(value, transfer);
+      if (
+        typeof value === "object" &&
+        value !== null &&
+        "op" in value &&
+        (value as { op: string }).op === "close"
+      ) {
+        resolveClosePosted();
+      }
+    }) as typeof worker.postMessage;
+
+    const closePromise = sql.close();
+    await closePosted;
+    // Drop reply path so only exit/#failAll can settle the in-flight close.
+    worker.removeAllListeners("message");
+    await worker.terminate();
+
+    const started = Date.now();
+    await expect(closePromise).rejects.toThrow(/exited unexpectedly|closed/i);
+    expect(Date.now() - started).toBeLessThan(500);
+  });
+
+  it("does not throw from message listener after teardown for unknown pending id", async () => {
+    const sql = await NodeSqliteExecutor.open(tempDbPath());
+    const worker = sql.workerForTests;
+    await sql.close();
+
+    // EventEmitter.emit rethrows listener errors synchronously (not uncaughtException).
+    expect(() => {
+      worker.emit("message", { id: 999_999, ok: true, result: null });
+    }).not.toThrow();
+  });
 });

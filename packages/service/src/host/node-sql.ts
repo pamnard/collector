@@ -72,6 +72,10 @@ export class NodeSqliteExecutor implements ClosableSqlExecutor {
           id: msg.id,
           ok: msg.ok,
         });
+        // After close/failAll/terminate, late replies must not throw (uncaughtException).
+        if (this.#closed || this.#isWorkerDead()) {
+          return;
+        }
         throw new Error(
           `NodeSqliteExecutor: response for unknown pending id ${msg.id}`,
         );
@@ -85,16 +89,17 @@ export class NodeSqliteExecutor implements ClosableSqlExecutor {
     });
     worker.on("error", (err) => {
       this.#closed = true;
-      this.#failAll(err instanceof Error ? err : new Error(String(err)));
+      if (this.#pending.size > 0) {
+        this.#failAll(err instanceof Error ? err : new Error(String(err)));
+      }
     });
     worker.on("exit", (code) => {
-      if (this.#closed) {
-        return;
-      }
       this.#closed = true;
-      this.#failAll(
-        new Error(`SQLite worker exited unexpectedly (code ${code})`),
-      );
+      if (this.#pending.size > 0) {
+        this.#failAll(
+          new Error(`SQLite worker exited unexpectedly (code ${code})`),
+        );
+      }
     });
   }
 
