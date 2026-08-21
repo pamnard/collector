@@ -229,6 +229,25 @@ export type {
   ThumbnailResolveItem,
   ThumbnailResolveResult,
 } from "./vault/thumbnail-resolve.js";
+export {
+  isRemoteHttpUrl,
+  parseYouTubeVideoId,
+  youtubeTeaserDownloadUrl,
+} from "./vault/youtube-video-id.js";
+export {
+  assertNoRemoteDisplayAssetUrl,
+  extractMarkdownRemoteImageRefs,
+  filenameFromRemoteImageUrl,
+  localizeRemoteDisplayAssets,
+  rewriteMarkdownRemoteImageUrls,
+} from "./vault/remote-display-assets.js";
+export type {
+  EncodeCoverWebp,
+  FetchRemoteBytes,
+  LocalizeRemoteDisplayAssetsOptions,
+  LocalizeRemoteDisplayAssetsResult,
+  MarkdownRemoteImageRef,
+} from "./vault/remote-display-assets.js";
 export { resolveItemHeroMedia } from "./vault/hero-image-resolve.js";
 export type {
   ItemHeroMedia,

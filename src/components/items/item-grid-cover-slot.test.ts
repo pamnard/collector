@@ -63,8 +63,8 @@ describe("itemGridCoverSlot", () => {
 
   it("does not treat pending alone as showCover (no optimistic chrome)", () => {
     const pending = itemGridCoverSlot({
-      expectedCoverSrc: "https://img.youtube.com/vi/abc/mqdefault.jpg",
-      coverSrc: "https://img.youtube.com/vi/abc/mqdefault.jpg",
+      expectedCoverSrc: "/vault/media/id/cover.webp",
+      coverSrc: "/vault/media/id/cover.webp",
       coverSettled: false,
     });
     assert.equal(pending.showCover, false);

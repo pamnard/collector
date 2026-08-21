@@ -1,20 +1,13 @@
 import { toDisplayAssetSrc } from "./asset-src";
-import { getYouTubeThumbnail } from "./youtube-thumbnail";
 
 /**
- * Display cover URL for collection cards and related teasers — same rule.
+ * Display cover URL for collection cards and related teasers.
  * `thumbnailPath` is from {@link UiSession.thumbnails} (disk cover / null).
- * YouTube is only a fallback when there is no resolved path.
+ * Remote CDN teasers (including YouTube) are not invented at display time (#739).
  */
-export function resolveCoverSrc(
-  thumbnailPath: string | null,
-  itemUrl: string | undefined,
-): string | null {
-  if (thumbnailPath) {
-    return toDisplayAssetSrc(thumbnailPath);
+export function resolveCoverSrc(thumbnailPath: string | null): string | null {
+  if (!thumbnailPath) {
+    return null;
   }
-  if (itemUrl) {
-    return getYouTubeThumbnail(itemUrl);
-  }
-  return null;
+  return toDisplayAssetSrc(thumbnailPath);
 }

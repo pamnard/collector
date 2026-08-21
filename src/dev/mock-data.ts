@@ -28,16 +28,12 @@ function isoDaysAgo(days: number): string {
   return date.toISOString();
 }
 
-function picsum(seed: string, width: number, height: number): string {
-  return `https://picsum.photos/seed/${seed}/${width}/${height}`;
-}
 
 interface ItemSeed {
   title: string;
   description: string;
   content_type: ContentType;
   url?: string | null;
-  thumbnail?: string | null;
   tagIndexes: number[];
   folder_path: string;
 }
@@ -54,13 +50,12 @@ const ITEM_SEEDS: ItemSeed[] = [
     title: "Offline-first vault architecture",
     description: "Индекс в SQLite, файлы на диске, rebuild при unhealthy schema.",
     content_type: "article",
-    thumbnail: picsum("collector-arch", 900, 500),
     tagIndexes: [1, 3],
     folder_path: "projects/collector",
   },
   {
     title: "Rick Astley — Never Gonna Give You Up",
-    description: "YouTube bookmark для проверки превью без локального cover.",
+    description: "YouTube bookmark (cover must be localized on save; no CDN hotlink).",
     content_type: "video",
     url: YOUTUBE_URLS[0],
     tagIndexes: [2],
@@ -86,7 +81,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     title: "Tall cover image sample",
     description: "Вертикальное превью для masonry.",
     content_type: "image",
-    thumbnail: picsum("collector-tall", 700, 1100),
     tagIndexes: [3],
     folder_path: "projects/research",
   },
@@ -94,7 +88,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     title: "Wide cover image sample",
     description: "Широкое превью.",
     content_type: "image",
-    thumbnail: picsum("collector-wide", 1200, 620),
     tagIndexes: [3],
     folder_path: "projects/research",
   },
@@ -139,7 +132,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     title: "Design system color tokens",
     description: "Карточка с несколькими тегами и обложкой.",
     content_type: "article",
-    thumbnail: picsum("collector-design", 800, 900),
     tagIndexes: [3, 1, 0],
     folder_path: "projects/collector",
   },
@@ -155,7 +147,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     title: "React 19 release notes",
     description: "Статья с превью средней высоты.",
     content_type: "article",
-    thumbnail: picsum("collector-react", 820, 680),
     tagIndexes: [1],
     folder_path: "reading",
   },
@@ -163,7 +154,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     title: "Grid card hover states",
     description: "Проверка border/shadow на hover.",
     content_type: "note",
-    thumbnail: picsum("collector-hover", 760, 760),
     tagIndexes: [3],
     folder_path: "projects/collector",
   },
@@ -186,7 +176,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     title: "Screenshot reference",
     description: "Квадратное изображение.",
     content_type: "image",
-    thumbnail: picsum("collector-square", 800, 800),
     tagIndexes: [3],
     folder_path: "Inbox",
   },
@@ -194,7 +183,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     title: "Long title that should wrap nicely on the card without breaking the masonry column layout in the dashboard",
     description: "Длинный title stress test.",
     content_type: "article",
-    thumbnail: picsum("collector-long-title", 880, 520),
     tagIndexes: [0, 1],
     folder_path: "projects/collector",
   },
@@ -216,7 +204,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     title: "Research paper scan",
     description: "PDF в research.",
     content_type: "pdf",
-    thumbnail: picsum("collector-pdf", 700, 980),
     tagIndexes: [0],
     folder_path: "projects/research",
   },
@@ -239,7 +226,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     title: "Collector issue #57",
     description: "Dev mock mode для browser UI.",
     content_type: "note",
-    thumbnail: picsum("collector-issue-57", 900, 720),
     tagIndexes: [1],
     folder_path: "projects/collector",
   },
@@ -254,7 +240,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     title: "Nested folder path item",
     description: "projects/research deep test.",
     content_type: "article",
-    thumbnail: picsum("collector-nested", 840, 640),
     tagIndexes: [1, 0],
     folder_path: "projects/research",
   },
@@ -270,7 +255,6 @@ const ITEM_SEEDS: ItemSeed[] = [
     title: "Thirtieth mock card",
     description: "Последний seed item.",
     content_type: "image",
-    thumbnail: picsum("collector-thirty", 750, 1050),
     tagIndexes: [3, 2],
     folder_path: "reading",
   },
@@ -289,7 +273,7 @@ function buildItems(): ItemFile[] {
       source_type: seed.url?.includes("youtube") ? "youtube" : "manual",
       metadata: {},
       properties: {},
-      thumbnail: seed.thumbnail ?? null,
+      thumbnail: null,
       tag_ids: seed.tagIndexes.map((tagIndex) => TAG_DEFS[tagIndex].id),
       collection_ids: [],
       folder_path: seed.folder_path,

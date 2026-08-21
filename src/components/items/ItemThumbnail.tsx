@@ -34,7 +34,7 @@ export function ItemThumbnail({
         return;
       }
 
-      const cover = resolveCoverSrc(path, item.url ?? undefined);
+      const cover = resolveCoverSrc(path);
       if (cover) {
         setSrc(cover);
       }
@@ -47,7 +47,7 @@ export function ItemThumbnail({
     return () => {
       cancelled = true;
     };
-  }, [item.id, item.thumbnail, item.updated_at, item.url]);
+  }, [item.id, item.thumbnail, item.updated_at]);
 
   if (loading) {
     if (!showLoadingPlaceholder) {

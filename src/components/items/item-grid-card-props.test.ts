@@ -90,7 +90,7 @@ describe("itemGridCardPropsAreEqual", () => {
     );
   });
 
-  it("re-renders when url changes (YouTube cover fallback)", () => {
+  it("re-renders when url changes", () => {
     assert.equal(
       itemGridCardPropsAreEqual(
         { item: item({ url: null }), thumbnailPath: null, tagsById, onOpen },

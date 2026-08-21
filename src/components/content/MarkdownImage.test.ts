@@ -6,15 +6,15 @@ import {
 } from "../../utils/asset-src";
 import { resolveMarkdownImageSrc } from "./MarkdownImage";
 
-describe("resolveMarkdownImageSrc (#590)", () => {
+describe("resolveMarkdownImageSrc (#590 / #739)", () => {
   beforeEach(() => {
     clearHostMediaCredentials();
   });
 
-  it("leaves https URLs unchanged", () => {
-    expect(resolveMarkdownImageSrc("https://example.com/a.png")).toBe(
-      "https://example.com/a.png",
-    );
+  it("rejects remote https image src (#739)", () => {
+    expect(() =>
+      resolveMarkdownImageSrc("https://example.com/a.png"),
+    ).toThrow(/remote display asset URL is not allowed/);
   });
 
   it("maps disk paths to host /media/file when credentials are set", () => {

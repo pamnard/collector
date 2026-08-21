@@ -153,7 +153,7 @@ describe("resolveItemThumbnailPathsBatch", () => {
     expect(rows).toEqual([{ id: itemId, path: null }]);
   });
 
-  it("returns remote http thumbnail when no local cover or image", async () => {
+  it("ignores remote http thumbnail — not a local display asset (#739)", async () => {
     const { path, itemId } = await seedItem("Remote");
     const remote = "https://example.com/thumb.jpg";
 
@@ -161,7 +161,7 @@ describe("resolveItemThumbnailPathsBatch", () => {
       { id: itemId, thumbnail: remote },
     ]);
 
-    expect(rows).toEqual([{ id: itemId, path: remote }]);
+    expect(rows).toEqual([{ id: itemId, path: null }]);
   });
 
   it("gallery fallback does not exists-probe every media candidate (#711)", async () => {
@@ -272,8 +272,8 @@ describe("resolveItemThumbnailPathsProgressive", () => {
       "/vault",
       [
         // Slow first so a concurrent worker is blocked before fast finishes.
-        { id: slowId, thumbnail: "https://example.com/slow.jpg" },
-        { id: fastId, thumbnail: "https://example.com/fast.jpg" },
+        { id: slowId, thumbnail: null },
+        { id: fastId, thumbnail: null },
       ],
       {
         concurrency: 2,
@@ -311,7 +311,7 @@ describe("resolveItemThumbnailPathsProgressive", () => {
 
     const items = Array.from({ length: 6 }, (_, i) => ({
       id: `dddddddd-dddd-4ddd-8ddd-dddddddddd${String(i).padStart(2, "0")}.md`,
-      thumbnail: `https://example.com/${i}.jpg` as string | null,
+      thumbnail: null as string | null,
     }));
 
     await resolveItemThumbnailPathsProgressive(fs, "/vault", items, {
@@ -344,8 +344,8 @@ describe("resolveItemThumbnailPathsProgressive", () => {
       fs,
       "/vault",
       [
-        { id: slowId, thumbnail: "https://example.com/slow.jpg" },
-        { id: afterAbortId, thumbnail: "https://example.com/a.jpg" },
+        { id: slowId, thumbnail: null },
+        { id: afterAbortId, thumbnail: null },
       ],
       {
         concurrency: 1,

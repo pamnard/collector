@@ -51,6 +51,10 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
         getContext: () => ({ fs: {}, index: {} }),
         getIndex: () => ({}),
         normalizeMarkdown: testNormalizeMarkdown,
+        localizeRemoteDisplayAssets: async ({ rawMarkdown }) => ({
+          text: rawMarkdown,
+          changed: false,
+        }),
       } as never,
       () => "n",
     );
@@ -87,6 +91,10 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
         getIndex: () => ({}),
         onVaultPresentationChanged,
         normalizeMarkdown: testNormalizeMarkdown,
+        localizeRemoteDisplayAssets: async ({ rawMarkdown }) => ({
+          text: rawMarkdown,
+          changed: false,
+        }),
       } as never,
       () => "n",
     );
@@ -116,6 +124,10 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
         getIndex: () => ({}),
         onVaultPresentationChanged,
         normalizeMarkdown: testNormalizeMarkdown,
+        localizeRemoteDisplayAssets: async ({ rawMarkdown }) => ({
+          text: rawMarkdown,
+          changed: false,
+        }),
       } as never,
       () => "n",
     );

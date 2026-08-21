@@ -41,7 +41,6 @@ function ItemGridCardInner({
     onCoverImgRef,
   } = useItemGridCover({
     thumbnailPath,
-    itemUrl: item.url ?? undefined,
     shouldDecode: nearViewport,
   });
 
