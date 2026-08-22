@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { itemDerivedRefreshJobType } from "@collector/shared";
 import {
-  ITEM_DERIVED_REFRESH_JOB_TYPE,
   createDerivedCatchUpStatusRefresher,
   createDerivedCatchUpStatusStore,
   deriveCatchUpStatusFromJobStats,
@@ -34,7 +34,7 @@ describe("deriveCatchUpStatusFromJobStats (#767)", () => {
           ...emptyStats,
           pending: 2,
           byType: {
-            [ITEM_DERIVED_REFRESH_JOB_TYPE]: {
+            [itemDerivedRefreshJobType.id]: {
               pending: 2,
               running: 1,
               succeeded: 0,
@@ -94,7 +94,7 @@ describe("createDerivedCatchUpStatusRefresher", () => {
       ...emptyStats,
       pending: 1,
       byType: {
-        [ITEM_DERIVED_REFRESH_JOB_TYPE]: {
+        [itemDerivedRefreshJobType.id]: {
           pending: 1,
           running: 0,
           succeeded: 0,

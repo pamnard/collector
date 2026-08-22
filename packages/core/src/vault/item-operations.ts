@@ -68,6 +68,7 @@ export async function writeItemRawMarkdown(
   vaultId: string,
   itemId: string,
   raw: string,
+  options?: { deferIndexRefresh?: boolean },
 ): Promise<ItemFile> {
   const id = normalizeRelativePath(itemId);
   const docPath = itemMarkdownPath(vaultPath, id);
@@ -95,7 +96,9 @@ export async function writeItemRawMarkdown(
   // ensureTagsByName (via parse) only updates tags.json; index FK needs tags rows.
   await syncTagsToIndex(ctx, vaultPath, vaultId);
 
-  await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);
+  if (!options?.deferIndexRefresh) {
+    await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);
+  }
   return item;
 }
 

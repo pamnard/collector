@@ -9,9 +9,7 @@ import type {
   Subscription,
 } from "@collector/api";
 import { subscriptionFromTeardown } from "@collector/api";
-
-/** Agreed job type id from #766 — observe only; handler lives in sibling PR. */
-export const ITEM_DERIVED_REFRESH_JOB_TYPE = "itemDerivedRefresh";
+import { itemDerivedRefreshJobType } from "@collector/shared";
 
 export type { DerivedCatchUpStatus } from "@collector/api";
 
@@ -26,7 +24,7 @@ export function deriveCatchUpStatusFromJobStats(
   stats: JobStats,
   vaultId: string | null,
 ): DerivedCatchUpStatus {
-  const typeStats = stats.byType[ITEM_DERIVED_REFRESH_JOB_TYPE];
+  const typeStats = stats.byType[itemDerivedRefreshJobType.id];
   const pending = typeStats?.pending ?? 0;
   const running = typeStats?.running ?? 0;
   const active = pending + running > 0;
@@ -79,19 +77,45 @@ export function createDerivedCatchUpStatusStore(
   };
 }
 
+const DERIVED_CATCH_UP_REFRESH_DEBOUNCE_MS = 100;
+
 export function createDerivedCatchUpStatusRefresher(deps: {
   store: DerivedCatchUpStatusStore;
   stats: () => Promise<JobStats>;
   getActiveVaultId: () => string | null;
-}): { refresh: () => Promise<void> } {
+}): { refresh: (immediate?: boolean) => Promise<void> } {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let inflight: Promise<void> | null = null;
+
+  async function flush(): Promise<void> {
+    const stats = await deps.stats();
+    const next = deriveCatchUpStatusFromJobStats(
+      stats,
+      deps.getActiveVaultId(),
+    );
+    deps.store.set(next);
+  }
+
   return {
-    async refresh() {
-      const stats = await deps.stats();
-      const next = deriveCatchUpStatusFromJobStats(
-        stats,
-        deps.getActiveVaultId(),
-      );
-      deps.store.set(next);
+    refresh(immediate = false) {
+      if (immediate) {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        inflight = flush();
+        return inflight;
+      }
+      if (timer) {
+        return inflight ?? Promise.resolve();
+      }
+      inflight = new Promise<void>((resolve) => {
+        timer = setTimeout(() => {
+          timer = null;
+          void flush().then(resolve);
+        }, DERIVED_CATCH_UP_REFRESH_DEBOUNCE_MS);
+      });
+      return inflight;
     },
   };
 }

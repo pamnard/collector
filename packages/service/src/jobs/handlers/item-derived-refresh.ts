@@ -42,21 +42,6 @@ export function createItemDerivedRefreshHandler(deps: {
       deps.localizeRemoteDisplayAssets,
     );
 
-    if (localizeOutcome === "markdown" || localizeOutcome === "media") {
-      const item = await readItemFile(
-        ctx.fs,
-        payload.vaultPath,
-        payload.itemId,
-        payload.vaultId,
-      );
-      deps.onVaultPresentationChanged?.({
-        vaultId: payload.vaultId,
-        kind: "itemUpserted",
-        itemId: payload.itemId,
-        folderPath: item.folder_path,
-      });
-    }
-
     const docPath = itemMarkdownPath(payload.vaultPath, payload.itemId);
     if (!(await ctx.fs.exists(docPath))) {
       return { status: "ok" };
@@ -75,6 +60,25 @@ export function createItemDerivedRefreshHandler(deps: {
       payload.itemId,
       payload.vaultId,
     );
+
+    if (localizeOutcome === "markdown" || localizeOutcome === "media") {
+      deps.onVaultPresentationChanged?.({
+        vaultId: payload.vaultId,
+        kind: "itemUpserted",
+        itemId: payload.itemId,
+        folderPath: item.folder_path,
+      });
+    }
+
+    if (localizeOutcome === "media") {
+      deps.onVaultPresentationChanged?.({
+        vaultId: payload.vaultId,
+        kind: "itemDerivedComplete",
+        itemId: payload.itemId,
+        folderPath: item.folder_path,
+      });
+      return { status: "ok" };
+    }
 
     await upsertItemIndexFromVault(
       ctx,
