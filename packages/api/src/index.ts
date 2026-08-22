@@ -36,6 +36,8 @@ export type {
   NavFilter,
   TagWithCount,
   UpdateItemInput,
+  WaitDerivedResult,
+  WaitDerivedStatus,
 } from "./domain.js";
 
 export type {

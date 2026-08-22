@@ -151,6 +151,15 @@ export async function runCollectorCli(
         delayMs = Math.min(delayMs * 2, 2_000);
       }
     }
+    if (cmd.name === "wait-derived") {
+      const result = await client.items.waitDerived(
+        cmd.itemId,
+        cmd.contentRevision,
+        cmd.timeoutMs === undefined ? undefined : { timeoutMs: cmd.timeoutMs },
+      );
+      io.stdout(JSON.stringify(result, null, 2));
+      return result.status === "succeeded" ? 0 : 1;
+    }
     if (cmd.name === "create-tag") {
       const tag = await client.tags.createTag({
         name: cmd.tagName,

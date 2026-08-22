@@ -12,6 +12,7 @@ import type {
   NavFilter,
   TagWithCount,
   UpdateItemInput,
+  WaitDerivedResult,
 } from "./domain.js";
 import type { CollectorApiError } from "./errors.js";
 import type { Tag } from "@collector/shared";
@@ -278,6 +279,17 @@ export interface ItemsPort {
   importFolder(input: ImportFolderInput): Promise<{ jobId: string }>;
   /** Snapshot of an {@link ItemsPort.importFolder} job (#747). */
   getImportFolderJob(jobId: string): Promise<ImportFolderJobSnapshot>;
+  /**
+   * Opt-in await of `itemDerivedRefresh` for one item revision (#770 / #765).
+   * For scripts/agents that must chain on fully caught-up derived state.
+   * **Not** for ordinary UI save or bulk loops — default mutate stays
+   * fire-and-forget for derived work.
+   */
+  waitDerived(
+    itemId: string,
+    contentRevision: number,
+    options?: { timeoutMs?: number },
+  ): Promise<WaitDerivedResult>;
 }
 
 /** Tags port (#361). */

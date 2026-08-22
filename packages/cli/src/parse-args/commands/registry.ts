@@ -7,6 +7,7 @@ import {
   MOVE_ITEM_FLAGS,
   UPDATE_ITEM_FLAGS,
   UPDATE_ITEM_SOURCE_FLAGS,
+  WAIT_DERIVED_FLAGS,
   parseCreateItem,
   parseDeleteItem,
   parseGetItem,
@@ -15,6 +16,7 @@ import {
   parseMoveItem,
   parseUpdateItem,
   parseUpdateItemSource,
+  parseWaitDerived,
 } from "./items.js";
 import {
   CREATE_TAG_FLAGS,
@@ -47,6 +49,7 @@ export const ALL_COMMAND_FLAGS = unionFlagSets(
   CREATE_TAG_FLAGS,
   MOVE_ITEM_FLAGS,
   IMPORT_FOLDER_FLAGS,
+  WAIT_DERIVED_FLAGS,
   ATTACH_MEDIA_FLAGS,
   REPLACE_MEDIA_FLAGS,
 );
@@ -61,6 +64,7 @@ export const COMMAND_PARSERS: Record<string, CommandParser> = {
   "update-item-source": parseUpdateItemSource,
   "delete-item": parseDeleteItem,
   "import-folder": parseImportFolder,
+  "wait-derived": parseWaitDerived,
   "create-tag": parseCreateTag,
   "delete-tag": parseDeleteTag,
   "create-folder": parseCreateFolder,

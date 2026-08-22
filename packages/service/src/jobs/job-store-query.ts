@@ -21,6 +21,34 @@ export function createJobStoreQuery(db: SqlMigrator) {
     return rows[0] ?? null;
   }
 
+  /**
+   * Latest job for an idempotency key (any status). Used by opt-in waitDerived
+   * so a fast-finishing derived job is still findable after terminal (#770).
+   */
+  async function findByIdempotencyKey(key: string): Promise<JobRow | null> {
+    const rows = await db.select<JobRow>(
+      `SELECT * FROM jobs
+       WHERE idempotency_key = ?
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [key],
+    );
+    return rows[0] ?? null;
+  }
+
+  async function findLatestByIdempotencyKeyPrefix(
+    prefix: string,
+  ): Promise<JobRow | null> {
+    const rows = await db.select<JobRow>(
+      `SELECT * FROM jobs
+       WHERE idempotency_key LIKE ?
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [`${prefix}%`],
+    );
+    return rows[0] ?? null;
+  }
+
   async function insertJob(record: EnqueueRecord): Promise<void> {
     await db.execute(
       `INSERT INTO jobs (
@@ -81,6 +109,8 @@ export function createJobStoreQuery(db: SqlMigrator) {
 
   return {
     findActiveByIdempotencyKey,
+    findByIdempotencyKey,
+    findLatestByIdempotencyKeyPrefix,
     insertJob,
     getJob,
     cancelPending,

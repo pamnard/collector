@@ -10,6 +10,7 @@ import {
 function stubRuntime(overrides: {
   itemsSearch?: Partial<ServiceDomainRuntime["itemsSearch"]>;
   dropImport?: Partial<ServiceDomainRuntime["dropImport"]>;
+  waitDerived?: Partial<ServiceDomainRuntime["waitDerived"]>;
   jobs?: Partial<ServiceDomainRuntime["jobs"]>;
 }): {
   runtime: ServiceDomainRuntime;
@@ -38,6 +39,14 @@ function stubRuntime(overrides: {
     dropImport: {
       importDroppedFiles: vi.fn(async (input: unknown) => input),
       ...overrides.dropImport,
+    },
+    waitDerived: {
+      waitDerived: vi.fn(async () => ({
+        status: "succeeded" as const,
+        jobId: "job-1",
+        contentRevision: 1,
+      })),
+      ...overrides.waitDerived,
     },
     tagsFolders: {
       listTags: vi.fn(async () => []),
@@ -329,6 +338,46 @@ describe("createDomainWireRequestHandler (#330)", () => {
       ],
     });
     expect(ensureInitialized).toHaveBeenCalledTimes(1);
+  });
+
+  it("waitDerived forwards itemId + contentRevision (opt-in; not on updateItem) (#770)", async () => {
+    const waitDerived = vi.fn(async () => ({
+      status: "succeeded" as const,
+      jobId: "job-derived-1",
+      contentRevision: 7,
+    }));
+    const updateItem = vi.fn(async () => ({ id: "n.md", content_revision: 7 }));
+    const { runtime, ensureInitialized } = stubRuntime({
+      waitDerived: { waitDerived },
+      itemsSearch: { updateItem },
+    });
+    const dispatch = createDomainWireRequestHandler(runtime);
+
+    await expect(
+      dispatch(M.updateItem, {
+        itemId: "n.md",
+        input: { title: "T" },
+      }),
+    ).resolves.toEqual({ id: "n.md", content_revision: 7 });
+    expect(waitDerived).not.toHaveBeenCalled();
+
+    await expect(
+      dispatch(M.waitDerived, {
+        itemId: "n.md",
+        contentRevision: 7,
+        timeoutMs: 1_000,
+      }),
+    ).resolves.toEqual({
+      status: "succeeded",
+      jobId: "job-derived-1",
+      contentRevision: 7,
+    });
+    expect(waitDerived).toHaveBeenCalledWith("n.md", 7, { timeoutMs: 1_000 });
+    expect(ensureInitialized).toHaveBeenCalledTimes(2);
+
+    await expectBadRequest(() =>
+      dispatch(M.waitDerived, { itemId: "n.md", contentRevision: 1.5 }),
+    );
   });
 
   it("syncNow (#29)", async () => {

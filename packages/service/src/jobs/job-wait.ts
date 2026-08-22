@@ -14,7 +14,7 @@ const TERMINAL: ReadonlySet<JobStatus> = new Set([
 
 /** Poll until the job leaves pending/running. Backoff reduces SQLite chatter. */
 export async function waitForJobTerminal(
-  queue: JobQueue,
+  queue: Pick<JobQueue, "getJob">,
   jobId: string,
   timeoutMs = 120_000,
 ): Promise<TerminalJobStatus> {

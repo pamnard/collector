@@ -13,6 +13,7 @@ const REGISTERED_TOOL_NAMES = [
   "collector_update_item",
   "collector_get_item_source",
   "collector_update_item_source",
+  "collector_wait_derived",
   "collector_delete_item",
   "collector_create_tag",
   "collector_delete_tag",

@@ -13,6 +13,7 @@ import {
   parseMoveItem,
   parseUpdateItem,
   parseUpdateItemSource,
+  parseWaitDerived,
 } from "./items.js";
 
 function expectCliUsage(fn: () => unknown, message: RegExp): void {
@@ -270,6 +271,55 @@ describe("parse-args items commands (#718)", () => {
             ["extra"],
           ),
         /import-folder/,
+      );
+    });
+  });
+
+  describe("wait-derived", () => {
+    it("parses item id, --revision, and optional --timeout-ms", () => {
+      expect(
+        parseWaitDerived(
+          ["wait-derived", "Inbox/n.md", "--revision", "3", "--timeout-ms", "5000"],
+          ["Inbox/n.md"],
+        ),
+      ).toEqual({
+        name: "wait-derived",
+        itemId: "Inbox/n.md",
+        contentRevision: 3,
+        timeoutMs: 5000,
+      });
+      expect(
+        parseWaitDerived(
+          ["wait-derived", "Inbox/n.md", "--revision", "1"],
+          ["Inbox/n.md"],
+        ),
+      ).toEqual({
+        name: "wait-derived",
+        itemId: "Inbox/n.md",
+        contentRevision: 1,
+      });
+    });
+
+    it("rejects missing revision or bad arity", () => {
+      expectCliUsage(
+        () => parseWaitDerived(["wait-derived", "Inbox/n.md"], ["Inbox/n.md"]),
+        /--revision/,
+      );
+      expectCliUsage(
+        () =>
+          parseWaitDerived(
+            ["wait-derived", "--revision", "1"],
+            [],
+          ),
+        /wait-derived/,
+      );
+      expectCliUsage(
+        () =>
+          parseWaitDerived(
+            ["wait-derived", "a", "--revision", "x"],
+            ["a"],
+          ),
+        /integer/,
       );
     });
   });

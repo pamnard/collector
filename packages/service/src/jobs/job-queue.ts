@@ -4,15 +4,14 @@ import {
   JOB_TYPE_CATALOG,
   dropImportBatchJobType,
   importFolderJobType,
+  itemDerivedRefreshJobType,
   generateCoverJobType,
   isVaultMutatingBulkJobType,
-  itemDerivedRefreshJobType,
   refreshEmbeddingsJobType,
   reindexVaultBatchJobType,
   syncPluginPullJobType,
   testNoopJobType,
   vaultIndexSyncJobType,
-  itemDerivedRefreshJobType,
   type TestNoopJobPayload,
 } from "@collector/shared";
 import { runJobsMigrations } from "@collector/db";
@@ -58,6 +57,10 @@ export interface JobQueue {
   enqueue(input: EnqueueInput): Promise<EnqueueResult>;
   cancel(id: string): Promise<boolean>;
   getJob(id: string): Promise<JobRow | null>;
+  /** Latest job for key (any status); for opt-in waitDerived (#770). */
+  findByIdempotencyKey(key: string): Promise<JobRow | null>;
+  /** Latest job whose idempotency key starts with prefix (#770). */
+  findLatestByIdempotencyKeyPrefix(prefix: string): Promise<JobRow | null>;
   stats(): Promise<JobStats>;
   start(): void;
   stop(): Promise<void>;
@@ -193,6 +196,14 @@ export async function createJobQueue(
       return store.getJob(id);
     },
 
+    findByIdempotencyKey(key) {
+      return store.findByIdempotencyKey(key);
+    },
+
+    findLatestByIdempotencyKeyPrefix(prefix) {
+      return store.findLatestByIdempotencyKeyPrefix(prefix);
+    },
+
     stats() {
       return store.stats();
     },
@@ -253,9 +264,5 @@ export function createHostJobRegistry(): JobRegistry {
     boundPhaseBHandler("dropImportBatch"),
   );
   registry.register(importFolderJobType, boundPhaseBHandler("importFolder"));
-  registry.register(
-    itemDerivedRefreshJobType,
-    boundPhaseBHandler("itemDerivedRefresh"),
-  );
   return registry;
 }
