@@ -136,6 +136,21 @@ export const reindexVaultBatchJobType = defineJobType({
   payload: reindexVaultBatchJobPayloadSchema,
 });
 
+/** Per-item SQL/FTS index upsert from vault bytes (#766). */
+export const itemDerivedRefreshJobPayloadSchema = z.object({
+  vaultId: z.string().min(1),
+  vaultPath: z.string().min(1),
+  itemId: z.string().min(1),
+  contentRevision: z.number().int(),
+});
+export type ItemDerivedRefreshJobPayload = z.infer<
+  typeof itemDerivedRefreshJobPayloadSchema
+>;
+export const itemDerivedRefreshJobType = defineJobType({
+  id: "itemDerivedRefresh",
+  payload: itemDerivedRefreshJobPayloadSchema,
+});
+
 /** Embedding refresh batch (#633). */
 export const embeddingRefreshInputSchema = z.object({
   itemId: z.string().min(1),
@@ -233,6 +248,7 @@ export const JOB_TYPE_CATALOG = [
   testNoopJobType,
   vaultIndexSyncJobType,
   reindexVaultBatchJobType,
+  itemDerivedRefreshJobType,
   refreshEmbeddingsJobType,
   syncPluginPullJobType,
   generateCoverJobType,

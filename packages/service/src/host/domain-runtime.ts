@@ -44,6 +44,10 @@ import {
   enqueueRefreshEmbeddings,
 } from "../jobs/handlers/refresh-embeddings.js";
 import {
+  createItemDerivedRefreshHandler,
+  enqueueItemDerivedRefresh,
+} from "../jobs/handlers/item-derived-refresh.js";
+import {
   createGenerateCoverHandler,
 } from "../jobs/handlers/generate-cover.js";
 import {
@@ -221,6 +225,20 @@ export function createServiceDomainRuntime(
     await enqueueRefreshEmbeddings(requireJobs(), { vaultId, inputs });
   }
 
+  async function enqueueItemDerivedRefreshJob(
+    vaultId: string,
+    vaultPath: string,
+    itemId: string,
+    contentRevision: number,
+  ): Promise<void> {
+    await enqueueItemDerivedRefresh(requireJobs(), {
+      vaultId,
+      vaultPath,
+      itemId,
+      contentRevision,
+    });
+  }
+
   function getContext() {
     return {
       fs,
@@ -228,6 +246,9 @@ export function createServiceDomainRuntime(
       embeddings: itemEmbeddings,
       embeddingRefreshJobs: {
         enqueue: enqueueEmbeddingRefresh,
+      },
+      itemDerivedRefreshJobs: {
+        enqueue: enqueueItemDerivedRefreshJob,
       },
     };
   }
@@ -268,6 +289,9 @@ export function createServiceDomainRuntime(
     onWatchApplied: (vaultId, vaultPath) => {
       vaultLayoutGuard.schedule(vaultId, vaultPath);
     },
+  });
+  phaseBHandlerBindings.itemDerivedRefresh = createItemDerivedRefreshHandler({
+    getContext,
   });
 
   const domainServices = createDomainServices({

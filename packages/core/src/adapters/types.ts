@@ -276,6 +276,18 @@ export interface VaultContext {
       inputs: ItemEmbeddingRefreshInput[],
     ): Promise<void>;
   };
+  /**
+   * When set, per-item SQL/FTS upsert is enqueued as a durable job (#766).
+   * Inline `index.upsertItem` on write paths is skipped after enqueue succeeds.
+   */
+  itemDerivedRefreshJobs?: {
+    enqueue(
+      vaultId: string,
+      vaultPath: string,
+      itemId: string,
+      contentRevision: number,
+    ): Promise<void>;
+  };
 }
 
 export interface CreateVaultInput {

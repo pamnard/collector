@@ -6,6 +6,7 @@ import {
   importFolderJobType,
   generateCoverJobType,
   isVaultMutatingBulkJobType,
+  itemDerivedRefreshJobType,
   refreshEmbeddingsJobType,
   reindexVaultBatchJobType,
   syncPluginPullJobType,
@@ -235,6 +236,10 @@ export function createHostJobRegistry(): JobRegistry {
   registry.register(
     reindexVaultBatchJobType,
     boundPhaseBHandler("reindexVaultBatch"),
+  );
+  registry.register(
+    itemDerivedRefreshJobType,
+    boundPhaseBHandler("itemDerivedRefresh"),
   );
   registry.register(
     refreshEmbeddingsJobType,
