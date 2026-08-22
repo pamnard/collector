@@ -15,6 +15,7 @@ import {
   sqlRowPlaceholders,
   type SqlIndexSelector,
 } from "./sql-index-helpers.js";
+import { rewriteItemEdgeIds } from "../edges/sql-item-edges.js";
 
 interface ItemRewriteRow {
   id: string;
@@ -266,6 +267,8 @@ export async function rewriteOneItemId(
 
   await rewriteItemEmbeddingId(selector, oldId, newId);
 
+  await rewriteItemEdgeIds(selector, new Map([[oldId, newId]]));
+
   await selector.execute("DELETE FROM items WHERE id = ?", [oldId]);
 }
 
@@ -501,6 +504,11 @@ async function rewriteItemIdsChunk(
       oldId: mapping.oldId,
       newId: mapping.newId,
     })),
+  );
+
+  await rewriteItemEdgeIds(
+    selector,
+    new Map(active.map((mapping) => [mapping.oldId, mapping.newId] as const)),
   );
 
   await selector.execute(

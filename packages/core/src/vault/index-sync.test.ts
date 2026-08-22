@@ -49,6 +49,11 @@ function createNoopVaultIndex(): VaultIndexAdapter {
     setReconcileFingerprint: noop,
     searchItemIds: async () => [],
     countSearchItemIds: async () => 0,
+    rebuildVaultTextEdges: noop,
+    addUserEdge: noop,
+    removeUserEdge: noop,
+    listUserEdges: async () => [],
+    listTextBacklinkSources: async () => [],
   };
 }
 

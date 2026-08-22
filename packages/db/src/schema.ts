@@ -10,6 +10,7 @@ export const INDEX_TABLES = [
   "source_refs",
   "items_fts",
   "item_embeddings",
+  "item_edges",
   "index_build",
 ] as const;
 
@@ -20,6 +21,20 @@ export const ITEM_EMBEDDINGS_COLUMNS = [
   "input_fingerprint",
   "dims",
   "vector",
+  "updated_at",
+] as const;
+
+export const ITEM_EDGES_COLUMNS = [
+  "id",
+  "vault_id",
+  "from_id",
+  "to_id",
+  "raw_target",
+  "source",
+  "kind",
+  "position",
+  "resolve_status",
+  "created_at",
   "updated_at",
 ] as const;
 

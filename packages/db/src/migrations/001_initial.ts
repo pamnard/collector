@@ -120,6 +120,35 @@ CREATE TABLE IF NOT EXISTS item_embeddings (
 CREATE INDEX IF NOT EXISTS idx_item_embeddings_model
   ON item_embeddings(model_id);
 
+-- Item↔item edges: text links + user edges (#407). Disposable with the index.
+CREATE TABLE IF NOT EXISTS item_edges (
+  id TEXT PRIMARY KEY,
+  vault_id TEXT NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
+  from_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  to_id TEXT REFERENCES items(id) ON DELETE SET NULL,
+  raw_target TEXT NOT NULL,
+  source TEXT NOT NULL CHECK (source IN ('text', 'user')),
+  kind TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 0,
+  resolve_status TEXT CHECK (
+    resolve_status IN ('resolved', 'unresolved', 'ambiguous')
+    OR resolve_status IS NULL
+  ),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_item_edges_to_text
+  ON item_edges(to_id, source)
+  WHERE to_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_item_edges_from_text
+  ON item_edges(from_id, source);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_item_edges_text_dedup
+  ON item_edges(from_id, source, kind, raw_target, position)
+  WHERE source = 'text';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_item_edges_user_pair
+  ON item_edges(vault_id, from_id, to_id)
+  WHERE source = 'user';
+
 -- Marker: FTS content is full on-disk markdown (#534). Absent → recreate index.
 CREATE TABLE IF NOT EXISTS index_build (
   id INTEGER PRIMARY KEY CHECK (id = 1)

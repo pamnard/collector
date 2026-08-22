@@ -174,6 +174,42 @@ export const ITEMS_DISPATCH = {
       return runtime.itemsSearch.listItemOutboundLinks(itemId);
     },
   },
+  [M.addUserEdge]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.addUserEdge);
+      const itemId = requireString(p.itemId, "itemId", M.addUserEdge);
+      const otherItemId = requireString(
+        p.otherItemId,
+        "otherItemId",
+        M.addUserEdge,
+      );
+      await runtime.ensureInitialized();
+      await runtime.itemsSearch.addUserEdge(itemId, otherItemId);
+      return null;
+    },
+  },
+  [M.removeUserEdge]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.removeUserEdge);
+      const itemId = requireString(p.itemId, "itemId", M.removeUserEdge);
+      const otherItemId = requireString(
+        p.otherItemId,
+        "otherItemId",
+        M.removeUserEdge,
+      );
+      await runtime.ensureInitialized();
+      await runtime.itemsSearch.removeUserEdge(itemId, otherItemId);
+      return null;
+    },
+  },
+  [M.listUserEdges]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.listUserEdges);
+      const itemId = requireString(p.itemId, "itemId", M.listUserEdges);
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.listUserEdges(itemId);
+    },
+  },
   [M.getItemSource]: {
     handle: async (runtime, params) => {
       const p = asObject(params, M.getItemSource);

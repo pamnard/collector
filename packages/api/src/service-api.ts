@@ -160,6 +160,9 @@ export interface BacklinkSource {
   title: string;
 }
 
+/** Neighbor connected by a user edge (#407). Same fields as {@link BacklinkSource}. */
+export type UserEdgeNeighbor = BacklinkSource;
+
 /** Explicit unsubscribe handle for port subscriptions (#364). */
 /** Tear-down handle. Prefer `.unsubscribe()`; also callable for React effect cleanup. */
 export type Subscription = (() => void) & { unsubscribe(): void };
@@ -256,6 +259,10 @@ export interface ItemsPort {
   listItemBacklinks(itemId: string): Promise<BacklinkSource[]>;
   /** Outgoing text links from the current item body (#457). */
   listItemOutboundLinks(itemId: string): Promise<OutboundTextLink[]>;
+  /** Undirected user edges for one item (#407). */
+  addUserEdge(itemId: string, otherItemId: string): Promise<void>;
+  removeUserEdge(itemId: string, otherItemId: string): Promise<void>;
+  listUserEdges(itemId: string): Promise<UserEdgeNeighbor[]>;
   getItemSource(itemId: string): Promise<string>;
   updateItemSource(itemId: string, rawMarkdown: string): Promise<ItemFile>;
   createItem(input: CreateItemInput): Promise<ItemFile>;

@@ -332,6 +332,23 @@ export type {
   BacklinkSourceBody,
 } from "./links/collect-backlink-sources.js";
 
+export { textEdgeRowsFromBody } from "./edges/text-edge-rows.js";
+export { canonicalUserEdgePair } from "./edges/user-edge-canonical.js";
+export {
+  addUserEdge,
+  listTextBacklinkSources,
+  listUserEdges,
+  removeUserEdge,
+  replaceTextEdgesForItem,
+  rewriteItemEdgeIds,
+} from "./edges/sql-item-edges.js";
+export type {
+  ItemEdgeInsertRow,
+  ItemEdgeKind,
+  ItemEdgeSource,
+  UserEdgeNeighbor,
+} from "./edges/types.js";
+
 export {
   buildTextLinkResolveContext,
   textLinkCatalogIndexesFromItems,

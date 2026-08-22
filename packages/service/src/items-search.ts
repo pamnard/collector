@@ -19,6 +19,7 @@ import {
   type ResolvedTextLink,
   type BacklinkSource,
   type OutboundTextLink,
+  type UserEdgeNeighbor,
   type SearchItemsResult,
   type SimilarItemHit,
   type Subscription,
@@ -78,6 +79,16 @@ export interface ItemsIndexPort {
   ): Promise<Array<{ id: string; title: string; content: string }>>;
   /** MAX(content_revision) for backlink reverse-map invalidation (#410). */
   vaultItemsContentGeneration(vaultId: string): Promise<number>;
+  rebuildVaultTextEdges(vaultId: string): Promise<void>;
+  addUserEdge(vaultId: string, itemA: string, itemB: string): Promise<void>;
+  removeUserEdge(vaultId: string, itemA: string, itemB: string): Promise<void>;
+  listUserEdges(
+    vaultId: string,
+    itemId: string,
+  ): Promise<Array<{ id: string; title: string }>>;
+  listTextBacklinkSources(
+    targetItemId: string,
+  ): Promise<Array<{ id: string; title: string }>>;
   getAdjacentItems(
     vaultId: string,
     anchor: AdjacentItemAnchor,
@@ -185,6 +196,9 @@ export interface ItemsSearchService {
   ): Promise<ResolvedTextLink[]>;
   listItemBacklinks(itemId: string): Promise<BacklinkSource[]>;
   listItemOutboundLinks(itemId: string): Promise<OutboundTextLink[]>;
+  addUserEdge(itemId: string, otherItemId: string): Promise<void>;
+  removeUserEdge(itemId: string, otherItemId: string): Promise<void>;
+  listUserEdges(itemId: string): Promise<UserEdgeNeighbor[]>;
   getItemSource(itemId: string): Promise<string>;
   updateItemSource(itemId: string, rawMarkdown: string): Promise<ItemFile>;
   createItem(input: CreateItemInput): Promise<ItemFile>;
@@ -372,6 +386,9 @@ export function createItemsSearchService(
     resolveContentTextLinks: crud.resolveContentTextLinks,
     listItemBacklinks: crud.listItemBacklinks,
     listItemOutboundLinks: crud.listItemOutboundLinks,
+    addUserEdge: crud.addUserEdge,
+    removeUserEdge: crud.removeUserEdge,
+    listUserEdges: crud.listUserEdges,
     getItemSource: crud.getItemSource,
     updateItemSource: crud.updateItemSource,
     createItem: crud.createItem,

@@ -219,6 +219,19 @@ export interface VaultIndexAdapter {
     ftsQuery: string,
     filter: NavSearchFilter,
   ): Promise<number>;
+  /** Rebuild persisted text edges for one vault after sync (#407). */
+  rebuildVaultTextEdges(vaultId: string): Promise<void>;
+  /** User↔user edges stored in item_edges (#407). */
+  addUserEdge(vaultId: string, itemA: string, itemB: string): Promise<void>;
+  removeUserEdge(vaultId: string, itemA: string, itemB: string): Promise<void>;
+  listUserEdges(
+    vaultId: string,
+    itemId: string,
+  ): Promise<Array<{ id: string; title: string }>>;
+  /** Index-only backlink query for parity/tests (#407). */
+  listTextBacklinkSources(
+    targetItemId: string,
+  ): Promise<Array<{ id: string; title: string }>>;
 }
 
 export interface ItemIdPageOptions {
