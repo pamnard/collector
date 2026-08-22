@@ -51,6 +51,7 @@ describe("CollectorService / DevMock (#332 / #365 / #369 / #370)", () => {
     expect(typeof service.boot.getDataDirectory).toBe("function");
     expect(typeof service.settings.getAppSettingsSync).toBe("function");
     expect(typeof service.index.getVaultIndexSyncStatus).toBe("function");
+    expect(typeof service.index.getDerivedCatchUpStatus).toBe("function");
     expect(typeof service.credentials.getCredentialsAvailability).toBe(
       "function",
     );

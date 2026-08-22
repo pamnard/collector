@@ -37,6 +37,7 @@ export const CLIENT_ORCHESTRATED_PORT_METHODS = [
   "subscribeFolderTree",
   "subscribeAppSettings",
   "subscribeVaultIndexSyncStatus",
+  "subscribeDerivedCatchUpStatus",
   "subscribeVaultPresentationChanged",
   "subscribeJobPermanentFailure",
   "getAppSettingsSync",

@@ -60,6 +60,10 @@ import {
 import { createLocalizeItemRemoteDisplayAssets } from "../localize-item-remote-display-assets.js";
 import { reportEnqueueFailure } from "../job-permanent-failure.js";
 import { createVaultIndexSyncStatusStore } from "../sync-status.js";
+import {
+  createDerivedCatchUpStatusRefresher,
+  createDerivedCatchUpStatusStore,
+} from "../derived-catch-up-status.js";
 import { createDomainServices } from "./domain-runtime/domain-services.js";
 import { createDropImportRuntime } from "./domain-runtime/drop-import.js";
 import { createSyncPluginRuntime } from "./domain-runtime/sync-plugins.js";
@@ -83,6 +87,7 @@ export function createServiceDomainRuntime(
   const { dataDir, configDir, indexDbPath: dbPath, jobsDbPath } = layout;
 
   const vaultIndexSyncStatus = createVaultIndexSyncStatusStore();
+  const derivedCatchUpStatus = createDerivedCatchUpStatusStore();
   const vaultPresentationChanged = createVaultPresentationChangedStore();
   const jobPermanentFailure = createJobPermanentFailureStore();
   let runtimeClosed = false;
@@ -413,6 +418,13 @@ export function createServiceDomainRuntime(
     },
   };
 
+  const derivedCatchUpRefresher = createDerivedCatchUpStatusRefresher({
+    store: derivedCatchUpStatus,
+    stats: () => requireJobs().stats(),
+    getActiveVaultId: () =>
+      vaultsHolder.current?.getActiveVaultEntry()?.meta.id ?? null,
+  });
+
   return {
     dataDir,
     async open() {
@@ -424,8 +436,12 @@ export function createServiceDomainRuntime(
           onPermanentFailure: (info) => {
             jobPermanentFailure.notify(info);
           },
+          onActivity: () => {
+            void derivedCatchUpRefresher.refresh();
+          },
         });
         jobsQueue.start();
+        await derivedCatchUpRefresher.refresh();
       }
       embeddingReconcile.start();
     },
@@ -448,6 +464,7 @@ export function createServiceDomainRuntime(
       }
     },
     vaultIndexSyncStatus,
+    derivedCatchUpStatus,
     vaultPresentationChanged,
     startVaultFilesystemWatcher: (vaultId, vaultPath) =>
       vaultFsWatcher.start(vaultId, vaultPath),

@@ -19,6 +19,8 @@ export interface JobRunnerOptions {
   now: () => Date;
   /** Fired once when a job reaches terminal `failed`. */
   onPermanentFailure?: (info: JobPermanentFailure) => void;
+  /** Fired when a claimed job settles (success/fail/retry scheduling). */
+  onActivity?: () => void;
 }
 
 export function createJobRunner(options: JobRunnerOptions) {
@@ -30,6 +32,7 @@ export function createJobRunner(options: JobRunnerOptions) {
     pollIntervalMs,
     now,
     onPermanentFailure,
+    onActivity,
   } = options;
 
   let stopped = true;
@@ -60,6 +63,7 @@ export function createJobRunner(options: JobRunnerOptions) {
     now,
     executeJob,
     isStopped: () => stopped,
+    onActivity,
   });
 
   return {

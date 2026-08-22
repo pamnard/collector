@@ -39,6 +39,9 @@ type _SubscribeFolders = Expect<
 type _SubscribeIndex = Expect<
   Equal<ReturnType<IndexPort["subscribeVaultIndexSyncStatus"]>, Subscription>
 >;
+type _SubscribeDerivedCatchUp = Expect<
+  Equal<ReturnType<IndexPort["subscribeDerivedCatchUpStatus"]>, Subscription>
+>;
 type _SubscribeJobs = Expect<
   Equal<ReturnType<JobsPort["subscribeJobPermanentFailure"]>, Subscription>
 >;
@@ -83,6 +86,7 @@ type _Asserts = [
   _SubscribeTags,
   _SubscribeFolders,
   _SubscribeIndex,
+  _SubscribeDerivedCatchUp,
   _SubscribeJobs,
   _SubscribeSettings,
   _SubscribeDashboard,

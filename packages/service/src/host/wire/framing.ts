@@ -58,6 +58,7 @@ export type HostWireMessage =
 /** Well-known host→client event names. */
 export const SERVICE_HOST_EVENTS = {
   vaultIndexSyncStatus: "vaultIndexSyncStatus",
+  derivedCatchUpStatus: "derivedCatchUpStatus",
   appSettings: "appSettings",
   vaultPresentationChanged: "vaultPresentationChanged",
   jobPermanentFailure: "jobPermanentFailure",

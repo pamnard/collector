@@ -93,6 +93,7 @@ export {
   type TelegramSyncPort,
   type TelegramSyncSettings,
   type TelegramSyncSettingsPatch,
+  type DerivedCatchUpStatus,
   type VaultIndexSyncStatus,
   type VaultPresentationChangeKind,
   type VaultPresentationChangedPayload,

@@ -174,6 +174,8 @@ export type {
   IndexBannerStatus,
 } from "./util/indexing-banner.js";
 
+export { formatDerivedCatchUpBannerLabel } from "./util/derived-catch-up-banner.js";
+
 export { syncVaultIndexFromFilesystem } from "./vault/index-sync.js";
 export type { VaultIndexSyncReport } from "./vault/index-sync.js";
 

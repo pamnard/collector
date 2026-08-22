@@ -19,6 +19,12 @@ export const SYNC_DISPATCH = {
       return runtime.vaultIndexSyncStatus.get();
     },
   },
+  [M.getDerivedCatchUpStatus]: {
+    handle: async (runtime) => {
+      await runtime.ensureInitialized();
+      return runtime.derivedCatchUpStatus.get();
+    },
+  },
   [M.getJobStats]: {
     handle: async (runtime) => {
       await runtime.ensureInitialized();

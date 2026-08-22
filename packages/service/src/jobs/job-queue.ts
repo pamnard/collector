@@ -73,6 +73,8 @@ export interface CreateJobQueueOptions {
   createId?: () => string;
   /** Fired once when a job reaches terminal `failed`. */
   onPermanentFailure?: (info: JobPermanentFailure) => void;
+  /** Fired after enqueue and when a claimed job settles (success/fail/retry). */
+  onActivity?: () => void;
 }
 
 const DEFAULT_CONCURRENCY = 2;
@@ -118,6 +120,7 @@ export async function createJobQueue(
     pollIntervalMs,
     now,
     onPermanentFailure: options.onPermanentFailure,
+    onActivity: options.onActivity,
   });
 
   return {
@@ -182,6 +185,7 @@ export async function createJobQueue(
         throw err instanceof Error ? err : new Error(String(err));
       }
       runner.wake();
+      options.onActivity?.();
       return { id, deduped: false };
     },
 
