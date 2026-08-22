@@ -54,9 +54,6 @@ import {
   createDropImportBatchHandler,
 } from "../jobs/handlers/drop-import-batch.js";
 import { createImportFolderHandler } from "../jobs/handlers/import-folder.js";
-import {
-  createItemDerivedRefreshHandler,
-} from "../jobs/handlers/item-derived-refresh.js";
 import { createLocalizeItemRemoteDisplayAssets } from "../localize-item-remote-display-assets.js";
 import { reportEnqueueFailure } from "../job-permanent-failure.js";
 import { createVaultIndexSyncStatusStore } from "../sync-status.js";
@@ -106,6 +103,8 @@ export function createServiceDomainRuntime(
     cancel: (id) => requireJobs().cancel(id),
     getJob: (id) => requireJobs().getJob(id),
     findByIdempotencyKey: (key) => requireJobs().findByIdempotencyKey(key),
+    findLatestByIdempotencyKeyPrefix: (prefix) =>
+      requireJobs().findLatestByIdempotencyKeyPrefix(prefix),
     stats: () => requireJobs().stats(),
     start: () => requireJobs().start(),
     stop: () => requireJobs().stop(),
@@ -448,7 +447,7 @@ export function createServiceDomainRuntime(
           },
         });
         jobsQueue.start();
-        await derivedCatchUpRefresher.refresh();
+        await derivedCatchUpRefresher.refresh(true);
       }
       embeddingReconcile.start();
     },

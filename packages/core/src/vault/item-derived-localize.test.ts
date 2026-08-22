@@ -89,7 +89,7 @@ describe("runItemDerivedLocalizeRefresh (#768)", () => {
     expect(onDisk).toContain("media/local/hero.png");
     expect(onDisk).toContain("content_revision: 2");
     const indexed = await index.listItemFilesByIds(meta.id, [itemId]);
-    expect(indexed[0]?.content_revision).toBe(2);
+    expect(indexed[0]?.content_revision).toBe(1);
   });
 
   it("skips stale jobs when a newer revision is already indexed", async () => {

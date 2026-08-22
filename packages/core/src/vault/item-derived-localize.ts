@@ -14,6 +14,7 @@ import {
   type LocalizeRemoteDisplayAssetsResult,
 } from "./remote-display-assets.js";
 import { syncIndexItemsFromFilesystem } from "./item-index-sync.js";
+import { isIndexAheadOfSnapshot } from "./item-index-refresh.js";
 
 export type ItemDerivedLocalizeRefreshInput = {
   vaultId: string;
@@ -41,17 +42,11 @@ export function isStaleItemDerivedLocalizeJob(
   indexed: ItemSyncMeta,
   expected: Pick<ItemDerivedLocalizeRefreshInput, "contentRevision" | "fileMtimeMs">,
 ): boolean {
-  if (indexed.content_revision > expected.contentRevision) {
-    return true;
-  }
-  if (
-    indexed.content_revision === expected.contentRevision &&
-    indexed.file_mtime_ms !== null &&
-    indexed.file_mtime_ms > expected.fileMtimeMs
-  ) {
-    return true;
-  }
-  return false;
+  return isIndexAheadOfSnapshot(
+    indexed,
+    expected.contentRevision,
+    expected.fileMtimeMs,
+  );
 }
 
 /**
@@ -94,7 +89,9 @@ export async function runItemDerivedLocalizeRefresh(
 
   if (localized.text !== rawMarkdown) {
     const bumped = bumpContentRevisionInDocumentMarkdown(localized.text);
-    await writeItemRawMarkdown(ctx, vaultPath, vaultId, itemId, bumped);
+    await writeItemRawMarkdown(ctx, vaultPath, vaultId, itemId, bumped, {
+      deferIndexRefresh: true,
+    });
     return "markdown";
   }
 

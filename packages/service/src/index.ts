@@ -47,7 +47,6 @@ export {
 } from "./sync-status.js";
 
 export {
-  ITEM_DERIVED_REFRESH_JOB_TYPE,
   createDerivedCatchUpStatusRefresher,
   createDerivedCatchUpStatusStore,
   deriveCatchUpStatusFromJobStats,
