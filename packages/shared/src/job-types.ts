@@ -165,6 +165,16 @@ export function itemDerivedRefreshIdempotencyKey(
   return `itemDerivedRefresh:${payload.vaultId}:${payload.itemId}:${payload.contentRevision}:${payload.fileMtimeMs}`;
 }
 
+/** Prefix for waitDerived when fileMtimeMs is unknown at call time (#770). */
+export function itemDerivedRefreshIdempotencyKeyPrefix(
+  payload: Pick<
+    ItemDerivedRefreshJobPayload,
+    "vaultId" | "itemId" | "contentRevision"
+  >,
+): string {
+  return `itemDerivedRefresh:${payload.vaultId}:${payload.itemId}:${payload.contentRevision}:`;
+}
+
 /** Embedding refresh batch (#633). */
 export const embeddingRefreshInputSchema = z.object({
   itemId: z.string().min(1),

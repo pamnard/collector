@@ -6,6 +6,8 @@ import {
   VAULT_MUTATING_BULK_JOB_TYPE_IDS,
   defineJobType,
   importFolderJobType,
+  itemDerivedRefreshIdempotencyKey,
+  itemDerivedRefreshIdempotencyKeyPrefix,
   itemDerivedRefreshJobType,
   isVaultMutatingBulkJob,
   isVaultMutatingBulkJobType,
@@ -99,5 +101,22 @@ describe("job type catalog (#629)", () => {
       60 * 60 * 1000,
     );
     expect(importFolderJobType.maxAttempts).toBe(1);
+  });
+
+  it("itemDerivedRefresh idempotency keys align enqueue and waitDerived (#770)", () => {
+    expect(itemDerivedRefreshJobType.id).toBe("itemDerivedRefresh");
+    expect(isVaultMutatingBulkJobType("itemDerivedRefresh")).toBe(false);
+    const snapshot = {
+      vaultId: "v1",
+      itemId: "Inbox/n.md",
+      contentRevision: 3,
+      fileMtimeMs: 1_700_000_000_000,
+    };
+    expect(itemDerivedRefreshIdempotencyKey(snapshot)).toBe(
+      "itemDerivedRefresh:v1:Inbox/n.md:3:1700000000000",
+    );
+    expect(itemDerivedRefreshIdempotencyKeyPrefix(snapshot)).toBe(
+      "itemDerivedRefresh:v1:Inbox/n.md:3:",
+    );
   });
 });

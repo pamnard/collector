@@ -302,4 +302,27 @@ export const ITEMS_DISPATCH = {
       return runtime.dropImport.getImportFolderJob(jobId);
     },
   },
+  [M.waitDerived]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.waitDerived);
+      const itemId = requireString(p.itemId, "itemId", M.waitDerived);
+      if (
+        typeof p.contentRevision !== "number" ||
+        !Number.isInteger(p.contentRevision)
+      ) {
+        badRequest(`${M.waitDerived}: contentRevision must be an integer`);
+      }
+      let timeoutMs: number | undefined;
+      if (p.timeoutMs !== undefined) {
+        if (typeof p.timeoutMs !== "number" || !Number.isFinite(p.timeoutMs)) {
+          badRequest(`${M.waitDerived}: timeoutMs must be a number`);
+        }
+        timeoutMs = p.timeoutMs;
+      }
+      await runtime.ensureInitialized();
+      return runtime.waitDerived.waitDerived(itemId, p.contentRevision, {
+        ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      });
+    },
+  },
 } satisfies DomainDispatchGroup;

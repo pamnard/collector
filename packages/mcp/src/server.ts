@@ -309,6 +309,42 @@ export function createCollectorMcpServer(
     },
   );
 
+  const waitDerived = requireMcpToolCatalogEntry("collector_wait_derived");
+  server.registerTool(
+    waitDerived.name,
+    {
+      description: waitDerived.description,
+      inputSchema: {
+        itemId: z
+          .string()
+          .min(1)
+          .describe(paramDescribe(waitDerived.name, "itemId")),
+        contentRevision: z
+          .number()
+          .int()
+          .describe(paramDescribe(waitDerived.name, "contentRevision")),
+        timeoutMs: z
+          .number()
+          .positive()
+          .optional()
+          .describe(paramDescribe(waitDerived.name, "timeoutMs")),
+      },
+    },
+    async (input) => {
+      try {
+        return textResult(
+          await client.items.waitDerived(input.itemId, input.contentRevision, {
+            ...(input.timeoutMs === undefined
+              ? {}
+              : { timeoutMs: input.timeoutMs }),
+          }),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
   const deleteItem = requireMcpToolCatalogEntry("collector_delete_item");
   server.registerTool(
     deleteItem.name,

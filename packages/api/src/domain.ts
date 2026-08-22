@@ -123,6 +123,18 @@ export interface ImportFolderJobSnapshot {
   error: string | null;
 }
 
+/**
+ * Result of opt-in {@link ItemsPort.waitDerived} (#770).
+ * Terminal status of the `itemDerivedRefresh` job for one item revision.
+ */
+export type WaitDerivedStatus = "succeeded" | "failed" | "cancelled";
+
+export interface WaitDerivedResult {
+  status: WaitDerivedStatus;
+  jobId: string;
+  contentRevision: number;
+}
+
 export interface UpdateItemInput {
   title?: string;
   description?: string;

@@ -234,6 +234,36 @@ export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] = [
     ],
   },
   {
+    name: "collector_wait_derived",
+    description:
+      "Opt-in await of post-save derived work (itemDerivedRefresh) for one item revision (#770). " +
+      "For scripts/agents that must chain on indexed/localized state. " +
+      "Do not use for ordinary UI save or bulk update loops — default mutate is fire-and-forget. " +
+      "Pass contentRevision from the ItemFile returned by create/update.",
+    params: [
+      {
+        name: "itemId",
+        required: true,
+        typeLabel: "string",
+        description: ITEM_ID_DESCRIPTION,
+      },
+      {
+        name: "contentRevision",
+        required: true,
+        typeLabel: "number",
+        description:
+          "Item content_revision from the save that enqueued derived work.",
+      },
+      {
+        name: "timeoutMs",
+        required: false,
+        typeLabel: "number",
+        description:
+          "Optional wait ceiling in milliseconds (default host job-wait: 120000).",
+      },
+    ],
+  },
+  {
     name: "collector_delete_item",
     description:
       "Delete an item by vault-relative .md path. itemId must be the full path from search/create, not a bare UUID.",

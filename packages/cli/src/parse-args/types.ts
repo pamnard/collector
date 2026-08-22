@@ -37,6 +37,12 @@ export type CliCommand =
       folder_path?: string;
       wait: boolean;
     }
+  | {
+      name: "wait-derived";
+      itemId: string;
+      contentRevision: number;
+      timeoutMs?: number;
+    }
   | { name: "create-tag"; tagName: string; color?: string | null }
   | { name: "delete-tag"; tagId: string }
   | { name: "create-folder"; folderPath: string }

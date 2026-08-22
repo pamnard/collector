@@ -13,6 +13,7 @@ CLI always needs dial flags before the subcommand: `--base-url … --data-dir �
 | Create item | `collector_create_item` | `create-item --title …` |
 | Update fields | `collector_update_item` | `update-item <item-id> [--title …] …` |
 | Replace raw `.md` | `collector_update_item_source` | `update-item-source <item-id> --content …` |
+| Wait derived (opt-in) | `collector_wait_derived` | `wait-derived <item-id> --revision <n>` |
 | Delete item | `collector_delete_item` | `delete-item <item-id>` |
 | Move item | `collector_move_item` | `move-item <item-id> --folder …` |
 | Create tag | `collector_create_tag` | `create-tag --name …` |

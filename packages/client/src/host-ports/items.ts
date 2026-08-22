@@ -16,6 +16,7 @@ import type {
   SearchItemsResult,
   Subscription,
   UpdateItemInput,
+  WaitDerivedResult,
 } from "@collector/api";
 import {
   asCollectorApiError,
@@ -243,6 +244,7 @@ function createItemsWriteMethods(
   | "importDroppedFiles"
   | "importFolder"
   | "getImportFolderJob"
+  | "waitDerived"
 > {
   return {
     updateItemSource: (
@@ -293,6 +295,18 @@ function createItemsWriteMethods(
       transport.request("getImportFolderJob", {
         jobId,
       }) as Promise<ImportFolderJobSnapshot>,
+    waitDerived: (
+      itemId: string,
+      contentRevision: number,
+      options?: { timeoutMs?: number },
+    ): Promise<WaitDerivedResult> =>
+      transport.request("waitDerived", {
+        itemId,
+        contentRevision,
+        ...(options?.timeoutMs === undefined
+          ? {}
+          : { timeoutMs: options.timeoutMs }),
+      }) as Promise<WaitDerivedResult>,
   };
 }
 

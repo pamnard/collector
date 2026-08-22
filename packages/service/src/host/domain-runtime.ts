@@ -66,6 +66,7 @@ import {
 } from "../derived-catch-up-status.js";
 import { createDomainServices } from "./domain-runtime/domain-services.js";
 import { createDropImportRuntime } from "./domain-runtime/drop-import.js";
+import { createWaitDerivedRuntime } from "./domain-runtime/wait-derived.js";
 import { createSyncPluginRuntime } from "./domain-runtime/sync-plugins.js";
 import {
   createVaultSyncController,
@@ -104,6 +105,7 @@ export function createServiceDomainRuntime(
     enqueue: (input) => requireJobs().enqueue(input),
     cancel: (id) => requireJobs().cancel(id),
     getJob: (id) => requireJobs().getJob(id),
+    findByIdempotencyKey: (key) => requireJobs().findByIdempotencyKey(key),
     stats: () => requireJobs().stats(),
     start: () => requireJobs().start(),
     stop: () => requireJobs().stop(),
@@ -380,6 +382,11 @@ export function createServiceDomainRuntime(
     requireJobs,
   });
 
+  const waitDerived = createWaitDerivedRuntime({
+    resolveActiveVault: () => vaults.resolveActiveVault(),
+    requireJobs,
+  });
+
   const credentials = createCredentialsService({
     backend: createOsKeychainBackend(),
   });
@@ -474,6 +481,7 @@ export function createServiceDomainRuntime(
     tagsFolders,
     mediaCover,
     dropImport,
+    waitDerived,
     vaults,
     appSettings,
     credentials,

@@ -172,3 +172,39 @@ export function parseImportFolder(argv: string[], rest: string[]): CliCommand {
     ...(folder_path === undefined ? {} : { folder_path }),
   };
 }
+
+export const WAIT_DERIVED_FLAGS = new Set(["--revision", "--timeout-ms"]);
+
+export function parseWaitDerived(argv: string[], rest: string[]): CliCommand {
+  if (rest.length !== 1) {
+    throw new CliUsageError(
+      "Usage: collector-cli wait-derived <item-id> --revision <n> [--timeout-ms <ms>]",
+    );
+  }
+  const revisionRaw = readOpt(argv, "--revision");
+  if (revisionRaw === undefined) {
+    throw new CliUsageError("wait-derived requires --revision");
+  }
+  const contentRevision = Number(revisionRaw);
+  if (!Number.isInteger(contentRevision)) {
+    throw new CliUsageError(
+      `wait-derived --revision must be an integer; got ${revisionRaw}`,
+    );
+  }
+  const timeoutRaw = readOpt(argv, "--timeout-ms");
+  let timeoutMs: number | undefined;
+  if (timeoutRaw !== undefined) {
+    timeoutMs = Number(timeoutRaw);
+    if (!Number.isFinite(timeoutMs) || timeoutMs < 1) {
+      throw new CliUsageError(
+        `wait-derived --timeout-ms must be a positive number; got ${timeoutRaw}`,
+      );
+    }
+  }
+  return {
+    name: "wait-derived",
+    itemId: rest[0]!,
+    contentRevision,
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
+  };
+}
