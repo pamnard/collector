@@ -231,7 +231,6 @@ export function createItemsCrud(
   const persistMetadataOnlySource = async (
     itemId: string,
     markdown: string,
-    itemUrl?: string | null,
     move?: { fromFolderPath: string; toFolderPath: string },
   ): Promise<ItemFile> => {
     const { vault, path } = await deps.resolveActiveVault();
@@ -243,25 +242,8 @@ export function createItemsCrud(
       itemId,
       markdown,
     );
-
-    if (mightNeedRemoteDisplayAssetLocalization(markdown, itemUrl)) {
-      const docPath = itemMarkdownPath(path, itemId);
-      const fileStat = await ctx.fs.stat(docPath);
-      if (fileStat.mtimeMs === null) {
-        throw new Error(
-          `persistMetadataOnlySource: missing file mtime for ${itemId}`,
-        );
-      }
-      await deps.enqueueItemDerivedRefresh({
-        vaultId: vault.id,
-        vaultPath: path,
-        itemId,
-        contentRevision: item.content_revision,
-        fileMtimeMs: fileStat.mtimeMs,
-        itemUrl,
-      });
-    }
-
+    // writeItemRawMarkdown → refreshItemIndexAfterWrite already enqueues derived
+    // work (index + item.url for localize) when jobs are wired (#776).
     notifyItemUpserted(vault.id, item, move);
     return item;
   };
@@ -404,7 +386,7 @@ export function createItemsCrud(
         currentContent ?? "",
         maps.byId,
       );
-      return persistMetadataOnlySource(nextItem.id, markdown, nextItem.url, move);
+      return persistMetadataOnlySource(nextItem.id, markdown, move);
     }
 
     const body =
