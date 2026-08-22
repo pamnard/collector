@@ -144,6 +144,8 @@ export const itemDerivedRefreshJobPayloadSchema = z.object({
   contentRevision: z.number().int(),
   /** Disk mtime at enqueue — successive writes share content_revision but not mtime. */
   fileMtimeMs: z.number(),
+  /** Optional URL hint for localize step (#768). */
+  itemUrl: z.string().nullable().optional(),
 });
 export type ItemDerivedRefreshJobPayload = z.infer<
   typeof itemDerivedRefreshJobPayloadSchema

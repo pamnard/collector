@@ -381,6 +381,32 @@ function bodyMightContainRemoteImage(body: string): boolean {
   );
 }
 
+/** Cheap pre-check before enqueueing async localize (#768). */
+export function mightNeedRemoteDisplayAssetLocalization(
+  rawMarkdown: string,
+  itemUrl?: string | null,
+): boolean {
+  const parsed = parseDocumentMarkdown(rawMarkdown);
+  const { known } = partitionDocumentFrontmatter(parsed.frontmatter);
+  const fmThumbnail =
+    typeof known.thumbnail === "string" ? known.thumbnail : null;
+  const needsFmThumbnail = Boolean(fmThumbnail && isRemoteHttpUrl(fmThumbnail));
+  const resolvedItemUrl =
+    itemUrl !== undefined
+      ? itemUrl
+      : typeof known.url === "string"
+        ? known.url
+        : null;
+  const teaserUrl = resolvedItemUrl
+    ? youtubeTeaserDownloadUrl(resolvedItemUrl)
+    : null;
+  return (
+    needsFmThumbnail ||
+    Boolean(teaserUrl) ||
+    bodyMightContainRemoteImage(parsed.body)
+  );
+}
+
 /**
  * Download remote markdown images + FM thumbnail + YouTube teaser into note media.
  * Rewrites the document to local paths. Fails hard on any download error (#739).

@@ -12,6 +12,7 @@ import {
   syncPluginPullJobType,
   testNoopJobType,
   vaultIndexSyncJobType,
+  itemDerivedRefreshJobType,
   type TestNoopJobPayload,
 } from "@collector/shared";
 import { runJobsMigrations } from "@collector/db";
@@ -252,5 +253,9 @@ export function createHostJobRegistry(): JobRegistry {
     boundPhaseBHandler("dropImportBatch"),
   );
   registry.register(importFolderJobType, boundPhaseBHandler("importFolder"));
+  registry.register(
+    itemDerivedRefreshJobType,
+    boundPhaseBHandler("itemDerivedRefresh"),
+  );
   return registry;
 }

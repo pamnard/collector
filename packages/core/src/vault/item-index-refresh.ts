@@ -174,6 +174,7 @@ export async function refreshItemIndexAfterWrite(
       item.id,
       item.content_revision,
       fileStat.mtimeMs,
+      item.url,
     );
     return;
   }

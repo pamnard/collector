@@ -38,6 +38,7 @@ import {
 } from "./dashboard-index-page.js";
 import { createItemsCrud } from "./items-crud.js";
 import { subscribeDashboardLoad as subscribeDashboardLoadImpl } from "./items-dashboard-subscribe.js";
+import type { ItemDerivedRefreshEnqueueInput } from "./jobs/handlers/item-derived-refresh.js";
 
 export { DASHBOARD_PREFETCH_SIZE, SEARCH_PAGE_SIZE };
 export type { DashboardIndexPage, DashboardItemIdsResult, DashboardItemSort, SearchItemsResult };
@@ -128,14 +129,12 @@ export interface ItemsSearchServiceDeps {
    */
   normalizeMarkdown: (raw: string) => { text: string; changed: boolean };
   /**
-   * Download remote markdown images / FM thumbnails / YouTube teasers into
-   * note media and rewrite the document (#739). Required on every note persist.
+   * Enqueue async derived localize for notes that may contain remote display
+   * assets (#768). Mutate RPC does not await the job.
    */
-  localizeRemoteDisplayAssets: (input: {
-    itemId: string;
-    rawMarkdown: string;
-    itemUrl?: string | null;
-  }) => Promise<{ text: string; changed: boolean }>;
+  enqueueItemDerivedRefresh: (
+    input: ItemDerivedRefreshEnqueueInput,
+  ) => Promise<void>;
 }
 
 export interface ItemsSearchService {

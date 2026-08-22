@@ -21,6 +21,7 @@ import {
   ensureTagsByName,
   itemMarkdownPath,
   loadTagMaps,
+  mightNeedRemoteDisplayAssetLocalization,
   moveItemToFolder,
   parseAndResolveTextLinks,
   parseDocumentMarkdown,
@@ -158,7 +159,7 @@ export function createItemsCrud(
     return readItemRawMarkdown(ctx.fs, path, itemId);
   };
 
-  /** Normalize, localize remote display assets (#739), write when text changes. */
+  /** Normalize on persist (sync); localize runs in itemDerivedRefresh job (#768). */
   const applyNormalizedSource = async (
     itemId: string,
     rawMarkdown: string,
@@ -167,34 +168,44 @@ export function createItemsCrud(
     const { vault, path } = await deps.resolveActiveVault();
     const ctx = deps.getContext();
     const { text: normalized } = deps.normalizeMarkdown(rawMarkdown);
-    const localized = await deps.localizeRemoteDisplayAssets({
-      itemId,
-      rawMarkdown: normalized,
-      itemUrl,
-    });
-    const text = localized.text;
     const existing = await readItemRawMarkdown(ctx.fs, path, itemId);
-    if (text === existing && !localized.changed) {
-      return {
-        item: await readItemFile(ctx.fs, path, itemId, vault.id),
-        wrote: false,
-      };
-    }
-    if (text !== existing) {
-      const item = await writeItemRawMarkdown(
+    let item: ItemFile;
+    let wrote = false;
+    if (normalized !== existing) {
+      item = await writeItemRawMarkdown(
         ctx,
         path,
         vault.id,
         itemId,
-        text,
+        normalized,
       );
-      return { item, wrote: true };
+      wrote = true;
+    } else {
+      item = await readItemFile(ctx.fs, path, itemId, vault.id);
     }
-    // Cover/media localized on disk without markdown text change (e.g. YouTube teaser).
-    return {
-      item: await readItemFile(ctx.fs, path, itemId, vault.id),
-      wrote: true,
-    };
+
+    if (
+      !wrote &&
+      mightNeedRemoteDisplayAssetLocalization(normalized, itemUrl)
+    ) {
+      const docPath = itemMarkdownPath(path, itemId);
+      const fileStat = await ctx.fs.stat(docPath);
+      if (fileStat.mtimeMs === null) {
+        throw new Error(
+          `applyNormalizedSource: missing file mtime for ${itemId}`,
+        );
+      }
+      await deps.enqueueItemDerivedRefresh({
+        vaultId: vault.id,
+        vaultPath: path,
+        itemId,
+        contentRevision: item.content_revision,
+        fileMtimeMs: fileStat.mtimeMs,
+        itemUrl,
+      });
+    }
+
+    return { item, wrote };
   };
 
   const notifyItemUpserted = (
@@ -272,31 +283,21 @@ export function createItemsCrud(
       content: input.content ?? null,
       sourceRef: input.sourceRef,
     });
-    // Localize after create; on failure roll back so remotes never remain (#739).
-    // Create always notifies presentation even when normalize/localize is a no-op (#756).
-    try {
-      const raw = await readItemRawMarkdown(ctx.fs, path, created.id);
-      const { item } = await applyNormalizedSource(
-        created.id,
-        raw,
-        created.url,
-      );
-      // Create is distinct from edit so UI can ±1 folder counts (#759).
-      deps.onVaultPresentationChanged?.({
-        vaultId: vault.id,
-        kind: "itemCreated",
-        itemId: item.id,
-        folderPath: item.folder_path,
-      });
-      return item;
-    } catch (error) {
-      console.error("createItem: localize failed; rolling back item", {
-        itemId: created.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      await deleteItemOnDisk(ctx, path, created.id);
-      throw error;
-    }
+    // Localize is async via itemDerivedRefresh (#768). Create succeeds even when
+    // localize will fail later; failures surface via job permanent-failure / AlertStack.
+    const raw = await readItemRawMarkdown(ctx.fs, path, created.id);
+    const { item } = await applyNormalizedSource(
+      created.id,
+      raw,
+      created.url,
+    );
+    deps.onVaultPresentationChanged?.({
+      vaultId: vault.id,
+      kind: "itemCreated",
+      itemId: item.id,
+      folderPath: item.folder_path,
+    });
+    return item;
   };
 
   const updateItem = async (
