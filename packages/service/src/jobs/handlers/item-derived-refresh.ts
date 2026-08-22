@@ -5,6 +5,16 @@ import {
   upsertItemIndexFromVault,
   type VaultContext,
 } from "@collector/core";
+import {
+  itemDerivedRefreshIdempotencyKey,
+  itemDerivedRefreshJobType,
+  type ItemDerivedRefreshJobPayload,
+} from "@collector/shared";
+import type { JobQueue, EnqueueResult } from "../job-queue.js";
+import type { TypedJobHandler } from "../job-registry.js";
+import type { JobHandlerResult } from "../job-types.js";
+import type { VaultPresentationChangedPayload } from "../../vault-presentation-changed.js";
+import type { LocalizeItemRemoteDisplayAssets } from "../../localize-item-remote-display-assets.js";
 
 export type ItemDerivedRefreshEnqueueInput = ItemDerivedRefreshJobPayload;
 
