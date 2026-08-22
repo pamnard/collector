@@ -204,6 +204,7 @@ describe("refreshItemIndexAfterWrite (#766)", () => {
           itemId: string,
           contentRevision: number,
           fileMtimeMs: number,
+          itemUrl?: string | null,
         ) => {
           enqueued.push({
             vaultId,
@@ -211,6 +212,7 @@ describe("refreshItemIndexAfterWrite (#766)", () => {
             itemId,
             contentRevision,
             fileMtimeMs,
+            ...(itemUrl !== undefined ? { itemUrl } : {}),
           });
         },
       },

@@ -169,10 +169,7 @@ function createSearchService(
     addVaultSyncListener: () => () => {},
     findSimilarItems: async () => [],
     normalizeMarkdown: (raw) => ({ text: raw, changed: false }),
-    localizeRemoteDisplayAssets: async ({ rawMarkdown }) => ({
-      text: rawMarkdown,
-      changed: false,
-    }),
+    enqueueItemDerivedRefresh: async () => undefined,
   });
 }
 

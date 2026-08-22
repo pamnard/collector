@@ -54,6 +54,10 @@ import {
   createDropImportBatchHandler,
 } from "../jobs/handlers/drop-import-batch.js";
 import { createImportFolderHandler } from "../jobs/handlers/import-folder.js";
+import {
+  createItemDerivedRefreshHandler,
+} from "../jobs/handlers/item-derived-refresh.js";
+import { createLocalizeItemRemoteDisplayAssets } from "../localize-item-remote-display-assets.js";
 import { reportEnqueueFailure } from "../job-permanent-failure.js";
 import { createVaultIndexSyncStatusStore } from "../sync-status.js";
 import { createDomainServices } from "./domain-runtime/domain-services.js";
@@ -231,6 +235,7 @@ export function createServiceDomainRuntime(
     itemId: string,
     contentRevision: number,
     fileMtimeMs: number,
+    itemUrl?: string | null,
   ): Promise<void> {
     await enqueueItemDerivedRefresh(requireJobs(), {
       vaultId,
@@ -238,6 +243,7 @@ export function createServiceDomainRuntime(
       itemId,
       contentRevision,
       fileMtimeMs,
+      ...(itemUrl !== undefined ? { itemUrl } : {}),
     });
   }
 
@@ -292,9 +298,6 @@ export function createServiceDomainRuntime(
       vaultLayoutGuard.schedule(vaultId, vaultPath);
     },
   });
-  phaseBHandlerBindings.itemDerivedRefresh = createItemDerivedRefreshHandler({
-    getContext,
-  });
 
   const domainServices = createDomainServices({
     dataDir,
@@ -308,8 +311,21 @@ export function createServiceDomainRuntime(
     vaultSync: vaultSyncController,
     vaultPresentationChanged,
     requireJobs,
+    jobPermanentFailure,
   });
   vaultsHolder.current = domainServices.vaults;
+
+  const localizeRemoteDisplayAssets = createLocalizeItemRemoteDisplayAssets({
+    getContext,
+    resolveActiveVault: () => vaults.resolveActiveVault(),
+  });
+
+  phaseBHandlerBindings.itemDerivedRefresh = createItemDerivedRefreshHandler({
+    getContext,
+    localizeRemoteDisplayAssets,
+    onVaultPresentationChanged: (payload) =>
+      vaultPresentationChanged.notify(payload),
+  });
 
   const { vaults, itemsSearch, tagsFolders, mediaCover } = domainServices;
 

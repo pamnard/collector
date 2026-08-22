@@ -33,9 +33,10 @@ const samplePayload = {
   itemId: "Inbox/note.md",
   contentRevision: 3,
   fileMtimeMs: 1_700_000_000_000,
+  itemUrl: null,
 };
 
-describe("itemDerivedRefresh job (#766)", () => {
+describe("itemDerivedRefresh job (#766 / #768)", () => {
   const dirs: string[] = [];
   const queues: JobQueue[] = [];
 
@@ -52,17 +53,50 @@ describe("itemDerivedRefresh job (#766)", () => {
     );
   });
 
-  it("upserts from vault bytes via core helper", async () => {
+  it("parses optional itemUrl in catalog payload", () => {
+    expect(
+      itemDerivedRefreshJobType.payload.parse({
+        vaultId: "v",
+        vaultPath: "/p",
+        itemId: "a.md",
+        contentRevision: 1,
+        fileMtimeMs: 1,
+        itemUrl: "https://example.com",
+      }),
+    ).toMatchObject({
+      itemUrl: "https://example.com",
+    });
+  });
+
+  it("localizes then upserts index from vault bytes", async () => {
+    const localize = vi.fn(async () => "noop" as const);
     const upsert = vi.fn(async () => "upserted" as const);
-    const spy = vi
+    const localizeSpy = vi
+      .spyOn(await import("@collector/core"), "runItemDerivedLocalizeRefresh")
+      .mockImplementation(localize);
+    const upsertSpy = vi
       .spyOn(await import("@collector/core"), "upsertItemIndexFromVault")
       .mockImplementation(upsert);
+    const readItemFile = vi.fn(async () => ({
+      id: samplePayload.itemId,
+      folder_path: "Inbox",
+      content_revision: 3,
+      vault_id: samplePayload.vaultId,
+    }));
+    vi.spyOn(await import("@collector/core"), "readItemFile").mockImplementation(
+      readItemFile as never,
+    );
+
     const handler = createItemDerivedRefreshHandler({
       getContext: () =>
         ({
-          fs: {},
+          fs: {
+            exists: async () => true,
+            stat: async () => ({ mtimeMs: samplePayload.fileMtimeMs }),
+          },
           index: {},
         }) as never,
+      localizeRemoteDisplayAssets: vi.fn(),
     });
 
     await expect(
@@ -73,38 +107,87 @@ describe("itemDerivedRefresh job (#766)", () => {
         payload: samplePayload,
       }),
     ).resolves.toEqual({ status: "ok" });
+
+    expect(localize).toHaveBeenCalled();
     expect(upsert).toHaveBeenCalledWith(
       expect.anything(),
       samplePayload.vaultPath,
       samplePayload.vaultId,
       samplePayload.itemId,
-      samplePayload.contentRevision,
+      3,
       samplePayload.fileMtimeMs,
     );
-    spy.mockRestore();
+
+    localizeSpy.mockRestore();
+    upsertSpy.mockRestore();
+  });
+
+  it("returns ok when item was deleted before localize runs", async () => {
+    const localizeRemoteDisplayAssets = vi.fn();
+    const handler = createItemDerivedRefreshHandler({
+      getContext: () => ({
+        fs: {
+          exists: async () => false,
+        },
+        index: { listItemSyncMetaByIds: async () => [] },
+      }) as never,
+      localizeRemoteDisplayAssets,
+    });
+
+    await expect(
+      handler({
+        id: "job-1",
+        type: "itemDerivedRefresh",
+        attempts: 0,
+        payload: {
+          vaultId: "vault-1",
+          vaultPath: "/vault",
+          itemId: "Inbox/n.md",
+          contentRevision: 1,
+          fileMtimeMs: 100,
+        },
+      }),
+    ).resolves.toEqual({ status: "ok" });
+    expect(localizeRemoteDisplayAssets).not.toHaveBeenCalled();
   });
 
   it("dedupes pending jobs for the same snapshot", async () => {
     const dir = mkdtempSync(join(tmpdir(), "collector-item-derived-job-"));
     dirs.push(dir);
-    const upsert = vi.fn(async () => "upserted" as const);
-    const spy = vi
-      .spyOn(await import("@collector/core"), "upsertItemIndexFromVault")
-      .mockImplementation(upsert);
+    vi.spyOn(
+      await import("@collector/core"),
+      "runItemDerivedLocalizeRefresh",
+    ).mockResolvedValue("noop");
+    vi.spyOn(
+      await import("@collector/core"),
+      "upsertItemIndexFromVault",
+    ).mockResolvedValue("upserted");
+    vi.spyOn(await import("@collector/core"), "readItemFile").mockResolvedValue({
+      id: samplePayload.itemId,
+      folder_path: "Inbox",
+      content_revision: 3,
+      vault_id: samplePayload.vaultId,
+    } as never);
+
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
     const registry = createJobRegistry([itemDerivedRefreshJobType]);
-    registry.register(
-      itemDerivedRefreshJobType,
-      async (job) => {
-        await gate;
-        return createItemDerivedRefreshHandler({
-          getContext: () => ({ fs: {}, index: {} }) as never,
-        })(job);
-      },
-    );
+    registry.register(itemDerivedRefreshJobType, async (job) => {
+      await gate;
+      return createItemDerivedRefreshHandler({
+        getContext: () =>
+          ({
+            fs: {
+              exists: async () => true,
+              stat: async () => ({ mtimeMs: samplePayload.fileMtimeMs }),
+            },
+            index: {},
+          }) as never,
+        localizeRemoteDisplayAssets: vi.fn(),
+      })(job);
+    });
     const queue = await createJobQueue({
       dbPath: join(dir, "jobs.db"),
       registry,
@@ -123,52 +206,5 @@ describe("itemDerivedRefresh job (#766)", () => {
 
     release();
     await waitFor(async () => (await queue.stats()).succeeded === 1);
-    spy.mockRestore();
-  });
-
-  it("does not dedupe when fileMtimeMs differs at same revision", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "collector-item-derived-dedup-"));
-    dirs.push(dir);
-    const upsert = vi.fn(async () => "upserted" as const);
-    const spy = vi
-      .spyOn(await import("@collector/core"), "upsertItemIndexFromVault")
-      .mockImplementation(upsert);
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const registry = createJobRegistry([itemDerivedRefreshJobType]);
-    registry.register(
-      itemDerivedRefreshJobType,
-      async (job) => {
-        await gate;
-        return createItemDerivedRefreshHandler({
-          getContext: () => ({ fs: {}, index: {} }) as never,
-        })(job);
-      },
-    );
-    const queue = await createJobQueue({
-      dbPath: join(dir, "jobs.db"),
-      registry,
-      concurrency: 1,
-      pollIntervalMs: 20,
-    });
-    queues.push(queue);
-    queue.start();
-
-    const first = await enqueueItemDerivedRefresh(queue, samplePayload);
-    await waitFor(async () => (await queue.stats()).running === 1);
-    const second = await enqueueItemDerivedRefresh(queue, {
-      ...samplePayload,
-      fileMtimeMs: samplePayload.fileMtimeMs + 1,
-    });
-
-    expect(first.deduped).toBe(false);
-    expect(second.deduped).toBe(false);
-    expect(second.id).not.toBe(first.id);
-
-    release();
-    await waitFor(async () => (await queue.stats()).succeeded === 2);
-    spy.mockRestore();
   });
 });

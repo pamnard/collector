@@ -58,10 +58,7 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
         getContext: () => ({ fs: {}, index: {} }),
         getIndex: () => ({}),
         normalizeMarkdown: testNormalizeMarkdown,
-        localizeRemoteDisplayAssets: async ({ rawMarkdown }) => ({
-          text: rawMarkdown,
-          changed: false,
-        }),
+        enqueueItemDerivedRefresh: async () => undefined,
       } as never,
       () => "n",
     );
@@ -98,10 +95,7 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
         getIndex: () => ({}),
         onVaultPresentationChanged,
         normalizeMarkdown: testNormalizeMarkdown,
-        localizeRemoteDisplayAssets: async ({ rawMarkdown }) => ({
-          text: rawMarkdown,
-          changed: false,
-        }),
+        enqueueItemDerivedRefresh: async () => undefined,
       } as never,
       () => "n",
     );
@@ -140,10 +134,7 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
         getIndex: () => ({}),
         onVaultPresentationChanged,
         normalizeMarkdown: testNormalizeMarkdown,
-        localizeRemoteDisplayAssets: async ({ rawMarkdown }) => ({
-          text: rawMarkdown,
-          changed: false,
-        }),
+        enqueueItemDerivedRefresh: async () => undefined,
       } as never,
       () => "n",
     );
@@ -164,8 +155,9 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
     });
   });
 
-  it("rolls back created item when localize fails (#739)", async () => {
+  it("does not roll back create when localize will run async (#768)", async () => {
     const onVaultPresentationChanged = vi.fn();
+    const enqueueItemDerivedRefresh = vi.fn(async () => undefined);
     upsertItem.mockResolvedValue({ id: "Inbox/n.md", url: null });
     readItemRawMarkdown.mockResolvedValue(
       "![x](https://cdn.example/x.png)\n",
@@ -176,30 +168,32 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
           path: "/vault",
           vault: { id: "00000000-0000-4000-8000-000000000001" },
         }),
-        getContext: () => ({ fs: {}, index: {} }),
+        getContext: () => ({
+          fs: { stat: async () => ({ mtimeMs: 100 }) },
+          index: {},
+        }),
         getIndex: () => ({}),
         onVaultPresentationChanged,
         normalizeMarkdown: testNormalizeMarkdown,
-        localizeRemoteDisplayAssets: async () => {
-          throw new Error("download failed");
-        },
+        enqueueItemDerivedRefresh,
       } as never,
       () => "n",
     );
 
-    await expect(
-      crud.createItem({
-        title: "Bad remote",
-        content_type: "note",
-        content: "![x](https://cdn.example/x.png)",
-      }),
-    ).rejects.toThrow(/download failed/);
+    const item = await crud.createItem({
+      title: "Remote image note",
+      content_type: "note",
+      content: "![x](https://cdn.example/x.png)",
+    });
 
-    expect(deleteItem).toHaveBeenCalledWith(
-      expect.anything(),
-      "/vault",
-      "Inbox/n.md",
-    );
-    expect(onVaultPresentationChanged).not.toHaveBeenCalled();
+    expect(item.id).toBe("Inbox/n.md");
+    expect(deleteItem).not.toHaveBeenCalled();
+    expect(enqueueItemDerivedRefresh).toHaveBeenCalledTimes(1);
+    expect(onVaultPresentationChanged).toHaveBeenCalledWith({
+      vaultId: "00000000-0000-4000-8000-000000000001",
+      kind: "itemCreated",
+      itemId: "Inbox/n.md",
+      folderPath: "Inbox",
+    });
   });
 });

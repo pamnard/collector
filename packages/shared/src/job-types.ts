@@ -144,6 +144,8 @@ export const itemDerivedRefreshJobPayloadSchema = z.object({
   contentRevision: z.number().int(),
   /** Disk mtime at enqueue — successive writes share content_revision but not mtime. */
   fileMtimeMs: z.number(),
+  /** Optional URL hint for localize step (#768). */
+  itemUrl: z.string().nullable().optional(),
 });
 export type ItemDerivedRefreshJobPayload = z.infer<
   typeof itemDerivedRefreshJobPayloadSchema
@@ -251,6 +253,23 @@ export const importFolderJobType = defineJobType({
   maxAttempts: 1,
 });
 
+/** Per-item derived refresh: localize remote display assets (#768 / #766 family). */
+export const itemDerivedRefreshJobPayloadSchema = z.object({
+  vaultId: z.string().min(1),
+  vaultPath: z.string().min(1),
+  itemId: z.string().min(1),
+  contentRevision: z.number().int(),
+  fileMtimeMs: z.number(),
+  itemUrl: z.string().nullable().optional(),
+});
+export type ItemDerivedRefreshJobPayload = z.infer<
+  typeof itemDerivedRefreshJobPayloadSchema
+>;
+export const itemDerivedRefreshJobType = defineJobType({
+  id: "itemDerivedRefresh",
+  payload: itemDerivedRefreshJobPayloadSchema,
+});
+
 /**
  * Production catalog — the single explicit list of job type ids (#629).
  * Phase B types join here; test suites may pass a local catalog to
@@ -266,6 +285,7 @@ export const JOB_TYPE_CATALOG = [
   generateCoverJobType,
   dropImportBatchJobType,
   importFolderJobType,
+  itemDerivedRefreshJobType,
 ] as const;
 
 export type JobTypeId = (typeof JOB_TYPE_CATALOG)[number]["id"];

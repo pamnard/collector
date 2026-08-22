@@ -429,6 +429,35 @@ export function serializeDocumentMarkdown(
   return `---\n${yamlBlock}\n---\n${normalizedBody.startsWith("\n") ? normalizedBody.slice(1) : normalizedBody}`;
 }
 
+/**
+ * Bump `content_revision` and `updated` after derived localize rewrites the vault
+ * document (#768). Preserves body and other frontmatter fields.
+ */
+export function bumpContentRevisionInDocumentMarkdown(
+  raw: string,
+  updatedAt: string = new Date().toISOString(),
+): string {
+  const parsed = parseDocumentMarkdown(raw);
+  const { known, properties } = partitionDocumentFrontmatter(parsed.frontmatter);
+  const dates = resolveFrontmatterDates(known);
+  const frontmatter = buildCanonicalFrontmatter({
+    title: known.title ?? "Untitled",
+    description: known.description,
+    url: known.url,
+    content_type: contentTypeFromFrontmatter(known) ?? known.content_type,
+    source_type: known.source_type,
+    source_id: known.source_id,
+    tags: known.tags,
+    thumbnail: known.thumbnail,
+    content_revision: (known.content_revision ?? 1) + 1,
+    created: dates.created_at,
+    updated: updatedAt,
+    metadata: known.metadata,
+    properties,
+  });
+  return serializeDocumentMarkdown(frontmatter, parsed.body);
+}
+
 /** Foreign frontmatter keys (neither product projection nor legacy deny-list). */
 export function extractUnknownFrontmatterKeys(
   frontmatter: Record<string, unknown>,

@@ -31,10 +31,7 @@ function createDeps(
     addVaultSyncListener: vi.fn(() => () => {}),
     findSimilarItems: vi.fn(async () => []),
     normalizeMarkdown: (raw) => ({ text: raw, changed: false }),
-    localizeRemoteDisplayAssets: async ({ rawMarkdown }) => ({
-      text: rawMarkdown,
-      changed: false,
-    }),
+    enqueueItemDerivedRefresh: async () => undefined,
   };
 }
 

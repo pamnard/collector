@@ -11,13 +11,15 @@ import type { createDashboardSnapshotService } from "../../dashboard-snapshot.js
 import type { createVaultPresentationChangedStore } from "../../vault-presentation-changed.js";
 import type { createItemEmbeddingsService } from "../../embeddings/item-embeddings-service.js";
 import type { JobQueue } from "../../jobs/job-queue.js";
+import type { createJobPermanentFailureStore } from "../../job-permanent-failure.js";
 import { createItemsSearchService } from "../../items-search.js";
 import { createTagsFoldersService } from "../../tags-folders.js";
 import { createMediaCoverService } from "../../media-cover.js";
 import { createVaultsService } from "../../vaults.js";
 import { enqueueGenerateCover } from "../../jobs/handlers/generate-cover.js";
 import { waitForJobTerminal } from "../../jobs/job-wait.js";
-import { createLocalizeItemRemoteDisplayAssets } from "../../localize-item-remote-display-assets.js";
+import { enqueueItemDerivedRefresh } from "../../jobs/handlers/item-derived-refresh.js";
+import { reportEnqueueFailure } from "../../job-permanent-failure.js";
 
 export interface DomainServicesDeps {
   dataDir: string;
@@ -42,6 +44,7 @@ export interface DomainServicesDeps {
   };
   vaultPresentationChanged: ReturnType<typeof createVaultPresentationChangedStore>;
   requireJobs: () => JobQueue;
+  jobPermanentFailure: ReturnType<typeof createJobPermanentFailureStore>;
 }
 
 export interface DomainServices {
@@ -93,10 +96,17 @@ export function createDomainServices(deps: DomainServicesDeps): DomainServices {
     findSimilarItems: (itemId, limit) =>
       deps.itemEmbeddings.findSimilarItems(itemId, limit),
     normalizeMarkdown,
-    localizeRemoteDisplayAssets: createLocalizeItemRemoteDisplayAssets({
-      getContext: deps.getContext,
-      resolveActiveVault: () => vaults.resolveActiveVault(),
-    }),
+    enqueueItemDerivedRefresh: async (input) => {
+      try {
+        await enqueueItemDerivedRefresh(deps.requireJobs(), input);
+      } catch (error) {
+        reportEnqueueFailure(
+          deps.jobPermanentFailure,
+          "itemDerivedRefresh",
+          error,
+        );
+      }
+    },
   });
 
   const tagsFolders = createTagsFoldersService({

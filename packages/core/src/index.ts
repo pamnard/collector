@@ -102,6 +102,7 @@ export {
   demoteFrontmatterKey,
   extractUnknownFrontmatterKeys,
   ftsFieldsFromDocumentMarkdown,
+  bumpContentRevisionInDocumentMarkdown,
   parseDocumentMarkdown,
   parseKnownFrontmatter,
   partitionDocumentFrontmatter,
@@ -126,6 +127,16 @@ export type {
 export { syncIndexFromFilesystem } from "./vault/sync-operations.js";
 
 export { syncIndexItemsFromFilesystem } from "./vault/item-index-sync.js";
+
+export {
+  isStaleItemDerivedLocalizeJob,
+  runItemDerivedLocalizeRefresh,
+} from "./vault/item-derived-localize.js";
+export type {
+  ItemDerivedLocalizeRefreshInput,
+  ItemDerivedLocalizeRefreshOutcome,
+  LocalizeRemoteDisplayAssetsPort,
+} from "./vault/item-derived-localize.js";
 
 export {
   createVaultWatchBatcher,
@@ -245,6 +256,7 @@ export {
   extractMarkdownRemoteImageRefs,
   filenameFromRemoteImageUrl,
   localizeRemoteDisplayAssets,
+  mightNeedRemoteDisplayAssetLocalization,
   rewriteMarkdownRemoteImageUrls,
 } from "./vault/remote-display-assets.js";
 export type {
