@@ -20,7 +20,7 @@ export const ITEM_MARKDOWN_LINK_BORDER_CLASS =
   "!border-b !border-indigo-400/50 !no-underline";
 
 /** Same border underline; redder text/border for missing targets. */
-const UNRESOLVED_LINK_CLASS =
+export const UNRESOLVED_LINK_CLASS =
   "!border-b !border-red-400/60 !text-red-400 !no-underline dark:!border-red-400/50 dark:!text-red-400";
 
 export function ItemMarkdownAnchor({

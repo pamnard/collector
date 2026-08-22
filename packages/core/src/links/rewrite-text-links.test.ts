@@ -97,6 +97,7 @@ describe("rewriteTextLinksForMarkdown", () => {
         displayText: "TikTok ratings",
         position: imageOpen,
         resolvedItemId: null,
+        resolveStatus: "unresolved",
       },
     ]);
     expect(out).toBe(body);

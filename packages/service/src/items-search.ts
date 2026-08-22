@@ -18,6 +18,7 @@ import {
   type NavFilter,
   type ResolvedTextLink,
   type BacklinkSource,
+  type OutboundTextLink,
   type SearchItemsResult,
   type SimilarItemHit,
   type Subscription,
@@ -183,6 +184,7 @@ export interface ItemsSearchService {
     body: string,
   ): Promise<ResolvedTextLink[]>;
   listItemBacklinks(itemId: string): Promise<BacklinkSource[]>;
+  listItemOutboundLinks(itemId: string): Promise<OutboundTextLink[]>;
   getItemSource(itemId: string): Promise<string>;
   updateItemSource(itemId: string, rawMarkdown: string): Promise<ItemFile>;
   createItem(input: CreateItemInput): Promise<ItemFile>;
@@ -369,6 +371,7 @@ export function createItemsSearchService(
     findSimilarItems: deps.findSimilarItems,
     resolveContentTextLinks: crud.resolveContentTextLinks,
     listItemBacklinks: crud.listItemBacklinks,
+    listItemOutboundLinks: crud.listItemOutboundLinks,
     getItemSource: crud.getItemSource,
     updateItemSource: crud.updateItemSource,
     createItem: crud.createItem,

@@ -2,6 +2,7 @@ import type { FolderTreeNode, MediaWithPath, TagWithCount } from "@collector/cor
 import {
   buildCanonicalFrontmatter,
   buildBacklinkReverseMap,
+  collectOutboundLinks,
   contentTypeFromFrontmatter,
   isItemIdSortKey,
   parseAndResolveTextLinks,
@@ -252,6 +253,24 @@ export async function resolveContentTextLinks(
     body,
     textLinkResolveContextFromItems(itemId, items),
   );
+}
+
+export async function listItemOutboundLinks(itemId: string) {
+  ensureWarmedUp();
+  const item = mockStore.getItemById(itemId);
+  if (!item) {
+    throw new Error(`Item not found: ${itemId}`);
+  }
+  if (!mockStore.isDiskVault()) {
+    return [];
+  }
+  const raw = await fetchDevVaultText(devVaultFsUrl(itemId));
+  if (raw === null) {
+    throw new Error(`Item not found: ${itemId}`);
+  }
+  const body = parseDocumentMarkdown(raw).body;
+  const items = mockStore.getItems();
+  return collectOutboundLinks(itemId, body, items);
 }
 
 export async function listItemBacklinks(itemId: string) {

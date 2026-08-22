@@ -134,6 +134,24 @@ export interface ResolvedTextLink {
   displayText: string | null;
   position: number;
   resolvedItemId: string | null;
+  resolveStatus: "resolved" | "unresolved" | "ambiguous";
+}
+
+/** Outbound link scope for item footer panel (#457). */
+export type OutboundLinkScope = "internal" | "external";
+
+export type OutboundLinkStatus = "resolved" | "unresolved" | "ambiguous";
+
+/** One outgoing text link from the current item body (#457). */
+export interface OutboundTextLink {
+  scope: OutboundLinkScope;
+  kind: "wikilink" | "md";
+  rawTarget: string;
+  displayText: string | null;
+  position: number;
+  resolvedItemId: string | null;
+  status: OutboundLinkStatus | null;
+  title: string | null;
 }
 
 /** Unique item that links to a target note (#410). */
@@ -236,6 +254,8 @@ export interface ItemsPort {
   ): Promise<ResolvedTextLink[]>;
   /** Unique notes that link to this item via text links (#410). */
   listItemBacklinks(itemId: string): Promise<BacklinkSource[]>;
+  /** Outgoing text links from the current item body (#457). */
+  listItemOutboundLinks(itemId: string): Promise<OutboundTextLink[]>;
   getItemSource(itemId: string): Promise<string>;
   updateItemSource(itemId: string, rawMarkdown: string): Promise<ItemFile>;
   createItem(input: CreateItemInput): Promise<ItemFile>;

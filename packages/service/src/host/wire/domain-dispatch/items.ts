@@ -162,6 +162,18 @@ export const ITEMS_DISPATCH = {
       return runtime.itemsSearch.listItemBacklinks(itemId);
     },
   },
+  [M.listItemOutboundLinks]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.listItemOutboundLinks);
+      const itemId = requireString(
+        p.itemId,
+        "itemId",
+        M.listItemOutboundLinks,
+      );
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.listItemOutboundLinks(itemId);
+    },
+  },
   [M.getItemSource]: {
     handle: async (runtime, params) => {
       const p = asObject(params, M.getItemSource);

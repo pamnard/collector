@@ -8,9 +8,12 @@ export interface TextLinkResolveContext {
   idsByTitle: (title: string) => string[];
 }
 
+export type TextLinkResolveStatus = "resolved" | "unresolved" | "ambiguous";
+
 export interface ResolvedTextLink extends ExtractedTextLink {
   /** Matched item id, or null when missing/ambiguous. */
   resolvedItemId: string | null;
+  resolveStatus: TextLinkResolveStatus;
 }
 
 /** Strip Obsidian-style `#heading` / `^block` suffixes for resolve. */
@@ -132,6 +135,18 @@ function resolveUniqueTitle(
   return null;
 }
 
+function hasAmbiguousTitle(
+  context: TextLinkResolveContext,
+  targetKey: string,
+): boolean {
+  for (const title of titleResolveCandidates(targetKey)) {
+    if (context.idsByTitle(title).length > 1) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function resolveOne(
   link: ExtractedTextLink,
   context: TextLinkResolveContext,
@@ -139,16 +154,36 @@ function resolveOne(
   const key = resolveTargetKey(link.rawTarget);
   for (const candidate of candidatePaths(context.sourceItemId, key)) {
     if (context.idExists(candidate)) {
-      return { ...link, resolvedItemId: candidate };
+      return {
+        ...link,
+        resolvedItemId: candidate,
+        resolveStatus: "resolved",
+      };
     }
   }
 
   const byTitle = resolveUniqueTitle(context, key);
   if (byTitle) {
-    return { ...link, resolvedItemId: byTitle };
+    return {
+      ...link,
+      resolvedItemId: byTitle,
+      resolveStatus: "resolved",
+    };
   }
 
-  return { ...link, resolvedItemId: null };
+  if (hasAmbiguousTitle(context, key)) {
+    return {
+      ...link,
+      resolvedItemId: null,
+      resolveStatus: "ambiguous",
+    };
+  }
+
+  return {
+    ...link,
+    resolvedItemId: null,
+    resolveStatus: "unresolved",
+  };
 }
 
 export function resolveTextLinks(
