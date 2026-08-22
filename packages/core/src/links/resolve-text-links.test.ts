@@ -104,6 +104,7 @@ describe("resolveTextLinks", () => {
       }),
     );
     expect(resolved[0]!.resolvedItemId).toBeNull();
+    expect(resolved[0]!.resolveStatus).toBe("ambiguous");
   });
 
   it("resolves path-style wikilink via unique basename title", () => {
@@ -151,6 +152,7 @@ describe("resolveTextLinks", () => {
     expect(resolved[0]).toEqual({
       ...input,
       resolvedItemId: "Inbox/b.md",
+      resolveStatus: "resolved",
     });
   });
 });

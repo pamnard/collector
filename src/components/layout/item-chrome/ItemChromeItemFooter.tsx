@@ -4,6 +4,7 @@ import { ItemAdjacentNav } from "../../items/ItemAdjacentNav";
 import { ItemRelatedPanel } from "../../items/ItemRelatedPanel";
 import type { ItemLinksTabId } from "../../items/item-links-panel-tabs";
 import { useItemBacklinks } from "../../../hooks/useItemBacklinks";
+import { useItemOutboundLinks } from "../../../hooks/useItemOutboundLinks";
 import { useRelatedSemanticTeasers } from "../../../hooks/useRelatedSemanticTeasers";
 import { useShell } from "../AppLayout";
 import {
@@ -12,7 +13,7 @@ import {
 } from "./item-chrome-context";
 
 /**
- * Bottom item chrome: related/backlinks tabs + adjacent nav.
+ * Bottom item chrome: related/outgoing/backlinks tabs + adjacent nav.
  * `mt-auto` keeps the stack at the card bottom (links stick to adjacent).
  */
 export function ItemChromeItemFooter() {
@@ -26,6 +27,7 @@ export function ItemChromeItemFooter() {
   const { teasers: relatedTeasers, ready: relatedReady } =
     useRelatedSemanticTeasers(itemRef, vaultRevision);
   const backlinks = useItemBacklinks(itemRef, vaultRevision);
+  const outbound = useItemOutboundLinks(itemRef, vaultRevision);
   const [preferredLinksTab, setPreferredLinksTab] =
     useState<ItemLinksTabId>("related");
 
@@ -34,11 +36,11 @@ export function ItemChromeItemFooter() {
     itemAdjacent !== null &&
     Boolean(itemAdjacent.prev || itemAdjacent.next);
 
-  // Wait until both loads settle so Tabs don't mount on backlinks-only
-  // and then stick there when related arrives (#410).
-  const linksSettled = relatedReady && backlinks !== null;
+  const linksSettled =
+    relatedReady && backlinks !== null && outbound !== null;
   const showLinksPanel =
-    linksSettled && (relatedTeasers !== null || backlinks.length > 0);
+    linksSettled &&
+    (relatedTeasers !== null || backlinks.length > 0 || outbound.length > 0);
 
   if (!showLinksPanel && !showAdjacent) {
     return null;
@@ -46,9 +48,10 @@ export function ItemChromeItemFooter() {
 
   return (
     <div className="relative mt-auto shrink-0">
-      {showLinksPanel && backlinks !== null ? (
+      {showLinksPanel && backlinks !== null && outbound !== null ? (
         <ItemRelatedPanel
           teasers={relatedTeasers}
+          outbound={outbound}
           backlinks={backlinks}
           preferredTab={preferredLinksTab}
           onPreferredTabChange={setPreferredLinksTab}

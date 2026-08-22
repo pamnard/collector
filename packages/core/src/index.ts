@@ -312,9 +312,16 @@ export { resolveTextLinks } from "./links/resolve-text-links.js";
 export type {
   ResolvedTextLink,
   TextLinkResolveContext,
+  TextLinkResolveStatus,
 } from "./links/resolve-text-links.js";
 
 export { parseAndResolveTextLinks } from "./links/parse-text-links.js";
+
+export { collectOutboundLinks } from "./links/collect-outbound-links.js";
+export type {
+  OutboundLinkScope,
+  OutboundTextLink,
+} from "./links/collect-outbound-links.js";
 
 export {
   buildBacklinkReverseMap,

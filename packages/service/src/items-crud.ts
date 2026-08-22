@@ -7,12 +7,14 @@ import type {
   BacklinkSource,
   CreateItemInput,
   GetItemResult,
+  OutboundTextLink,
   ResolvedTextLink,
   UpdateItemInput,
 } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
 import { folderPathFromItemPath } from "@collector/shared";
 import {
+  collectOutboundLinks,
   createFolder as createFolderOnVault,
   deleteItem as deleteItemOnDisk,
   ensureTagsByName,
@@ -43,6 +45,7 @@ export type ItemsCrud = {
     body: string,
   ): Promise<ResolvedTextLink[]>;
   listItemBacklinks(itemId: string): Promise<BacklinkSource[]>;
+  listItemOutboundLinks(itemId: string): Promise<OutboundTextLink[]>;
   getItemSource(itemId: string): Promise<string>;
   updateItemSource(itemId: string, rawMarkdown: string): Promise<ItemFile>;
   createItem(input: CreateItemInput): Promise<ItemFile>;
@@ -108,6 +111,22 @@ export function createItemsCrud(
       body,
       textLinkResolveContextFromItems(itemId, items),
     );
+  };
+
+  const listItemOutboundLinks = async (
+    itemId: string,
+  ): Promise<OutboundTextLink[]> => {
+    const { path, vault } = await deps.resolveActiveVault();
+    const ctx = deps.getContext();
+    if (!(await ctx.fs.exists(itemMarkdownPath(path, itemId)))) {
+      throw new Error(`Item not found: ${itemId}`);
+    }
+    const content = await readItemContent(ctx.fs, path, itemId);
+    if (content === null) {
+      throw new Error(`Item not found: ${itemId}`);
+    }
+    const catalog = await deps.getIndex().listItemIdTitles(vault.id);
+    return collectOutboundLinks(itemId, content, catalog);
   };
 
   const listItemBacklinks = async (
@@ -357,6 +376,7 @@ export function createItemsCrud(
     getAdjacentItems,
     resolveContentTextLinks,
     listItemBacklinks,
+    listItemOutboundLinks,
     getItemSource,
     updateItemSource: async (itemId, rawMarkdown) => {
       const { item } = await getItemById(itemId);

@@ -181,6 +181,7 @@ function createItemsReadMethods(
   | "findSimilarItems"
   | "resolveContentTextLinks"
   | "listItemBacklinks"
+  | "listItemOutboundLinks"
   | "getItemSource"
 > {
   return {
@@ -204,6 +205,10 @@ function createItemsReadMethods(
       transport.request("listItemBacklinks", {
         itemId,
       }) as ReturnType<ItemsPort["listItemBacklinks"]>,
+    listItemOutboundLinks: (itemId: string) =>
+      transport.request("listItemOutboundLinks", {
+        itemId,
+      }) as ReturnType<ItemsPort["listItemOutboundLinks"]>,
     getItemSource: (itemId: string): Promise<string> =>
       transport.request("getItemSource", { itemId }) as Promise<string>,
   };
