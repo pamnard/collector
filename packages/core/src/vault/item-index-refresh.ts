@@ -1,6 +1,5 @@
 import type { ItemFile } from "@collector/shared";
-import type { ItemFile } from "@collector/shared";
-import type { VaultContext } from "../adapters/types.js";
+import type { ItemSyncMeta, VaultContext } from "../adapters/types.js";
 import { ftsFieldsFromDocumentMarkdown } from "./frontmatter.js";
 import {
   itemFileFromDocumentMarkdown,
@@ -30,9 +29,25 @@ function mergeIndexOnlyFields(
   return { ...item, collection_ids };
 }
 
+/** True when indexed row is strictly newer than this snapshot (rev, then mtime). */
+export function isIndexAheadOfSnapshot(
+  meta: Pick<ItemSyncMeta, "content_revision" | "file_mtime_ms">,
+  contentRevision: number,
+  fileMtimeMs: number,
+): boolean {
+  if (meta.content_revision > contentRevision) {
+    return true;
+  }
+  if (meta.content_revision < contentRevision) {
+    return false;
+  }
+  return meta.file_mtime_ms != null && meta.file_mtime_ms > fileMtimeMs;
+}
+
 /**
  * Upsert one item into the SQL/FTS index from current vault bytes.
- * Skips when the index already reflects a newer `contentRevision` (#766).
+ * Skips when the index already reflects a newer snapshot (#766).
+ * Re-checks mtime immediately before write to close TOCTOU races.
  */
 export async function upsertItemIndexFromVault(
   ctx: VaultContext,
@@ -40,6 +55,7 @@ export async function upsertItemIndexFromVault(
   vaultId: string,
   itemId: string,
   expectedContentRevision: number,
+  expectedFileMtimeMs: number,
   hints?: ItemIndexRefreshHints,
 ): Promise<ItemIndexRefreshOutcome> {
   const id = normalizeRelativePath(itemId);
@@ -54,13 +70,25 @@ export async function upsertItemIndexFromVault(
   }
 
   const [indexMeta] = await ctx.index.listItemSyncMetaByIds(vaultId, [id]);
-  if (indexMeta && indexMeta.content_revision > expectedContentRevision) {
+  if (
+    indexMeta &&
+    isIndexAheadOfSnapshot(
+      indexMeta,
+      expectedContentRevision,
+      expectedFileMtimeMs,
+    )
+  ) {
     return "stale";
   }
 
   const fileStat = await ctx.fs.stat(docPath);
   if (fileStat.mtimeMs === null) {
     throw new Error(`Cannot index item ${id}: missing file mtime`);
+  }
+
+  // Job targeted an older on-disk generation; a newer enqueue covers current bytes.
+  if (fileStat.mtimeMs > expectedFileMtimeMs) {
+    return "stale";
   }
 
   const documentMarkdown = await ctx.fs.readText(docPath);
@@ -74,7 +102,10 @@ export async function upsertItemIndexFromVault(
   );
 
   const [freshMeta] = await ctx.index.listItemSyncMetaByIds(vaultId, [id]);
-  if (freshMeta && freshMeta.content_revision > item.content_revision) {
+  if (
+    freshMeta &&
+    isIndexAheadOfSnapshot(freshMeta, item.content_revision, fileStat.mtimeMs)
+  ) {
     return "stale";
   }
 
@@ -85,6 +116,22 @@ export async function upsertItemIndexFromVault(
 
   const fts = ftsFieldsFromDocumentMarkdown(documentMarkdown);
   const sourceRef = await readItemSourceRef(ctx.fs, vaultPath, id);
+
+  // Final TOCTOU gate: another writer may have advanced disk or index mid-flight.
+  const reStat = await ctx.fs.stat(docPath);
+  if (reStat.mtimeMs === null) {
+    throw new Error(`Cannot index item ${id}: missing file mtime`);
+  }
+  if (reStat.mtimeMs !== fileStat.mtimeMs) {
+    return "stale";
+  }
+  const [finalMeta] = await ctx.index.listItemSyncMetaByIds(vaultId, [id]);
+  if (
+    finalMeta &&
+    isIndexAheadOfSnapshot(finalMeta, item.content_revision, fileStat.mtimeMs)
+  ) {
+    return "stale";
+  }
 
   await ctx.index.upsertItem(
     {
@@ -113,12 +160,20 @@ export async function refreshItemIndexAfterWrite(
   vaultId: string,
   item: ItemFile,
 ): Promise<void> {
+  const docPath = itemMarkdownPath(vaultPath, item.id);
+  const fileStat = await ctx.fs.stat(docPath);
+  if (fileStat.mtimeMs === null) {
+    throw new Error(
+      `Cannot refresh index for ${item.id}: missing file mtime after write`,
+    );
+  }
   if (ctx.itemDerivedRefreshJobs) {
     await ctx.itemDerivedRefreshJobs.enqueue(
       vaultId,
       vaultPath,
       item.id,
       item.content_revision,
+      fileStat.mtimeMs,
     );
     return;
   }
@@ -128,6 +183,7 @@ export async function refreshItemIndexAfterWrite(
     vaultId,
     item.id,
     item.content_revision,
+    fileStat.mtimeMs,
     { collection_ids: item.collection_ids },
   );
 }

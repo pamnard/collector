@@ -230,12 +230,14 @@ export function createServiceDomainRuntime(
     vaultPath: string,
     itemId: string,
     contentRevision: number,
+    fileMtimeMs: number,
   ): Promise<void> {
     await enqueueItemDerivedRefresh(requireJobs(), {
       vaultId,
       vaultPath,
       itemId,
       contentRevision,
+      fileMtimeMs,
     });
   }
 

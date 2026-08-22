@@ -7,8 +7,37 @@ import { SqlVaultIndexStore } from "../index/sql-index.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import { createVault } from "./vault-operations.js";
 import { upsertItem, writeItemRawMarkdown } from "./item-operations.js";
-import { upsertItemIndexFromVault } from "./item-index-refresh.js";
+import {
+  isIndexAheadOfSnapshot,
+  upsertItemIndexFromVault,
+} from "./item-index-refresh.js";
 import { createId } from "../util/ids.js";
+
+describe("isIndexAheadOfSnapshot (#766)", () => {
+  it("prefers content_revision then file_mtime_ms", () => {
+    expect(
+      isIndexAheadOfSnapshot(
+        { content_revision: 3, file_mtime_ms: 100 },
+        2,
+        200,
+      ),
+    ).toBe(true);
+    expect(
+      isIndexAheadOfSnapshot(
+        { content_revision: 2, file_mtime_ms: 300 },
+        2,
+        200,
+      ),
+    ).toBe(true);
+    expect(
+      isIndexAheadOfSnapshot(
+        { content_revision: 2, file_mtime_ms: 100 },
+        2,
+        200,
+      ),
+    ).toBe(false);
+  });
+});
 
 describe("upsertItemIndexFromVault (#766)", () => {
   let dataDir = "";
@@ -47,11 +76,16 @@ describe("upsertItemIndexFromVault (#766)", () => {
       },
       content: "body",
     });
-    return { ctx, meta, path, itemId, item };
+    const docPath = join(path, itemId);
+    const stat = await fs.stat(docPath);
+    if (stat.mtimeMs === null) {
+      throw new Error("expected mtime on seeded item");
+    }
+    return { ctx, meta, path, itemId, item, fileMtimeMs: stat.mtimeMs };
   }
 
   it("upserts index rows from vault bytes", async () => {
-    const { ctx, meta, path, itemId } = await seedItem(2);
+    const { ctx, meta, path, itemId, fileMtimeMs } = await seedItem(2);
     await ctx.index.deleteItem(itemId);
 
     const outcome = await upsertItemIndexFromVault(
@@ -60,6 +94,7 @@ describe("upsertItemIndexFromVault (#766)", () => {
       meta.id,
       itemId,
       2,
+      fileMtimeMs,
     );
     expect(outcome).toBe("upserted");
 
@@ -69,7 +104,7 @@ describe("upsertItemIndexFromVault (#766)", () => {
   });
 
   it("skips stale jobs when index already has a newer revision", async () => {
-    const { ctx, meta, path, itemId } = await seedItem(3);
+    const { ctx, meta, path, itemId, fileMtimeMs } = await seedItem(3);
     const upsertSpy = vi.spyOn(ctx.index, "upsertItem");
 
     const outcome = await upsertItemIndexFromVault(
@@ -78,13 +113,35 @@ describe("upsertItemIndexFromVault (#766)", () => {
       meta.id,
       itemId,
       2,
+      fileMtimeMs,
+    );
+    expect(outcome).toBe("stale");
+    expect(upsertSpy).not.toHaveBeenCalled();
+  });
+
+  it("skips when disk mtime is newer than job snapshot", async () => {
+    const { ctx, meta, path, itemId } = await seedItem(1);
+    const docPath = join(path, itemId);
+    const stat = await fs.stat(docPath);
+    if (stat.mtimeMs === null) {
+      throw new Error("expected mtime");
+    }
+    const upsertSpy = vi.spyOn(ctx.index, "upsertItem");
+
+    const outcome = await upsertItemIndexFromVault(
+      ctx,
+      path,
+      meta.id,
+      itemId,
+      1,
+      stat.mtimeMs - 1,
     );
     expect(outcome).toBe("stale");
     expect(upsertSpy).not.toHaveBeenCalled();
   });
 
   it("re-upserts when revision matches but metadata may have changed", async () => {
-    const { ctx, meta, path, itemId, item } = await seedItem(2);
+    const { ctx, meta, path, itemId, item, fileMtimeMs } = await seedItem(2);
     const upsertSpy = vi.spyOn(ctx.index, "upsertItem");
 
     const outcome = await upsertItemIndexFromVault(
@@ -93,13 +150,14 @@ describe("upsertItemIndexFromVault (#766)", () => {
       meta.id,
       itemId,
       item.content_revision,
+      fileMtimeMs,
     );
     expect(outcome).toBe("upserted");
     expect(upsertSpy).toHaveBeenCalled();
   });
 
   it("removes index row when vault item is missing", async () => {
-    const { ctx, meta, path, itemId } = await seedItem(1);
+    const { ctx, meta, path, itemId, fileMtimeMs } = await seedItem(1);
     await ctx.fs.remove(join(path, itemId));
 
     const outcome = await upsertItemIndexFromVault(
@@ -108,6 +166,7 @@ describe("upsertItemIndexFromVault (#766)", () => {
       meta.id,
       itemId,
       1,
+      fileMtimeMs,
     );
     expect(outcome).toBe("missing");
     expect(await ctx.index.listItemFilesByIds(meta.id, [itemId])).toEqual([]);
@@ -133,6 +192,7 @@ describe("refreshItemIndexAfterWrite (#766)", () => {
       vaultPath: string;
       itemId: string;
       contentRevision: number;
+      fileMtimeMs: number;
     }> = [];
     const ctx = {
       fs,
@@ -143,8 +203,15 @@ describe("refreshItemIndexAfterWrite (#766)", () => {
           vaultPath: string,
           itemId: string,
           contentRevision: number,
+          fileMtimeMs: number,
         ) => {
-          enqueued.push({ vaultId, vaultPath, itemId, contentRevision });
+          enqueued.push({
+            vaultId,
+            vaultPath,
+            itemId,
+            contentRevision,
+            fileMtimeMs,
+          });
         },
       },
     };
@@ -171,12 +238,17 @@ describe("refreshItemIndexAfterWrite (#766)", () => {
       content: "queued",
     });
 
+    const stat = await fs.stat(join(path, itemId));
+    if (stat.mtimeMs === null) {
+      throw new Error("expected mtime");
+    }
     expect(enqueued).toEqual([
       {
         vaultId: meta.id,
         vaultPath: path,
         itemId,
         contentRevision: 4,
+        fileMtimeMs: stat.mtimeMs,
       },
     ]);
     expect(await ctx.index.listItemFilesByIds(meta.id, [itemId])).toEqual([]);
@@ -185,7 +257,7 @@ describe("refreshItemIndexAfterWrite (#766)", () => {
   it("writeItemRawMarkdown enqueues derived refresh without inline index upsert", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "collector-item-raw-enqueue-"));
     const sql = new MemorySqlAdapter();
-    const enqueued: string[] = [];
+    const enqueued: Array<{ itemId: string; fileMtimeMs: number }> = [];
     const ctx = {
       fs,
       index: new SqlVaultIndexStore(sql),
@@ -194,8 +266,10 @@ describe("refreshItemIndexAfterWrite (#766)", () => {
           _vaultId: string,
           _vaultPath: string,
           itemId: string,
+          _contentRevision: number,
+          fileMtimeMs: number,
         ) => {
-          enqueued.push(itemId);
+          enqueued.push({ itemId, fileMtimeMs });
         },
       },
     };
@@ -240,7 +314,9 @@ describe("refreshItemIndexAfterWrite (#766)", () => {
     ].join("\n");
 
     await writeItemRawMarkdown(ctx, path, meta.id, itemId, raw);
-    expect(enqueued).toEqual([itemId]);
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0]?.itemId).toBe(itemId);
+    expect(enqueued[0]?.fileMtimeMs).toBeTypeOf("number");
     expect(await ctx.index.listItemFilesByIds(meta.id, [itemId])).toEqual([]);
   });
 });

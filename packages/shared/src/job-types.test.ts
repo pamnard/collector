@@ -88,8 +88,10 @@ describe("job type catalog (#629)", () => {
       vaultPath: "/vault",
       itemId: "a.md",
       contentRevision: 1,
+      fileMtimeMs: 1_700_000_000_000,
     });
     expect(parsed.contentRevision).toBe(1);
+    expect(parsed.fileMtimeMs).toBe(1_700_000_000_000);
   });
 
   it("importFolder declares a long-running non-retryable contract (#747)", () => {

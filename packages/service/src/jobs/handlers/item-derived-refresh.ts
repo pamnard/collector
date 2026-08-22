@@ -1,4 +1,5 @@
 import {
+  itemDerivedRefreshIdempotencyKey,
   itemDerivedRefreshJobType,
   type ItemDerivedRefreshJobPayload,
 } from "@collector/shared";
@@ -11,13 +12,20 @@ export function createItemDerivedRefreshHandler(deps: {
   getContext: () => VaultContext;
 }): TypedJobHandler<typeof itemDerivedRefreshJobType.payload> {
   return async (job): Promise<JobHandlerResult> => {
-    const { vaultId, vaultPath, itemId, contentRevision } = job.payload;
+    const {
+      vaultId,
+      vaultPath,
+      itemId,
+      contentRevision,
+      fileMtimeMs,
+    } = job.payload;
     await upsertItemIndexFromVault(
       deps.getContext(),
       vaultPath,
       vaultId,
       itemId,
       contentRevision,
+      fileMtimeMs,
     );
     return { status: "ok" };
   };
@@ -30,6 +38,6 @@ export function enqueueItemDerivedRefresh(
   return queue.enqueue({
     type: "itemDerivedRefresh",
     payload,
-    idempotencyKey: `itemDerivedRefresh:${payload.vaultId}:${payload.itemId}:${payload.contentRevision}`,
+    idempotencyKey: itemDerivedRefreshIdempotencyKey(payload),
   });
 }

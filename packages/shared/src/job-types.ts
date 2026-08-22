@@ -142,6 +142,8 @@ export const itemDerivedRefreshJobPayloadSchema = z.object({
   vaultPath: z.string().min(1),
   itemId: z.string().min(1),
   contentRevision: z.number().int(),
+  /** Disk mtime at enqueue — successive writes share content_revision but not mtime. */
+  fileMtimeMs: z.number(),
 });
 export type ItemDerivedRefreshJobPayload = z.infer<
   typeof itemDerivedRefreshJobPayloadSchema
@@ -150,6 +152,16 @@ export const itemDerivedRefreshJobType = defineJobType({
   id: "itemDerivedRefresh",
   payload: itemDerivedRefreshJobPayloadSchema,
 });
+
+/** Stable idempotency key for enqueue + waitDerived (#766 / #770). */
+export function itemDerivedRefreshIdempotencyKey(
+  payload: Pick<
+    ItemDerivedRefreshJobPayload,
+    "vaultId" | "itemId" | "contentRevision" | "fileMtimeMs"
+  >,
+): string {
+  return `itemDerivedRefresh:${payload.vaultId}:${payload.itemId}:${payload.contentRevision}:${payload.fileMtimeMs}`;
+}
 
 /** Embedding refresh batch (#633). */
 export const embeddingRefreshInputSchema = z.object({

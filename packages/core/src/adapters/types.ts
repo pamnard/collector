@@ -286,6 +286,7 @@ export interface VaultContext {
       vaultPath: string,
       itemId: string,
       contentRevision: number,
+      fileMtimeMs: number,
     ): Promise<void>;
   };
 }

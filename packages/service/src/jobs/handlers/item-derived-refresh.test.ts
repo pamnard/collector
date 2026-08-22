@@ -2,7 +2,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { itemDerivedRefreshJobType } from "@collector/shared";
+import {
+  itemDerivedRefreshIdempotencyKey,
+  itemDerivedRefreshJobType,
+} from "@collector/shared";
 import { createJobQueue, type JobQueue } from "../job-queue.js";
 import { createJobRegistry } from "../job-registry.js";
 import {
@@ -29,6 +32,7 @@ const samplePayload = {
   vaultPath: "/tmp/vault",
   itemId: "Inbox/note.md",
   contentRevision: 3,
+  fileMtimeMs: 1_700_000_000_000,
 };
 
 describe("itemDerivedRefresh job (#766)", () => {
@@ -40,6 +44,12 @@ describe("itemDerivedRefresh job (#766)", () => {
     for (const dir of dirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("uses shared idempotency key including fileMtimeMs", () => {
+    expect(itemDerivedRefreshIdempotencyKey(samplePayload)).toBe(
+      "itemDerivedRefresh:vault-1:Inbox/note.md:3:1700000000000",
+    );
   });
 
   it("upserts from vault bytes via core helper", async () => {
@@ -69,11 +79,12 @@ describe("itemDerivedRefresh job (#766)", () => {
       samplePayload.vaultId,
       samplePayload.itemId,
       samplePayload.contentRevision,
+      samplePayload.fileMtimeMs,
     );
     spy.mockRestore();
   });
 
-  it("dedupes pending jobs for the same item revision", async () => {
+  it("dedupes pending jobs for the same snapshot", async () => {
     const dir = mkdtempSync(join(tmpdir(), "collector-item-derived-job-"));
     dirs.push(dir);
     const upsert = vi.fn(async () => "upserted" as const);
@@ -112,6 +123,52 @@ describe("itemDerivedRefresh job (#766)", () => {
 
     release();
     await waitFor(async () => (await queue.stats()).succeeded === 1);
+    spy.mockRestore();
+  });
+
+  it("does not dedupe when fileMtimeMs differs at same revision", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collector-item-derived-dedup-"));
+    dirs.push(dir);
+    const upsert = vi.fn(async () => "upserted" as const);
+    const spy = vi
+      .spyOn(await import("@collector/core"), "upsertItemIndexFromVault")
+      .mockImplementation(upsert);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const registry = createJobRegistry([itemDerivedRefreshJobType]);
+    registry.register(
+      itemDerivedRefreshJobType,
+      async (job) => {
+        await gate;
+        return createItemDerivedRefreshHandler({
+          getContext: () => ({ fs: {}, index: {} }) as never,
+        })(job);
+      },
+    );
+    const queue = await createJobQueue({
+      dbPath: join(dir, "jobs.db"),
+      registry,
+      concurrency: 1,
+      pollIntervalMs: 20,
+    });
+    queues.push(queue);
+    queue.start();
+
+    const first = await enqueueItemDerivedRefresh(queue, samplePayload);
+    await waitFor(async () => (await queue.stats()).running === 1);
+    const second = await enqueueItemDerivedRefresh(queue, {
+      ...samplePayload,
+      fileMtimeMs: samplePayload.fileMtimeMs + 1,
+    });
+
+    expect(first.deduped).toBe(false);
+    expect(second.deduped).toBe(false);
+    expect(second.id).not.toBe(first.id);
+
+    release();
+    await waitFor(async () => (await queue.stats()).succeeded === 2);
     spy.mockRestore();
   });
 });
