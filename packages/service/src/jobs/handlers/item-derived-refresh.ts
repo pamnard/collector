@@ -85,6 +85,13 @@ export function createItemDerivedRefreshHandler(deps: {
       fileStat.mtimeMs,
     );
 
+    deps.onVaultPresentationChanged?.({
+      vaultId: payload.vaultId,
+      kind: "itemDerivedComplete",
+      itemId: payload.itemId,
+      folderPath: item.folder_path,
+    });
+
     return { status: "ok" };
   };
 }
