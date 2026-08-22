@@ -80,6 +80,19 @@ async function writeLegacyBrokenIndexDb(dbPath: string): Promise<void> {
   await db.close();
 }
 
+async function waitForItemIndexed(
+  client: CollectorHostServiceClient,
+  itemId: string,
+): Promise<void> {
+  await vi.waitFor(async () => {
+    const result = await client.items.queryIndex("all", undefined, {
+      limit: 100,
+      offset: 0,
+    });
+    expect(result.ids).toContain(itemId);
+  });
+}
+
 async function waitForVaultIndexSyncDone(
   client: CollectorHostServiceClient,
   timeoutMs = 5_000,
@@ -143,11 +156,17 @@ describe("CollectorHostServiceClient", () => {
     try {
       const client = await connectCollectorHostService(host.baseUrl, { dataDir });
       try {
-        const page = await client.items.fetchDashboardIndexPage("all", "", {
+        let page = await client.items.fetchDashboardIndexPage("all", "", {
           limit: 60,
           offset: 0,
         });
-        expect(page.totalCount).toBeGreaterThan(0);
+        await vi.waitFor(async () => {
+          page = await client.items.fetchDashboardIndexPage("all", "", {
+            limit: 60,
+            offset: 0,
+          });
+          expect(page.totalCount).toBeGreaterThan(0);
+        });
         expect(page.itemIds.length).toBeGreaterThan(0);
 
         const ids = await client.items.listDashboardItemIds("all", "");
@@ -189,6 +208,7 @@ describe("CollectorHostServiceClient", () => {
         });
         expect(created.title).toBe("Host Note");
 
+        await waitForItemIndexed(client, created.id);
         const before = await client.items.queryIndex("all", undefined, {
           limit: 24,
           offset: 0,
@@ -216,13 +236,15 @@ describe("CollectorHostServiceClient", () => {
         expect(presentationEvents[0]?.kind).toBe("itemUpserted");
         unsubPresentation.unsubscribe();
 
-        const after = await client.items.queryIndex("all", undefined, {
-          limit: 24,
-          offset: 0,
+        await vi.waitFor(async () => {
+          const after = await client.items.queryIndex("all", undefined, {
+            limit: 24,
+            offset: 0,
+          });
+          const afterStamp = after.stamps[after.ids.indexOf(created.id)];
+          expect(afterStamp).toBeTruthy();
+          expect(afterStamp).not.toEqual(beforeStamp);
         });
-        const afterStamp = after.stamps[after.ids.indexOf(created.id)];
-        expect(afterStamp).toBeTruthy();
-        expect(afterStamp).not.toEqual(beforeStamp);
 
         const source = await client.items.updateItemSource(
           created.id,
@@ -362,6 +384,7 @@ describe("CollectorHostServiceClient", () => {
           content_type: "note",
           content: "m",
         });
+        await waitForItemIndexed(client, item.id);
 
         const png = Uint8Array.from(
           Buffer.from(

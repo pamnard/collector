@@ -24,6 +24,7 @@ type AnyTypedHandler = TypedJobHandler<z.ZodTypeAny>;
 export const phaseBHandlerBindings: {
   vaultIndexSync: AnyTypedHandler | null;
   reindexVaultBatch: AnyTypedHandler | null;
+  itemDerivedRefresh: AnyTypedHandler | null;
   refreshEmbeddings: AnyTypedHandler | null;
   syncPluginPull: AnyTypedHandler | null;
   generateCover: AnyTypedHandler | null;
@@ -32,6 +33,7 @@ export const phaseBHandlerBindings: {
 } = {
   vaultIndexSync: null,
   reindexVaultBatch: null,
+  itemDerivedRefresh: null,
   refreshEmbeddings: null,
   syncPluginPull: null,
   generateCover: null,

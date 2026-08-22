@@ -6,6 +6,7 @@ import {
   VAULT_MUTATING_BULK_JOB_TYPE_IDS,
   defineJobType,
   importFolderJobType,
+  itemDerivedRefreshJobType,
   isVaultMutatingBulkJob,
   isVaultMutatingBulkJobType,
   testNoopJobType,
@@ -38,6 +39,7 @@ describe("job scheduling priorities (#746)", () => {
     expect(isVaultMutatingBulkJob({ type: "syncPluginPull" })).toBe(true);
     expect(isVaultMutatingBulkJob({ type: "__test_noop" })).toBe(false);
     expect(isVaultMutatingBulkJob({ type: "refreshEmbeddings" })).toBe(false);
+    expect(isVaultMutatingBulkJob({ type: "itemDerivedRefresh" })).toBe(false);
   });
 });
 
@@ -75,6 +77,21 @@ describe("job type catalog (#629)", () => {
     });
     expect(t.id).toBe("example");
     expect(t.payload.parse({})).toEqual({});
+  });
+
+  it("includes itemDerivedRefresh in JOB_TYPE_CATALOG (#766)", () => {
+    expect(JOB_TYPE_CATALOG.some((t) => t.id === "itemDerivedRefresh")).toBe(
+      true,
+    );
+    const parsed = itemDerivedRefreshJobType.payload.parse({
+      vaultId: "v1",
+      vaultPath: "/vault",
+      itemId: "a.md",
+      contentRevision: 1,
+      fileMtimeMs: 1_700_000_000_000,
+    });
+    expect(parsed.contentRevision).toBe(1);
+    expect(parsed.fileMtimeMs).toBe(1_700_000_000_000);
   });
 
   it("importFolder declares a long-running non-retryable contract (#747)", () => {

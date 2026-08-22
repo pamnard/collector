@@ -6,7 +6,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
@@ -163,14 +163,24 @@ describe("MCP tools over host HTTP (#556)", () => {
       arguments: { query: "MCP" },
     });
     expect(search.isError).toBeFalsy();
-    const searchBody = JSON.parse(
+    let searchBody = JSON.parse(
       (search.content as { text: string }[])[0]!.text,
     ) as {
       items: { id: string; title: string; content_type: string; tag_ids: string[] }[];
       total: number;
       offset: number;
     };
-    expect(searchBody.total).toBeGreaterThanOrEqual(1);
+    await vi.waitFor(async () => {
+      const retry = await mcpClient.callTool({
+        name: "collector_search",
+        arguments: { query: "MCP" },
+      });
+      expect(retry.isError).toBeFalsy();
+      searchBody = JSON.parse(
+        (retry.content as { text: string }[])[0]!.text,
+      ) as typeof searchBody;
+      expect(searchBody.total).toBeGreaterThanOrEqual(1);
+    });
     expect(searchBody.offset).toBe(0);
     const hit = searchBody.items.find((row) => row.id === createdBody.id);
     expect(hit).toBeDefined();

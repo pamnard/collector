@@ -84,6 +84,12 @@ export {
 } from "./vault/item-embedding-refresh.js";
 
 export {
+  refreshItemIndexAfterWrite,
+  upsertItemIndexFromVault,
+  type ItemIndexRefreshOutcome,
+} from "./vault/item-index-refresh.js";
+
+export {
   buildTagMaps,
   parseItemDocument,
   parseItemDocumentResolved,

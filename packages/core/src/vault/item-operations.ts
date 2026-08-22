@@ -1,12 +1,10 @@
 import type { ItemFile } from "@collector/shared";
 import type { UpsertItemInput, VaultContext } from "../adapters/types.js";
 import { nowIso } from "../util/ids.js";
-import { ftsFieldsFromDocumentMarkdown } from "./frontmatter.js";
 import {
   itemFileFromDocumentMarkdown,
   loadTagMaps,
   readItemFile,
-  readItemSourceRef,
   readVaultMeta,
   writeItemDocument,
   writeItemSourceRef,
@@ -24,7 +22,7 @@ import {
 import { listItemRelativePaths } from "./scan.js";
 import { diskMtimeMsFromDocumentMarkdown } from "./recover-item-mtime.js";
 import { readVaultItemMetaBatch } from "./vault-fs-batch.js";
-import { refreshItemEmbeddingAfterWrite } from "./item-embedding-refresh.js";
+import { refreshItemIndexAfterWrite } from "./item-index-refresh.js";
 import { countTextStats } from "./text-stats.js";
 
 export async function upsertItem(
@@ -56,24 +54,7 @@ export async function upsertItem(
     await writeItemSourceRef(ctx.fs, vaultPath, item.id, input.sourceRef);
   }
 
-  const docPath = itemMarkdownPath(vaultPath, item.id);
-  const documentMarkdown = await ctx.fs.readText(docPath);
-  const fts = ftsFieldsFromDocumentMarkdown(documentMarkdown);
-  const sourceRef =
-    input.sourceRef ?? (await readItemSourceRef(ctx.fs, vaultPath, item.id));
-  const fileStat = await ctx.fs.stat(docPath);
-
-  await ctx.index.upsertItem(
-    {
-      item,
-      content: fts.content,
-      hasContentFile: fts.hasContentFile,
-      sourceRef,
-      fileMtimeMs: fileStat.mtimeMs,
-    },
-    vaultId,
-  );
-  await refreshItemEmbeddingAfterWrite(ctx, vaultPath, vaultId, item, fts.content);
+  await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);
   return item;
 }
 
@@ -107,28 +88,14 @@ export async function writeItemRawMarkdown(
     raw,
     existingStat.mtimeMs,
   );
-  const fts = ftsFieldsFromDocumentMarkdown(raw);
 
   await ctx.fs.writeText(docPath, raw);
   await ctx.fs.touch(vaultPath);
 
-  const sourceRef = await readItemSourceRef(ctx.fs, vaultPath, id);
-  const fileStat = await ctx.fs.stat(docPath);
-
   // ensureTagsByName (via parse) only updates tags.json; index FK needs tags rows.
   await syncTagsToIndex(ctx, vaultPath, vaultId);
 
-  await ctx.index.upsertItem(
-    {
-      item,
-      content: fts.content,
-      hasContentFile: fts.hasContentFile,
-      sourceRef,
-      fileMtimeMs: fileStat.mtimeMs,
-    },
-    vaultId,
-  );
-  await refreshItemEmbeddingAfterWrite(ctx, vaultPath, vaultId, item, fts.content);
+  await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);
   return item;
 }
 
