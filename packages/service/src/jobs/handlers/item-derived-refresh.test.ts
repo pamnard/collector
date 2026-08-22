@@ -87,6 +87,7 @@ describe("itemDerivedRefresh job (#766 / #768)", () => {
       readItemFile as never,
     );
 
+    const onVaultPresentationChanged = vi.fn();
     const handler = createItemDerivedRefreshHandler({
       getContext: () =>
         ({
@@ -97,6 +98,7 @@ describe("itemDerivedRefresh job (#766 / #768)", () => {
           index: {},
         }) as never,
       localizeRemoteDisplayAssets: vi.fn(),
+      onVaultPresentationChanged,
     });
 
     await expect(
@@ -117,12 +119,19 @@ describe("itemDerivedRefresh job (#766 / #768)", () => {
       3,
       samplePayload.fileMtimeMs,
     );
+    expect(onVaultPresentationChanged).toHaveBeenCalledWith({
+      vaultId: samplePayload.vaultId,
+      kind: "itemDerivedComplete",
+      itemId: samplePayload.itemId,
+      folderPath: "Inbox",
+    });
 
     localizeSpy.mockRestore();
     upsertSpy.mockRestore();
   });
 
   it("returns ok when item was deleted before localize runs", async () => {
+    const onVaultPresentationChanged = vi.fn();
     const localizeRemoteDisplayAssets = vi.fn();
     const handler = createItemDerivedRefreshHandler({
       getContext: () => ({
@@ -132,6 +141,7 @@ describe("itemDerivedRefresh job (#766 / #768)", () => {
         index: { listItemSyncMetaByIds: async () => [] },
       }) as never,
       localizeRemoteDisplayAssets,
+      onVaultPresentationChanged,
     });
 
     await expect(
@@ -149,6 +159,7 @@ describe("itemDerivedRefresh job (#766 / #768)", () => {
       }),
     ).resolves.toEqual({ status: "ok" });
     expect(localizeRemoteDisplayAssets).not.toHaveBeenCalled();
+    expect(onVaultPresentationChanged).not.toHaveBeenCalled();
   });
 
   it("dedupes pending jobs for the same snapshot", async () => {

@@ -1,6 +1,7 @@
 import {
   useCallback,
   type Dispatch,
+  type MutableRefObject,
   type SetStateAction,
 } from "react";
 import type { NavigateFunction } from "react-router-dom";
@@ -10,7 +11,8 @@ import type { ItemFormValues } from "../../types/item";
 import type { ItemDetailMode } from "../../components/layout/item-chrome";
 import { getCollectorService } from "../../services/collector-client";
 import { errorMessage } from "../../services/runtime-error";
-import { reloadItemDetail } from "./item-detail-load";
+import { reloadItemDetailAfterSave } from "./item-detail-save-reload";
+import type { ItemDetailReloadGate } from "./item-detail-reload-gate";
 
 export function useItemDetailSaves(options: {
   id: string | undefined;
@@ -22,6 +24,7 @@ export function useItemDetailSaves(options: {
   sourceBaseline: string | null;
   mode: ItemDetailMode;
   isSaving: boolean;
+  reloadGateRef: MutableRefObject<ItemDetailReloadGate>;
   setFormValues: Dispatch<SetStateAction<ItemFormValues | null>>;
   setItem: Dispatch<SetStateAction<ItemFile | null>>;
   setContent: Dispatch<SetStateAction<string | null>>;
@@ -43,6 +46,7 @@ export function useItemDetailSaves(options: {
     sourceBaseline,
     mode,
     isSaving,
+    reloadGateRef,
     setFormValues,
     setItem,
     setContent,
@@ -89,8 +93,10 @@ export function useItemDetailSaves(options: {
         properties: formValues.properties,
       });
       // Reload from disk so UI matches autofixed markdown (same as source-save).
-      await reloadItemDetail({
+      // Does not await derived index/localize — soft reload on itemDerivedComplete (#769).
+      await reloadItemDetailAfterSave({
         itemId: updated.id,
+        gate: reloadGateRef.current,
         setItem,
         setContent,
         setItemTagNames,
@@ -122,8 +128,9 @@ export function useItemDetailSaves(options: {
         id,
         sourceText,
       );
-      await reloadItemDetail({
+      await reloadItemDetailAfterSave({
         itemId: updated.id,
+        gate: reloadGateRef.current,
         setItem,
         setContent,
         setItemTagNames,

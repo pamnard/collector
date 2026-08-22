@@ -48,6 +48,8 @@ export function useItemDetailLoad(options: {
   const reloadGateRef = useRef(createItemDetailReloadGate());
   const matchedLiveSeq =
     id && itemLiveSignal?.itemId === id ? itemLiveSignal.seq : 0;
+  const matchedLiveTrigger =
+    id && itemLiveSignal?.itemId === id ? itemLiveSignal.trigger : null;
 
   useEffect(() => {
     if (!id) {
@@ -92,7 +94,6 @@ export function useItemDetailLoad(options: {
   }, [
     id,
     vaultRevision,
-    matchedLiveSeq,
     setError,
     setItem,
     setContent,
@@ -101,6 +102,50 @@ export function useItemDetailLoad(options: {
     setMode,
     setSourceText,
     setSourceBaseline,
+  ]);
+
+  useEffect(() => {
+    if (!id || matchedLiveSeq === 0) {
+      return;
+    }
+
+    const gate = reloadGateRef.current;
+    if (gate.shouldSuppressVaultSoftReload(id)) {
+      if (matchedLiveTrigger === "derivedComplete") {
+        gate.noteSuppressedDerivedComplete(id);
+      }
+      return;
+    }
+
+    let cancelled = false;
+    void runItemDetailVaultReload({
+      gate,
+      isCancelled: () => cancelled,
+      reload: async () => {
+        await reloadItemDetail({
+          itemId: id,
+          setItem,
+          setContent,
+          setItemTagNames,
+          setFormValues,
+        });
+      },
+      onError: (message) => {
+        setError(message);
+      },
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    id,
+    matchedLiveSeq,
+    matchedLiveTrigger,
+    setError,
+    setItem,
+    setContent,
+    setItemTagNames,
+    setFormValues,
   ]);
 
   return { reloadGateRef };

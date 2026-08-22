@@ -101,3 +101,37 @@ describe("item detail vault reload after delete", () => {
     expect(onError).toHaveBeenCalledWith("Item not found: Inbox/again.md");
   });
 });
+
+describe("save reload coordination (#769)", () => {
+  it("suppresses vault soft reload for the open item while save reload runs", () => {
+    const gate = createItemDetailReloadGate();
+    gate.markSaveReloadInFlight("A/x.md");
+
+    expect(gate.shouldSuppressVaultSoftReload("A/x.md")).toBe(true);
+    expect(gate.shouldSuppressVaultSoftReload("B/y.md")).toBe(false);
+  });
+
+  it("records deferred derived-complete only during save reload", () => {
+    const gate = createItemDetailReloadGate();
+    gate.noteSuppressedDerivedComplete("A/x.md");
+
+    expect(gate.hasPendingDerivedCompleteReload("A/x.md")).toBe(false);
+
+    gate.markSaveReloadInFlight("A/x.md");
+    gate.noteSuppressedDerivedComplete("A/x.md");
+
+    expect(gate.hasPendingDerivedCompleteReload("A/x.md")).toBe(true);
+    gate.clearPendingDerivedCompleteReload("A/x.md");
+    expect(gate.hasPendingDerivedCompleteReload("A/x.md")).toBe(false);
+  });
+
+  it("clears save-in-flight flag without dropping pending derived reload", () => {
+    const gate = createItemDetailReloadGate();
+    gate.markSaveReloadInFlight("A/x.md");
+    gate.noteSuppressedDerivedComplete("A/x.md");
+    gate.clearSaveReloadInFlight("A/x.md");
+
+    expect(gate.shouldSuppressVaultSoftReload("A/x.md")).toBe(false);
+    expect(gate.hasPendingDerivedCompleteReload("A/x.md")).toBe(true);
+  });
+});

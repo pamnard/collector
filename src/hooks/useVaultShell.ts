@@ -8,6 +8,7 @@ import { invalidateItemPresentationCache } from "../services/item-presentation-c
 import {
   folderCountPatchPlanForEvent,
   mergeFolderCountDeltas,
+  itemLiveSignalTriggerForEvent,
   sidebarSearchAffectedByEvent,
 } from "../lib/vault-presentation-affects";
 import {
@@ -32,6 +33,7 @@ export type DashboardLiveHandler = (
 export type ItemLiveSignal = {
   itemId: string;
   seq: number;
+  trigger: "presentation" | "derivedComplete";
 };
 
 export type UseVaultShellResult = {
@@ -87,6 +89,7 @@ export function useVaultShell(): UseVaultShellResult {
           setItemLiveSignal((previous) => ({
             itemId,
             seq: (previous?.seq ?? 0) + 1,
+            trigger: itemLiveSignalTriggerForEvent(event),
           }));
         }
 
