@@ -2,6 +2,11 @@ import type { AnchorHTMLAttributes, MouseEvent, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { decodeItemPathHref } from "@collector/core";
 import { cn } from "../../lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../ui/tooltip";
 import { ExternalAnchor } from "./ExternalAnchor";
 import { classifyItemMarkdownHref } from "./item-markdown-href";
 
@@ -30,15 +35,34 @@ export function ItemMarkdownAnchor({
   const kind = classifyItemMarkdownHref(href);
 
   if (kind === "external") {
+    if (!href) {
+      return (
+        <ExternalAnchor
+          {...props}
+          href={href}
+          className={cn(ITEM_MARKDOWN_LINK_BORDER_CLASS, className)}
+          onClick={onClick}
+        >
+          {children}
+        </ExternalAnchor>
+      );
+    }
     return (
-      <ExternalAnchor
-        {...props}
-        href={href}
-        className={cn(ITEM_MARKDOWN_LINK_BORDER_CLASS, className)}
-        onClick={onClick}
-      >
-        {children}
-      </ExternalAnchor>
+      <Tooltip trackCursorAxis="both">
+        <TooltipTrigger
+          render={
+            <ExternalAnchor
+              {...props}
+              href={href}
+              className={cn(ITEM_MARKDOWN_LINK_BORDER_CLASS, className)}
+              onClick={onClick}
+            />
+          }
+        >
+          {children}
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{href}</TooltipContent>
+      </Tooltip>
     );
   }
 
