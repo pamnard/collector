@@ -228,6 +228,26 @@ export function createItemsCrud(
     deps.onVaultPresentationChanged?.(payload);
   };
 
+  const persistMetadataOnlySource = async (
+    itemId: string,
+    markdown: string,
+    move?: { fromFolderPath: string; toFolderPath: string },
+  ): Promise<ItemFile> => {
+    const { vault, path } = await deps.resolveActiveVault();
+    const ctx = deps.getContext();
+    const item = await writeItemRawMarkdown(
+      ctx,
+      path,
+      vault.id,
+      itemId,
+      markdown,
+    );
+    // writeItemRawMarkdown → refreshItemIndexAfterWrite already enqueues derived
+    // work (index + item.url for localize) when jobs are wired (#776).
+    notifyItemUpserted(vault.id, item, move);
+    return item;
+  };
+
   const persistNormalizedSource = async (
     itemId: string,
     rawMarkdown: string,
@@ -282,6 +302,7 @@ export function createItemsCrud(
       },
       content: input.content ?? null,
       sourceRef: input.sourceRef,
+      deferIndexRefresh: true,
     });
     // Localize is async via itemDerivedRefresh (#768). Create succeeds even when
     // localize will fail later; failures surface via job permanent-failure / AlertStack.
@@ -356,6 +377,18 @@ export function createItemsCrud(
       properties: input.properties !== undefined ? input.properties : current.properties,
       updated_at: new Date().toISOString(),
     };
+    const bodyUnchanged =
+      input.content === undefined ||
+      input.content === (currentContent ?? "");
+    if (bodyUnchanged) {
+      const markdown = serializeItemDocument(
+        nextItem,
+        currentContent ?? "",
+        maps.byId,
+      );
+      return persistMetadataOnlySource(nextItem.id, markdown, move);
+    }
+
     const body =
       input.content !== undefined ? (input.content ?? "") : (currentContent ?? "");
     const markdown = serializeItemDocument(nextItem, body, maps.byId);

@@ -112,7 +112,7 @@ export async function upsertItemIndexFromVault(
   const [existingItem] = await ctx.index.listItemFilesByIds(vaultId, [id]);
   item = mergeIndexOnlyFields(item, existingItem, hints);
 
-  await syncTagsToIndex(ctx, vaultPath, vaultId);
+  await syncTagsToIndex(ctx, vaultPath, vaultId, { tagIds: item.tag_ids });
 
   const fts = ftsFieldsFromDocumentMarkdown(documentMarkdown);
   const sourceRef = await readItemSourceRef(ctx.fs, vaultPath, id);

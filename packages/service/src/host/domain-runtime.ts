@@ -45,7 +45,6 @@ import {
 } from "../jobs/handlers/refresh-embeddings.js";
 import {
   createItemDerivedRefreshHandler,
-  enqueueItemDerivedRefresh,
 } from "../jobs/handlers/item-derived-refresh.js";
 import {
   createGenerateCoverHandler,
@@ -62,6 +61,7 @@ import {
   createDerivedCatchUpStatusStore,
 } from "../derived-catch-up-status.js";
 import { createDomainServices } from "./domain-runtime/domain-services.js";
+import { enqueueItemDerivedRefreshWithFailureReporting } from "./domain-runtime/item-derived-refresh-enqueue.js";
 import { createDropImportRuntime } from "./domain-runtime/drop-import.js";
 import { createWaitDerivedRuntime } from "./domain-runtime/wait-derived.js";
 import { createSyncPluginRuntime } from "./domain-runtime/sync-plugins.js";
@@ -243,14 +243,17 @@ export function createServiceDomainRuntime(
     fileMtimeMs: number,
     itemUrl?: string | null,
   ): Promise<void> {
-    await enqueueItemDerivedRefresh(requireJobs(), {
-      vaultId,
-      vaultPath,
-      itemId,
-      contentRevision,
-      fileMtimeMs,
-      ...(itemUrl !== undefined ? { itemUrl } : {}),
-    });
+    await enqueueItemDerivedRefreshWithFailureReporting(
+      { requireJobs, jobPermanentFailure },
+      {
+        vaultId,
+        vaultPath,
+        itemId,
+        contentRevision,
+        fileMtimeMs,
+        ...(itemUrl !== undefined ? { itemUrl } : {}),
+      },
+    );
   }
 
   function getContext() {

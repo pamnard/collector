@@ -18,8 +18,7 @@ import { createMediaCoverService } from "../../media-cover.js";
 import { createVaultsService } from "../../vaults.js";
 import { enqueueGenerateCover } from "../../jobs/handlers/generate-cover.js";
 import { waitForJobTerminal } from "../../jobs/job-wait.js";
-import { enqueueItemDerivedRefresh } from "../../jobs/handlers/item-derived-refresh.js";
-import { reportEnqueueFailure } from "../../job-permanent-failure.js";
+import { enqueueItemDerivedRefreshWithFailureReporting } from "./item-derived-refresh-enqueue.js";
 
 export interface DomainServicesDeps {
   dataDir: string;
@@ -96,17 +95,14 @@ export function createDomainServices(deps: DomainServicesDeps): DomainServices {
     findSimilarItems: (itemId, limit) =>
       deps.itemEmbeddings.findSimilarItems(itemId, limit),
     normalizeMarkdown,
-    enqueueItemDerivedRefresh: async (input) => {
-      try {
-        await enqueueItemDerivedRefresh(deps.requireJobs(), input);
-      } catch (error) {
-        reportEnqueueFailure(
-          deps.jobPermanentFailure,
-          "itemDerivedRefresh",
-          error,
-        );
-      }
-    },
+    enqueueItemDerivedRefresh: (input) =>
+      enqueueItemDerivedRefreshWithFailureReporting(
+        {
+          requireJobs: deps.requireJobs,
+          jobPermanentFailure: deps.jobPermanentFailure,
+        },
+        input,
+      ),
   });
 
   const tagsFolders = createTagsFoldersService({

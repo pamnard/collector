@@ -302,6 +302,8 @@ export interface UpsertItemInput {
   item: ItemFile;
   content?: string | null;
   sourceRef?: SourceRef | null;
+  /** Skip index enqueue/upsert; caller enqueues derived refresh once (#776). */
+  deferIndexRefresh?: boolean;
 }
 
 export interface SyncReport {

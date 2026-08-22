@@ -54,7 +54,9 @@ export async function upsertItem(
     await writeItemSourceRef(ctx.fs, vaultPath, item.id, input.sourceRef);
   }
 
-  await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);
+  if (!input.deferIndexRefresh) {
+    await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);
+  }
   return item;
 }
 
@@ -93,8 +95,12 @@ export async function writeItemRawMarkdown(
   await ctx.fs.writeText(docPath, raw);
   await ctx.fs.touch(vaultPath);
 
-  // ensureTagsByName (via parse) only updates tags.json; index FK needs tags rows.
-  await syncTagsToIndex(ctx, vaultPath, vaultId);
+  // ensureTagsByName (via parse) only updates tags.json; index FK needs tag rows.
+  // When derived jobs are wired, upsertItemIndexFromVault syncs tags for this item.
+  const deferTagSyncToDerivedJob = ctx.itemDerivedRefreshJobs != null;
+  if (!deferTagSyncToDerivedJob) {
+    await syncTagsToIndex(ctx, vaultPath, vaultId, { tagIds: item.tag_ids });
+  }
 
   if (!options?.deferIndexRefresh) {
     await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);

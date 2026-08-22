@@ -11,6 +11,7 @@ import {
   isIndexAheadOfSnapshot,
   upsertItemIndexFromVault,
 } from "./item-index-refresh.js";
+import { createTag } from "./tag-operations.js";
 import { createId } from "../util/ids.js";
 
 describe("isIndexAheadOfSnapshot (#766)", () => {
@@ -171,6 +172,98 @@ describe("upsertItemIndexFromVault (#766)", () => {
     expect(outcome).toBe("missing");
     expect(await ctx.index.listItemFilesByIds(meta.id, [itemId])).toEqual([]);
   });
+
+  it("upsertItemIndexFromVault syncs only item tags, not entire vault (#776)", async () => {
+    const { ctx, meta, path, itemId, fileMtimeMs } = await seedItem(2);
+    await createTag(ctx, path, meta.id, { name: "unused-a" });
+    await createTag(ctx, path, meta.id, { name: "unused-b" });
+    await ctx.index.deleteItem(itemId);
+
+    const upsertTagSpy = vi.spyOn(ctx.index, "upsertTag");
+    const outcome = await upsertItemIndexFromVault(
+      ctx,
+      path,
+      meta.id,
+      itemId,
+      2,
+      fileMtimeMs,
+    );
+    expect(outcome).toBe("upserted");
+    expect(upsertTagSpy).not.toHaveBeenCalled();
+    upsertTagSpy.mockRestore();
+  });
+
+  it("new tag is index-visible after derived job drain (#776)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-item-tag-after-job-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemId = `${createId()}.md`;
+    const createdAt = "2024-01-01T00:00:00.000Z";
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: createdAt,
+        updated_at: createdAt,
+      },
+      content: "body",
+    });
+    await ctx.index.deleteItem(itemId);
+
+    const raw = [
+      "---",
+      "title: Note",
+      "description: edited",
+      "type: note",
+      "tags:",
+      "  - brand-new",
+      "content_revision: 2",
+      `created: ${createdAt}`,
+      `updated: ${createdAt}`,
+      "---",
+      "",
+      "body",
+      "",
+    ].join("\n");
+    await writeItemRawMarkdown(ctx, path, meta.id, itemId, raw);
+
+    const stat = await fs.stat(join(path, itemId));
+    if (stat.mtimeMs === null) {
+      throw new Error("expected mtime");
+    }
+    const upsertTagSpy = vi.spyOn(ctx.index, "upsertTag");
+    const outcome = await upsertItemIndexFromVault(
+      ctx,
+      path,
+      meta.id,
+      itemId,
+      2,
+      stat.mtimeMs,
+    );
+    expect(outcome).toBe("upserted");
+
+    expect(upsertTagSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "brand-new" }),
+      meta.id,
+    );
+    upsertTagSpy.mockRestore();
+
+    const indexed = await ctx.index.listItemFilesByIds(meta.id, [itemId]);
+    expect(indexed[0]?.title).toBe("Note");
+    expect(indexed[0]?.tag_ids.length).toBe(1);
+  });
 });
 
 describe("refreshItemIndexAfterWrite (#766)", () => {
@@ -320,5 +413,119 @@ describe("refreshItemIndexAfterWrite (#766)", () => {
     expect(enqueued[0]?.itemId).toBe(itemId);
     expect(enqueued[0]?.fileMtimeMs).toBeTypeOf("number");
     expect(await ctx.index.listItemFilesByIds(meta.id, [itemId])).toEqual([]);
+  });
+
+  it("writeItemRawMarkdown skips tag sync when derived jobs are wired (#776)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-item-raw-tag-defer-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = {
+      fs,
+      index: new SqlVaultIndexStore(sql),
+      itemDerivedRefreshJobs: {
+        enqueue: async () => undefined,
+      },
+    };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    await createTag(ctx, path, meta.id, { name: "alpha" });
+    await createTag(ctx, path, meta.id, { name: "beta" });
+    const itemId = `${createId()}.md`;
+    const createdAt = "2024-01-01T00:00:00.000Z";
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: createdAt,
+        updated_at: createdAt,
+      },
+      content: "body",
+    });
+
+    const upsertTagSpy = vi.spyOn(ctx.index, "upsertTag");
+    const raw = [
+      "---",
+      "title: Note",
+      "description: edited",
+      "type: note",
+      "tags:",
+      "  - alpha",
+      "content_revision: 2",
+      `created: ${createdAt}`,
+      `updated: ${createdAt}`,
+      "---",
+      "",
+      "body",
+      "",
+    ].join("\n");
+    await writeItemRawMarkdown(ctx, path, meta.id, itemId, raw);
+    expect(upsertTagSpy).not.toHaveBeenCalled();
+    upsertTagSpy.mockRestore();
+  });
+
+  it("writeItemRawMarkdown syncs only item tags on inline upsert path (#776)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-item-raw-tag-inline-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const alpha = await createTag(ctx, path, meta.id, { name: "alpha" });
+    await createTag(ctx, path, meta.id, { name: "beta" });
+    await createTag(ctx, path, meta.id, { name: "gamma" });
+    const itemId = `${createId()}.md`;
+    const createdAt = "2024-01-01T00:00:00.000Z";
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: createdAt,
+        updated_at: createdAt,
+      },
+      content: "body",
+    });
+
+    const upsertTagSpy = vi.spyOn(ctx.index, "upsertTag");
+    const raw = [
+      "---",
+      "title: Note",
+      "description: edited",
+      "type: note",
+      "tags:",
+      "  - alpha",
+      "content_revision: 2",
+      `created: ${createdAt}`,
+      `updated: ${createdAt}`,
+      "---",
+      "",
+      "body",
+      "",
+    ].join("\n");
+    await writeItemRawMarkdown(ctx, path, meta.id, itemId, raw);
+    const upsertedNames = upsertTagSpy.mock.calls.map(
+      (call) => (call[0] as { name: string }).name,
+    );
+    expect(upsertedNames).toContain("alpha");
+    expect(upsertedNames).not.toContain("beta");
+    expect(upsertedNames).not.toContain("gamma");
+    upsertTagSpy.mockRestore();
   });
 });
