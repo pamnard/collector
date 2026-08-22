@@ -57,6 +57,59 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       return this.deleteByField("item_embeddings", "item_id", bindValues[0]);
     }
 
+    if (normalized.startsWith("DELETE FROM item_edges")) {
+      if (
+        normalized.includes("vault_id = ?") &&
+        normalized.includes("source = 'user'")
+      ) {
+        const table = this.getTable("item_edges");
+        let deleted = 0;
+        for (const [key, row] of [...table.entries()]) {
+          if (
+            row.vault_id === bindValues[0] &&
+            row.source === "user" &&
+            row.from_id === bindValues[1] &&
+            row.to_id === bindValues[2]
+          ) {
+            table.delete(key);
+            deleted += 1;
+          }
+        }
+        return deleted;
+      }
+      if (
+        normalized.includes("vault_id = ?") &&
+        normalized.includes("source = 'text'")
+      ) {
+        const table = this.getTable("item_edges");
+        let deleted = 0;
+        for (const [key, row] of [...table.entries()]) {
+          if (row.vault_id === bindValues[0] && row.source === "text") {
+            table.delete(key);
+            deleted += 1;
+          }
+        }
+        return deleted;
+      }
+      if (
+        normalized.includes("from_id = ?") &&
+        normalized.includes("source = 'text'")
+      ) {
+        const table = this.getTable("item_edges");
+        let deleted = 0;
+        for (const [key, row] of [...table.entries()]) {
+          if (row.from_id === bindValues[0] && row.source === "text") {
+            table.delete(key);
+            deleted += 1;
+          }
+        }
+        return deleted;
+      }
+      if (normalized.includes(" id IN (")) {
+        return this.deleteByFieldValues("item_edges", "id", bindValues);
+      }
+    }
+
     if (normalized.startsWith("DELETE FROM item_tags WHERE tag_id = ?")) {
       return this.deleteByField("item_tags", "tag_id", bindValues[0]);
     }
@@ -225,6 +278,44 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       });
     }
 
+    if (
+      normalized.startsWith("INSERT INTO item_edges") ||
+      normalized.startsWith("INSERT OR IGNORE INTO item_edges")
+    ) {
+      const ignore = normalized.startsWith("INSERT OR IGNORE");
+      let inserted = 0;
+      for (let i = 0; i < bindValues.length; i += 11) {
+        const row = {
+          id: bindValues[i],
+          vault_id: bindValues[i + 1],
+          from_id: bindValues[i + 2],
+          to_id: bindValues[i + 3],
+          raw_target: bindValues[i + 4],
+          source: bindValues[i + 5],
+          kind: bindValues[i + 6],
+          position: bindValues[i + 7],
+          resolve_status: bindValues[i + 8],
+          created_at: bindValues[i + 9],
+          updated_at: bindValues[i + 10],
+        };
+        if (ignore && row.source === "user") {
+          const table = this.getTable("item_edges");
+          const exists = [...table.values()].some(
+            (existing) =>
+              existing.vault_id === row.vault_id &&
+              existing.source === "user" &&
+              existing.from_id === row.from_id &&
+              existing.to_id === row.to_id,
+          );
+          if (exists) {
+            continue;
+          }
+        }
+        inserted += this.insertRow("item_edges", row);
+      }
+      return inserted;
+    }
+
     throw new Error(`Unsupported query in MemorySqlAdapter: ${normalized.slice(0, 80)}`);
   }
 
@@ -247,6 +338,89 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
       return [...table.values()]
         .filter((row) => ids.has(String(row.id)))
         .map((row) => ({ vault_id: row.vault_id })) as T[];
+    }
+
+    if (normalized === "SELECT id, title FROM items WHERE vault_id = ?") {
+      const vaultId = bindValues[0];
+      const table = this.tables.get("items") ?? new Map();
+      return [...table.values()]
+        .filter((row) => row.vault_id === vaultId)
+        .map((row) => ({ id: row.id, title: row.title })) as T[];
+    }
+
+    if (normalized.startsWith("SELECT id FROM items WHERE id = ? AND vault_id = ?")) {
+      const itemId = String(bindValues[0]);
+      const vaultId = bindValues[1];
+      const table = this.tables.get("items") ?? new Map();
+      const row = table.get(itemId);
+      if (!row || row.vault_id !== vaultId) {
+        return [];
+      }
+      return [{ id: row.id }] as T[];
+    }
+
+    if (
+      normalized.startsWith(
+        "SELECT i.id AS id, i.title AS title FROM item_edges e INNER JOIN items i ON i.id = e.from_id",
+      )
+    ) {
+      const targetId = bindValues[0];
+      const edges = this.tables.get("item_edges") ?? new Map();
+      const items = this.tables.get("items") ?? new Map();
+      const out: Array<{ id: string; title: string }> = [];
+      for (const edge of edges.values()) {
+        if (
+          edge.to_id !== targetId ||
+          edge.source !== "text" ||
+          edge.resolve_status !== "resolved"
+        ) {
+          continue;
+        }
+        const item = items.get(String(edge.from_id));
+        if (!item) {
+          continue;
+        }
+        out.push({ id: String(item.id), title: String(item.title) });
+      }
+      out.sort((a, b) =>
+        a.title === b.title
+          ? a.id.localeCompare(b.id)
+          : a.title.localeCompare(b.title),
+      );
+      return out as T[];
+    }
+
+    if (
+      normalized.startsWith(
+        "SELECT i.id AS id, i.title AS title FROM item_edges e INNER JOIN items i ON i.id = CASE",
+      )
+    ) {
+      const itemId = bindValues[0];
+      const vaultId = bindValues[1];
+      const edges = this.tables.get("item_edges") ?? new Map();
+      const items = this.tables.get("items") ?? new Map();
+      const out: Array<{ id: string; title: string }> = [];
+      for (const edge of edges.values()) {
+        if (edge.vault_id !== vaultId || edge.source !== "user") {
+          continue;
+        }
+        if (edge.from_id !== itemId && edge.to_id !== itemId) {
+          continue;
+        }
+        const neighborId =
+          edge.from_id === itemId ? String(edge.to_id) : String(edge.from_id);
+        const item = items.get(neighborId);
+        if (!item) {
+          continue;
+        }
+        out.push({ id: neighborId, title: String(item.title) });
+      }
+      out.sort((a, b) =>
+        a.title === b.title
+          ? a.id.localeCompare(b.id)
+          : a.title.localeCompare(b.title),
+      );
+      return out as T[];
     }
 
     if (

@@ -69,6 +69,11 @@ describe("resetIndexSchema", () => {
     expect(after.ok).toBe(true);
     expect(after.errors).toEqual([]);
 
+    const edgeTables = await db.select<{ name: string }>(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'item_edges'",
+    );
+    expect(edgeTables).toHaveLength(1);
+
     db.close();
   });
 

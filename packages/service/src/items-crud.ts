@@ -10,6 +10,7 @@ import type {
   OutboundTextLink,
   ResolvedTextLink,
   UpdateItemInput,
+  UserEdgeNeighbor,
 } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
 import { folderPathFromItemPath } from "@collector/shared";
@@ -46,6 +47,9 @@ export type ItemsCrud = {
   ): Promise<ResolvedTextLink[]>;
   listItemBacklinks(itemId: string): Promise<BacklinkSource[]>;
   listItemOutboundLinks(itemId: string): Promise<OutboundTextLink[]>;
+  addUserEdge(itemId: string, otherItemId: string): Promise<void>;
+  removeUserEdge(itemId: string, otherItemId: string): Promise<void>;
+  listUserEdges(itemId: string): Promise<UserEdgeNeighbor[]>;
   getItemSource(itemId: string): Promise<string>;
   updateItemSource(itemId: string, rawMarkdown: string): Promise<ItemFile>;
   createItem(input: CreateItemInput): Promise<ItemFile>;
@@ -371,12 +375,38 @@ export function createItemsCrud(
     });
   };
 
+  const addUserEdge = async (
+    itemId: string,
+    otherItemId: string,
+  ): Promise<void> => {
+    const { vault } = await deps.resolveActiveVault();
+    await deps.getIndex().addUserEdge(vault.id, itemId, otherItemId);
+  };
+
+  const removeUserEdge = async (
+    itemId: string,
+    otherItemId: string,
+  ): Promise<void> => {
+    const { vault } = await deps.resolveActiveVault();
+    await deps.getIndex().removeUserEdge(vault.id, itemId, otherItemId);
+  };
+
+  const listUserEdges = async (
+    itemId: string,
+  ): Promise<UserEdgeNeighbor[]> => {
+    const { vault } = await deps.resolveActiveVault();
+    return deps.getIndex().listUserEdges(vault.id, itemId);
+  };
+
   return {
     getItemById,
     getAdjacentItems,
     resolveContentTextLinks,
     listItemBacklinks,
     listItemOutboundLinks,
+    addUserEdge,
+    removeUserEdge,
+    listUserEdges,
     getItemSource,
     updateItemSource: async (itemId, rawMarkdown) => {
       const { item } = await getItemById(itemId);

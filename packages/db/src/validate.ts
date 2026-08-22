@@ -1,4 +1,4 @@
-import { ITEMS_COLUMNS, INDEX_TABLES, ITEM_EMBEDDINGS_COLUMNS } from "./schema.js";
+import { ITEMS_COLUMNS, INDEX_TABLES, ITEM_EMBEDDINGS_COLUMNS, ITEM_EDGES_COLUMNS } from "./schema.js";
 import type { SqlMigrator } from "./migrate.js";
 
 export interface IndexValidationResult {
@@ -39,6 +39,12 @@ export async function validateIndexSchema(db: SqlMigrator): Promise<IndexValidat
     for (const column of ITEM_EMBEDDINGS_COLUMNS) {
       if (!embeddingColumns.has(column)) {
         errors.push(`item_embeddings missing column: ${column}`);
+      }
+    }
+    const edgeColumns = await tableColumns(db, "item_edges");
+    for (const column of ITEM_EDGES_COLUMNS) {
+      if (!edgeColumns.has(column)) {
+        errors.push(`item_edges missing column: ${column}`);
       }
     }
   }
@@ -118,6 +124,19 @@ export async function runIndexStartupChecks(db: SqlMigrator): Promise<IndexValid
            WHERE model_id = ?
            LIMIT 1`,
           ["Xenova/paraphrase-multilingual-MiniLM-L12-v2"],
+        ),
+    },
+    {
+      label: "item edges backlink lookup",
+      run: () =>
+        db.select(
+          `SELECT e.from_id, i.title
+           FROM item_edges e
+           INNER JOIN items i ON i.id = e.from_id
+           WHERE e.to_id = ?
+             AND e.source = 'text'
+           LIMIT 1`,
+          ["00000000-0000-0000-0000-000000000000"],
         ),
     },
   ];

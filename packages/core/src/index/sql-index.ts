@@ -38,6 +38,14 @@ import {
   invalidateVaultIdTitleCatalog,
   loadVaultIdTitleCatalog,
 } from "../links/vault-id-title-catalog.js";
+import {
+  addUserEdge as addUserEdgeImpl,
+  listTextBacklinkSources as listTextBacklinkSourcesImpl,
+  listUserEdges as listUserEdgesImpl,
+  rebuildVaultTextEdges as rebuildVaultTextEdgesImpl,
+  removeUserEdge as removeUserEdgeImpl,
+  replaceTextEdgesForItem as replaceTextEdgesForItemImpl,
+} from "../edges/sql-item-edges.js";
 
 type TagWithCount = Tag & { item_count: number };
 
@@ -732,6 +740,49 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
       "countSearchItemIds requires select(); use SqlVaultIndexStore instead",
     );
   }
+
+  async rebuildVaultTextEdges(_vaultId: string): Promise<void> {
+    throw new Error(
+      "rebuildVaultTextEdges requires select(); use SqlVaultIndexStore instead",
+    );
+  }
+
+  async addUserEdge(
+    _vaultId: string,
+    _itemA: string,
+    _itemB: string,
+  ): Promise<void> {
+    throw new Error(
+      "addUserEdge requires select(); use SqlVaultIndexStore instead",
+    );
+  }
+
+  async removeUserEdge(
+    _vaultId: string,
+    _itemA: string,
+    _itemB: string,
+  ): Promise<void> {
+    throw new Error(
+      "removeUserEdge requires select(); use SqlVaultIndexStore instead",
+    );
+  }
+
+  async listUserEdges(
+    _vaultId: string,
+    _itemId: string,
+  ): Promise<Array<{ id: string; title: string }>> {
+    throw new Error(
+      "listUserEdges requires select(); use SqlVaultIndexStore instead",
+    );
+  }
+
+  async listTextBacklinkSources(
+    _targetItemId: string,
+  ): Promise<Array<{ id: string; title: string }>> {
+    throw new Error(
+      "listTextBacklinkSources requires select(); use SqlVaultIndexStore instead",
+    );
+  }
 }
 
 export interface SqlSelectRow {
@@ -973,5 +1024,85 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     vaultId: string,
   ): Promise<Array<{ folder_path: string; item_count: number }>> {
     return indexQueries.listFolderItemCounts(this.selector, vaultId);
+  }
+
+  override async upsertItemContent(input: ItemContentUpsert): Promise<void> {
+    await super.upsertItemContent(input);
+    await this.syncTextEdgesForContent(input);
+  }
+
+  override async upsertItemContentBatch(
+    inputs: ItemContentUpsert[],
+  ): Promise<void> {
+    await super.upsertItemContentBatch(inputs);
+    // Full sync finishes with rebuildVaultTextEdges; avoid duplicate per-item work.
+  }
+
+  private async syncTextEdgesForContent(
+    input: ItemContentUpsert,
+  ): Promise<void> {
+    const rows = await this.selector.select<{ vault_id: string }>(
+      "SELECT vault_id FROM items WHERE id = ?",
+      [input.itemId],
+    );
+    const vaultId = rows[0]?.vault_id;
+    if (vaultId === undefined) {
+      throw new Error(
+        `syncTextEdgesForContent: item not in index: ${input.itemId}`,
+      );
+    }
+    if (!input.hasContentFile) {
+      await this.selector.execute(
+        "DELETE FROM item_edges WHERE from_id = ? AND source = 'text'",
+        [input.itemId],
+      );
+      return;
+    }
+    const catalog = await this.listItemIdTitles(vaultId);
+    await replaceTextEdgesForItemImpl(
+      this.selector,
+      vaultId,
+      input.itemId,
+      input.content ?? "",
+      catalog,
+    );
+  }
+
+  override async rebuildVaultTextEdges(vaultId: string): Promise<void> {
+    await rebuildVaultTextEdgesImpl(
+      this.selector,
+      vaultId,
+      () => this.listItemIdTitles(vaultId),
+      () => this.listItemFtsBodies(vaultId),
+    );
+  }
+
+  override async addUserEdge(
+    vaultId: string,
+    itemA: string,
+    itemB: string,
+  ): Promise<void> {
+    await addUserEdgeImpl(this.selector, vaultId, itemA, itemB);
+  }
+
+  override async removeUserEdge(
+    vaultId: string,
+    itemA: string,
+    itemB: string,
+  ): Promise<void> {
+    await removeUserEdgeImpl(this.selector, vaultId, itemA, itemB);
+  }
+
+  override async listUserEdges(
+    vaultId: string,
+    itemId: string,
+  ): Promise<Array<{ id: string; title: string }>> {
+    return listUserEdgesImpl(this.selector, vaultId, itemId);
+  }
+
+  override async listTextBacklinkSources(
+    targetItemId: string,
+  ): Promise<Array<{ id: string; title: string }>> {
+    return listTextBacklinkSourcesImpl(this.selector, targetItemId);
   }
 }

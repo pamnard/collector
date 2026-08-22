@@ -78,6 +78,7 @@ export {
   type JobsPort,
   type ResolvedTextLink,
   type BacklinkSource,
+  type UserEdgeNeighbor,
   type OutboundLinkScope,
   type OutboundLinkStatus,
   type OutboundTextLink,

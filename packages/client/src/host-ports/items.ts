@@ -182,6 +182,9 @@ function createItemsReadMethods(
   | "resolveContentTextLinks"
   | "listItemBacklinks"
   | "listItemOutboundLinks"
+  | "addUserEdge"
+  | "removeUserEdge"
+  | "listUserEdges"
   | "getItemSource"
 > {
   return {
@@ -209,6 +212,20 @@ function createItemsReadMethods(
       transport.request("listItemOutboundLinks", {
         itemId,
       }) as ReturnType<ItemsPort["listItemOutboundLinks"]>,
+    addUserEdge: (itemId: string, otherItemId: string) =>
+      transport.request("addUserEdge", {
+        itemId,
+        otherItemId,
+      }) as ReturnType<ItemsPort["addUserEdge"]>,
+    removeUserEdge: (itemId: string, otherItemId: string) =>
+      transport.request("removeUserEdge", {
+        itemId,
+        otherItemId,
+      }) as ReturnType<ItemsPort["removeUserEdge"]>,
+    listUserEdges: (itemId: string) =>
+      transport.request("listUserEdges", {
+        itemId,
+      }) as ReturnType<ItemsPort["listUserEdges"]>,
     getItemSource: (itemId: string): Promise<string> =>
       transport.request("getItemSource", { itemId }) as Promise<string>,
   };

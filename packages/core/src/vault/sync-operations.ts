@@ -131,6 +131,7 @@ export async function syncIndexFromFilesystem(
   }
 
   if (report.errors.length === 0) {
+    await ctx.index.rebuildVaultTextEdges(vaultId);
     await ctx.index.setReconcileFingerprint(vaultId, setup.currentFingerprint);
   }
 
