@@ -76,6 +76,7 @@ export function useItemDetail(): UseItemDetailResult {
     sourceBaseline,
     mode,
     isSaving,
+    reloadGateRef,
     setFormValues,
     setItem,
     setContent,

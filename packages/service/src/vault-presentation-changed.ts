@@ -13,7 +13,9 @@ export type VaultPresentationChangeKind =
   | "itemDeleted"
   | "itemMoved"
   | "itemCoverChanged"
-  | "folderChanged";
+  | "folderChanged"
+  /** Post-save derived pipeline finished for item (#765 / #769; emit from #766/#768). */
+  | "itemDerivedComplete";
 
 export type VaultPresentationChangedPayload = {
   vaultId: string;

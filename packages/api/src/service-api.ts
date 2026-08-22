@@ -376,7 +376,9 @@ export type VaultPresentationChangeKind =
   | "itemDeleted"
   | "itemMoved"
   | "itemCoverChanged"
-  | "folderChanged";
+  | "folderChanged"
+  /** Post-save derived pipeline finished for item (#765 / #769; emit from #766/#768). */
+  | "itemDerivedComplete";
 
 /**
  * Richer vaultPresentationChanged payload (#756).

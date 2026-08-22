@@ -16,6 +16,7 @@ import {
   folderCountPatchPlanForEvent,
   isVaultPresentationPayload,
   openItemAffectedByEvent,
+  itemLiveSignalTriggerForEvent,
   sidebarSearchAffectedByEvent,
 } from "../lib/vault-presentation-affects.ts";
 import { patchFolderTreeItemCounts } from "../lib/folder-tree-count-patch.ts";
@@ -268,6 +269,45 @@ describe("sidebar / detail relevance (#756)", () => {
         folderPath: "A",
       }),
       true,
+    );
+    assert.equal(
+      openItemAffectedByEvent("A/x.md", {
+        vaultId: "v",
+        kind: "itemDerivedComplete",
+        itemId: "A/x.md",
+        folderPath: "A",
+      }),
+      true,
+    );
+    assert.equal(
+      openItemAffectedByEvent("A/x.md", {
+        vaultId: "v",
+        kind: "itemDerivedComplete",
+        itemId: "B/y.md",
+        folderPath: "B",
+      }),
+      false,
+    );
+  });
+
+  it("maps itemDerivedComplete to derivedComplete live trigger (#769)", () => {
+    assert.equal(
+      itemLiveSignalTriggerForEvent({
+        vaultId: "v",
+        kind: "itemUpserted",
+        itemId: "A/x.md",
+        folderPath: "A",
+      }),
+      "presentation",
+    );
+    assert.equal(
+      itemLiveSignalTriggerForEvent({
+        vaultId: "v",
+        kind: "itemDerivedComplete",
+        itemId: "A/x.md",
+        folderPath: "A",
+      }),
+      "derivedComplete",
     );
   });
 

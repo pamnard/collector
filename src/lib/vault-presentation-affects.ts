@@ -13,6 +13,7 @@ const KNOWN_KINDS = new Set<VaultPresentationChangedPayload["kind"]>([
   "itemMoved",
   "itemCoverChanged",
   "folderChanged",
+  "itemDerivedComplete",
 ]);
 
 export function isVaultPresentationPayload(
@@ -150,6 +151,18 @@ export function openItemAffectedByEvent(
     return false;
   }
   return event.itemId === openItemId;
+}
+
+export type ItemLiveSignalTrigger = "presentation" | "derivedComplete";
+
+/** Maps vault presentation events to open-item live signal trigger (#769). */
+export function itemLiveSignalTriggerForEvent(
+  event: VaultPresentationChangedPayload,
+): ItemLiveSignalTrigger {
+  if (event.kind === "itemDerivedComplete") {
+    return "derivedComplete";
+  }
+  return "presentation";
 }
 
 export type FolderCountPatchPlan =

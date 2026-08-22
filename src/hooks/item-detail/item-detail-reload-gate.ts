@@ -6,10 +6,21 @@ export type ItemDetailReloadGate = {
   clearLeavingAfterDelete: () => void;
   shouldStartReload: () => boolean;
   shouldReportLoadError: (cancelled: boolean) => boolean;
+  /** Suppress vault soft reload for this item while save reload runs (#769). */
+  markSaveReloadInFlight: (itemId: string) => void;
+  clearSaveReloadInFlight: (itemId: string) => void;
+  shouldSuppressVaultSoftReload: (itemId: string) => boolean;
+  /** Record derived-complete signal suppressed during save reload (#769). */
+  noteSuppressedDerivedComplete: (itemId: string) => void;
+  hasPendingDerivedCompleteReload: (itemId: string) => boolean;
+  clearPendingDerivedCompleteReload: (itemId: string) => void;
 };
 
 export function createItemDetailReloadGate(): ItemDetailReloadGate {
   let leavingAfterDelete = false;
+  let saveReloadItemId: string | null = null;
+  let pendingDerivedCompleteItemId: string | null = null;
+
   return {
     markLeavingAfterDelete() {
       leavingAfterDelete = true;
@@ -22,6 +33,31 @@ export function createItemDetailReloadGate(): ItemDetailReloadGate {
     },
     shouldReportLoadError(cancelled: boolean) {
       return !cancelled && !leavingAfterDelete;
+    },
+    markSaveReloadInFlight(itemId: string) {
+      saveReloadItemId = itemId;
+      pendingDerivedCompleteItemId = null;
+    },
+    clearSaveReloadInFlight(itemId: string) {
+      if (saveReloadItemId === itemId) {
+        saveReloadItemId = null;
+      }
+    },
+    shouldSuppressVaultSoftReload(itemId: string) {
+      return saveReloadItemId === itemId;
+    },
+    noteSuppressedDerivedComplete(itemId: string) {
+      if (saveReloadItemId === itemId) {
+        pendingDerivedCompleteItemId = itemId;
+      }
+    },
+    hasPendingDerivedCompleteReload(itemId: string) {
+      return pendingDerivedCompleteItemId === itemId;
+    },
+    clearPendingDerivedCompleteReload(itemId: string) {
+      if (pendingDerivedCompleteItemId === itemId) {
+        pendingDerivedCompleteItemId = null;
+      }
     },
   };
 }
