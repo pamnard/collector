@@ -86,6 +86,8 @@ export const VAULTS_PORT_KEYS = [
 export const INDEX_PORT_KEYS = [
   "subscribeVaultIndexSyncStatus",
   "getVaultIndexSyncStatus",
+  "subscribeDerivedCatchUpStatus",
+  "getDerivedCatchUpStatus",
   "subscribeVaultPresentationChanged",
 ] as const satisfies readonly (keyof IndexPort)[];
 

@@ -1,4 +1,5 @@
 import type {
+  DerivedCatchUpStatus,
   ItemHeroMedia,
   UiSessionThumbnailPaths,
   UiSessionThumbnailResolveProgressiveOptions,
@@ -35,6 +36,7 @@ export type HostSessionCtx = {
   transport: HostWireClient;
   thumbnails: UiSessionThumbnailPaths;
   cachedSyncStatus: VaultIndexSyncStatus;
+  cachedDerivedCatchUpStatus: DerivedCatchUpStatus;
   settingsCache: AppSettings | null;
 };
 
@@ -51,6 +53,12 @@ export function createHostSessionCtx(
       progress: null,
       metadataReady: true,
       ftsReady: true,
+    },
+    cachedDerivedCatchUpStatus: {
+      vaultId: null,
+      status: "idle",
+      pending: 0,
+      running: 0,
     },
     settingsCache: null,
   };

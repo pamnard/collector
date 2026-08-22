@@ -13,6 +13,7 @@ import type {
   SyncPluginWakeController,
 } from "../../sync-plugin-wake.js";
 import type { VaultIndexSyncStatusStore } from "../../sync-status.js";
+import type { DerivedCatchUpStatusStore } from "../../derived-catch-up-status.js";
 import type { createVaultPresentationChangedStore } from "../../vault-presentation-changed.js";
 
 export interface ServiceDomainRuntime {
@@ -22,6 +23,7 @@ export interface ServiceDomainRuntime {
   isHealthy: () => boolean;
   close: () => Promise<void>;
   vaultIndexSyncStatus: VaultIndexSyncStatusStore;
+  derivedCatchUpStatus: DerivedCatchUpStatusStore;
   vaultPresentationChanged: ReturnType<
     typeof createVaultPresentationChangedStore
   >;

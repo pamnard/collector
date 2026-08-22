@@ -61,6 +61,14 @@ export interface VaultIndexSyncStatus {
   ftsReady: boolean;
 }
 
+/** Post-save derived index catch-up via `itemDerivedRefresh` jobs (#767). */
+export interface DerivedCatchUpStatus {
+  vaultId: string | null;
+  status: "idle" | "running";
+  pending: number;
+  running: number;
+}
+
 export interface DashboardIndexPage {
   itemIds: string[];
   /** Parallel to itemIds: index file_mtime_ms as string (#623). */
@@ -380,6 +388,10 @@ export interface IndexPort {
     onUpdate: (status: VaultIndexSyncStatus) => void,
   ): Subscription;
   getVaultIndexSyncStatus(): VaultIndexSyncStatus;
+  subscribeDerivedCatchUpStatus(
+    onUpdate: (status: DerivedCatchUpStatus) => void,
+  ): Subscription;
+  getDerivedCatchUpStatus(): DerivedCatchUpStatus;
   /**
    * Fires after successful vault presentation writes (item/cover/move/folder) (#623 / #756).
    * UI applies scoped live updates; writer path is source-agnostic.

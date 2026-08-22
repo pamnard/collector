@@ -47,6 +47,15 @@ export {
 } from "./sync-status.js";
 
 export {
+  ITEM_DERIVED_REFRESH_JOB_TYPE,
+  createDerivedCatchUpStatusRefresher,
+  createDerivedCatchUpStatusStore,
+  deriveCatchUpStatusFromJobStats,
+  type DerivedCatchUpStatus,
+  type DerivedCatchUpStatusStore,
+} from "./derived-catch-up-status.js";
+
+export {
   createVaultPresentationChangedStore,
   type VaultPresentationChangeKind,
   type VaultPresentationChangedPayload,

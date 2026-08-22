@@ -269,6 +269,7 @@ export async function startServiceHost(
   await writeServiceHostBaseUrlFile(hostBaseUrlPath, baseUrl);
 
   let stopSyncStatusBroadcast: Subscription | null = null;
+  let stopDerivedCatchUpBroadcast: Subscription | null = null;
   let stopAppSettingsBroadcast: Subscription | null = null;
   let stopPresentationChangedBroadcast: Subscription | null = null;
   let stopJobPermanentFailureBroadcast: Subscription | null = null;
@@ -280,6 +281,11 @@ export async function startServiceHost(
   stopSyncStatusBroadcast = runtime.vaultIndexSyncStatus.subscribe((status) => {
     broadcastEvent(SERVICE_HOST_EVENTS.vaultIndexSyncStatus, status);
   });
+  stopDerivedCatchUpBroadcast = runtime.derivedCatchUpStatus.subscribe(
+    (status) => {
+      broadcastEvent(SERVICE_HOST_EVENTS.derivedCatchUpStatus, status);
+    },
+  );
   stopAppSettingsBroadcast = runtime.appSettings.subscribeAppSettings(
     (settings) => {
       broadcastEvent(SERVICE_HOST_EVENTS.appSettings, settings);
@@ -304,6 +310,8 @@ export async function startServiceHost(
     closed = true;
     stopSyncStatusBroadcast?.unsubscribe();
     stopSyncStatusBroadcast = null;
+    stopDerivedCatchUpBroadcast?.unsubscribe();
+    stopDerivedCatchUpBroadcast = null;
     stopAppSettingsBroadcast?.unsubscribe();
     stopAppSettingsBroadcast = null;
     stopPresentationChangedBroadcast?.unsubscribe();

@@ -9,8 +9,9 @@ export function createJobPoll(deps: {
   now: () => Date;
   executeJob: ExecuteJob;
   isStopped: () => boolean;
+  onActivity?: () => void;
 }) {
-  const { store, concurrency, pollIntervalMs, now, executeJob, isStopped } =
+  const { store, concurrency, pollIntervalMs, now, executeJob, isStopped, onActivity } =
     deps;
 
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -74,6 +75,7 @@ export function createJobPoll(deps: {
           if (holdsBulkSlot) {
             vaultMutatingBulkJobsInFlight -= 1;
           }
+          onActivity?.();
           wake();
         });
         inFlight.add(run);

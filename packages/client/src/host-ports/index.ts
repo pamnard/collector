@@ -1,4 +1,5 @@
 import type {
+  DerivedCatchUpStatus,
   IndexPort,
   Subscription,
   VaultIndexSyncStatus,
@@ -35,6 +36,31 @@ export function createHostIndexPort(ctx: HostSessionCtx): IndexPort {
     },
     getVaultIndexSyncStatus(): VaultIndexSyncStatus {
       return ctx.cachedSyncStatus;
+    },
+    subscribeDerivedCatchUpStatus(
+      onUpdate: (status: DerivedCatchUpStatus) => void,
+    ): Subscription {
+      onUpdate(ctx.cachedDerivedCatchUpStatus);
+      const unsubEvent = transport.onEvent(
+        SERVICE_HOST_EVENTS.derivedCatchUpStatus,
+        (payload) => {
+          ctx.cachedDerivedCatchUpStatus = payload as DerivedCatchUpStatus;
+          onUpdate(ctx.cachedDerivedCatchUpStatus);
+        },
+      );
+      void transport
+        .request("getDerivedCatchUpStatus")
+        .then((status) => {
+          ctx.cachedDerivedCatchUpStatus = status as DerivedCatchUpStatus;
+          onUpdate(ctx.cachedDerivedCatchUpStatus);
+        })
+        .catch(() => {
+          // Subscribe still receives push events; seed fetch is best-effort.
+        });
+      return subscriptionFromTeardown(unsubEvent);
+    },
+    getDerivedCatchUpStatus(): DerivedCatchUpStatus {
+      return ctx.cachedDerivedCatchUpStatus;
     },
     subscribeVaultPresentationChanged(
       onUpdate: (payload: VaultPresentationChangedPayload) => void,

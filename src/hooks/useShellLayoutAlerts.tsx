@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import type { NavigateFunction } from "react-router-dom";
-import type { VaultIndexSyncStatus } from "@collector/api";
-import { formatIndexingBannerLabel } from "@collector/core";
+import type {
+  DerivedCatchUpStatus,
+  VaultIndexSyncStatus,
+} from "@collector/api";
+import {
+  formatDerivedCatchUpBannerLabel,
+  formatIndexingBannerLabel,
+} from "@collector/core";
 import { useAlerts } from "../components/alerts/AlertBusProvider";
 import { IndexingStatusMessage } from "../components/alerts/IndexingStatusMessage";
 import {
@@ -10,8 +16,9 @@ import {
 } from "./useUpdaterSettings";
 import {
   SHELL_LAYOUT_ALERT_IDS,
-  dashboardErrorAlertDecision,
   dashboardLoadingAlertDecision,
+  dashboardErrorAlertDecision,
+  derivedCatchUpAlertDecision,
   indexingAlertDecision,
   updateAlertDecision,
 } from "./shell-layout-alerts";
@@ -20,6 +27,7 @@ export type UseShellLayoutAlertsInput = {
   dashboardLoading: boolean;
   dashboardError: string | null;
   indexSync: VaultIndexSyncStatus;
+  derivedCatchUp: DerivedCatchUpStatus;
   navigate: NavigateFunction;
 };
 
@@ -31,6 +39,7 @@ export function useShellLayoutAlerts({
   dashboardLoading,
   dashboardError,
   indexSync,
+  derivedCatchUp,
   navigate,
 }: UseShellLayoutAlertsInput): void {
   const alerts = useAlerts();
@@ -44,6 +53,8 @@ export function useShellLayoutAlerts({
     indexSync.status === "rebuilding" ||
     (indexSync.status === "running" && !indexSync.metadataReady);
   const indexingLabel = formatIndexingBannerLabel(indexSync);
+  const isDerivedCatchUpRunning = derivedCatchUp.status === "running";
+  const derivedCatchUpLabel = formatDerivedCatchUpBannerLabel(derivedCatchUp);
 
   const handleStartupUpdateFound = useCallback((version: string) => {
     setStartupUpdateVersion(version);
@@ -74,6 +85,18 @@ export function useShellLayoutAlerts({
       alerts.dismiss(SHELL_LAYOUT_ALERT_IDS.indexing);
     }
   }, [alerts, indexingLabel, isMetadataIndexing]);
+
+  useEffect(() => {
+    if (derivedCatchUpAlertDecision(isDerivedCatchUpRunning) === "upsert") {
+      alerts.upsert(SHELL_LAYOUT_ALERT_IDS.derivedCatchUp, {
+        tone: "warning",
+        dismissible: false,
+        message: <IndexingStatusMessage label={derivedCatchUpLabel} />,
+      });
+    } else {
+      alerts.dismiss(SHELL_LAYOUT_ALERT_IDS.derivedCatchUp);
+    }
+  }, [alerts, derivedCatchUpLabel, isDerivedCatchUpRunning]);
 
   useEffect(() => {
     if (

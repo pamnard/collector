@@ -32,6 +32,7 @@ import type {
 import { useAppSettings } from "../../context/AppSettingsContext";
 import { useJobPermanentFailureAlerts } from "../../hooks/useJobPermanentFailureAlerts";
 import { useVaultIndexSyncStatus } from "../../hooks/useVaultIndexSyncStatus";
+import { useDerivedCatchUpStatus } from "../../hooks/useDerivedCatchUpStatus";
 import {
   SIDEBAR_RAIL_WIDTH_PX,
   SIDEBAR_WIDTH_MAX,
@@ -170,6 +171,7 @@ function AppLayoutInner() {
   } = useCreateItemShell({ navigate });
 
   const indexSync = useVaultIndexSyncStatus();
+  const derivedCatchUp = useDerivedCatchUpStatus();
   const searchIndexBuilding =
     !indexSync.ftsReady &&
     (indexSync.status === "running" || indexSync.status === "rebuilding");
@@ -190,6 +192,7 @@ function AppLayoutInner() {
     dashboardLoading: dashboardCache.isLoading,
     dashboardError: dashboardCache.error,
     indexSync,
+    derivedCatchUp,
     navigate,
   });
   useJobPermanentFailureAlerts();

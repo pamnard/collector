@@ -27,9 +27,13 @@ import {
   type DashboardItemIdsResult,
   type DashboardItemSort,
   type IndexQueryResult,
+  type DerivedCatchUpStatus,
   type VaultIndexSyncStatus,
 } from "@collector/api";
-import { createVaultIndexSyncStatusStore } from "@collector/service";
+import {
+  createDerivedCatchUpStatusStore,
+  createVaultIndexSyncStatusStore,
+} from "@collector/service";
 import type {
   FolderTreeNode,
   TagWithCount,
@@ -91,6 +95,7 @@ function createDevMockSyncPluginsPort(): SyncPluginsPort {
 }
 
 const vaultIndexSyncStatusStore = createVaultIndexSyncStatusStore();
+const derivedCatchUpStatusStore = createDerivedCatchUpStatusStore();
 
 function asUiNavFilter(filter: ApiNavFilter): UiNavFilter {
   return filter as UiNavFilter;
@@ -108,6 +113,16 @@ function subscribeVaultIndexSyncStatus(
 
 function getVaultIndexSyncStatus(): VaultIndexSyncStatus {
   return vaultIndexSyncStatusStore.get();
+}
+
+function subscribeDerivedCatchUpStatus(
+  onUpdate: (status: DerivedCatchUpStatus) => void,
+): Subscription {
+  return derivedCatchUpStatusStore.subscribe(onUpdate);
+}
+
+function getDerivedCatchUpStatus(): DerivedCatchUpStatus {
+  return derivedCatchUpStatusStore.get();
 }
 
 async function fetchDashboardIndexPage(
@@ -394,6 +409,8 @@ export function createDevMockCollectorService(): CollectorService {
     index: {
       subscribeVaultIndexSyncStatus,
       getVaultIndexSyncStatus,
+      subscribeDerivedCatchUpStatus,
+      getDerivedCatchUpStatus,
       subscribeVaultPresentationChanged: () =>
         subscriptionFromTeardown(() => {}),
     },

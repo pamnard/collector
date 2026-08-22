@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   dashboardErrorAlertDecision,
   dashboardLoadingAlertDecision,
+  derivedCatchUpAlertDecision,
   indexingAlertDecision,
   updateAlertDecision,
 } from "./shell-layout-alerts.ts";
@@ -16,6 +17,11 @@ describe("shell-layout-alerts decisions (#669)", () => {
   it("shows indexing while metadata index is rebuilding", () => {
     assert.equal(indexingAlertDecision(true), "upsert");
     assert.equal(indexingAlertDecision(false), "dismiss");
+  });
+
+  it("shows derived catch-up while itemDerivedRefresh jobs are active", () => {
+    assert.equal(derivedCatchUpAlertDecision(true), "upsert");
+    assert.equal(derivedCatchUpAlertDecision(false), "dismiss");
   });
 
   it("shows dashboard error only when not yet dismissed", () => {

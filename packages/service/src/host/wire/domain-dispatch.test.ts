@@ -11,6 +11,7 @@ function stubRuntime(overrides: {
   itemsSearch?: Partial<ServiceDomainRuntime["itemsSearch"]>;
   dropImport?: Partial<ServiceDomainRuntime["dropImport"]>;
   jobs?: Partial<ServiceDomainRuntime["jobs"]>;
+  derivedCatchUpStatus?: Partial<ServiceDomainRuntime["derivedCatchUpStatus"]>;
 }): {
   runtime: ServiceDomainRuntime;
   ensureInitialized: ReturnType<typeof vi.fn>;
@@ -100,6 +101,15 @@ function stubRuntime(overrides: {
       dispose: vi.fn(),
     },
     vaultIndexSyncStatus: { get: vi.fn(async () => ({})) },
+    derivedCatchUpStatus: {
+      get: vi.fn(() => ({
+        vaultId: null,
+        status: "idle" as const,
+        pending: 0,
+        running: 0,
+      })),
+      ...overrides.derivedCatchUpStatus,
+    },
     startVaultFilesystemWatcher: vi.fn(),
     stopVaultFilesystemWatcher: vi.fn(),
     isVaultFilesystemWatcherActive: vi.fn(() => false),
@@ -427,6 +437,23 @@ describe("createDomainWireRequestHandler (#330)", () => {
       succeeded: 2,
       byType: { __test_noop: { pending: 1, succeeded: 2 } },
     });
+    expect(ensureInitialized).toHaveBeenCalled();
+  });
+
+  it("getDerivedCatchUpStatus returns store snapshot (#767)", async () => {
+    const status = {
+      vaultId: "vault-1",
+      status: "running" as const,
+      pending: 2,
+      running: 1,
+    };
+    const { runtime, ensureInitialized } = stubRuntime({
+      derivedCatchUpStatus: {
+        get: vi.fn(() => status),
+      },
+    });
+    const dispatch = createDomainWireRequestHandler(runtime);
+    await expect(dispatch(M.getDerivedCatchUpStatus)).resolves.toEqual(status);
     expect(ensureInitialized).toHaveBeenCalled();
   });
 });
