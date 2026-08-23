@@ -6,10 +6,11 @@ import {
 } from "./item-table-column-class.ts";
 
 describe("itemTableHeaderClassName", () => {
-  it("adds width and select padding for select column", () => {
+  it("merges select padding so only px-2 remains", () => {
     const className = itemTableHeaderClassName("select");
     assert.match(className, /\bw-10\b/);
     assert.match(className, /\bpx-2\b/);
+    assert.doesNotMatch(className, /\bpx-3\b/);
   });
 
   it("right-aligns actions header", () => {
@@ -25,8 +26,13 @@ describe("itemTableCellClassName", () => {
     assert.match(itemTableCellClassName("tags"), /\bwhitespace-normal\b/);
   });
 
-  it("keeps select and actions cell layout classes", () => {
-    assert.match(itemTableCellClassName("select"), /\bpx-2\b/);
+  it("merges select padding so only px-2 remains", () => {
+    const className = itemTableCellClassName("select");
+    assert.match(className, /\bpx-2\b/);
+    assert.doesNotMatch(className, /\bpx-3\b/);
+  });
+
+  it("keeps actions cell layout classes", () => {
     assert.match(itemTableCellClassName("actions"), /\btext-right\b/);
   });
 });
