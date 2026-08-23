@@ -11,6 +11,8 @@ import type { DashboardItemSort } from "@collector/api";
 import { useAppSettings } from "../context/AppSettingsContext";
 import {
   applyDashboardListSnapshot,
+  bodyStampsForOrderedIds,
+  coverNeedsResolve,
   coverPathsFromMaps,
   bodyStampsFromMap,
   itemsBodiesEqual,
@@ -19,6 +21,7 @@ import {
   mergeCommittedThumbnailStamps,
   orderedIds,
   pruneItemIdFromDashboardLists,
+  shouldSkipCommitPaint,
   shouldSkipEmptyCommit,
   snapshotToCacheEntry,
   type DashboardListSnapshot,
@@ -196,6 +199,15 @@ export function useDashboardItems(
   const bodyStampsRef = useRef<Map<string, string>>(
     initial?.bodyStamps ?? new Map(),
   );
+  /** Body stamps for the last committed paint window (#664). */
+  const committedBodyStampsRef = useRef<Map<string, string>>(
+    initial
+      ? bodyStampsForOrderedIds(
+          initial.bodyStamps,
+          initial.itemIds.slice(0, initial.streamEndOffset),
+        )
+      : new Map(),
+  );
   const totalCountRef = useRef(initial?.totalCount ?? 0);
   const committedItemsRef = useRef(committedItems);
   const committedThumbnailPathsRef = useRef(committedThumbnailPaths);
@@ -308,6 +320,10 @@ export function useDashboardItems(
       setCommittedItems: (items) => {
         committedItemsRef.current = items;
         setCommittedItems(items);
+        committedBodyStampsRef.current = bodyStampsForOrderedIds(
+          bodyStampsRef.current,
+          orderedIds(items),
+        );
       },
       setCommittedTotalCount: (nextTotal) => {
         committedTotalCountRef.current = nextTotal;
@@ -383,39 +399,66 @@ export function useDashboardItems(
       const prevStamps = committedThumbnailStampsRef.current;
       const prevTotal = committedTotalCountRef.current;
       const nextOrderedIds = orderedIds(ordered);
-      const idsMatch = itemIdsEqual(orderedIds(prevItems), nextOrderedIds);
-      const itemsUnchanged =
-        idsMatch &&
-        prevTotal === nextTotal &&
-        itemsBodiesEqual(prevItems, ordered);
+      const skipPaint = shouldSkipCommitPaint({
+        prevOrderedIds: orderedIds(prevItems),
+        nextOrderedIds,
+        prevTotalCount: prevTotal,
+        nextTotalCount: nextTotal,
+        prevBodyStamps: committedBodyStampsRef.current,
+        nextBodyStamps: bodyStampsRef.current,
+      });
 
-      if (!itemsUnchanged) {
-        const prunedPaths = mergeCommittedThumbnailPaths(
-          prevPaths,
-          new Map(),
+      if (!skipPaint) {
+        const idsMatch = itemIdsEqual(orderedIds(prevItems), nextOrderedIds);
+        const itemsUnchanged =
+          idsMatch &&
+          prevTotal === nextTotal &&
+          itemsBodiesEqual(prevItems, ordered);
+
+        if (!itemsUnchanged) {
+          const prunedPaths = mergeCommittedThumbnailPaths(
+            prevPaths,
+            new Map(),
+            nextOrderedIds,
+          );
+          const prunedStamps = mergeCommittedThumbnailStamps(
+            prevStamps,
+            new Map(),
+            nextOrderedIds,
+          );
+          const perfRunId = dashboardPerfActiveRunId();
+          dashboardPerfBeginPhase(perfRunId, "commitList");
+          setCommittedItems(ordered);
+          setCommittedTotalCount(nextTotal);
+          setCommittedHasMore(end < nextTotal);
+          setCommittedThumbnailPaths(prunedPaths);
+          setCommittedThumbnailStamps(prunedStamps);
+          committedItemsRef.current = ordered;
+          committedTotalCountRef.current = nextTotal;
+          committedThumbnailPathsRef.current = prunedPaths;
+          committedThumbnailStampsRef.current = prunedStamps;
+          dashboardPerfEndPhase(perfRunId, "commitList");
+          dashboardPerfNoteItemCount(perfRunId, ordered.length);
+        }
+
+        committedBodyStampsRef.current = bodyStampsForOrderedIds(
+          bodyStampsRef.current,
           nextOrderedIds,
         );
-        const prunedStamps = mergeCommittedThumbnailStamps(
-          prevStamps,
-          new Map(),
-          nextOrderedIds,
-        );
-        const perfRunId = dashboardPerfActiveRunId();
-        dashboardPerfBeginPhase(perfRunId, "commitList");
-        setCommittedItems(ordered);
-        setCommittedTotalCount(nextTotal);
-        setCommittedHasMore(end < nextTotal);
-        setCommittedThumbnailPaths(prunedPaths);
-        setCommittedThumbnailStamps(prunedStamps);
-        committedItemsRef.current = ordered;
-        committedTotalCountRef.current = nextTotal;
-        committedThumbnailPathsRef.current = prunedPaths;
-        committedThumbnailStampsRef.current = prunedStamps;
-        dashboardPerfEndPhase(perfRunId, "commitList");
-        dashboardPerfNoteItemCount(perfRunId, ordered.length);
       }
 
       writeQueryCache(ids, byId, end, nextTotal);
+
+      const coversNeedResolve = ordered.some((item) =>
+        coverNeedsResolve(
+          item,
+          committedThumbnailPathsRef.current,
+          committedThumbnailStampsRef.current,
+        ),
+      );
+      if (skipPaint && !coversNeedResolve) {
+        return;
+      }
 
       const perfRunId = dashboardPerfActiveRunId();
       dashboardPerfBeginPhase(perfRunId, "coverFlight");
@@ -688,6 +731,7 @@ export function useDashboardItems(
       committedThumbnailPathsRef.current = new Map();
       committedThumbnailStampsRef.current = new Map();
       committedTotalCountRef.current = 0;
+      committedBodyStampsRef.current = new Map();
     }
     setIsLoading(true);
   }, [applyCacheEntryToState, filter, queryKey, searchQuery, sort, vaultId]);
@@ -904,6 +948,10 @@ export function useDashboardItems(
     setCommittedHasMore(streamEndOffset < totalCount);
     committedItemsRef.current = workingItems;
     committedTotalCountRef.current = totalCount;
+    committedBodyStampsRef.current = bodyStampsForOrderedIds(
+      bodyStampsRef.current,
+      orderedIds(workingItems),
+    );
     // Grid no longer resolves covers — resolve when the window grows (#657).
     if (workingItems.length > prevCommittedLen) {
       void commitWorkingToDisplay(requestVersionRef.current);
