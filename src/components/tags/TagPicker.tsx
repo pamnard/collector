@@ -1,178 +1,51 @@
-import { useEffect, useMemo, useState } from "react";
-import type { TagWithCount } from "@collector/core";
-import {
-  useAlerts,
-  useDismissAlertsOnUnmount,
-} from "../alerts/AlertBusProvider";
-import { errorMessage } from "../alerts/alert-store";
-import { getCollectorService } from "../../services/collector-client";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { TagPickerChip } from "./TagPickerChip";
 import { TagRenameDialog } from "./TagRenameDialog";
-
-const TAG_PICKER_ERROR_ID = "tag-picker-error";
+import { useTagPicker } from "./use-tag-picker";
 
 interface TagPickerProps {
   selectedTagNames: string[];
   onChange: (tagNames: string[]) => void;
 }
 
-function sameName(a: string, b: string): boolean {
-  return a.trim().toLowerCase() === b.trim().toLowerCase();
-}
-
 export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
-  const alerts = useAlerts();
-  useDismissAlertsOnUnmount([TAG_PICKER_ERROR_ID]);
-  const [tags, setTags] = useState<TagWithCount[]>([]);
-  const [newTagName, setNewTagName] = useState("");
-  const [pendingDelete, setPendingDelete] = useState<TagWithCount | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [pendingRename, setPendingRename] = useState<TagWithCount | null>(null);
-  const [renameValue, setRenameValue] = useState("");
-  const [isRenaming, setIsRenaming] = useState(false);
-
-  useEffect(() => {
-    getCollectorService()
-      .tags.listTags()
-      .then(setTags)
-      .catch((err: unknown) => {
-        alerts.upsert(TAG_PICKER_ERROR_ID, {
-          tone: "danger",
-          message: errorMessage(err),
-        });
-      });
-  }, [alerts]);
-
-  const displayNames = useMemo(() => {
-    const known = tags.map((tag) => tag.name);
-    const pending = selectedTagNames.filter(
-      (name) => !known.some((knownName) => sameName(knownName, name)),
-    );
-    return [...known, ...pending];
-  }, [tags, selectedTagNames]);
-
-  const toggleTag = (name: string) => {
-    if (selectedTagNames.some((selected) => sameName(selected, name))) {
-      onChange(
-        selectedTagNames.filter((selected) => !sameName(selected, name)),
-      );
-      return;
-    }
-    onChange([...selectedTagNames, name.trim()]);
-  };
-
-  const handleAddTagName = () => {
-    const name = newTagName.trim();
-    if (!name) {
-      return;
-    }
-    if (!selectedTagNames.some((selected) => sameName(selected, name))) {
-      onChange([...selectedTagNames, name]);
-    }
-    setNewTagName("");
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!pendingDelete) {
-      return;
-    }
-
-    setIsDeleting(true);
-    alerts.dismiss(TAG_PICKER_ERROR_ID);
-    try {
-      await getCollectorService().tags.deleteTag(pendingDelete.id);
-      setTags((current) =>
-        current.filter((entry) => entry.id !== pendingDelete.id),
-      );
-      onChange(
-        selectedTagNames.filter(
-          (selected) => !sameName(selected, pendingDelete.name),
-        ),
-      );
-    } catch (err: unknown) {
-      alerts.upsert(TAG_PICKER_ERROR_ID, {
-        tone: "danger",
-        message: errorMessage(err),
-      });
-      throw err;
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  const openRename = (tag: TagWithCount) => {
-    setPendingRename(tag);
-    setRenameValue(tag.name);
-  };
-
-  const handleConfirmRename = async () => {
-    if (!pendingRename) {
-      return;
-    }
-
-    const nextName = renameValue.trim();
-    if (!nextName || nextName === pendingRename.name) {
-      setPendingRename(null);
-      return;
-    }
-
-    setIsRenaming(true);
-    alerts.dismiss(TAG_PICKER_ERROR_ID);
-    try {
-      const updated = await getCollectorService().tags.updateTagRecord(
-        pendingRename.id,
-        {
-          name: nextName,
-        },
-      );
-      setTags((current) =>
-        current
-          .map((entry) =>
-            entry.id === pendingRename.id
-              ? { ...entry, ...updated, item_count: entry.item_count }
-              : entry,
-          )
-          .sort((a, b) => a.name.localeCompare(b.name)),
-      );
-      onChange(
-        selectedTagNames.map((selected) =>
-          sameName(selected, pendingRename.name) ? nextName : selected,
-        ),
-      );
-      setPendingRename(null);
-    } catch (err: unknown) {
-      alerts.upsert(TAG_PICKER_ERROR_ID, {
-        tone: "danger",
-        message: errorMessage(err),
-      });
-    } finally {
-      setIsRenaming(false);
-    }
-  };
+  const {
+    displayNames,
+    newTagName,
+    setNewTagName,
+    pendingDelete,
+    setPendingDelete,
+    isDeleting,
+    pendingRename,
+    setPendingRename,
+    renameValue,
+    setRenameValue,
+    isRenaming,
+    toggleTag,
+    handleAddTagName,
+    handleConfirmDelete,
+    openRename,
+    handleConfirmRename,
+    findKnownTag,
+    isSelected,
+  } = useTagPicker({ selectedTagNames, onChange });
 
   return (
     <div className="space-y-3">
       <p className="text-sm font-medium">Теги</p>
 
       <div className="flex flex-wrap gap-2">
-        {displayNames.map((name) => {
-          const known = tags.find((tag) => sameName(tag.name, name));
-          const selected = selectedTagNames.some((selected) =>
-            sameName(selected, name),
-          );
-          return (
-            <TagPickerChip
-              key={name.toLowerCase()}
-              name={name}
-              known={known}
-              selected={selected}
-              onToggle={toggleTag}
-              onRename={openRename}
-              onDelete={setPendingDelete}
-            />
-          );
-        })}
+        {displayNames.map((name) => (
+          <TagPickerChip
+            key={name.toLowerCase()}
+            name={name}
+            known={findKnownTag(name)}
+            selected={isSelected(name)}
+            onToggle={toggleTag}
+            onRename={openRename}
+            onDelete={setPendingDelete}
+          />
+        ))}
       </div>
 
       <div className="flex gap-2">
