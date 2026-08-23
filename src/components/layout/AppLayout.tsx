@@ -39,7 +39,7 @@ import {
 import { AppLayoutMainColumn } from "./AppLayoutMainColumn";
 import { AppShellViewport } from "./AppShellViewport";
 import { resolveAppLayoutRouteChrome } from "./app-layout-route-chrome";
-import { buildAppShellSidebarContentProps } from "./app-shell-sidebar-props";
+import type { AppShellSidebarContentProps } from "./app-shell-sidebar-props";
 import { useAppLayoutNav } from "./use-app-layout-nav";
 import { useSidebarPanelResize } from "./use-sidebar-panel-resize";
 
@@ -183,7 +183,7 @@ function AppLayoutInner() {
     searchParams.get("section"),
   );
 
-  const sidebarContentProps = buildAppShellSidebarContentProps({
+  const sidebarContentProps = {
     mode: sidebarMode,
     onModeChange: setSidebarMode,
     activeFilter,
@@ -194,7 +194,7 @@ function AppLayoutInner() {
     searchIndexBuilding,
     theme,
     onToggleTheme: toggleTheme,
-  });
+  } satisfies AppShellSidebarContentProps;
 
   const mainColumn = (
     <AppLayoutMainColumn

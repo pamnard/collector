@@ -14,20 +14,3 @@ export type AppShellSidebarContentProps = {
   theme: Theme;
   onToggleTheme: () => void;
 };
-
-export function buildAppShellSidebarContentProps(
-  input: AppShellSidebarContentProps,
-): AppShellSidebarContentProps {
-  return {
-    mode: input.mode,
-    onModeChange: input.onModeChange,
-    activeFilter: input.activeFilter,
-    onFilterSelect: input.onFilterSelect,
-    vaultRevision: input.vaultRevision,
-    searchQuery: input.searchQuery,
-    onSearchChange: input.onSearchChange,
-    searchIndexBuilding: input.searchIndexBuilding,
-    theme: input.theme,
-    onToggleTheme: input.onToggleTheme,
-  };
-}
