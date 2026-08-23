@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 
 interface MainScrollAreaProps {
   children: ReactNode;
@@ -8,7 +8,7 @@ interface MainScrollAreaProps {
 export function MainScrollArea({ children, resetKey }: MainScrollAreaProps) {
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     ref.current?.scrollTo(0, 0);
   }, [resetKey]);
 

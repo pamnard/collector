@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { AppSettings } from "@collector/shared";
 import { DEFAULT_APP_SETTINGS } from "@collector/shared";
+import { mergeAppSettings } from "@collector/core";
 import {
   getCollectorService,
   getUiSession,
@@ -91,8 +92,18 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const patch = useCallback(async (partial: Partial<AppSettings>) => {
-    const next = await getCollectorService().settings.updateAppSettings(partial);
-    setSettings(next);
+    let previous: AppSettings = DEFAULT_APP_SETTINGS;
+    setSettings((current) => {
+      previous = current;
+      return mergeAppSettings(current, partial);
+    });
+    try {
+      const next = await getCollectorService().settings.updateAppSettings(partial);
+      setSettings(next);
+    } catch (err: unknown) {
+      setSettings(previous);
+      throw err;
+    }
   }, []);
 
   const value = useMemo<AppSettingsContextValue>(

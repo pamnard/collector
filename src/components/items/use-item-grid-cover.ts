@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  dashboardPerfGetActiveRunId,
+  dashboardPerfRecordCoverDecode,
+  isDashboardPerfEnabled,
+} from "../../lib/dashboard-perf";
+import {
+  isDashboardGridWarmActive,
+  subscribeDashboardGridWarm,
+} from "../../lib/dashboard-grid-warm";
 import { resolveCoverSrc } from "../../utils/item-cover-src";
 import {
   ITEM_GRID_COVER_DECODE_TIMEOUT_MS,
@@ -26,8 +35,15 @@ export function useItemGridCover(args: {
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
   const [coverSettled, setCoverSettled] = useState(false);
   const [isPortraitCover, setIsPortraitCover] = useState(false);
+  const warmDecode = useSyncExternalStore(
+    subscribeDashboardGridWarm,
+    isDashboardGridWarmActive,
+    isDashboardGridWarmActive,
+  );
   const coverSrcRef = useRef(coverSrc);
   const coverSettledRef = useRef(coverSettled);
+
+  const decodeCovers = shouldDecode || warmDecode;
 
   const expectedCoverSrc =
     thumbnailPath === undefined ? null : resolveCoverSrc(thumbnailPath);
@@ -51,7 +67,7 @@ export function useItemGridCover(args: {
     const plan = planItemGridCoverDecode({
       thumbnailPath,
       resolvedSrc,
-      shouldDecode,
+      shouldDecode: decodeCovers,
       currentSrc: coverSrcRef.current,
       currentSettled: coverSettledRef.current,
     });
@@ -77,7 +93,7 @@ export function useItemGridCover(args: {
     setCoverSrc(plan.src);
     setCoverSettled(false);
     setIsPortraitCover(false);
-  }, [shouldDecode, thumbnailPath]);
+  }, [decodeCovers, thumbnailPath]);
 
   useEffect(() => {
     // Timeout follows in-flight loadCover even after leaving the near zone
@@ -107,6 +123,9 @@ export function useItemGridCover(args: {
     setCoverSrc(img.currentSrc || img.src);
     setCoverSettled(true);
     setIsPortraitCover(isPortraitNaturalSize(img));
+    if (isDashboardPerfEnabled()) {
+      dashboardPerfRecordCoverDecode(dashboardPerfGetActiveRunId());
+    }
   }, []);
 
   const onCoverImgError = useCallback(() => {

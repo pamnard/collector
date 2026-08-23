@@ -34,6 +34,15 @@ import {
   TableRow,
 } from "../ui/table";
 import { cn } from "../../lib/utils";
+import {
+  dashboardPerfActiveRunId,
+  dashboardPerfBeginPhase,
+  dashboardPerfCompleteRunWithoutL3,
+  dashboardPerfEndPhase,
+  dashboardPerfObserveL1,
+  dashboardPerfObserveL2,
+  dashboardPerfRunExpectsViewMode,
+} from "../../lib/dashboard-perf";
 
 interface ItemTableViewProps {
   dashboard: ReturnType<typeof useDashboardItems>;
@@ -45,15 +54,17 @@ const ROW_OVERSCAN = 10;
 
 export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
   const navigate = useNavigate();
-  const { vaultRevision, activeFilter, dashboardSort, setDashboardSort } =
+  const { vaultRevision, activeFilter, dashboardSort, setDashboardSort, viewMode } =
     useShell();
   const { settings, setTableColumnVisibility } = useAppSettings();
   const [tags, setTags] = useState<TagWithCount[]>([]);
   const scrollElement = useMainScrollElement();
   const tableTopRef = useRef<HTMLDivElement>(null);
+  const l2ReportedRef = useRef(false);
   const [scrollMargin, setScrollMargin] = useState(0);
+  const tableVisible = viewMode === "table";
   const sentinelRef = useInfiniteScroll({
-    enabled: !dashboard.isLoading,
+    enabled: tableVisible && !dashboard.isLoading,
     hasMore: dashboard.hasMore,
     isLoading: dashboard.isLoading || dashboard.isLoadingMore,
     onLoadMore: dashboard.loadMore,
@@ -84,11 +95,11 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
   }, [vaultRevision]);
 
   useLayoutEffect(() => {
-    if (!tableTopRef.current || !scrollElement) {
+    if (!tableVisible || !tableTopRef.current || !scrollElement) {
       return;
     }
     setScrollMargin(tableTopRef.current.offsetTop);
-  }, [scrollElement, dashboard.items.length]);
+  }, [scrollElement, dashboard.items.length, tableVisible]);
 
   const tagsById = useMemo(
     () => new Map(tags.map((tag) => [tag.id, tag])),
@@ -161,6 +172,30 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
     overscan: ROW_OVERSCAN,
     scrollMargin,
   });
+
+  useLayoutEffect(() => {
+    l2ReportedRef.current = false;
+  }, [tableVisible, dashboard.isLoading, dashboard.items]);
+
+  useLayoutEffect(() => {
+    if (!tableVisible || dashboard.isLoading || l2ReportedRef.current) {
+      return;
+    }
+    const runId = dashboardPerfActiveRunId();
+    if (
+      !runId ||
+      !dashboardPerfRunExpectsViewMode(runId, "table") ||
+      rows.length === 0
+    ) {
+      return;
+    }
+    l2ReportedRef.current = true;
+    dashboardPerfBeginPhase(runId, "tableMount");
+    dashboardPerfObserveL1(runId);
+    dashboardPerfEndPhase(runId, "tableMount");
+    dashboardPerfObserveL2(runId);
+    dashboardPerfCompleteRunWithoutL3(runId);
+  }, [dashboard.isLoading, dashboard.items, rows.length, tableVisible]);
 
   if (dashboard.isLoading) {
     return <DashboardTableSkeleton />;

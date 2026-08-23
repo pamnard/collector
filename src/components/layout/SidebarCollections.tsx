@@ -91,6 +91,7 @@ function CollectionFolderRow({
         <div className={collectionRowClass(selected)}>
           <button
             type="button"
+            data-dashboard-folder-path={node.path}
             onClick={() => onSelect(filter)}
             className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-1 text-left"
           >

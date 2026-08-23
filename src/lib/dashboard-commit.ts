@@ -231,6 +231,25 @@ export function intersectCommittedWithPageIds(
   return committed.filter((item) => allowed.has(item.id));
 }
 
+/**
+ * Like {@link intersectCommittedWithPageIds}, but returns `null` when zero
+ * overlap would clear committed paint — hold previous folder cards until commit
+ * (#779).
+ */
+export function intersectCommittedWithPageIdsHoldPaint(
+  committed: readonly ItemFile[],
+  pageItemIds: readonly string[],
+): ItemFile[] | null {
+  if (!pageItemIds.length) {
+    return intersectCommittedWithPageIds(committed, pageItemIds);
+  }
+  const next = intersectCommittedWithPageIds(committed, pageItemIds);
+  if (committed.length > 0 && next.length === 0) {
+    return null;
+  }
+  return next;
+}
+
 export type DashboardListPruneInput = DashboardListSnapshotPruneInput & {
   committedItems: readonly ItemFile[];
   committedTotalCount: number;

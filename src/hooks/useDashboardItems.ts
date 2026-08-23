@@ -14,7 +14,7 @@ import {
   coverPathsFromMaps,
   bodyStampsFromMap,
   itemsBodiesEqual,
-  intersectCommittedWithPageIds,
+  intersectCommittedWithPageIdsHoldPaint,
   mergeCommittedThumbnailPaths,
   mergeCommittedThumbnailStamps,
   orderedIds,
@@ -65,6 +65,13 @@ import { useVaultIndexSyncStatus } from "./useVaultIndexSyncStatus";
 import { dashboardLiveActionForEvent } from "../lib/vault-presentation-affects";
 import { itemIdToPruneFromPresentationEvent } from "../lib/presentation-prune-item-id";
 import type { VaultPresentationChangedPayload } from "@collector/api";
+import {
+  dashboardPerfActiveRunId,
+  dashboardPerfBeginPhase,
+  dashboardPerfEndPhase,
+  dashboardPerfNoteIntersect,
+  dashboardPerfNoteItemCount,
+} from "../lib/dashboard-perf";
 
 export { DASHBOARD_PREFETCH_SIZE } from "../services/collector-client";
 
@@ -337,10 +344,15 @@ export function useDashboardItems(
   );
 
   const commitWorkingToDisplay = useCallback(
-    async (requestVersion: number) => {
+    async (
+      requestVersion: number,
+      options?: { blockOnCovers?: boolean },
+    ) => {
       if (requestVersionRef.current !== requestVersion) {
         return;
       }
+
+      const blockOnCovers = options?.blockOnCovers ?? false;
 
       const ids = itemIdsRef.current;
       const byId = itemsByIdRef.current;
@@ -388,6 +400,8 @@ export function useDashboardItems(
           new Map(),
           nextOrderedIds,
         );
+        const perfRunId = dashboardPerfActiveRunId();
+        dashboardPerfBeginPhase(perfRunId, "commitList");
         setCommittedItems(ordered);
         setCommittedTotalCount(nextTotal);
         setCommittedHasMore(end < nextTotal);
@@ -397,11 +411,15 @@ export function useDashboardItems(
         committedTotalCountRef.current = nextTotal;
         committedThumbnailPathsRef.current = prunedPaths;
         committedThumbnailStampsRef.current = prunedStamps;
+        dashboardPerfEndPhase(perfRunId, "commitList");
+        dashboardPerfNoteItemCount(perfRunId, ordered.length);
       }
 
       writeQueryCache(ids, byId, end, nextTotal);
 
-      await runCoverPathFlight({
+      const perfRunId = dashboardPerfActiveRunId();
+      dashboardPerfBeginPhase(perfRunId, "coverFlight");
+      const coverFlight = runCoverPathFlight({
         requestVersion,
         getRequestVersion: () => requestVersionRef.current,
         orderedItems: ordered,
@@ -445,6 +463,22 @@ export function useDashboardItems(
         },
         resolveProgressive: resolveDashboardCoverPathsProgressive,
       });
+      const endCoverPerf = () => {
+        dashboardPerfEndPhase(perfRunId, "coverFlight");
+      };
+      if (blockOnCovers) {
+        try {
+          await coverFlight;
+        } finally {
+          endCoverPerf();
+        }
+      } else {
+        void coverFlight
+          .catch((err: unknown) => {
+            reportServiceError("dashboard cover paths", err);
+          })
+          .finally(endCoverPerf);
+      }
     },
     [writeQueryCache],
   );
@@ -548,9 +582,18 @@ export function useDashboardItems(
           setItemsById(kept);
         },
         intersectCommittedWithPage: (pageItemIds) => {
-          const nextCommitted = intersectCommittedWithPageIds(
+          const prevCommittedLen = committedItemsRef.current.length;
+          const nextCommitted = intersectCommittedWithPageIdsHoldPaint(
             committedItemsRef.current,
             pageItemIds,
+          );
+          if (nextCommitted === null) {
+            dashboardPerfNoteIntersect(dashboardPerfActiveRunId(), false);
+            return;
+          }
+          dashboardPerfNoteIntersect(
+            dashboardPerfActiveRunId(),
+            prevCommittedLen > 0 && nextCommitted.length === 0,
           );
           const nextCommittedIds = nextCommitted.map((item) => item.id);
           const prunedPaths = mergeCommittedThumbnailPaths(
@@ -694,7 +737,7 @@ export function useDashboardItems(
         return;
       }
       try {
-        await commitWorkingToDisplay(requestVersion);
+        await commitWorkingToDisplay(requestVersion, { blockOnCovers: false });
       } catch (err: unknown) {
         if (requestVersionRef.current !== requestVersion) {
           return;
@@ -703,7 +746,10 @@ export function useDashboardItems(
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         if (requestVersionRef.current === requestVersion) {
+          const perfRunId = dashboardPerfActiveRunId();
+          dashboardPerfBeginPhase(perfRunId, "loadingOff");
           setIsLoading(false);
+          dashboardPerfEndPhase(perfRunId, "loadingOff");
           queryBusyRef.current = false;
         }
       }
@@ -714,12 +760,15 @@ export function useDashboardItems(
         if (controller.signal.aborted) {
           return;
         }
+        const perfRunId = dashboardPerfActiveRunId();
+        dashboardPerfBeginPhase(perfRunId, "queryIndex");
         const result = await getCollectorService().items.queryIndex(
           filter,
           searchQuery,
           { offset: 0, limit: DASHBOARD_PREFETCH_SIZE },
           sort,
         );
+        dashboardPerfEndPhase(perfRunId, "queryIndex");
         if (
           controller.signal.aborted ||
           requestVersionRef.current !== requestVersion
@@ -727,7 +776,9 @@ export function useDashboardItems(
           return;
         }
         const page = mapIndexQueryResult(result);
+        dashboardPerfBeginPhase(perfRunId, "applyIndexPage");
         await applyIndexPage(page, requestVersion);
+        dashboardPerfEndPhase(perfRunId, "applyIndexPage");
         if (requestVersionRef.current !== requestVersion) {
           return;
         }
@@ -794,7 +845,7 @@ export function useDashboardItems(
           if (requestVersionRef.current !== requestVersion) {
             return;
           }
-          await commitWorkingToDisplay(requestVersion);
+          await commitWorkingToDisplay(requestVersion, { blockOnCovers: false });
         } catch (err: unknown) {
           if (requestVersionRef.current !== requestVersion) {
             return;
@@ -954,7 +1005,6 @@ export function useDashboardItems(
     });
   }, [
     filter,
-    filterKey,
     isLoading,
     isLoadingMore,
     itemIds,

@@ -21,6 +21,7 @@
     "test:service-host": "npm run build:packages && node scripts/service-host-health-smoke.mjs",
     "test:service-host-lifecycle": "npm run build:packages && node scripts/service-host-lifecycle-smoke.mjs",
     "test:web-console": "node scripts/web-console-smoke.mjs",
+    "test:dashboard-perf": "node scripts/dashboard-perf-smoke.mjs",
     "verify:release": "bash scripts/verify-release.sh",
     "prepare:release-bundle": "bash scripts/prepare-release-bundle.sh"
   },
