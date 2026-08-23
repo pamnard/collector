@@ -7,9 +7,9 @@ import {
 import { errorMessage } from "../alerts/alert-store";
 import { getCollectorService } from "../../services/collector-client";
 import {
+  applyAddTagName,
   applyTagRecordUpdate,
   buildTagDisplayNames,
-  nextSelectionAfterAdd,
   removeTagFromCatalog,
   removeTagFromSelection,
   renameTagInSelection,
@@ -59,12 +59,9 @@ export function useTagPicker(args: {
   };
 
   const handleAddTagName = () => {
-    const next = nextSelectionAfterAdd(selectedTagNames, newTagName);
-    if (next === null) {
-      return;
+    if (applyAddTagName(selectedTagNames, newTagName, onChange)) {
+      setNewTagName("");
     }
-    onChange(next);
-    setNewTagName("");
   };
 
   const handleConfirmDelete = async () => {

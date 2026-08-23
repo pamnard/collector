@@ -40,6 +40,25 @@ export function nextSelectionAfterAdd(
   return [...selectedTagNames, name];
 }
 
+/**
+ * Applies add-tag intent. Calls `onChange` only when selection actually grows.
+ * Returns whether the input should be cleared (false when blank — keep as-is).
+ */
+export function applyAddTagName(
+  selectedTagNames: string[],
+  rawName: string,
+  onChange: (tagNames: string[]) => void,
+): boolean {
+  const next = nextSelectionAfterAdd(selectedTagNames, rawName);
+  if (next === null) {
+    return false;
+  }
+  if (next !== selectedTagNames) {
+    onChange(next);
+  }
+  return true;
+}
+
 export function removeTagFromSelection(
   selectedTagNames: string[],
   tagName: string,

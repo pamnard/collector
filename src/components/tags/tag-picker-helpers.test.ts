@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { TagWithCount } from "@collector/core";
 import {
+  applyAddTagName,
   applyTagRecordUpdate,
   buildTagDisplayNames,
   nextSelectionAfterAdd,
@@ -44,13 +45,45 @@ describe("nextSelectionAfterAdd", () => {
     assert.equal(nextSelectionAfterAdd(["a"], "  "), null);
   });
 
-  it("returns same array reference path when already selected", () => {
+  it("returns same array reference when already selected", () => {
     const selected = ["Foo"];
-    assert.deepEqual(nextSelectionAfterAdd(selected, "foo"), selected);
+    assert.equal(nextSelectionAfterAdd(selected, "foo"), selected);
   });
 
   it("appends new trimmed name", () => {
     assert.deepEqual(nextSelectionAfterAdd(["a"], " b "), ["a", "b"]);
+  });
+});
+
+describe("applyAddTagName", () => {
+  it("does not call onChange when tag is already selected", () => {
+    let calls = 0;
+    const selected = ["Foo"];
+    const shouldClear = applyAddTagName(selected, "foo", () => {
+      calls += 1;
+    });
+    assert.equal(shouldClear, true);
+    assert.equal(calls, 0);
+  });
+
+  it("calls onChange when tag is new", () => {
+    let received: string[] | undefined;
+    const shouldClear = applyAddTagName(["a"], " b ", (next) => {
+      received = next;
+    });
+    assert.equal(shouldClear, true);
+    assert.deepEqual(received, ["a", "b"]);
+  });
+
+  it("keeps input when blank and does not call onChange", () => {
+    let calls = 0;
+    assert.equal(
+      applyAddTagName(["a"], "  ", () => {
+        calls += 1;
+      }),
+      false,
+    );
+    assert.equal(calls, 0);
   });
 });
 
