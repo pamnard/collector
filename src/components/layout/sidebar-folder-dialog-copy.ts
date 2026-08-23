@@ -1,3 +1,6 @@
+import { folderLeafName } from "@collector/shared";
+import { isFolderFilter, type NavFilter } from "../../types/ui.ts";
+
 export type SidebarFolderLeafDialog =
   | { kind: "rename"; path: string }
   | { kind: "create"; path: string };
@@ -10,17 +13,11 @@ export type FolderLeafNameDialogCopy = {
   placeholder: string | undefined;
 };
 
-/** Same leaf rule as `folderLeafName` in folder-actions (kept local for node:test). */
-function leafName(folderPath: string): string {
-  const slash = folderPath.lastIndexOf("/");
-  return slash === -1 ? folderPath : folderPath.slice(slash + 1);
-}
-
 export function folderLeafNameDialogCopy(
   dialog: SidebarFolderLeafDialog,
 ): FolderLeafNameDialogCopy {
   if (dialog.kind === "rename") {
-    const leaf = leafName(dialog.path);
+    const leaf = folderLeafName(dialog.path);
     return {
       title: "Переименовать папку",
       description: `Новое имя для «${leaf}».`,
@@ -43,19 +40,16 @@ export function folderDeleteDialogCopy(folderPath: string): {
   description: string;
 } {
   return {
-    title: leafName(folderPath),
+    title: folderLeafName(folderPath),
     description: `Папка «${folderPath}» и все вложенные папки и элементы будут удалены без возможности восстановления.`,
   };
 }
 
 /** Parent path for the top-level "new folder" dialog — folder filter only. */
 export function defaultCreateFolderParentPath(
-  activeFilter:
-    | "all"
-    | { type: "folder"; folderPath: string }
-    | { type: "tag"; tagId: string },
+  activeFilter: NavFilter,
 ): string {
-  if (typeof activeFilter === "object" && activeFilter.type === "folder") {
+  if (isFolderFilter(activeFilter)) {
     return activeFilter.folderPath;
   }
   return "";

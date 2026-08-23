@@ -2,6 +2,8 @@ import type { FolderTreeNode } from "@collector/core";
 import { renameFolderPath } from "@collector/core";
 import {
   compareFolderNamesForDisplay,
+  folderLeafName,
+  folderParentPath,
   INBOX_FOLDER_NAME,
   isInboxFolderName,
 } from "@collector/shared";
@@ -9,15 +11,7 @@ import { isFolderFilter } from "../types/ui";
 import type { NavFilter } from "../types/ui";
 import { getCollectorService } from "../services/collector-client";
 
-export function folderParentPath(folderPath: string): string {
-  const slash = folderPath.lastIndexOf("/");
-  return slash === -1 ? "" : folderPath.slice(0, slash);
-}
-
-export function folderLeafName(folderPath: string): string {
-  const slash = folderPath.lastIndexOf("/");
-  return slash === -1 ? folderPath : folderPath.slice(slash + 1);
-}
+export { folderLeafName, folderParentPath };
 
 function assertFolderLeafName(leafName: string): string {
   const leaf = leafName.trim();

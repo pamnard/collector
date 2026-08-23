@@ -445,9 +445,9 @@ export function useDashboardItems(
           bodyStampsRef.current,
           nextOrderedIds,
         );
-      }
 
-      writeQueryCache(ids, byId, end, nextTotal);
+        writeQueryCache(ids, byId, end, nextTotal);
+      }
 
       const coversNeedResolve = ordered.some((item) =>
         coverNeedsResolve(

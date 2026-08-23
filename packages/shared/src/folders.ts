@@ -94,6 +94,12 @@ export function folderParentPath(folderPath: string): string {
   return slash === -1 ? "" : folderPath.slice(0, slash);
 }
 
+/** Leaf of a folder path (`a/b` → `b`, `a` → `a`). */
+export function folderLeafName(folderPath: string): string {
+  const slash = folderPath.lastIndexOf("/");
+  return slash === -1 ? folderPath : folderPath.slice(slash + 1);
+}
+
 /** Leaf → … → root `""` (root included once). Used by related similarity scope. */
 export function folderPathAncestorChain(folderPath: string): string[] {
   const chain: string[] = [];

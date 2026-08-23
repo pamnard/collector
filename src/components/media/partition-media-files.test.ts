@@ -18,7 +18,7 @@ function media(
 }
 
 describe("partitionMediaFiles", () => {
-  it("splits images, videos into visual, and non-video others into list", () => {
+  it("keeps image|video in encounter order; non-visual go to list", () => {
     const files = [
       media("i1", "image"),
       media("v1", "video"),
@@ -26,18 +26,10 @@ describe("partitionMediaFiles", () => {
       media("i2", "image"),
       media("o1", "other"),
     ];
-    const { images, others, visualFiles, listFiles } = partitionMediaFiles(files);
-    assert.deepEqual(
-      images.map((f) => f.id),
-      ["i1", "i2"],
-    );
-    assert.deepEqual(
-      others.map((f) => f.id),
-      ["v1", "a1", "o1"],
-    );
+    const { visualFiles, listFiles } = partitionMediaFiles(files);
     assert.deepEqual(
       visualFiles.map((f) => f.id),
-      ["i1", "i2", "v1"],
+      ["i1", "v1", "i2"],
     );
     assert.deepEqual(
       listFiles.map((f) => f.id),
@@ -47,8 +39,6 @@ describe("partitionMediaFiles", () => {
 
   it("returns empty partitions for empty input", () => {
     assert.deepEqual(partitionMediaFiles([]), {
-      images: [],
-      others: [],
       visualFiles: [],
       listFiles: [],
     });

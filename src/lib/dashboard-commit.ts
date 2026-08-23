@@ -4,6 +4,7 @@ import type {
   ItemFile,
 } from "@collector/shared";
 import type { DashboardQueryCacheEntry } from "../services/dashboard-query-cache";
+import { itemIdsEqual } from "./dashboard-display.ts";
 import {
   pruneItemIdFromDashboardListSnapshot,
   type DashboardListSnapshot as DashboardListSharedFields,
@@ -125,13 +126,8 @@ export function shouldSkipCommitPaint(
   if (prevTotalCount !== nextTotalCount) {
     return false;
   }
-  if (prevOrderedIds.length !== nextOrderedIds.length) {
+  if (!itemIdsEqual(prevOrderedIds, nextOrderedIds)) {
     return false;
-  }
-  for (let i = 0; i < nextOrderedIds.length; i++) {
-    if (prevOrderedIds[i] !== nextOrderedIds[i]) {
-      return false;
-    }
   }
   for (const id of nextOrderedIds) {
     const prevStamp = prevBodyStamps.get(id);
