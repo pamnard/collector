@@ -95,6 +95,72 @@ export function shouldSkipEmptyCommit(
   return orderedLen === 0 && prevLen > 0 && nextTotal > 0;
 }
 
+export type ShouldSkipCommitPaintInput = {
+  prevOrderedIds: readonly string[];
+  nextOrderedIds: readonly string[];
+  prevTotalCount: number;
+  nextTotalCount: number;
+  prevBodyStamps: ReadonlyMap<string, string>;
+  nextBodyStamps: ReadonlyMap<string, string>;
+};
+
+/**
+ * Stamp+id short-circuit for dashboard commit paint (#664).
+ * When ordered ids, totalCount, and body stamps for those ids are unchanged,
+ * callers may skip setCommittedItems, itemsBodiesEqual, and cover flight when
+ * covers are already valid. Missing stamps fail closed (do not skip).
+ */
+export function shouldSkipCommitPaint(
+  input: ShouldSkipCommitPaintInput,
+): boolean {
+  const {
+    prevOrderedIds,
+    nextOrderedIds,
+    prevTotalCount,
+    nextTotalCount,
+    prevBodyStamps,
+    nextBodyStamps,
+  } = input;
+
+  if (prevTotalCount !== nextTotalCount) {
+    return false;
+  }
+  if (prevOrderedIds.length !== nextOrderedIds.length) {
+    return false;
+  }
+  for (let i = 0; i < nextOrderedIds.length; i++) {
+    if (prevOrderedIds[i] !== nextOrderedIds[i]) {
+      return false;
+    }
+  }
+  for (const id of nextOrderedIds) {
+    const prevStamp = prevBodyStamps.get(id);
+    const nextStamp = nextBodyStamps.get(id);
+    if (prevStamp === undefined || nextStamp === undefined) {
+      return false;
+    }
+    if (prevStamp !== nextStamp) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Snapshot body stamps for an ordered id window (omit ids without stamps). */
+export function bodyStampsForOrderedIds(
+  stamps: ReadonlyMap<string, string>,
+  orderedIds: readonly string[],
+): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const id of orderedIds) {
+    const stamp = stamps.get(id);
+    if (stamp !== undefined) {
+      out.set(id, stamp);
+    }
+  }
+  return out;
+}
+
 export function mergeCommittedThumbnailPaths(
   prev: Map<string, string | null>,
   resolved: Map<string, string | null>,

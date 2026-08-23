@@ -16,6 +16,8 @@ import {
   orderedIds,
   pruneItemIdFromDashboardLists,
   resolveDashboardGridThumbnailPath,
+  bodyStampsForOrderedIds,
+  shouldSkipCommitPaint,
   shouldSkipEmptyCommit,
   snapshotToCacheEntry,
   thumbnailPathsEqual,
@@ -218,6 +220,142 @@ describe("shouldSkipEmptyCommit", () => {
     assert.equal(shouldSkipEmptyCommit(0, 0, 10), false);
     assert.equal(shouldSkipEmptyCommit(0, 3, 0), false);
     assert.equal(shouldSkipEmptyCommit(1, 3, 10), false);
+  });
+});
+
+describe("shouldSkipCommitPaint", () => {
+  const ids = ["a", "b"] as const;
+  const stamps = new Map([
+    ["a", "100"],
+    ["b", "200"],
+  ]);
+
+  it("skips when ordered ids, totalCount, and body stamps match", () => {
+    assert.equal(
+      shouldSkipCommitPaint({
+        prevOrderedIds: [...ids],
+        nextOrderedIds: [...ids],
+        prevTotalCount: 10,
+        nextTotalCount: 10,
+        prevBodyStamps: stamps,
+        nextBodyStamps: new Map(stamps),
+      }),
+      true,
+    );
+  });
+
+  it("does not skip when ordered ids differ", () => {
+    assert.equal(
+      shouldSkipCommitPaint({
+        prevOrderedIds: ["a", "b"],
+        nextOrderedIds: ["b", "a"],
+        prevTotalCount: 10,
+        nextTotalCount: 10,
+        prevBodyStamps: stamps,
+        nextBodyStamps: new Map(stamps),
+      }),
+      false,
+    );
+  });
+
+  it("does not skip when totalCount differs", () => {
+    assert.equal(
+      shouldSkipCommitPaint({
+        prevOrderedIds: [...ids],
+        nextOrderedIds: [...ids],
+        prevTotalCount: 10,
+        nextTotalCount: 11,
+        prevBodyStamps: stamps,
+        nextBodyStamps: new Map(stamps),
+      }),
+      false,
+    );
+  });
+
+  it("does not skip when a body stamp differs (tag-only / presentation change)", () => {
+    assert.equal(
+      shouldSkipCommitPaint({
+        prevOrderedIds: [...ids],
+        nextOrderedIds: [...ids],
+        prevTotalCount: 10,
+        nextTotalCount: 10,
+        prevBodyStamps: stamps,
+        nextBodyStamps: new Map([
+          ["a", "100"],
+          ["b", "201"],
+        ]),
+      }),
+      false,
+    );
+  });
+
+  it("fails closed when a required body stamp is missing on either side", () => {
+    assert.equal(
+      shouldSkipCommitPaint({
+        prevOrderedIds: [...ids],
+        nextOrderedIds: [...ids],
+        prevTotalCount: 10,
+        nextTotalCount: 10,
+        prevBodyStamps: new Map([["a", "100"]]),
+        nextBodyStamps: stamps,
+      }),
+      false,
+    );
+    assert.equal(
+      shouldSkipCommitPaint({
+        prevOrderedIds: [...ids],
+        nextOrderedIds: [...ids],
+        prevTotalCount: 10,
+        nextTotalCount: 10,
+        prevBodyStamps: stamps,
+        nextBodyStamps: new Map([["a", "100"]]),
+      }),
+      false,
+    );
+  });
+
+  it("ignores stamp keys outside the ordered id window", () => {
+    assert.equal(
+      shouldSkipCommitPaint({
+        prevOrderedIds: ["a"],
+        nextOrderedIds: ["a"],
+        prevTotalCount: 1,
+        nextTotalCount: 1,
+        prevBodyStamps: new Map([
+          ["a", "100"],
+          ["orphan", "x"],
+        ]),
+        nextBodyStamps: new Map([
+          ["a", "100"],
+          ["orphan", "y"],
+        ]),
+      }),
+      true,
+    );
+  });
+});
+
+describe("bodyStampsForOrderedIds", () => {
+  it("copies only stamps for the ordered window", () => {
+    const stamps = new Map([
+      ["a", "1"],
+      ["b", "2"],
+      ["c", "3"],
+    ]);
+    assert.deepEqual(
+      [...bodyStampsForOrderedIds(stamps, ["c", "a"]).entries()],
+      [
+        ["c", "3"],
+        ["a", "1"],
+      ],
+    );
+  });
+
+  it("omits ids with no stamp (no invented defaults)", () => {
+    assert.deepEqual(
+      [...bodyStampsForOrderedIds(new Map([["a", "1"]]), ["a", "b"]).entries()],
+      [["a", "1"]],
+    );
   });
 });
 
