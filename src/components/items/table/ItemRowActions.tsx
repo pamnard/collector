@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { folderPathFromItemPath } from "@collector/shared";
-import { useFolderTree } from "../../hooks/useFolderTree";
-import type { ItemActionId } from "../../lib/item-action-catalog";
+import { useFolderTree } from "../../../hooks/useFolderTree";
+import type { ItemActionId } from "../../../lib/item-action-catalog";
 import {
   ITEM_LINT_BUSY_ID,
   ITEM_LINT_ERROR_ID,
@@ -12,17 +12,17 @@ import {
   lintItemFile,
   moveItemToFolder,
   renameItemTitle,
-} from "../../lib/item-actions";
-import { getCollectorService } from "../../services/collector-client";
+} from "../../../lib/item-actions";
+import { getCollectorService } from "../../../services/collector-client";
 import {
   useAlerts,
   useDismissAlertsOnUnmount,
-} from "../alerts/AlertBusProvider";
-import { MoveItemDialog } from "../folders/MoveItemDialog";
-import { useShell } from "../layout/AppLayout";
-import { ConfirmDialog } from "../ui/confirm-dialog";
-import { ItemActionsMenu } from "./ItemActionsMenu";
-import { ItemRenameDialog } from "./ItemRenameDialog";
+} from "../../alerts/AlertBusProvider";
+import { MoveItemDialog } from "../../folders/MoveItemDialog";
+import { useShell } from "../../layout/AppLayout";
+import { ConfirmDialog } from "../../ui/confirm-dialog";
+import { ItemActionsMenu } from "../ItemActionsMenu";
+import { ItemRenameDialog } from "../ItemRenameDialog";
 
 interface ItemRowActionsProps {
   itemId: string;

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -8,22 +8,25 @@ import {
   type ColumnDef,
   type VisibilityState,
 } from "@tanstack/react-table";
-import type { TagWithCount } from "@collector/core";
 import type { ItemFile } from "@collector/shared";
 import { DashboardTableSkeleton } from "./DashboardListSkeleton";
 import { selectionQueryKey } from "./table/dashboard-table-selection";
-import { columnWidthClass } from "./table/column-width";
+import {
+  itemTableCellClassName,
+  itemTableHeaderClassName,
+} from "./table/item-table-column-class";
 import { ITEM_TABLE_COLUMN_SPECS } from "./table/item-table-column-specs";
 import { createItemTableColumns } from "./table/item-table-columns";
 import { ItemTableToolbar } from "./table/item-table-toolbar";
+import { itemTableVirtualPadding } from "./table/item-table-virtual-padding";
 import { resolveColumnVisibility } from "./table/resolve-column-visibility";
 import { useDashboardTableSelection } from "./table/use-dashboard-table-selection";
+import { useItemTableTags } from "./table/use-item-table-tags";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
 import { useMainScrollElement } from "../../hooks/useMainScrollElement";
 import { useAppSettings } from "../../context/AppSettingsContext";
 import { useShell } from "../layout/AppLayout";
 import type { useDashboardItems } from "../../hooks/useDashboardItems";
-import { getCollectorService } from "../../services/collector-client";
 import { navFilterKey } from "../../types/ui";
 import {
   Table,
@@ -33,7 +36,6 @@ import {
   TableHeader,
   TableRow,
 } from "../ui/table";
-import { cn } from "../../lib/utils";
 import {
   dashboardPerfActiveRunId,
   dashboardPerfBeginPhase,
@@ -54,10 +56,10 @@ const ROW_OVERSCAN = 10;
 
 export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
   const navigate = useNavigate();
-  const { vaultRevision, activeFilter, dashboardSort, setDashboardSort, viewMode } =
+  const { activeFilter, dashboardSort, setDashboardSort, viewMode } =
     useShell();
   const { settings, setTableColumnVisibility } = useAppSettings();
-  const [tags, setTags] = useState<TagWithCount[]>([]);
+  const tagsById = useItemTableTags();
   const scrollElement = useMainScrollElement();
   const tableTopRef = useRef<HTMLDivElement>(null);
   const l2ReportedRef = useRef(false);
@@ -90,21 +92,12 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
     totalCount: dashboard.totalCount,
   });
 
-  useEffect(() => {
-    void getCollectorService().tags.listTags().then(setTags);
-  }, [vaultRevision]);
-
   useLayoutEffect(() => {
     if (!tableVisible || !tableTopRef.current || !scrollElement) {
       return;
     }
     setScrollMargin(tableTopRef.current.offsetTop);
   }, [scrollElement, dashboard.items.length, tableVisible]);
-
-  const tagsById = useMemo(
-    () => new Map(tags.map((tag) => [tag.id, tag])),
-    [tags],
-  );
 
   const columns = useMemo<ColumnDef<ItemFile>[]>(
     () =>
@@ -202,17 +195,11 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
   }
 
   const virtualRows = virtualizer.getVirtualItems();
-  const paddingTop =
-    virtualRows.length > 0
-      ? Math.max(0, (virtualRows[0]?.start ?? 0) - scrollMargin)
-      : 0;
-  const paddingBottom =
-    virtualRows.length > 0
-      ? Math.max(
-          0,
-          virtualizer.getTotalSize() - (virtualRows[virtualRows.length - 1]?.end ?? 0),
-        )
-      : 0;
+  const { paddingTop, paddingBottom } = itemTableVirtualPadding(
+    virtualRows,
+    virtualizer.getTotalSize(),
+    scrollMargin,
+  );
 
   return (
     <>
@@ -238,12 +225,7 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
                 {headerGroup.headers.map((header) => (
                   <TableHead
                     key={header.id}
-                    className={cn(
-                      "px-3",
-                      columnWidthClass(header.column.id),
-                      header.column.id === "actions" && "text-right",
-                      header.column.id === "select" && "px-2",
-                    )}
+                    className={itemTableHeaderClassName(header.column.id)}
                   >
                     {header.isPlaceholder
                       ? null
@@ -281,14 +263,7 @@ export function ItemTableView({ dashboard, onUpdated }: ItemTableViewProps) {
                   {row.getVisibleCells().map((cell) => (
                     <TableCell
                       key={cell.id}
-                      className={cn(
-                        "overflow-hidden px-3 py-2",
-                        columnWidthClass(cell.column.id),
-                        cell.column.id === "actions" && "text-right",
-                        cell.column.id === "select" && "px-2",
-                        cell.column.id === "tags" && "whitespace-normal",
-                        cell.column.id === "title" && "whitespace-normal",
-                      )}
+                      className={itemTableCellClassName(cell.column.id)}
                     >
                       {flexRender(
                         cell.column.columnDef.cell,
