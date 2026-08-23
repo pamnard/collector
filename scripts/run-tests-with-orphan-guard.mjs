@@ -44,6 +44,16 @@ for (const ws of workspaces) {
 }
 
 run(
+  "dashboard unit tests",
+  "node",
+  [
+    "--test",
+    join(root, "src/lib/dashboard-perf.test.ts"),
+    join(root, "src/lib/dashboard-commit.test.ts"),
+  ],
+);
+
+run(
   "test-run orphan scanner unit tests",
   "node",
   ["--test", join(root, "scripts/lib/test-run-orphans.test.mjs")],

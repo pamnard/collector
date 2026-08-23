@@ -7,6 +7,7 @@ import {
   coverPathsFromMaps,
   filterOutItemId,
   intersectCommittedWithPageIds,
+  intersectCommittedWithPageIdsHoldPaint,
   itemCoverStamp,
   itemsBodiesEqual,
   mapsFromCoverPaths,
@@ -377,6 +378,37 @@ describe("intersectCommittedWithPageIds", () => {
     assert.deepEqual(
       kept.map((item) => item.id),
       ["a", "c"],
+    );
+  });
+});
+
+describe("intersectCommittedWithPageIdsHoldPaint", () => {
+  it("returns null on zero overlap when committed is non-empty", () => {
+    assert.equal(
+      intersectCommittedWithPageIdsHoldPaint(
+        [stubItem("a"), stubItem("b")],
+        ["x", "y"],
+      ),
+      null,
+    );
+  });
+
+  it("returns subset on partial overlap", () => {
+    const kept = intersectCommittedWithPageIdsHoldPaint(
+      [stubItem("a"), stubItem("b"), stubItem("c")],
+      ["c", "a"],
+    );
+    assert.notEqual(kept, null);
+    assert.deepEqual(
+      kept!.map((item) => item.id),
+      ["a", "c"],
+    );
+  });
+
+  it("returns empty when page is empty", () => {
+    assert.deepEqual(
+      intersectCommittedWithPageIdsHoldPaint([stubItem("a"), stubItem("b")], []),
+      [],
     );
   });
 });

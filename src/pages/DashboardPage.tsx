@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { useShell } from "../components/layout/AppLayout";
-import { ItemGridView } from "../components/items/ItemGridView";
+import { DashboardWarmGridShell } from "../components/items/DashboardWarmGridShell";
 import { ItemTableView } from "../components/items/ItemTableView";
 import {
   useAlerts,
@@ -107,8 +107,9 @@ export function DashboardPage() {
   );
 
   return (
-    <div
-      className="relative pb-20 min-h-full"
+    <DashboardWarmGridShell
+      viewMode={viewMode}
+      dashboard={dashboard}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
@@ -122,11 +123,11 @@ export function DashboardPage() {
           </p>
         )}
 
-      {viewMode === "grid" ? (
-        <ItemGridView dashboard={dashboard} />
-      ) : (
-        <ItemTableView dashboard={dashboard} />
-      )}
+      {viewMode === "table" ? (
+        <div className="relative z-10">
+          <ItemTableView dashboard={dashboard} />
+        </div>
+      ) : null}
 
       {isDragging && !isImporting && (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-lg border-2 border-dashed border-emerald-500/60 bg-emerald-500/10">
@@ -135,6 +136,6 @@ export function DashboardPage() {
           </p>
         </div>
       )}
-    </div>
+    </DashboardWarmGridShell>
   );
 }

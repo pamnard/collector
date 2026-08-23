@@ -44,6 +44,9 @@ import {
   type NavFilter,
   type ViewMode,
 } from "../../types/ui";
+import {
+  dashboardPerfBeginRun,
+} from "../../lib/dashboard-perf";
 import { parseSettingsSection } from "../../types/sidebar-mode";
 import { AlertBusProvider } from "../alerts/AlertBusProvider";
 import { AlertHost } from "../alerts/AlertHost";
@@ -197,11 +200,37 @@ function AppLayoutInner() {
   });
   useJobPermanentFailureAlerts();
 
+  const handleFilterSelect = useCallback(
+    (filter: NavFilter) => {
+      if (isFolderFilter(filter)) {
+        dashboardPerfBeginRun("folder", {
+          viewMode,
+          folderPath: filter.folderPath,
+        });
+      }
+      void setActiveFilter(filter);
+    },
+    [setActiveFilter, viewMode],
+  );
+
+  const handleViewModeChange = useCallback(
+    (mode: ViewMode) => {
+      dashboardPerfBeginRun("viewMode", {
+        viewMode: mode,
+        folderPath: isFolderFilter(activeFilter)
+          ? activeFilter.folderPath
+          : undefined,
+      });
+      void setViewMode(mode);
+    },
+    [activeFilter, setViewMode],
+  );
+
   const sidebarProps = {
     mode: sidebarMode,
     onModeChange: setSidebarMode,
     activeFilter,
-    onFilterSelect: setActiveFilter,
+    onFilterSelect: handleFilterSelect,
     vaultRevision,
     searchQuery,
     onSearchChange: setSearchQuery,
@@ -237,7 +266,7 @@ function AppLayoutInner() {
   // the adjacent nav at the bottom when the page is short.
   const mainColumn: ReactNode = (
     <main className="relative flex min-h-0 h-full flex-1 flex-col overflow-hidden">
-      <MainScrollArea resetKey={`${locationKey}|${navFilterKey(activeFilter)}`}>
+      <MainScrollArea resetKey={`${locationKey}|${navFilterKey(activeFilter)}|${viewMode}`}>
         <div className="box-border flex min-h-full flex-col">
           <div className="flex min-h-full flex-1 flex-col bg-white dark:bg-neutral-800">
             {showCardHeader ? (
@@ -245,7 +274,7 @@ function AppLayoutInner() {
                 variant={headerVariant}
                 onOpenSidebar={() => setIsSidebarOpen(true)}
                 viewMode={viewMode}
-                onViewModeChange={setViewMode}
+                onViewModeChange={handleViewModeChange}
                 onAddClick={() =>
                   openCreate(
                     isFolderFilter(activeFilter)
