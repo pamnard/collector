@@ -99,7 +99,11 @@ export function decideExecuteSettlement(
     return { action: "permanent_fail", error: result.error };
   }
   if (!isRetryableFailResult(result)) {
-    throw new Error(`unexpected job handler result: ${JSON.stringify(result)}`);
+    // Do not throw: executeJob must settle, not leave the row `running`.
+    return {
+      action: "permanent_fail",
+      error: `unexpected job handler result: ${JSON.stringify(result)}`,
+    };
   }
   const retryAfterMs = result.retryAfterMs;
   if (retryAfterMs !== undefined) {

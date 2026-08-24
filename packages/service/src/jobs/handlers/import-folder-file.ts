@@ -102,6 +102,9 @@ export function applyImportFolderFileOutcome(
   file: ImportFolderSourceFile,
   outcome: ImportFolderFileStepOutcome,
 ): void {
+  if (outcome.kind === "skipped_kind") {
+    return;
+  }
   if (outcome.kind === "skipped_existing") {
     result.skippedIds.push(outcome.itemId);
     return;
@@ -119,5 +122,15 @@ export function applyImportFolderFileOutcome(
       file.relativePath,
       outcome.error,
     );
+    return;
   }
+  if (outcome.kind === "fatal") {
+    throw new Error(
+      `fatal import outcome must be handled by caller: ${outcome.error}`,
+    );
+  }
+  const _exhaustive: never = outcome;
+  throw new Error(
+    `unexpected import folder file outcome: ${JSON.stringify(_exhaustive)}`,
+  );
 }

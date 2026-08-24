@@ -135,6 +135,14 @@ describe("job-runner-execute-phases (#793)", () => {
         availableAtOffsetMs: null,
       });
     });
+
+    it("maps unexpected handler result to permanent_fail (no throw)", () => {
+      const garbage = { status: "wat", detail: 1 } as unknown as JobHandlerResult;
+      expect(decideExecuteSettlement(garbage)).toEqual({
+        action: "permanent_fail",
+        error: 'unexpected job handler result: {"status":"wat","detail":1}',
+      });
+    });
   });
 
   describe("runHandlerWithTimeout", () => {
