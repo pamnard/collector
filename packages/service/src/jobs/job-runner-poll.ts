@@ -1,6 +1,12 @@
 import { isVaultMutatingBulkJob } from "@collector/shared";
-import type { JobStore } from "./job-store.js";
+import type { JobRow, JobStore } from "./job-store.js";
 import type { ExecuteJob } from "./job-runner-execute.js";
+import {
+  canClaimMore,
+  settlePollTick,
+  shouldRetryPollAfterJobSettled,
+  shouldSkipVaultMutatingBulk,
+} from "./job-runner-poll-phases.js";
 
 export function createJobPoll(deps: {
   store: JobStore;
@@ -45,6 +51,70 @@ export function createJobPoll(deps: {
     schedulePoll(0);
   }
 
+  async function claimPhase(): Promise<number> {
+    let claimed = 0;
+    while (
+      canClaimMore({
+        isStopped: isStopped(),
+        inFlightSize: inFlight.size,
+        concurrency,
+      })
+    ) {
+      const job = await store.claimNext(now().toISOString(), {
+        skipVaultMutatingBulkJobs: shouldSkipVaultMutatingBulk(
+          vaultMutatingBulkJobsInFlight,
+        ),
+      });
+      if (!job) {
+        break;
+      }
+      // claimNext awaits; stop may have begun meanwhile — do not start new work.
+      // Job is already `running` in the store; release before break or it orphans until reclaim.
+      if (isStopped()) {
+        await store.releaseClaim(job.id, now().toISOString());
+        break;
+      }
+      claimed += 1;
+      runPhase(job);
+    }
+    return claimed;
+  }
+
+  function runPhase(job: JobRow): void {
+    const holdsBulkSlot = isVaultMutatingBulkJob(job);
+    if (holdsBulkSlot) {
+      vaultMutatingBulkJobsInFlight += 1;
+    }
+    const run = executeJob(job).finally(() => {
+      inFlight.delete(run);
+      if (holdsBulkSlot) {
+        vaultMutatingBulkJobsInFlight -= 1;
+      }
+      onActivity?.();
+      if (shouldRetryPollAfterJobSettled(isStopped())) {
+        wake();
+      }
+    });
+    inFlight.add(run);
+  }
+
+  function settlePhase(claimed: number): void {
+    const action = settlePollTick({
+      isStopped: isStopped(),
+      claimed,
+      inFlightSize: inFlight.size,
+      concurrency,
+      pollIntervalMs,
+    });
+    if (action.kind === "immediate") {
+      schedulePoll(0);
+      return;
+    }
+    if (action.kind === "heartbeat") {
+      schedulePoll(action.delayMs);
+    }
+  }
+
   async function runTick(): Promise<void> {
     if (isStopped() || tickRunning) {
       return;
@@ -52,47 +122,11 @@ export function createJobPoll(deps: {
     tickRunning = true;
     let claimed = 0;
     try {
-      while (!isStopped() && inFlight.size < concurrency) {
-        const job = await store.claimNext(now().toISOString(), {
-          skipVaultMutatingBulkJobs: vaultMutatingBulkJobsInFlight >= 1,
-        });
-        if (!job) {
-          break;
-        }
-        // claimNext awaits; stop may have begun meanwhile — do not start new work.
-        // Job is already `running` in the store; release before break or it orphans until reclaim.
-        if (isStopped()) {
-          await store.releaseClaim(job.id, now().toISOString());
-          break;
-        }
-        claimed += 1;
-        const holdsBulkSlot = isVaultMutatingBulkJob(job);
-        if (holdsBulkSlot) {
-          vaultMutatingBulkJobsInFlight += 1;
-        }
-        const run = executeJob(job).finally(() => {
-          inFlight.delete(run);
-          if (holdsBulkSlot) {
-            vaultMutatingBulkJobsInFlight -= 1;
-          }
-          onActivity?.();
-          wake();
-        });
-        inFlight.add(run);
-      }
+      claimed = await claimPhase();
     } finally {
+      // Clear before settle so a scheduled immediate tick is not skipped.
       tickRunning = false;
-      if (isStopped()) {
-        return;
-      }
-      if (claimed > 0 && inFlight.size < concurrency) {
-        schedulePoll(0);
-        return;
-      }
-      if (inFlight.size === 0) {
-        // Heartbeat for delayed `available_at` jobs while idle.
-        schedulePoll(pollIntervalMs);
-      }
+      settlePhase(claimed);
     }
   }
 

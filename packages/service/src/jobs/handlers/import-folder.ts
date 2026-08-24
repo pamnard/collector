@@ -6,32 +6,40 @@
 import type {
   AttachMediaFileInput,
   CreateItemInput,
-  ImportFolderFailure,
   ImportFolderResult,
-  ImportFolderResultStatus,
 } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
 import {
   importFolderJobType,
   type ImportFolderJobPayload,
 } from "@collector/shared";
-import {
-  classifyDropFilename,
-  normalizeRelativePath,
-  parseDocumentMarkdown,
-  partitionDocumentFrontmatter,
-  yieldToEventLoop,
-  INDEX_SYNC_YIELD_MS,
-} from "@collector/core";
-import { readdir, readFile, stat } from "node:fs/promises";
-import { basename, isAbsolute, join, relative } from "node:path";
+import { yieldToEventLoop, INDEX_SYNC_YIELD_MS } from "@collector/core";
+import { stat } from "node:fs/promises";
+import { isAbsolute } from "node:path";
 import { createDropImportService } from "../../drop-import.js";
 import type { JobQueue, EnqueueResult } from "../job-queue.js";
 import type { TypedJobHandler } from "../job-registry.js";
 import type { JobHandlerResult } from "../job-types.js";
 import { createJobResultMailbox } from "../job-result-mailbox.js";
+import {
+  importFolderErrorMessage,
+  isFatalImportFolderError,
+} from "./import-folder-fatal.js";
+import {
+  emptyMutableImportFolderResult,
+  finalizeImportFolderResult,
+} from "./import-folder-result.js";
+import { listImportFolderSourceFiles } from "./import-folder-walk.js";
+import {
+  applyImportFolderFileOutcome,
+  importOneFolderFile,
+} from "./import-folder-file.js";
 
-const SAMPLE_FAILURE_LIMIT = 20;
+export {
+  ImportFolderFatalError,
+  isFatalImportFolderError,
+  type ImportFolderFatalCode,
+} from "./import-folder-fatal.js";
 
 /** Keep peek-only CLI snapshots around long enough for --wait, then drop. */
 const IMPORT_FOLDER_RESULT_TTL_MS = 6 * 60 * 60 * 1000;
@@ -52,169 +60,25 @@ export function peekImportFolderResult(
   return importFolderResults.peek(jobId);
 }
 
-export type ImportFolderFatalCode =
-  | "active_vault_mismatch"
-  | "no_active_vault"
-  | "sqlite_error"
-  | "index_unavailable"
-  | "invalid_source"
-  | "infrastructure";
-
-/** Typed fatal signal for folder import — preferred over message heuristics. */
-export class ImportFolderFatalError extends Error {
-  readonly code: ImportFolderFatalCode;
-
-  constructor(code: ImportFolderFatalCode, message: string) {
-    super(message);
-    this.name = "ImportFolderFatalError";
-    this.code = code;
-  }
-}
-
-type MutableImportFolderResult = {
-  createdIds: string[];
-  skippedIds: string[];
-  failures: ImportFolderFailure[];
-  failedCount: number;
-};
-
-function emptyMutableResult(): MutableImportFolderResult {
-  return {
-    createdIds: [],
-    skippedIds: [],
-    failures: [],
-    failedCount: 0,
-  };
-}
-
-function deriveResultStatus(
-  result: MutableImportFolderResult,
-): ImportFolderResultStatus {
-  if (result.failedCount === 0) {
-    return "ok";
-  }
-  if (result.createdIds.length > 0 || result.skippedIds.length > 0) {
-    return "partial";
-  }
-  return "failed";
-}
-
-function finalizeResult(
-  result: MutableImportFolderResult,
-  options?: { forceStatus?: ImportFolderResultStatus },
-): ImportFolderResult {
-  return {
-    createdIds: result.createdIds,
-    skippedIds: result.skippedIds,
-    failures: result.failures,
-    created: result.createdIds.length,
-    skipped: result.skippedIds.length,
-    failed: result.failedCount,
-    status: options?.forceStatus ?? deriveResultStatus(result),
-  };
-}
-
-function decodeUtf8(data: Uint8Array): string {
-  return new TextDecoder("utf-8").decode(data);
-}
-
-/** Canonical url from note frontmatter when present and non-empty. */
-function canonicalUrlFromNoteBytes(bytes: Uint8Array): string | null {
-  const parsed = parseDocumentMarkdown(decodeUtf8(bytes));
-  const { known } = partitionDocumentFrontmatter(parsed.frontmatter);
-  const url = known.url;
-  if (typeof url !== "string") {
-    return null;
-  }
-  const trimmed = url.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-async function listSourceFiles(
-  sourceDirAbs: string,
-): Promise<Array<{ absPath: string; relativePath: string; name: string }>> {
-  const out: Array<{ absPath: string; relativePath: string; name: string }> =
-    [];
-  async function walk(dirAbs: string): Promise<void> {
-    const entries = await readdir(dirAbs, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.name.startsWith(".")) {
-        continue;
-      }
-      const absPath = join(dirAbs, entry.name);
-      if (entry.isDirectory()) {
-        await walk(absPath);
-        continue;
-      }
-      if (!entry.isFile()) {
-        continue;
-      }
-      const relativePath =
-        normalizeRelativePath(
-          relative(sourceDirAbs, absPath).replace(/\\/g, "/"),
-        ) || entry.name;
-      out.push({
-        absPath,
-        relativePath,
-        name: basename(absPath),
-      });
-    }
-  }
-  await walk(sourceDirAbs);
-  return out;
-}
-
-function pushFailureSample(
-  failures: ImportFolderFailure[],
-  relativePath: string,
-  error: string,
-): void {
-  if (failures.length >= SAMPLE_FAILURE_LIMIT) {
-    return;
-  }
-  failures.push({ relativePath, error });
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function inferFatalCodeFromMessage(
-  message: string,
-): ImportFolderFatalCode | null {
-  if (/active vault mismatch/i.test(message)) {
-    return "active_vault_mismatch";
-  }
-  if (/no active vault/i.test(message)) {
-    return "no_active_vault";
-  }
-  if (/SQLITE_/i.test(message)) {
-    return "sqlite_error";
-  }
-  if (/database is (closed|locked|not open)/i.test(message)) {
-    return "sqlite_error";
-  }
-  if (/index (is )?(closed|unavailable|not (ready|open))/i.test(message)) {
-    return "index_unavailable";
-  }
-  return null;
-}
-
-/**
- * Vault/index infrastructure failures must abort the job; per-file import
- * validation/content errors may continue after structured logging.
- * Prefer {@link ImportFolderFatalError}; message heuristics remain for
- * errors thrown by lower layers that lack a typed code.
- */
-export function isFatalImportFolderError(error: unknown): boolean {
-  if (error instanceof ImportFolderFatalError) {
-    return true;
-  }
-  return inferFatalCodeFromMessage(errorMessage(error)) !== null;
-}
-
 function nonRetryableFail(error: string): JobHandlerResult {
   return { status: "fail", retryable: false, error };
+}
+
+async function validateImportFolderSource(
+  sourceDirAbs: string,
+): Promise<JobHandlerResult | null> {
+  if (!isAbsolute(sourceDirAbs)) {
+    return nonRetryableFail(
+      `importFolder sourceDirAbs must be absolute: ${sourceDirAbs}`,
+    );
+  }
+  const sourceStat = await stat(sourceDirAbs);
+  if (!sourceStat.isDirectory()) {
+    return nonRetryableFail(
+      `importFolder sourceDirAbs is not a directory: ${sourceDirAbs}`,
+    );
+  }
+  return null;
 }
 
 export function createImportFolderHandler(deps: {
@@ -237,18 +101,11 @@ export function createImportFolderHandler(deps: {
   const importer = createDropImportService(deps);
   return async (job): Promise<JobHandlerResult> => {
     const { vaultId, sourceDirAbs, targetFolderPath } = job.payload;
-    if (!isAbsolute(sourceDirAbs)) {
-      return nonRetryableFail(
-        `importFolder sourceDirAbs must be absolute: ${sourceDirAbs}`,
-      );
-    }
 
     try {
-      const sourceStat = await stat(sourceDirAbs);
-      if (!sourceStat.isDirectory()) {
-        return nonRetryableFail(
-          `importFolder sourceDirAbs is not a directory: ${sourceDirAbs}`,
-        );
+      const sourceError = await validateImportFolderSource(sourceDirAbs);
+      if (sourceError) {
+        return sourceError;
       }
       await deps.assertActiveVault(vaultId);
     } catch (error) {
@@ -256,94 +113,68 @@ export function createImportFolderHandler(deps: {
         console.error("[importFolder] fatal infrastructure error", {
           jobId: job.id,
           vaultId,
-          error: errorMessage(error),
+          error: importFolderErrorMessage(error),
         });
       }
-      return nonRetryableFail(errorMessage(error));
+      return nonRetryableFail(importFolderErrorMessage(error));
     }
 
-    const result = emptyMutableResult();
-    let files: Array<{ absPath: string; relativePath: string; name: string }>;
+    const result = emptyMutableImportFolderResult();
+    let files;
     try {
-      files = await listSourceFiles(sourceDirAbs);
+      files = await listImportFolderSourceFiles(sourceDirAbs);
     } catch (error) {
       console.error("[importFolder] fatal infrastructure error", {
         jobId: job.id,
         vaultId,
-        error: errorMessage(error),
+        error: importFolderErrorMessage(error),
       });
-      return nonRetryableFail(errorMessage(error));
+      return nonRetryableFail(importFolderErrorMessage(error));
     }
 
     const folder_path = targetFolderPath?.trim() || undefined;
 
     for (const file of files) {
-      const classified = classifyDropFilename(file.name);
-      if (classified.kind === "skip") {
-        continue;
+      const outcome = await importOneFolderFile({
+        file,
+        vaultId,
+        folder_path,
+        importer,
+        assertActiveVault: deps.assertActiveVault,
+        findItemIdByUrl: deps.findItemIdByUrl,
+      });
+
+      if (outcome.kind === "fatal") {
+        console.error("[importFolder] fatal infrastructure error", {
+          jobId: job.id,
+          vaultId,
+          relativePath: file.relativePath,
+          error: outcome.error,
+        });
+        // Job row will be `failed`; never leave mailbox status as `ok`.
+        importFolderResults.set(
+          job.id,
+          finalizeImportFolderResult(result, { forceStatus: "failed" }),
+        );
+        return nonRetryableFail(outcome.error);
       }
 
-      try {
-        await deps.assertActiveVault(vaultId);
-
-        const bytes = new Uint8Array(await readFile(file.absPath));
-
-        if (classified.kind === "note") {
-          const url = canonicalUrlFromNoteBytes(bytes);
-          if (url) {
-            // Index lookup: infrastructure failure aborts (no per-file swallow).
-            const existingId = await deps.findItemIdByUrl(vaultId, url);
-            if (existingId) {
-              result.skippedIds.push(existingId);
-              await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
-              continue;
-            }
-          }
-        }
-
-        const imported = await importer.importDroppedFiles({
-          folder_path,
-          files: [
-            {
-              name: file.name,
-              relativePath: file.relativePath,
-              bytes,
-            },
-          ],
-        });
-        for (const id of imported.createdIds) {
-          result.createdIds.push(id);
-        }
-      } catch (error) {
-        if (isFatalImportFolderError(error)) {
-          console.error("[importFolder] fatal infrastructure error", {
-            jobId: job.id,
-            vaultId,
-            relativePath: file.relativePath,
-            error: errorMessage(error),
-          });
-          // Job row will be `failed`; never leave mailbox status as `ok`.
-          importFolderResults.set(
-            job.id,
-            finalizeResult(result, { forceStatus: "failed" }),
-          );
-          return nonRetryableFail(errorMessage(error));
-        }
-        const message = errorMessage(error);
+      if (outcome.kind === "per_file_fail") {
         console.error("[importFolder] per-file import failed", {
           jobId: job.id,
           vaultId,
           relativePath: file.relativePath,
-          error: message,
+          error: outcome.error,
         });
-        result.failedCount += 1;
-        pushFailureSample(result.failures, file.relativePath, message);
       }
 
-      await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
+      applyImportFolderFileOutcome(result, file, outcome);
+      if (outcome.kind !== "skipped_kind") {
+        await yieldToEventLoop(INDEX_SYNC_YIELD_MS);
+      }
     }
 
-    importFolderResults.set(job.id, finalizeResult(result));
+    importFolderResults.set(job.id, finalizeImportFolderResult(result));
     return { status: "ok" };
   };
 }
