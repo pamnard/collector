@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   itemGridCoverImgClassName,
+  itemGridCoverImgSizeAttrs,
+  itemGridCoverPixelSizeFromImg,
   itemGridCoverSlot,
+  itemGridCoverSlotAspectStyle,
 } from "./item-grid-cover-slot.ts";
 
 describe("itemGridCoverSlot", () => {
@@ -72,6 +75,43 @@ describe("itemGridCoverSlot", () => {
   });
 });
 
+describe("itemGridCoverPixelSizeFromImg", () => {
+  it("reads positive natural dimensions for reservation", () => {
+    assert.deepEqual(
+      itemGridCoverPixelSizeFromImg({ naturalWidth: 480, naturalHeight: 320 }),
+      { width: 480, height: 320 },
+    );
+  });
+
+  it("rejects non-positive natural dimensions", () => {
+    assert.throws(
+      () => itemGridCoverPixelSizeFromImg({ naturalWidth: 0, naturalHeight: 100 }),
+      /positive/,
+    );
+    assert.throws(
+      () => itemGridCoverPixelSizeFromImg({ naturalWidth: 100, naturalHeight: 0 }),
+      /positive/,
+    );
+  });
+});
+
+describe("itemGridCoverImgSizeAttrs", () => {
+  it("exposes explicit width/height attrs for unsized-images", () => {
+    assert.deepEqual(itemGridCoverImgSizeAttrs({ width: 400, height: 300 }), {
+      width: 400,
+      height: 300,
+    });
+  });
+});
+
+describe("itemGridCoverSlotAspectStyle", () => {
+  it("reserves layout via CSS aspect-ratio from pixel size", () => {
+    assert.deepEqual(itemGridCoverSlotAspectStyle({ width: 480, height: 640 }), {
+      aspectRatio: "480 / 640",
+    });
+  });
+});
+
 describe("itemGridCoverImgClassName", () => {
   it("takes the in-flight cover img out of layout flow", () => {
     const classes = itemGridCoverImgClassName({ loadCover: true });
@@ -81,11 +121,13 @@ describe("itemGridCoverImgClassName", () => {
     assert.doesNotMatch(classes, /\bh-auto\b/);
   });
 
-  it("lets the settled cover img own layout height", () => {
+  it("fills the reserved aspect slot instead of owning height via h-auto alone", () => {
     const classes = itemGridCoverImgClassName({ loadCover: false });
-    assert.match(classes, /\bh-auto\b/);
+    assert.match(classes, /\babsolute\b/);
+    assert.match(classes, /\binset-0\b/);
+    assert.match(classes, /\bh-full\b/);
     assert.match(classes, /\bw-full\b/);
-    assert.doesNotMatch(classes, /\babsolute\b/);
+    assert.doesNotMatch(classes, /\bh-auto\b/);
     assert.doesNotMatch(classes, /\bopacity-0\b/);
   });
 });
