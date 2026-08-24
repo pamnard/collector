@@ -78,6 +78,12 @@ run(
 );
 
 run(
+  "CodeMirror lazy-load guard (#803)",
+  "node",
+  ["--test", join(root, "scripts/assert-codemirror-lazy.test.mjs")],
+);
+
+run(
   "assert no leaked test-run processes",
   "node",
   [join(root, "scripts/assert-no-test-orphans.mjs")],

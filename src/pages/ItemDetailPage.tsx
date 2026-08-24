@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { MediaWithPath } from "@collector/core";
 import {
@@ -8,12 +8,12 @@ import {
 import { MoveItemDialog } from "../components/folders/MoveItemDialog";
 import { ItemDetailAside } from "../components/items/ItemDetailAside";
 import { ItemDetailInlineEditor } from "../components/items/ItemDetailInlineEditor";
-import { ItemDetailSourceEditor } from "../components/items/ItemDetailSourceEditor";
 import { ItemDetailViewBody } from "../components/items/ItemDetailViewBody";
 import { ItemRenameDialog } from "../components/items/ItemRenameDialog";
 import { useShell } from "../components/layout/AppLayout";
 import { MediaPlayerOverlay } from "../components/media/MediaPlayerOverlay";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
+import { Spinner } from "../components/ui/spinner";
 import { useFolderTree } from "../hooks/useFolderTree";
 import { useItemDetail } from "../hooks/useItemDetail";
 import { useItemDetailChrome } from "../hooks/useItemDetailChrome";
@@ -31,6 +31,12 @@ import {
 import { articleTocForView } from "../lib/markdown/article-toc";
 import { errorMessage } from "../services/runtime-error";
 import type { PlayableMediaKind } from "../utils/local-media-playback";
+
+const ItemDetailSourceEditor = lazy(() =>
+  import("../components/items/ItemDetailSourceEditor").then((m) => ({
+    default: m.ItemDetailSourceEditor,
+  })),
+);
 
 export function ItemDetailPage() {
   const navigate = useNavigate();
@@ -236,10 +242,18 @@ export function ItemDetailPage() {
               ) : isSourceMode && sourceText !== null ? (
                 <div className="min-w-0 @[1100px]:col-span-9">
                   <div className="mx-auto w-full max-w-[900px]">
-                    <ItemDetailSourceEditor
-                      value={sourceText}
-                      onChange={setSourceText}
-                    />
+                    <Suspense
+                      fallback={
+                        <div className="flex min-h-48 items-center justify-center">
+                          <Spinner className="size-5" />
+                        </div>
+                      }
+                    >
+                      <ItemDetailSourceEditor
+                        value={sourceText}
+                        onChange={setSourceText}
+                      />
+                    </Suspense>
                   </div>
                 </div>
               ) : null}

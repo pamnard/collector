@@ -1,6 +1,3 @@
-import { HighlightStyle } from "@codemirror/language";
-import { tags as t } from "@lezer/highlight";
-
 /** Shared token colors for dark theme (editor + markdown view). */
 export const darkSyntaxColors = {
   heading: "#e5e7eb",
@@ -38,31 +35,3 @@ export const lightSyntaxColors = {
   punctuation: "#475569",
   contentSeparator: "#6b7280",
 } as const;
-
-export const darkHighlightStyle = HighlightStyle.define([
-  { tag: t.heading, fontWeight: "700", color: darkSyntaxColors.heading },
-  { tag: t.strong, fontWeight: "700" },
-  { tag: t.emphasis, fontStyle: "italic" },
-  { tag: t.strikethrough, textDecoration: "line-through" },
-  { tag: t.link, color: darkSyntaxColors.link },
-  { tag: t.url, color: darkSyntaxColors.url },
-  { tag: t.monospace, color: darkSyntaxColors.monospace },
-  { tag: t.meta, color: darkSyntaxColors.meta },
-  { tag: t.keyword, color: darkSyntaxColors.keyword },
-  { tag: t.string, color: darkSyntaxColors.string },
-  { tag: t.number, color: darkSyntaxColors.number },
-  { tag: t.bool, color: darkSyntaxColors.bool },
-  { tag: t.atom, color: darkSyntaxColors.atom },
-  { tag: t.propertyName, color: darkSyntaxColors.propertyName },
-  {
-    tag: t.comment,
-    color: darkSyntaxColors.comment,
-    fontStyle: "italic",
-  },
-  {
-    tag: t.processingInstruction,
-    color: darkSyntaxColors.processingInstruction,
-  },
-  { tag: t.punctuation, color: darkSyntaxColors.punctuation },
-  { tag: t.contentSeparator, color: darkSyntaxColors.contentSeparator },
-]);
