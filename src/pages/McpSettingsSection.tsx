@@ -1,13 +1,17 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { COLLECTOR_MCP_TOOLS } from "@collector/mcp/tools-catalog";
 import { useAlerts } from "../components/alerts/AlertBusProvider";
 import { errorMessage } from "../components/alerts/alert-store";
-import { MarkdownPre } from "../components/content/MarkdownCodeBlock";
 import {
   buildMcpClientConfigJson,
   getMcpStdioCommand,
 } from "../services/mcp-setup";
 import { getCollectorService } from "../services/collector-client";
+
+const MarkdownPre = lazy(async () => {
+  const mod = await import("../components/content/MarkdownCodeBlock");
+  return { default: mod.MarkdownPre };
+});
 
 const MCP_ERROR_ID = "mcp-error";
 
@@ -78,9 +82,11 @@ export function McpSettingsSection() {
               Вставь этот JSON в настройки MCP.
             </p>
           </div>
-          <MarkdownPre>
-            <code className="language-json">{configJson}</code>
-          </MarkdownPre>
+          <Suspense fallback={null}>
+            <MarkdownPre>
+              <code className="language-json">{configJson}</code>
+            </MarkdownPre>
+          </Suspense>
         </div>
 
         <div className="p-4 space-y-3">

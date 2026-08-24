@@ -2,6 +2,8 @@ import { Check, Copy } from "lucide-react";
 import {
   Children,
   isValidElement,
+  lazy,
+  Suspense,
   useState,
   type ComponentPropsWithoutRef,
   type ReactElement,
@@ -9,8 +11,12 @@ import {
 } from "react";
 import { Button } from "../ui/button";
 import { useTheme } from "../../hooks/useTheme";
-import { MermaidDiagram } from "./MermaidDiagram";
 import { mermaidChromeStyle } from "./mermaid-editorial-theme";
+
+const MermaidDiagram = lazy(async () => {
+  const mod = await import("./MermaidDiagram");
+  return { default: mod.MermaidDiagram };
+});
 
 function extractText(node: ReactNode): string {
   if (typeof node === "string") {
@@ -115,7 +121,15 @@ export function MarkdownPre({
           <span className="markdown-mermaid-language">mermaid</span>
           <CopyCodeButton text={codeText} />
         </div>
-        <MermaidDiagram source={codeText} />
+        <Suspense
+          fallback={
+            <div className="markdown-mermaid-body custom-scrollbar" aria-busy="true">
+              <p className="markdown-mermaid-status">Загрузка диаграммы…</p>
+            </div>
+          }
+        >
+          <MermaidDiagram source={codeText} />
+        </Suspense>
       </div>
     );
   }
