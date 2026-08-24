@@ -84,7 +84,7 @@ export type ExecuteSettleDecision =
       action: "retry";
       error: string;
       burnAttempt: boolean;
-      /** Absolute ISO available_at; null means use now. */
+      /** Delay before retry; null means available immediately (now). */
       availableAtOffsetMs: number | null;
     };
 

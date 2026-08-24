@@ -1,6 +1,6 @@
 /**
  * Pure poll-loop helpers for {@link createJobPoll} (#793).
- * Phases: claim capacity → run tracking → settle schedule → retry wake.
+ * Phases: claim capacity → run tracking → settle schedule (retry via wake).
  */
 
 export function canClaimMore(input: {
@@ -44,9 +44,4 @@ export function settlePollTick(input: {
     return { kind: "heartbeat", delayMs: input.pollIntervalMs };
   }
   return { kind: "none" };
-}
-
-/** Job settled → wake poll to fill free slots (unless stopped). */
-export function shouldRetryPollAfterJobSettled(isStopped: boolean): boolean {
-  return !isStopped;
 }

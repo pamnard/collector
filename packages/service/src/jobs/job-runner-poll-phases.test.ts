@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   canClaimMore,
   settlePollTick,
-  shouldRetryPollAfterJobSettled,
   shouldSkipVaultMutatingBulk,
 } from "./job-runner-poll-phases.js";
 
@@ -75,13 +74,6 @@ describe("job-runner-poll-phases (#793)", () => {
           pollIntervalMs: 500,
         }),
       ).toEqual({ kind: "none" });
-    });
-  });
-
-  describe("shouldRetryPollAfterJobSettled", () => {
-    it("retries wake only while running", () => {
-      expect(shouldRetryPollAfterJobSettled(false)).toBe(true);
-      expect(shouldRetryPollAfterJobSettled(true)).toBe(false);
     });
   });
 });

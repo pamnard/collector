@@ -4,7 +4,6 @@ import type { ExecuteJob } from "./job-runner-execute.js";
 import {
   canClaimMore,
   settlePollTick,
-  shouldRetryPollAfterJobSettled,
   shouldSkipVaultMutatingBulk,
 } from "./job-runner-poll-phases.js";
 
@@ -91,9 +90,8 @@ export function createJobPoll(deps: {
         vaultMutatingBulkJobsInFlight -= 1;
       }
       onActivity?.();
-      if (shouldRetryPollAfterJobSettled(isStopped())) {
-        wake();
-      }
+      // wake() no-ops when stopped.
+      wake();
     });
     inFlight.add(run);
   }

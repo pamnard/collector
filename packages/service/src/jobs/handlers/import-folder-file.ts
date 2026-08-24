@@ -88,7 +88,7 @@ export async function importOneFolderFile(input: {
         },
       ],
     });
-    return { kind: "imported", createdIds: [...imported.createdIds] };
+    return { kind: "imported", createdIds: imported.createdIds };
   } catch (error) {
     if (isFatalImportFolderError(error)) {
       return { kind: "fatal", error: importFolderErrorMessage(error) };

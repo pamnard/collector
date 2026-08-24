@@ -64,6 +64,12 @@ function nonRetryableFail(error: string): JobHandlerResult {
   return { status: "fail", retryable: false, error };
 }
 
+function logImportFolderFatal(
+  fields: Record<string, string>,
+): void {
+  console.error("[importFolder] fatal infrastructure error", fields);
+}
+
 async function validateImportFolderSource(
   sourceDirAbs: string,
 ): Promise<JobHandlerResult | null> {
@@ -109,14 +115,11 @@ export function createImportFolderHandler(deps: {
       }
       await deps.assertActiveVault(vaultId);
     } catch (error) {
+      const message = importFolderErrorMessage(error);
       if (isFatalImportFolderError(error)) {
-        console.error("[importFolder] fatal infrastructure error", {
-          jobId: job.id,
-          vaultId,
-          error: importFolderErrorMessage(error),
-        });
+        logImportFolderFatal({ jobId: job.id, vaultId, error: message });
       }
-      return nonRetryableFail(importFolderErrorMessage(error));
+      return nonRetryableFail(message);
     }
 
     const result = emptyMutableImportFolderResult();
@@ -124,12 +127,9 @@ export function createImportFolderHandler(deps: {
     try {
       files = await listImportFolderSourceFiles(sourceDirAbs);
     } catch (error) {
-      console.error("[importFolder] fatal infrastructure error", {
-        jobId: job.id,
-        vaultId,
-        error: importFolderErrorMessage(error),
-      });
-      return nonRetryableFail(importFolderErrorMessage(error));
+      const message = importFolderErrorMessage(error);
+      logImportFolderFatal({ jobId: job.id, vaultId, error: message });
+      return nonRetryableFail(message);
     }
 
     const folder_path = targetFolderPath?.trim() || undefined;
@@ -145,7 +145,7 @@ export function createImportFolderHandler(deps: {
       });
 
       if (outcome.kind === "fatal") {
-        console.error("[importFolder] fatal infrastructure error", {
+        logImportFolderFatal({
           jobId: job.id,
           vaultId,
           relativePath: file.relativePath,
