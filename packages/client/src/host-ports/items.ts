@@ -28,6 +28,7 @@ import type { HostWireClient } from "@collector/service/wire";
 import { bytesToBase64 } from "../bytes-to-base64.js";
 import type { HostSessionCtx } from "../host-session-ctx.js";
 import { hydrateHostItems } from "./items-hydrate.js";
+import { createLinkedAbortController } from "./subscribe-helpers.js";
 
 /** Thin query/search RPC wrappers. */
 function createItemsQueryMethods(
@@ -105,16 +106,7 @@ function createItemsDashboardMethods(
       signal?: AbortSignal,
       sort?: DashboardItemSort,
     ): Subscription {
-      const controller = new AbortController();
-      if (signal) {
-        if (signal.aborted) {
-          controller.abort();
-        } else {
-          signal.addEventListener("abort", () => controller.abort(), {
-            once: true,
-          });
-        }
-      }
+      const controller = createLinkedAbortController(signal);
       const active = controller.signal;
       void (async () => {
         try {

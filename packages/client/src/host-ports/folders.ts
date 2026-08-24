@@ -12,55 +12,12 @@ import {
 import type { ItemFile } from "@collector/shared";
 import { SERVICE_HOST_EVENTS } from "@collector/service/wire";
 import type { HostSessionCtx } from "../host-session-ctx.js";
+import {
+  createLinkedAbortController,
+  createThrottledPublisher,
+} from "./subscribe-helpers.js";
 
 const FOLDER_TREE_SYNC_REPUBLISH_MS = 500;
-
-function createThrottledPublisher(
-  fn: () => void,
-  intervalMs: number,
-): { schedule: () => void; flush: () => void; cancel: () => void } {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  let lastRun = 0;
-
-  const run = () => {
-    lastRun = Date.now();
-    fn();
-  };
-
-  return {
-    schedule() {
-      const elapsed = Date.now() - lastRun;
-      if (elapsed >= intervalMs) {
-        if (timer) {
-          clearTimeout(timer);
-          timer = null;
-        }
-        run();
-        return;
-      }
-      if (timer) {
-        return;
-      }
-      timer = setTimeout(() => {
-        timer = null;
-        run();
-      }, intervalMs - elapsed);
-    },
-    flush() {
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
-      run();
-    },
-    cancel() {
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
-    },
-  };
-}
 
 export function createHostFoldersPort(ctx: HostSessionCtx): FoldersPort {
   const { transport } = ctx;
@@ -70,16 +27,7 @@ export function createHostFoldersPort(ctx: HostSessionCtx): FoldersPort {
       handlers?: ServiceSubscribeHandlers,
       signal?: AbortSignal,
     ): Subscription {
-      const controller = new AbortController();
-      if (signal) {
-        if (signal.aborted) {
-          controller.abort();
-        } else {
-          signal.addEventListener("abort", () => controller.abort(), {
-            once: true,
-          });
-        }
-      }
+      const controller = createLinkedAbortController(signal);
       const active = controller.signal;
       let lastStatus: VaultIndexSyncStatus["status"] | null = null;
 

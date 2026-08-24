@@ -10,6 +10,7 @@ import {
 } from "@collector/api";
 import type { Tag } from "@collector/shared";
 import type { HostSessionCtx } from "../host-session-ctx.js";
+import { createLinkedAbortController } from "./subscribe-helpers.js";
 
 export function createHostTagsPort(ctx: HostSessionCtx): TagsPort {
   const { transport } = ctx;
@@ -19,16 +20,7 @@ export function createHostTagsPort(ctx: HostSessionCtx): TagsPort {
       handlers?: ServiceSubscribeHandlers,
       signal?: AbortSignal,
     ): Subscription {
-      const controller = new AbortController();
-      if (signal) {
-        if (signal.aborted) {
-          controller.abort();
-        } else {
-          signal.addEventListener("abort", () => controller.abort(), {
-            once: true,
-          });
-        }
-      }
+      const controller = createLinkedAbortController(signal);
       const active = controller.signal;
       void (async () => {
         try {
