@@ -16,10 +16,11 @@ export function collectFolderPaths(paths: string[]): string[] {
       continue;
     }
 
-    collected.add(normalized);
     const parts = normalized.split("/");
-    for (let index = 1; index < parts.length; index += 1) {
-      collected.add(parts.slice(0, index).join("/"));
+    let current = "";
+    for (const part of parts) {
+      current = current ? `${current}/${part}` : part;
+      collected.add(current);
     }
   }
 
