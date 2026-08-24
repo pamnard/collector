@@ -19,7 +19,6 @@ import type {
   WaitDerivedResult,
 } from "@collector/api";
 import {
-  asCollectorApiError,
   DASHBOARD_PREFETCH_SIZE,
   subscriptionFromTeardown,
 } from "@collector/api";
@@ -28,6 +27,10 @@ import type { HostWireClient } from "@collector/service/wire";
 import { bytesToBase64 } from "../bytes-to-base64.js";
 import type { HostSessionCtx } from "../host-session-ctx.js";
 import { hydrateHostItems } from "./items-hydrate.js";
+import {
+  voidSubscribePublish,
+  withAbortBridge,
+} from "./subscribe-helpers.js";
 
 /** Thin query/search RPC wrappers. */
 function createItemsQueryMethods(
@@ -105,22 +108,10 @@ function createItemsDashboardMethods(
       signal?: AbortSignal,
       sort?: DashboardItemSort,
     ): Subscription {
-      const controller = new AbortController();
-      if (signal) {
-        if (signal.aborted) {
-          controller.abort();
-        } else {
-          signal.addEventListener("abort", () => controller.abort(), {
-            once: true,
-          });
-        }
-      }
-      const active = controller.signal;
-      void (async () => {
-        try {
-          if (active.aborted) {
-            return;
-          }
+      const { signal: active, dispose } = withAbortBridge(signal);
+      voidSubscribePublish(
+        active,
+        async () => {
           const page = (await transport.request("fetchDashboardIndexPage", {
             filter,
             query,
@@ -132,13 +123,11 @@ function createItemsDashboardMethods(
           }
           handlers.onIndexPage(page);
           handlers.onLoadComplete?.();
-        } catch (error: unknown) {
-          if (!active.aborted) {
-            handlers.onError?.("dashboard load", asCollectorApiError(error));
-          }
-        }
-      })();
-      return subscriptionFromTeardown(() => controller.abort());
+        },
+        handlers,
+        "dashboard load",
+      );
+      return subscriptionFromTeardown(dispose);
     },
     streamDashboardItems: async (
       itemIds: string[],
