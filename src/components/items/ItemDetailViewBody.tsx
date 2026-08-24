@@ -1,7 +1,11 @@
-import type { ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import type { ItemFile } from "@collector/shared";
-import { MarkdownContent } from "../content/MarkdownContent";
 import { ItemDetailHero } from "./ItemDetailHero";
+
+const MarkdownContent = lazy(async () => {
+  const mod = await import("../content/MarkdownContent");
+  return { default: mod.MarkdownContent };
+});
 
 type ItemDetailViewBodyProps = {
   item: ItemFile;
@@ -36,7 +40,9 @@ export function ItemDetailViewBody({
         {content && (
           <section className="min-w-0">
             <div className="mx-auto w-full max-w-[900px]">
-              <MarkdownContent itemId={item.id} content={content} />
+              <Suspense fallback={null}>
+                <MarkdownContent itemId={item.id} content={content} />
+              </Suspense>
             </div>
           </section>
         )}
