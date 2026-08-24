@@ -70,36 +70,46 @@ describe("createJobPoll", () => {
         return bulkJob;
       },
     );
+    let resolveExecute: (() => void) | undefined;
     const executeJob = vi.fn(
       () =>
-        new Promise<void>(() => {
-          /* hang so the bulk slot stays held for this tick */
+        new Promise<void>((resolve) => {
+          resolveExecute = resolve;
         }),
     );
 
+    let stopped = false;
     const poll = createJobPoll({
       store: { claimNext, releaseClaim: vi.fn() } as never,
       concurrency: 2,
       pollIntervalMs: 1000,
       now: () => new Date("2020-01-01T00:00:00.000Z"),
       executeJob,
-      isStopped: () => false,
+      isStopped: () => stopped,
     });
 
-    await poll.runTick();
+    try {
+      await poll.runTick();
+      // claimed>0 && inFlight < concurrency arms schedulePoll(0); disarm before asserts.
+      poll.clearPollTimer();
 
-    expect(executeJob).toHaveBeenCalledTimes(1);
-    expect(claimNext).toHaveBeenCalledTimes(2);
-    expect(claimNext).toHaveBeenNthCalledWith(
-      1,
-      "2020-01-01T00:00:00.000Z",
-      { skipVaultMutatingBulkJobs: false },
-    );
-    expect(claimNext).toHaveBeenNthCalledWith(
-      2,
-      "2020-01-01T00:00:00.000Z",
-      { skipVaultMutatingBulkJobs: true },
-    );
+      expect(executeJob).toHaveBeenCalledTimes(1);
+      expect(claimNext).toHaveBeenCalledTimes(2);
+      expect(claimNext).toHaveBeenNthCalledWith(
+        1,
+        "2020-01-01T00:00:00.000Z",
+        { skipVaultMutatingBulkJobs: false },
+      );
+      expect(claimNext).toHaveBeenNthCalledWith(
+        2,
+        "2020-01-01T00:00:00.000Z",
+        { skipVaultMutatingBulkJobs: true },
+      );
+    } finally {
+      stopped = true;
+      poll.clearPollTimer();
+      resolveExecute?.();
+    }
   });
 
   it("wake is a no-op after stop", async () => {

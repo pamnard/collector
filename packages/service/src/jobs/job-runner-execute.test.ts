@@ -218,35 +218,42 @@ describe("createExecuteJob (#798 / #793 seam)", () => {
   });
 
   it("uses per-type timeoutMs instead of the queue default", async () => {
-    const slowType = defineJobType({
-      id: "__test_slow_timeout",
-      payload: z.object({}),
-      timeoutMs: 80,
-    });
-    const applyRetry = vi.fn(async () => undefined);
-    const registry = createJobRegistry([slowType]);
-    registry.register(slowType, async () => {
-      await new Promise((r) => setTimeout(r, 200));
-      return { status: "ok" };
-    });
+    vi.useFakeTimers();
+    try {
+      const slowType = defineJobType({
+        id: "__test_slow_timeout",
+        payload: z.object({}),
+        timeoutMs: 80,
+      });
+      const applyRetry = vi.fn(async () => undefined);
+      const registry = createJobRegistry([slowType]);
+      registry.register(slowType, async () => {
+        await new Promise((r) => setTimeout(r, 200));
+        return { status: "ok" };
+      });
 
-    const executeJob = createExecuteJob({
-      store: {} as never,
-      registry,
-      timeoutMs: 5_000,
-      now,
-      applyRetry,
-      reportPermanentFailure: vi.fn(),
-    });
+      const executeJob = createExecuteJob({
+        store: {} as never,
+        registry,
+        timeoutMs: 5_000,
+        now,
+        applyRetry,
+        reportPermanentFailure: vi.fn(),
+      });
 
-    await executeJob(
-      baseJob({ type: "__test_slow_timeout", payload_json: "{}" }),
-    );
+      const done = executeJob(
+        baseJob({ type: "__test_slow_timeout", payload_json: "{}" }),
+      );
+      await vi.advanceTimersByTimeAsync(80);
+      await done;
 
-    expect(applyRetry).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "__test_slow_timeout" }),
-      expect.stringMatching(/timed out after 80ms/),
-      expect.objectContaining({ burnAttempt: true }),
-    );
+      expect(applyRetry).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "__test_slow_timeout" }),
+        expect.stringMatching(/timed out after 80ms/),
+        expect.objectContaining({ burnAttempt: true }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
