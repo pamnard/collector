@@ -1,87 +1,128 @@
-import type {
-  ItemFile,
-  MediaFileMeta,
-  Tag,
-  VaultMeta,
-} from "@collector/shared";
-import type { SqlExecutor, SqlReader } from "@collector/db";
+/**
+ * Thin compose façade for the SQL vault index (#792).
+ * Domain logic lives in `sql-index-ports/`; query/rewrite modules stay the SQL home.
+ */
+import type { Tag } from "@collector/shared";
 import type {
   IndexedItem,
-  IndexedItemMetadata,
   ItemContentUpsert,
-  AdjacentItemAnchor,
-  AdjacentItemsResult,
-  ItemIdListOptions,
-  ItemIdPageOptions,
   ItemIdRewriteMapping,
-  ItemSyncMetaPatch,
-  ReconcileFingerprint,
   VaultIndexAdapter,
 } from "../adapters/types.js";
-import type { NavSearchFilter } from "../search/nav-filter.js";
-import { INDEX_SYNC_WRITE_BATCH } from "../util/concurrency.js";
-import { serializeReconcileFingerprint } from "../vault/reconcile-fingerprint.js";
+import { createCatalogStorePort } from "./sql-index-ports/catalog.js";
 import {
-  replaceItemCollections,
-  replaceItemTags,
-  serializeMetadata,
-  serializeProperties,
-  sqlCollectionStubPlaceholders,
-  sqlInPlaceholders,
-  SQL_INSERT_CHUNK,
-  sqlRowPlaceholders,
-} from "./sql-index-helpers.js";
-import * as indexQueries from "./sql-index-queries.js";
-import { rewriteItemIds as rewriteItemIdsImpl } from "./sql-index-rewrite.js";
+  createEdgesStorePort,
+  edgesSelectStubs,
+} from "./sql-index-ports/edges.js";
+import { createItemsPort } from "./sql-index-ports/items.js";
+import { createMediaPort } from "./sql-index-ports/media.js";
+import { createNavStorePort, navSelectStubs } from "./sql-index-ports/nav.js";
 import {
-  invalidateAllVaultIdTitleCatalogs,
-  invalidateVaultIdTitleCatalog,
-  loadVaultIdTitleCatalog,
-} from "../links/vault-id-title-catalog.js";
+  createSyncStorePort,
+  createSyncWritePort,
+  syncSelectStubs,
+} from "./sql-index-ports/sync.js";
 import {
-  addUserEdge as addUserEdgeImpl,
-  listTextBacklinkSources as listTextBacklinkSourcesImpl,
-  listUserEdges as listUserEdgesImpl,
-  rebuildVaultTextEdges as rebuildVaultTextEdgesImpl,
-  removeUserEdge as removeUserEdgeImpl,
-  replaceTextEdgesForItem as replaceTextEdgesForItemImpl,
-} from "../edges/sql-item-edges.js";
+  createTagsPort,
+  upsertTagPreferringDiskId,
+} from "./sql-index-ports/tags.js";
+import type { SqlIndexDb, SqlIndexStoreDb } from "./sql-index-ports/types.js";
+import { createVaultPort } from "./sql-index-ports/vault.js";
 
-type TagWithCount = Tag & { item_count: number };
-
-type SqlIndexDb = SqlExecutor & SqlReader;
+export type {
+  SqlIndexDb,
+  SqlSelectRow,
+  SqlSelector,
+  TagWithCount,
+} from "./sql-index-ports/types.js";
 
 export class SqlVaultIndexAdapter implements VaultIndexAdapter {
-  constructor(private readonly db: SqlIndexDb) {}
+  // Instance method fields: Store reassigns select/edge ports after super().
+  upsertVault;
+  deleteVault;
+  upsertItemMetadata;
+  upsertItemMetadataBatch;
+  upsertItemContent;
+  upsertItemContentBatch;
+  upsertMedia;
+  deleteMedia;
+  deleteMediaForItem;
+  deleteItemsBatch;
+  rewriteItemIds;
+  upsertTag;
+  deleteTag;
+  listTagsWithCounts;
+  listItemIdsByTag;
+  listItemIdsByFolderPrefix;
+  getAdjacentItems;
+  listItemIdsByNavFilter;
+  countItemIdsByNavFilter;
+  listFolderItemCounts;
+  listVaultItemIds;
+  listItemFilesByIds;
+  listItemPresentationStampsByIds;
+  patchItemSyncMeta;
+  patchItemSyncMetaBatch;
+  getReconcileFingerprint;
+  setReconcileFingerprint;
+  listVaultItemSyncMeta;
+  listItemSyncMetaByIds;
+  searchItemIds;
+  countSearchItemIds;
+  rebuildVaultTextEdges;
+  addUserEdge;
+  removeUserEdge;
+  listUserEdges;
+  listTextBacklinkSources;
 
-  async upsertVault(meta: VaultMeta, vaultPath: string): Promise<void> {
-    await this.db.execute(
-      `INSERT INTO vaults (
-        id, path, name, description, is_default, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        path = excluded.path,
-        name = excluded.name,
-        description = excluded.description,
-        is_default = excluded.is_default,
-        updated_at = excluded.updated_at`,
-      [
-        meta.id,
-        vaultPath,
-        meta.name,
-        meta.description,
-        meta.is_default ? 1 : 0,
-        meta.created_at,
-        meta.updated_at,
-      ],
-    );
+  constructor(db: SqlIndexDb) {
+    const vault = createVaultPort(db);
+    const items = createItemsPort(db);
+    const media = createMediaPort(db);
+    const tags = createTagsPort(db);
+    const sync = createSyncWritePort(db);
+
+    this.upsertVault = vault.upsertVault;
+    this.deleteVault = vault.deleteVault;
+    this.upsertItemMetadata = items.upsertItemMetadata;
+    this.upsertItemMetadataBatch = items.upsertItemMetadataBatch;
+    this.upsertItemContent = items.upsertItemContent;
+    this.upsertItemContentBatch = items.upsertItemContentBatch;
+    this.upsertMedia = media.upsertMedia;
+    this.deleteMedia = media.deleteMedia;
+    this.deleteMediaForItem = media.deleteMediaForItem;
+    this.deleteItemsBatch = items.deleteItemsBatch;
+    this.upsertTag = tags.upsertTag;
+    this.deleteTag = tags.deleteTag;
+    this.patchItemSyncMeta = sync.patchItemSyncMeta;
+    this.patchItemSyncMetaBatch = sync.patchItemSyncMetaBatch;
+    this.setReconcileFingerprint = sync.setReconcileFingerprint;
+
+    this.rewriteItemIds = edgesSelectStubs.rewriteItemIds;
+    this.listTagsWithCounts = navSelectStubs.listTagsWithCounts;
+    this.listItemIdsByTag = navSelectStubs.listItemIdsByTag;
+    this.listItemIdsByFolderPrefix = navSelectStubs.listItemIdsByFolderPrefix;
+    this.getAdjacentItems = navSelectStubs.getAdjacentItems;
+    this.listItemIdsByNavFilter = navSelectStubs.listItemIdsByNavFilter;
+    this.countItemIdsByNavFilter = navSelectStubs.countItemIdsByNavFilter;
+    this.listFolderItemCounts = navSelectStubs.listFolderItemCounts;
+    this.listVaultItemIds = navSelectStubs.listVaultItemIds;
+    this.listItemFilesByIds = navSelectStubs.listItemFilesByIds;
+    this.listItemPresentationStampsByIds =
+      navSelectStubs.listItemPresentationStampsByIds;
+    this.getReconcileFingerprint = syncSelectStubs.getReconcileFingerprint;
+    this.listVaultItemSyncMeta = syncSelectStubs.listVaultItemSyncMeta;
+    this.listItemSyncMetaByIds = syncSelectStubs.listItemSyncMetaByIds;
+    this.searchItemIds = navSelectStubs.searchItemIds;
+    this.countSearchItemIds = navSelectStubs.countSearchItemIds;
+    this.rebuildVaultTextEdges = edgesSelectStubs.rebuildVaultTextEdges;
+    this.addUserEdge = edgesSelectStubs.addUserEdge;
+    this.removeUserEdge = edgesSelectStubs.removeUserEdge;
+    this.listUserEdges = edgesSelectStubs.listUserEdges;
+    this.listTextBacklinkSources = edgesSelectStubs.listTextBacklinkSources;
   }
 
-  async deleteVault(vaultId: string): Promise<void> {
-    await this.db.execute("DELETE FROM vaults WHERE id = ?", [vaultId]);
-    invalidateVaultIdTitleCatalog(this.db, vaultId);
-  }
-
+  /** Polymorphic: Store overrides `upsertItemContent` for text-edge sync. */
   async upsertItem(record: IndexedItem, vaultId: string): Promise<void> {
     await this.upsertItemMetadata(
       { item: record.item, fileMtimeMs: record.fileMtimeMs },
@@ -97,1012 +138,68 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     });
   }
 
-  async upsertItemMetadata(
-    record: IndexedItemMetadata,
-    vaultId: string,
-  ): Promise<void> {
-    const { item } = record;
-
-    const previous = await this.db.select<{ vault_id: string }>(
-      "SELECT vault_id FROM items WHERE id = ?",
-      [item.id],
-    );
-
-    // No multi-statement BEGIN/COMMIT across pooled executes (#49/#77).
-    await this.db.execute(
-      `INSERT INTO items (
-        id, vault_id, title, description, url, content_type, source_type, source_id,
-        metadata_json, properties_json, thumbnail_path, has_content_file,
-        folder_path, created_at, updated_at, file_mtime_ms, content_revision,
-        word_count, character_count
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        vault_id = excluded.vault_id,
-        title = excluded.title,
-        description = excluded.description,
-        url = excluded.url,
-        content_type = excluded.content_type,
-        source_type = excluded.source_type,
-        source_id = excluded.source_id,
-        metadata_json = excluded.metadata_json,
-        properties_json = excluded.properties_json,
-        thumbnail_path = excluded.thumbnail_path,
-        folder_path = excluded.folder_path,
-        created_at = excluded.created_at,
-        updated_at = excluded.updated_at,
-        file_mtime_ms = excluded.file_mtime_ms,
-        content_revision = excluded.content_revision,
-        word_count = excluded.word_count,
-        character_count = excluded.character_count`,
-      [
-        item.id,
-        vaultId,
-        item.title,
-        item.description,
-        item.url ?? null,
-        item.content_type,
-        item.source_type,
-        item.source_id ?? null,
-        serializeMetadata(item.metadata),
-        serializeProperties(item.properties),
-        item.thumbnail ?? null,
-        0,
-        item.folder_path ?? "",
-        item.created_at,
-        item.updated_at,
-        record.fileMtimeMs ?? null,
-        item.content_revision,
-        item.word_count,
-        item.character_count,
-      ],
-    );
-
-    await replaceItemTags(this.db, item.id, item.tag_ids);
-    await replaceItemCollections(
-      this.db,
-      item.id,
-      vaultId,
-      item.collection_ids,
-      item.created_at,
-      item.updated_at,
-    );
-
-    // FTS document is written only by upsertItemContent after the content read.
-    // ON CONFLICT may change vault_id — invalidate both previous and new vault.
-    invalidateVaultIdTitleCatalog(this.db, vaultId);
-    const previousVaultId = previous[0]?.vault_id;
-    if (previousVaultId !== undefined && previousVaultId !== vaultId) {
-      invalidateVaultIdTitleCatalog(this.db, previousVaultId);
-    }
-  }
-
-  async upsertItemMetadataBatch(
-    records: IndexedItemMetadata[],
-    vaultId: string,
-  ): Promise<void> {
-    const previousVaultIds = new Set<string>();
-    const allItemIds = records.map((record) => record.item.id);
-    for (
-      let offset = 0;
-      offset < allItemIds.length;
-      offset += SQL_INSERT_CHUNK
-    ) {
-      const idChunk = allItemIds.slice(offset, offset + SQL_INSERT_CHUNK);
-      if (idChunk.length === 0) {
-        continue;
-      }
-      const previousRows = await this.db.select<{ vault_id: string }>(
-        `SELECT vault_id FROM items WHERE id IN (${sqlInPlaceholders(idChunk.length)})`,
-        idChunk,
-      );
-      for (const row of previousRows) {
-        if (row.vault_id !== vaultId) {
-          previousVaultIds.add(row.vault_id);
-        }
-      }
-    }
-
-    for (
-      let offset = 0;
-      offset < records.length;
-      offset += INDEX_SYNC_WRITE_BATCH
-    ) {
-      const chunk = records.slice(offset, offset + INDEX_SYNC_WRITE_BATCH);
-      const itemBinds: unknown[] = [];
-      const itemIds: string[] = [];
-      const tagLinks: Array<{ itemId: string; tagId: string }> = [];
-      const collectionLinks: Array<{
-        itemId: string;
-        collectionId: string;
-        createdAt: string;
-        updatedAt: string;
-      }> = [];
-
-      for (const record of chunk) {
-        const { item } = record;
-        itemIds.push(item.id);
-        itemBinds.push(
-          item.id,
-          vaultId,
-          item.title,
-          item.description,
-          item.url ?? null,
-          item.content_type,
-          item.source_type,
-          item.source_id ?? null,
-          serializeMetadata(item.metadata),
-          serializeProperties(item.properties),
-          item.thumbnail ?? null,
-          0,
-          item.folder_path ?? "",
-          item.created_at,
-          item.updated_at,
-          record.fileMtimeMs ?? null,
-          item.content_revision,
-          item.word_count,
-          item.character_count,
-        );
-        for (const tagId of item.tag_ids) {
-          tagLinks.push({ itemId: item.id, tagId });
-        }
-        for (const collectionId of item.collection_ids) {
-          collectionLinks.push({
-            itemId: item.id,
-            collectionId,
-            createdAt: item.created_at,
-            updatedAt: item.updated_at,
-          });
-        }
-      }
-
-      await this.db.execute(
-        `INSERT INTO items (
-          id, vault_id, title, description, url, content_type, source_type, source_id,
-          metadata_json, properties_json, thumbnail_path, has_content_file,
-          folder_path, created_at, updated_at, file_mtime_ms, content_revision,
-          word_count, character_count
-        ) VALUES ${sqlRowPlaceholders(chunk.length, 19)}
-        ON CONFLICT(id) DO UPDATE SET
-          vault_id = excluded.vault_id,
-          title = excluded.title,
-          description = excluded.description,
-          url = excluded.url,
-          content_type = excluded.content_type,
-          source_type = excluded.source_type,
-          source_id = excluded.source_id,
-          metadata_json = excluded.metadata_json,
-          properties_json = excluded.properties_json,
-          thumbnail_path = excluded.thumbnail_path,
-          folder_path = excluded.folder_path,
-          created_at = excluded.created_at,
-          updated_at = excluded.updated_at,
-          file_mtime_ms = excluded.file_mtime_ms,
-          content_revision = excluded.content_revision,
-          word_count = excluded.word_count,
-          character_count = excluded.character_count`,
-        itemBinds,
-      );
-
-      await this.db.execute(
-        `DELETE FROM item_tags WHERE item_id IN (${sqlInPlaceholders(itemIds.length)})`,
-        itemIds,
-      );
-      for (let linkOffset = 0; linkOffset < tagLinks.length; linkOffset += SQL_INSERT_CHUNK) {
-        const links = tagLinks.slice(linkOffset, linkOffset + SQL_INSERT_CHUNK);
-        await this.db.execute(
-          `INSERT INTO item_tags (item_id, tag_id) VALUES ${sqlRowPlaceholders(links.length, 2)}`,
-          links.flatMap((link) => [link.itemId, link.tagId]),
-        );
-      }
-
-      await this.db.execute(
-        `DELETE FROM item_collections WHERE item_id IN (${sqlInPlaceholders(itemIds.length)})`,
-        itemIds,
-      );
-      for (
-        let linkOffset = 0;
-        linkOffset < collectionLinks.length;
-        linkOffset += SQL_INSERT_CHUNK
-      ) {
-        const links = collectionLinks.slice(
-          linkOffset,
-          linkOffset + SQL_INSERT_CHUNK,
-        );
-        await this.db.execute(
-          `INSERT INTO collections (
-            id, vault_id, parent_id, name, description, created_at, updated_at
-          ) VALUES ${sqlCollectionStubPlaceholders(links.length)}
-          ON CONFLICT(id) DO NOTHING`,
-          links.flatMap((link) => [
-            link.collectionId,
-            vaultId,
-            link.collectionId,
-            link.createdAt,
-            link.updatedAt,
-          ]),
-        );
-        await this.db.execute(
-          `INSERT INTO item_collections (item_id, collection_id)
-           VALUES ${sqlRowPlaceholders(links.length, 2)}`,
-          links.flatMap((link) => [link.itemId, link.collectionId]),
-        );
-      }
-    }
-    invalidateVaultIdTitleCatalog(this.db, vaultId);
-    for (const previousVaultId of previousVaultIds) {
-      invalidateVaultIdTitleCatalog(this.db, previousVaultId);
-    }
-  }
-
-  async upsertItemContent(input: ItemContentUpsert): Promise<void> {
-    const { itemId, title, description, content, hasContentFile, sourceRef } =
-      input;
-
-    await this.db.execute(
-      "UPDATE items SET has_content_file = ? WHERE id = ?",
-      [hasContentFile ? 1 : 0, itemId],
-    );
-
-    await this.db.execute("DELETE FROM items_fts WHERE item_id = ?", [itemId]);
-    await this.db.execute(
-      "INSERT INTO items_fts (item_id, title, description, content) VALUES (?, ?, ?, ?)",
-      [itemId, title, description, content ?? ""],
-    );
-
-    if (sourceRef) {
-      await this.db.execute("DELETE FROM source_refs WHERE item_id = ?", [
-        itemId,
-      ]);
-      await this.db.execute(
-        "DELETE FROM source_refs WHERE plugin_id = ? AND external_id = ?",
-        [sourceRef.plugin_id, sourceRef.external_id],
-      );
-      await this.db.execute(
-        `INSERT INTO source_refs (
-          id, item_id, plugin_id, external_id, synced_at, metadata_json
-        ) VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-          crypto.randomUUID(),
-          itemId,
-          sourceRef.plugin_id,
-          sourceRef.external_id,
-          sourceRef.synced_at ?? null,
-          serializeMetadata(sourceRef.metadata ?? {}),
-        ],
-      );
-    }
-  }
-
-  async upsertItemContentBatch(inputs: ItemContentUpsert[]): Promise<void> {
-    for (
-      let offset = 0;
-      offset < inputs.length;
-      offset += INDEX_SYNC_WRITE_BATCH
-    ) {
-      const chunk = inputs.slice(offset, offset + INDEX_SYNC_WRITE_BATCH);
-      const itemIds = chunk.map((input) => input.itemId);
-      const hasContentBinds: unknown[] = [];
-      for (const input of chunk) {
-        hasContentBinds.push(input.itemId, input.hasContentFile ? 1 : 0);
-      }
-      await this.db.execute(
-        `UPDATE items
-         SET has_content_file = CASE id ${chunk.map(() => "WHEN ? THEN ?").join(" ")} END
-         WHERE id IN (${sqlInPlaceholders(itemIds.length)})`,
-        [...hasContentBinds, ...itemIds],
-      );
-
-      await this.db.execute(
-        `DELETE FROM items_fts WHERE item_id IN (${sqlInPlaceholders(itemIds.length)})`,
-        itemIds,
-      );
-      await this.db.execute(
-        `INSERT INTO items_fts (item_id, title, description, content)
-         VALUES ${sqlRowPlaceholders(chunk.length, 4)}`,
-        chunk.flatMap((input) => [
-          input.itemId,
-          input.title,
-          input.description,
-          input.content ?? "",
-        ]),
-      );
-
-      const inputsWithSourceRefs = chunk.filter(
-        (input): input is ItemContentUpsert & { sourceRef: NonNullable<ItemContentUpsert["sourceRef"]> } =>
-          input.sourceRef !== null,
-      );
-      if (inputsWithSourceRefs.length === 0) {
-        continue;
-      }
-
-      await this.db.execute(
-        `DELETE FROM source_refs WHERE item_id IN (${sqlInPlaceholders(inputsWithSourceRefs.length)})`,
-        inputsWithSourceRefs.map((input) => input.itemId),
-      );
-      await this.db.execute(
-        `DELETE FROM source_refs
-         WHERE (plugin_id, external_id) IN (${sqlRowPlaceholders(inputsWithSourceRefs.length, 2)})`,
-        inputsWithSourceRefs.flatMap((input) => [
-          input.sourceRef.plugin_id,
-          input.sourceRef.external_id,
-        ]),
-      );
-
-      const latestByExternalRef = new Map<string, (typeof inputsWithSourceRefs)[number]>();
-      for (const input of inputsWithSourceRefs) {
-        latestByExternalRef.set(
-          `${input.sourceRef.plugin_id}\u0000${input.sourceRef.external_id}`,
-          input,
-        );
-      }
-      const sourceRefInputs = [...latestByExternalRef.values()];
-      await this.db.execute(
-        `INSERT INTO source_refs (
-          id, item_id, plugin_id, external_id, synced_at, metadata_json
-        ) VALUES ${sqlRowPlaceholders(sourceRefInputs.length, 6)}`,
-        sourceRefInputs.flatMap((input) => [
-          crypto.randomUUID(),
-          input.itemId,
-          input.sourceRef.plugin_id,
-          input.sourceRef.external_id,
-          input.sourceRef.synced_at ?? null,
-          serializeMetadata(input.sourceRef.metadata ?? {}),
-        ]),
-      );
-    }
-  }
-
-  async upsertMedia(media: MediaFileMeta): Promise<void> {
-    await this.db.execute(
-      `INSERT INTO media (id, item_id, filename, media_type, created_at)
-       VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         item_id = excluded.item_id,
-         filename = excluded.filename,
-         media_type = excluded.media_type,
-         created_at = excluded.created_at`,
-      [media.id, media.item_id, media.filename, media.media_type, media.created_at],
-    );
-  }
-
-  async deleteMedia(mediaId: string): Promise<void> {
-    await this.db.execute("DELETE FROM media WHERE id = ?", [mediaId]);
-  }
-
-  async deleteMediaForItem(itemId: string): Promise<void> {
-    await this.db.execute("DELETE FROM media WHERE item_id = ?", [itemId]);
-  }
-
   async deleteItem(itemId: string): Promise<void> {
     await this.deleteItemsBatch([itemId]);
   }
-
-  async deleteItemsBatch(itemIds: string[]): Promise<void> {
-    if (itemIds.length === 0) {
-      return;
-    }
-
-    for (let offset = 0; offset < itemIds.length; offset += SQL_INSERT_CHUNK) {
-      const chunk = itemIds.slice(offset, offset + SQL_INSERT_CHUNK);
-      const placeholders = sqlInPlaceholders(chunk.length);
-      await this.db.execute(
-        `DELETE FROM media WHERE item_id IN (${placeholders})`,
-        chunk,
-      );
-      await this.db.execute(
-        `DELETE FROM source_refs WHERE item_id IN (${placeholders})`,
-        chunk,
-      );
-      await this.db.execute(
-        `DELETE FROM items_fts WHERE item_id IN (${placeholders})`,
-        chunk,
-      );
-      await this.db.execute(
-        `DELETE FROM item_embeddings WHERE item_id IN (${placeholders})`,
-        chunk,
-      );
-      await this.db.execute(
-        `DELETE FROM items WHERE id IN (${placeholders})`,
-        chunk,
-      );
-    }
-    // deleteItem/deleteItemsBatch have no vaultId; clear all catalogs for this SQL session.
-    invalidateAllVaultIdTitleCatalogs(this.db);
-  }
-
-  async rewriteItemIds(_mappings: ItemIdRewriteMapping[]): Promise<void> {
-    throw new Error(
-      "rewriteItemIds requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-
-  async upsertTag(tag: Tag, vaultId: string): Promise<void> {
-    await this.db.execute(
-      `INSERT INTO tags (id, vault_id, name, color, created_at)
-       VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         name = excluded.name,
-         color = excluded.color`,
-      [tag.id, vaultId, tag.name, tag.color ?? null, tag.created_at],
-    );
-  }
-
-  async deleteTag(tagId: string): Promise<void> {
-    await this.db.execute("DELETE FROM item_tags WHERE tag_id = ?", [tagId]);
-    await this.db.execute("DELETE FROM tags WHERE id = ?", [tagId]);
-  }
-
-  async listTagsWithCounts(_vaultId: string): Promise<TagWithCount[]> {
-    throw new Error(
-      "listTagsWithCounts requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-
-  async listItemIdsByTag(
-    _vaultId: string,
-    _tagId: string,
-    _options?: ItemIdListOptions,
-  ): Promise<string[]> {
-    throw new Error(
-      "listItemIdsByTag requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-
-  async listItemIdsByFolderPrefix(
-    _vaultId: string,
-    _folderPath: string,
-    _options?: ItemIdListOptions,
-  ): Promise<string[]> {
-    throw new Error(
-      "listItemIdsByFolderPrefix requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-
-  async getAdjacentItems(
-    _vaultId: string,
-    _anchor: AdjacentItemAnchor,
-  ): Promise<AdjacentItemsResult> {
-    throw new Error(
-      "getAdjacentItems requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-
-  async listItemIdsByNavFilter(
-    _vaultId: string,
-    _filter: NavSearchFilter,
-    _options?: ItemIdPageOptions,
-  ): Promise<string[]> {
-    throw new Error(
-      "listItemIdsByNavFilter requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-
-  async countItemIdsByNavFilter(
-    _vaultId: string,
-    _filter: NavSearchFilter,
-  ): Promise<number> {
-    throw new Error(
-      "countItemIdsByNavFilter requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-
-  async listFolderItemCounts(_vaultId: string): Promise<
-    Array<{ folder_path: string; item_count: number }>
-  > {
-    throw new Error(
-      "listFolderItemCounts requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-
-  async listVaultItemIds(_vaultId: string): Promise<string[]> {
-    throw new Error(
-      "listVaultItemIds requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-
-  async listItemFilesByIds(
-    _vaultId: string,
-    _itemIds: string[],
-  ): Promise<ItemFile[]> {
-    throw new Error(
-      "listItemFilesByIds requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-
-  async listItemPresentationStampsByIds(
-    _vaultId: string,
-    _itemIds: string[],
-  ): Promise<string[]> {
-    throw new Error(
-      "listItemPresentationStampsByIds requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-
-  async patchItemSyncMeta(
-    itemId: string,
-    meta: {
-      fileMtimeMs: number;
-      updatedAt: string;
-      contentRevision: number;
-      createdAt: string;
-    },
-  ): Promise<void> {
-    await this.db.execute(
-      `UPDATE items
-       SET file_mtime_ms = ?, updated_at = ?, content_revision = ?, created_at = ?
-       WHERE id = ?`,
-      [
-        meta.fileMtimeMs,
-        meta.updatedAt,
-        meta.contentRevision,
-        meta.createdAt,
-        itemId,
-      ],
-    );
-  }
-
-  async patchItemSyncMetaBatch(
-    patches: Array<{ itemId: string } & ItemSyncMetaPatch>,
-  ): Promise<void> {
-    for (
-      let offset = 0;
-      offset < patches.length;
-      offset += INDEX_SYNC_WRITE_BATCH
-    ) {
-      const chunk = patches.slice(offset, offset + INDEX_SYNC_WRITE_BATCH);
-      const itemIds = chunk.map((patch) => patch.itemId);
-      const caseBinds = (value: (patch: (typeof chunk)[number]) => unknown) =>
-        chunk.flatMap((patch) => [patch.itemId, value(patch)]);
-      await this.db.execute(
-        `UPDATE items
-         SET file_mtime_ms = CASE id ${chunk.map(() => "WHEN ? THEN ?").join(" ")} END,
-             updated_at = CASE id ${chunk.map(() => "WHEN ? THEN ?").join(" ")} END,
-             content_revision = CASE id ${chunk.map(() => "WHEN ? THEN ?").join(" ")} END,
-             created_at = CASE id ${chunk.map(() => "WHEN ? THEN ?").join(" ")} END
-         WHERE id IN (${sqlInPlaceholders(itemIds.length)})`,
-        [
-          ...caseBinds((patch) => patch.fileMtimeMs),
-          ...caseBinds((patch) => patch.updatedAt),
-          ...caseBinds((patch) => patch.contentRevision),
-          ...caseBinds((patch) => patch.createdAt),
-          ...itemIds,
-        ],
-      );
-    }
-  }
-
-  async getReconcileFingerprint(
-    _vaultId: string,
-  ): Promise<ReconcileFingerprint | null> {
-    throw new Error(
-      "getReconcileFingerprint requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-
-  async setReconcileFingerprint(
-    vaultId: string,
-    fingerprint: ReconcileFingerprint,
-  ): Promise<void> {
-    await this.db.execute(
-      `UPDATE vaults SET reconcile_fingerprint_json = ? WHERE id = ?`,
-      [serializeReconcileFingerprint(fingerprint), vaultId],
-    );
-  }
-
-  async listVaultItemSyncMeta(_vaultId: string): Promise<
-    Array<{
-      id: string;
-      file_mtime_ms: number | null;
-      updated_at: string;
-      content_revision: number;
-      created_at: string;
-    }>
-  > {
-    throw new Error(
-      "listVaultItemSyncMeta requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-
-  async listItemSyncMetaByIds(
-    _vaultId: string,
-    _itemIds: string[],
-  ): Promise<
-    Array<{
-      id: string;
-      file_mtime_ms: number | null;
-      updated_at: string;
-      content_revision: number;
-      created_at: string;
-    }>
-  > {
-    throw new Error(
-      "listItemSyncMetaByIds requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-
-  async searchItemIds(
-    _vaultId: string,
-    _ftsQuery: string,
-    _filter: NavSearchFilter,
-    _options?: ItemIdPageOptions,
-  ): Promise<string[]> {
-    throw new Error(
-      "searchItemIds requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-
-  async countSearchItemIds(
-    _vaultId: string,
-    _ftsQuery: string,
-    _filter: NavSearchFilter,
-  ): Promise<number> {
-    throw new Error(
-      "countSearchItemIds requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-
-  async rebuildVaultTextEdges(_vaultId: string): Promise<void> {
-    throw new Error(
-      "rebuildVaultTextEdges requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-
-  async addUserEdge(
-    _vaultId: string,
-    _itemA: string,
-    _itemB: string,
-  ): Promise<void> {
-    throw new Error(
-      "addUserEdge requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-
-  async removeUserEdge(
-    _vaultId: string,
-    _itemA: string,
-    _itemB: string,
-  ): Promise<void> {
-    throw new Error(
-      "removeUserEdge requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-
-  async listUserEdges(
-    _vaultId: string,
-    _itemId: string,
-  ): Promise<Array<{ id: string; title: string }>> {
-    throw new Error(
-      "listUserEdges requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-
-  async listTextBacklinkSources(
-    _targetItemId: string,
-  ): Promise<Array<{ id: string; title: string }>> {
-    throw new Error(
-      "listTextBacklinkSources requires select(); use SqlVaultIndexStore instead",
-    );
-  }
-}
-
-export interface SqlSelectRow {
-  id: string;
-}
-
-export interface SqlSelector {
-  select<T>(query: string, bindValues?: unknown[]): Promise<T[]>;
 }
 
 export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
-  constructor(private readonly selector: SqlSelector & SqlExecutor) {
+  readonly listItemIdTitles;
+  readonly listItemFtsBodies;
+  readonly vaultItemsContentGeneration;
+  readonly findItemIdByUrl;
+
+  constructor(selector: SqlIndexStoreDb) {
     super(selector);
-  }
 
-  async listItemIdTitles(
-    vaultId: string,
-  ): Promise<Array<{ id: string; title: string }>> {
-    const rows = await loadVaultIdTitleCatalog(this.selector, vaultId);
-    return rows.map((row) => ({ id: row.id, title: row.title }));
-  }
+    const catalog = createCatalogStorePort(selector);
+    const nav = createNavStorePort(selector);
+    const syncStore = createSyncStorePort(selector);
+    const edges = createEdgesStorePort(selector, catalog);
+    const baseUpsertTag = this.upsertTag;
+    const baseUpsertItemContent = this.upsertItemContent;
+    const baseUpsertItemContentBatch = this.upsertItemContentBatch;
 
-  /** Full on-disk markdown from FTS for text-link inversion (#410). */
-  async listItemFtsBodies(
-    vaultId: string,
-  ): Promise<Array<{ id: string; title: string; content: string }>> {
-    const rows = await this.selector.select<{
-      id: string;
-      title: string;
-      content: string;
-    }>(
-      `SELECT i.id AS id, i.title AS title, items_fts.content AS content
-       FROM items i
-       INNER JOIN items_fts ON items_fts.item_id = i.id
-       WHERE i.vault_id = ?
-         AND i.has_content_file = 1`,
-      [vaultId],
-    );
-    return rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      content: row.content,
-    }));
-  }
+    this.listItemIdTitles = catalog.listItemIdTitles;
+    this.listItemFtsBodies = catalog.listItemFtsBodies;
+    this.vaultItemsContentGeneration = catalog.vaultItemsContentGeneration;
+    this.findItemIdByUrl = nav.findItemIdByUrl;
 
-  /** Generation stamp for in-memory backlink reverse map (#410). */
-  async vaultItemsContentGeneration(vaultId: string): Promise<number> {
-    const rows = await this.selector.select<{ generation: number | null }>(
-      `SELECT MAX(content_revision) AS generation FROM items WHERE vault_id = ?`,
-      [vaultId],
-    );
-    return rows[0]?.generation ?? 0;
-  }
+    this.upsertTag = (tag: Tag, vaultId: string) =>
+      upsertTagPreferringDiskId(selector, tag, vaultId, baseUpsertTag);
 
-  override async upsertTag(tag: Tag, vaultId: string): Promise<void> {
-    // Disk may recreate a tag id for an existing name; prefer the disk id and
-    // drop the stale index row so UNIQUE(vault_id, name) does not fail.
-    const stale = await this.selector.select<{ id: string }>(
-      `SELECT id FROM tags WHERE vault_id = ? AND name = ? AND id != ?`,
-      [vaultId, tag.name, tag.id],
-    );
-    for (const row of stale) {
-      await this.selector.execute(
-        `INSERT OR IGNORE INTO item_tags (item_id, tag_id)
-         SELECT item_id, ? FROM item_tags WHERE tag_id = ?`,
-        [tag.id, row.id],
-      );
-      await this.selector.execute(`DELETE FROM item_tags WHERE tag_id = ?`, [
-        row.id,
-      ]);
-      await this.selector.execute(`DELETE FROM tags WHERE id = ?`, [row.id]);
-    }
+    this.rewriteItemIds = (mappings: ItemIdRewriteMapping[]) =>
+      edges.rewriteItemIds(mappings);
 
-    await super.upsertTag(tag, vaultId);
-  }
+    this.listVaultItemIds = nav.listVaultItemIds;
+    this.listItemFilesByIds = nav.listItemFilesByIds;
+    this.listItemPresentationStampsByIds = nav.listItemPresentationStampsByIds;
+    this.listVaultItemSyncMeta = syncStore.listVaultItemSyncMeta;
+    this.listItemSyncMetaByIds = syncStore.listItemSyncMetaByIds;
+    this.getReconcileFingerprint = syncStore.getReconcileFingerprint;
+    this.searchItemIds = nav.searchItemIds;
+    this.countSearchItemIds = nav.countSearchItemIds;
+    this.listTagsWithCounts = nav.listTagsWithCounts;
+    this.listItemIdsByTag = nav.listItemIdsByTag;
+    this.listItemIdsByFolderPrefix = nav.listItemIdsByFolderPrefix;
+    this.getAdjacentItems = nav.getAdjacentItems;
+    this.listItemIdsByNavFilter = nav.listItemIdsByNavFilter;
+    this.countItemIdsByNavFilter = nav.countItemIdsByNavFilter;
+    this.listFolderItemCounts = nav.listFolderItemCounts;
 
-  override async rewriteItemIds(
-    mappings: ItemIdRewriteMapping[],
-  ): Promise<void> {
-    await rewriteItemIdsImpl(this.selector, mappings);
-    // Id rewrites change catalog keys; clear all vaults for this session.
-    invalidateAllVaultIdTitleCatalogs(this.selector);
-  }
+    this.upsertItemContent = async (input: ItemContentUpsert) => {
+      await baseUpsertItemContent(input);
+      await edges.syncTextEdgesForContent(input);
+    };
+    this.upsertItemContentBatch = async (inputs: ItemContentUpsert[]) => {
+      await baseUpsertItemContentBatch(inputs);
+      // Full sync finishes with rebuildVaultTextEdges; avoid duplicate per-item work.
+    };
 
-  override async listVaultItemIds(vaultId: string): Promise<string[]> {
-    return indexQueries.listVaultItemIds(this.selector, vaultId);
-  }
-
-  /** Exact canonical url lookup for folder-import idempotency (#747). */
-  async findItemIdByUrl(vaultId: string, url: string): Promise<string | null> {
-    return indexQueries.findItemIdByUrl(this.selector, vaultId, url);
-  }
-
-  override async listItemFilesByIds(
-    vaultId: string,
-    itemIds: string[],
-  ): Promise<ItemFile[]> {
-    return indexQueries.listItemFilesByIds(this.selector, vaultId, itemIds);
-  }
-
-  override async listItemPresentationStampsByIds(
-    vaultId: string,
-    itemIds: string[],
-  ): Promise<string[]> {
-    return indexQueries.listItemPresentationStampsByIds(
-      this.selector,
-      vaultId,
-      itemIds,
-    );
-  }
-
-  override async listVaultItemSyncMeta(vaultId: string): Promise<
-    Array<{
-      id: string;
-      file_mtime_ms: number | null;
-      updated_at: string;
-      content_revision: number;
-      created_at: string;
-    }>
-  > {
-    return indexQueries.listVaultItemSyncMeta(this.selector, vaultId);
-  }
-
-  override async listItemSyncMetaByIds(
-    vaultId: string,
-    itemIds: string[],
-  ): Promise<
-    Array<{
-      id: string;
-      file_mtime_ms: number | null;
-      updated_at: string;
-      content_revision: number;
-      created_at: string;
-    }>
-  > {
-    return indexQueries.listItemSyncMetaByIds(
-      this.selector,
-      vaultId,
-      itemIds,
-    );
-  }
-
-  override async getReconcileFingerprint(
-    vaultId: string,
-  ): Promise<ReconcileFingerprint | null> {
-    return indexQueries.getReconcileFingerprint(this.selector, vaultId);
-  }
-
-  override async searchItemIds(
-    vaultId: string,
-    ftsQuery: string,
-    filter: NavSearchFilter,
-    options?: ItemIdPageOptions,
-  ): Promise<string[]> {
-    return indexQueries.searchItemIds(
-      this.selector,
-      vaultId,
-      ftsQuery,
-      filter,
-      options,
-    );
-  }
-
-  override async countSearchItemIds(
-    vaultId: string,
-    ftsQuery: string,
-    filter: NavSearchFilter,
-  ): Promise<number> {
-    return indexQueries.countSearchItemIds(
-      this.selector,
-      vaultId,
-      ftsQuery,
-      filter,
-    );
-  }
-
-  override async listTagsWithCounts(vaultId: string): Promise<TagWithCount[]> {
-    return indexQueries.listTagsWithCounts(this.selector, vaultId);
-  }
-
-  override async listItemIdsByTag(
-    vaultId: string,
-    tagId: string,
-    options?: ItemIdListOptions,
-  ): Promise<string[]> {
-    return indexQueries.listItemIdsByTag(
-      this.selector,
-      vaultId,
-      tagId,
-      options,
-    );
-  }
-
-  override async listItemIdsByFolderPrefix(
-    vaultId: string,
-    folderPath: string,
-    options?: ItemIdListOptions,
-  ): Promise<string[]> {
-    return indexQueries.listItemIdsByFolderPrefix(
-      this.selector,
-      vaultId,
-      folderPath,
-      options,
-    );
-  }
-
-  override async getAdjacentItems(
-    vaultId: string,
-    anchor: AdjacentItemAnchor,
-  ): Promise<AdjacentItemsResult> {
-    return indexQueries.getAdjacentItems(this.selector, vaultId, anchor);
-  }
-
-  override async listItemIdsByNavFilter(
-    vaultId: string,
-    filter: NavSearchFilter,
-    options?: ItemIdPageOptions,
-  ): Promise<string[]> {
-    return indexQueries.listItemIdsByNavFilter(
-      this.selector,
-      vaultId,
-      filter,
-      options,
-    );
-  }
-
-  override async countItemIdsByNavFilter(
-    vaultId: string,
-    filter: NavSearchFilter,
-  ): Promise<number> {
-    return indexQueries.countItemIdsByNavFilter(
-      this.selector,
-      vaultId,
-      filter,
-    );
-  }
-
-  override async listFolderItemCounts(
-    vaultId: string,
-  ): Promise<Array<{ folder_path: string; item_count: number }>> {
-    return indexQueries.listFolderItemCounts(this.selector, vaultId);
-  }
-
-  override async upsertItemContent(input: ItemContentUpsert): Promise<void> {
-    await super.upsertItemContent(input);
-    await this.syncTextEdgesForContent(input);
-  }
-
-  override async upsertItemContentBatch(
-    inputs: ItemContentUpsert[],
-  ): Promise<void> {
-    await super.upsertItemContentBatch(inputs);
-    // Full sync finishes with rebuildVaultTextEdges; avoid duplicate per-item work.
-  }
-
-  private async syncTextEdgesForContent(
-    input: ItemContentUpsert,
-  ): Promise<void> {
-    const rows = await this.selector.select<{ vault_id: string }>(
-      "SELECT vault_id FROM items WHERE id = ?",
-      [input.itemId],
-    );
-    const vaultId = rows[0]?.vault_id;
-    if (vaultId === undefined) {
-      throw new Error(
-        `syncTextEdgesForContent: item not in index: ${input.itemId}`,
-      );
-    }
-    if (!input.hasContentFile) {
-      await this.selector.execute(
-        "DELETE FROM item_edges WHERE from_id = ? AND source = 'text'",
-        [input.itemId],
-      );
-      return;
-    }
-    const catalog = await this.listItemIdTitles(vaultId);
-    await replaceTextEdgesForItemImpl(
-      this.selector,
-      vaultId,
-      input.itemId,
-      input.content ?? "",
-      catalog,
-    );
-  }
-
-  override async rebuildVaultTextEdges(vaultId: string): Promise<void> {
-    await rebuildVaultTextEdgesImpl(
-      this.selector,
-      vaultId,
-      () => this.listItemIdTitles(vaultId),
-      () => this.listItemFtsBodies(vaultId),
-    );
-  }
-
-  override async addUserEdge(
-    vaultId: string,
-    itemA: string,
-    itemB: string,
-  ): Promise<void> {
-    await addUserEdgeImpl(this.selector, vaultId, itemA, itemB);
-  }
-
-  override async removeUserEdge(
-    vaultId: string,
-    itemA: string,
-    itemB: string,
-  ): Promise<void> {
-    await removeUserEdgeImpl(this.selector, vaultId, itemA, itemB);
-  }
-
-  override async listUserEdges(
-    vaultId: string,
-    itemId: string,
-  ): Promise<Array<{ id: string; title: string }>> {
-    return listUserEdgesImpl(this.selector, vaultId, itemId);
-  }
-
-  override async listTextBacklinkSources(
-    targetItemId: string,
-  ): Promise<Array<{ id: string; title: string }>> {
-    return listTextBacklinkSourcesImpl(this.selector, targetItemId);
+    this.rebuildVaultTextEdges = edges.rebuildVaultTextEdges;
+    this.addUserEdge = edges.addUserEdge;
+    this.removeUserEdge = edges.removeUserEdge;
+    this.listUserEdges = edges.listUserEdges;
+    this.listTextBacklinkSources = edges.listTextBacklinkSources;
   }
 }
