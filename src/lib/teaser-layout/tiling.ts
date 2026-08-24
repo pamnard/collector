@@ -24,8 +24,6 @@ export type BoardTiling = {
 
 const ALL_SPANS: readonly TeaserSpan[] = ["1x1", "1x2", "2x1", "2x2"];
 
-const tilingCache = new Map<TeaserBoardId, BoardTiling[]>();
-
 function cellIndex(cols: number, col: number, row: number): number {
   return row * cols + col;
 }
@@ -128,14 +126,19 @@ function enumerateTilings(board: TeaserBoardId): BoardTiling[] {
   return [...found.values()];
 }
 
-export function listFullTilings(board: TeaserBoardId): BoardTiling[] {
-  const cached = tilingCache.get(board);
-  if (cached) {
-    return cached;
-  }
-  const tilings = enumerateTilings(board);
-  tilingCache.set(board, tilings);
-  return tilings;
+/**
+ * Known boards are fixed — materialize full tilings once at module load
+ * (same spirit as ALLOWED_COMPOSITIONS), so pick/fit never pays cold-start
+ * backtracking.
+ */
+const FULL_TILINGS_BY_BOARD: Record<TeaserBoardId, readonly BoardTiling[]> = {
+  "4x2": enumerateTilings("4x2"),
+  "3x2": enumerateTilings("3x2"),
+  "2x2": enumerateTilings("2x2"),
+};
+
+export function listFullTilings(board: TeaserBoardId): readonly BoardTiling[] {
+  return FULL_TILINGS_BY_BOARD[board];
 }
 
 export function isCompleteTiling(tiling: BoardTiling): boolean {
