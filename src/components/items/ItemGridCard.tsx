@@ -5,7 +5,11 @@ import { useMainScrollElement } from "../../hooks/useMainScrollElement";
 import { useNearViewportRef } from "../../hooks/useNearViewport";
 import { ItemGridCardMeta } from "./ItemGridCardMeta";
 import { textOnlyTeaserChromeClass } from "./text-only-teaser-chrome";
-import { itemGridCoverImgClassName } from "./item-grid-cover-slot";
+import {
+  itemGridCoverImgClassName,
+  itemGridCoverImgSizeAttrs,
+  itemGridCoverSlotAspectStyle,
+} from "./item-grid-cover-slot";
 import { useItemGridCover } from "./use-item-grid-cover";
 import {
   itemGridCardPropsAreEqual,
@@ -33,6 +37,7 @@ function ItemGridCardInner({
 
   const {
     coverSrc,
+    coverPixelSize,
     isPortraitCover,
     showCover,
     loadCover,
@@ -46,6 +51,9 @@ function ItemGridCardInner({
 
   // Cover chrome only after a successful settle — pending/timeout/error = text teaser.
   const hasCover = showCover;
+  if (hasCover && !coverPixelSize) {
+    throw new Error("settled grid cover requires reserved pixel size");
+  }
   const overlayLayout = Boolean(showCover && isPortraitCover);
   const decodingCover = Boolean(loadCover && coverSrc && !showCover);
 
@@ -95,17 +103,19 @@ function ItemGridCardInner({
           onError={onCoverImgError}
         />
       ) : null}
-      {hasCover && coverSrc ? (
+      {hasCover && coverSrc && coverPixelSize ? (
         <div
           className={cn(
-            "relative overflow-hidden rounded-lg bg-neutral-100 dark:bg-neutral-700",
+            "relative w-full overflow-hidden rounded-lg bg-neutral-100 dark:bg-neutral-700",
             !overlayLayout && "mb-4 shrink-0",
           )}
+          style={itemGridCoverSlotAspectStyle(coverPixelSize)}
         >
           <img
             ref={onCoverImgRef}
             src={coverSrc}
             alt=""
+            {...itemGridCoverImgSizeAttrs(coverPixelSize)}
             className={itemGridCoverImgClassName({ loadCover: false })}
             loading="eager"
             decoding="async"
