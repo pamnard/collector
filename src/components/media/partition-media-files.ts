@@ -1,28 +1,22 @@
 import type { MediaWithPath } from "@collector/core";
 
 export interface PartitionedMediaFiles {
-  images: MediaWithPath[];
-  others: MediaWithPath[];
   visualFiles: MediaWithPath[];
   listFiles: MediaWithPath[];
 }
 
+/** One pass: image|video → visual (encounter order); everything else → list. */
 export function partitionMediaFiles(
   files: MediaWithPath[],
 ): PartitionedMediaFiles {
-  const images: MediaWithPath[] = [];
-  const others: MediaWithPath[] = [];
+  const visualFiles: MediaWithPath[] = [];
+  const listFiles: MediaWithPath[] = [];
   for (const file of files) {
-    if (file.media_type === "image") {
-      images.push(file);
+    if (file.media_type === "image" || file.media_type === "video") {
+      visualFiles.push(file);
     } else {
-      others.push(file);
+      listFiles.push(file);
     }
   }
-  const visualFiles = [
-    ...images,
-    ...others.filter((file) => file.media_type === "video"),
-  ];
-  const listFiles = others.filter((file) => file.media_type !== "video");
-  return { images, others, visualFiles, listFiles };
+  return { visualFiles, listFiles };
 }

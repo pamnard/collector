@@ -99,12 +99,6 @@ export function useSidebarFolderCrud({
     }
   };
 
-  const applyNavRewrite = (next: NavFilter | null) => {
-    if (next) {
-      onSelect(next);
-    }
-  };
-
   const handleConfirmMove = async (
     folderPath: string,
     newParentPath: string,
@@ -118,9 +112,14 @@ export function useSidebarFolderCrud({
     if (newPath === undefined) {
       return;
     }
-    applyNavRewrite(
-      rewriteFolderNavFilterAfterMove(activeFilter, folderPath, newPath),
+    const next = rewriteFolderNavFilterAfterMove(
+      activeFilter,
+      folderPath,
+      newPath,
     );
+    if (next) {
+      onSelect(next);
+    }
   };
 
   const handleConfirmRename = async (
@@ -139,9 +138,14 @@ export function useSidebarFolderCrud({
       return;
     }
     setLeafDialog(null);
-    applyNavRewrite(
-      rewriteFolderNavFilterAfterMove(activeFilter, folderPath, newPath),
+    const next = rewriteFolderNavFilterAfterMove(
+      activeFilter,
+      folderPath,
+      newPath,
     );
+    if (next) {
+      onSelect(next);
+    }
   };
 
   const handleConfirmCreateChild = async (
@@ -175,7 +179,10 @@ export function useSidebarFolderCrud({
         run: () => deleteFolderAt(folderPath),
       });
       setDeleteSourcePath(null);
-      applyNavRewrite(clearFolderNavFilterAfterDelete(activeFilter, folderPath));
+      const next = clearFolderNavFilterAfterDelete(activeFilter, folderPath);
+      if (next) {
+        onSelect(next);
+      }
     } finally {
       setIsDeletingFolder(false);
     }

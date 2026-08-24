@@ -114,7 +114,10 @@ export function isDashboardPrefetchWindowReady(
   return true;
 }
 
-export function itemIdsEqual(left: string[], right: string[]): boolean {
+export function itemIdsEqual(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
   return (
     left.length === right.length && left.every((id, index) => id === right[index])
   );
