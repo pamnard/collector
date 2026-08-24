@@ -212,6 +212,24 @@ describe("itemsBodiesEqual", () => {
       false,
     );
   });
+
+  it("treats equal tag multisets as equal regardless of order", () => {
+    const left = stubItem("a", { tag_ids: ["t1", "t1", "t2"] });
+    const right = stubItem("a", {
+      ...left,
+      tag_ids: ["t2", "t1", "t1"],
+    });
+    assert.equal(itemsBodiesEqual([left], [right]), true);
+  });
+
+  it("rejects unequal tag multisets that share the same unique set", () => {
+    const left = stubItem("a", { tag_ids: ["t1", "t1", "t2"] });
+    const right = stubItem("a", {
+      ...left,
+      tag_ids: ["t1", "t2", "t2"],
+    });
+    assert.equal(itemsBodiesEqual([left], [right]), false);
+  });
 });
 
 describe("shouldSkipEmptyCommit", () => {
