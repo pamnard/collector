@@ -7,6 +7,12 @@ import { toDisplayAssetSrc } from "../../utils/asset-src";
 import { getUiSession } from "../../services/collector-client";
 import { AspectRatio } from "../ui/aspect-ratio";
 import { Button } from "../ui/button";
+import {
+  DETAIL_HERO_ASPECT_RATIO,
+  DETAIL_HERO_MEDIA_HEIGHT,
+  DETAIL_HERO_MEDIA_WIDTH,
+  itemDetailHeroImgClassName,
+} from "./item-detail-hero-media";
 
 interface ItemDetailHeroProps {
   item: ItemFile;
@@ -55,23 +61,19 @@ export function ItemDetailHero({
   return (
     <div className="min-w-0">
       <div className="group relative mx-auto w-full max-w-[900px]">
-        {displaySrc ? (
-          expanded ? (
-            <img src={displaySrc} alt="" className="h-auto w-full rounded-lg" />
+        <AspectRatio ratio={DETAIL_HERO_ASPECT_RATIO}>
+          {displaySrc ? (
+            <img
+              src={displaySrc}
+              alt=""
+              width={DETAIL_HERO_MEDIA_WIDTH}
+              height={DETAIL_HERO_MEDIA_HEIGHT}
+              className={itemDetailHeroImgClassName(expanded)}
+            />
           ) : (
-            <AspectRatio ratio={16 / 9}>
-              <img
-                src={displaySrc}
-                alt=""
-                className="absolute inset-0 h-full w-full rounded-lg object-cover"
-              />
-            </AspectRatio>
-          )
-        ) : (
-          <AspectRatio ratio={16 / 9}>
             <div className="absolute inset-0 rounded-lg bg-neutral-900" />
-          </AspectRatio>
-        )}
+          )}
+        </AspectRatio>
         <Button
           type="button"
           variant="secondary"
