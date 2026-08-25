@@ -409,25 +409,33 @@ describe("coverPathsFromMaps / mapsFromCoverPaths", () => {
       ["a", "s-a"],
       ["b", "s-b"],
     ]);
-    const record = coverPathsFromMaps(paths, stamps);
+    const sizes = new Map([
+      ["a", { width: 100, height: 80 }],
+      ["b", null],
+    ]);
+    const record = coverPathsFromMaps(paths, stamps, sizes);
     assert.deepEqual(record, {
-      a: { path: "/a", stamp: "s-a" },
-      b: { path: null, stamp: "s-b" },
+      a: { path: "/a", stamp: "s-a", width: 100, height: 80 },
+      b: { path: null, stamp: "s-b", width: null, height: null },
     });
     const back = mapsFromCoverPaths(record);
     // Null covers are not warmed (#720 sticky-null residual).
     assert.deepEqual([...back.thumbnailPaths.entries()], [["a", "/a"]]);
     assert.deepEqual([...back.thumbnailStamps.entries()], [["a", "s-a"]]);
+    assert.deepEqual([...back.thumbnailSizes.entries()], [
+      ["a", { width: 100, height: 80 }],
+    ]);
   });
 
   it("skips null cover paths when hydrating from snapshot (#720)", () => {
     const back = mapsFromCoverPaths({
-      a: { path: "/a", stamp: "s-a" },
+      a: { path: "/a", stamp: "s-a", width: 10, height: 10 },
       b: { path: null, stamp: "s-b" },
     });
     assert.equal(back.thumbnailPaths.has("b"), false);
     assert.equal(back.thumbnailStamps.has("b"), false);
     assert.equal(back.thumbnailPaths.get("a"), "/a");
+    assert.deepEqual(back.thumbnailSizes.get("a"), { width: 10, height: 10 });
   });
 
   it("skips path entries without stamps", () => {
@@ -571,6 +579,7 @@ describe("pruneItemIdFromDashboardLists", () => {
         ["a", "sa"],
         ["b", "sb"],
       ]),
+      thumbnailSizes: new Map(),
       streamEndOffset: 2,
       totalCount: 2,
       committedItems: [stubItem("a"), stubItem("b")],
@@ -603,6 +612,7 @@ describe("pruneItemIdFromDashboardLists", () => {
         ["b", "sb"],
         ["c", "sc"],
       ]),
+      thumbnailSizes: new Map(),
       streamEndOffset: 3,
       totalCount: 10,
       committedItems: [stubItem("a"), stubItem("b"), stubItem("c")],
@@ -632,6 +642,7 @@ describe("pruneItemIdFromDashboardLists", () => {
       bodyStamps: result.bodyStamps,
       thumbnailPaths: result.thumbnailPaths,
       thumbnailStamps: result.thumbnailStamps,
+      thumbnailSizes: new Map(),
       streamEndOffset: result.streamEndOffset,
       totalCount: result.totalCount,
       committedItems: result.committedItems,
@@ -656,6 +667,7 @@ describe("pruneItemIdFromDashboardLists", () => {
         ["a", "sa"],
         ["orphan", "so"],
       ]),
+      thumbnailSizes: new Map(),
       streamEndOffset: 1,
       totalCount: 1,
       committedItems: [stubItem("a"), stubItem("orphan")],
@@ -716,6 +728,9 @@ function recordingSnapshotSink(): {
     setCommittedThumbnailStamps: (stamps) => {
       calls.setCommittedThumbnailStamps = stamps;
     },
+    setCommittedThumbnailSizes: (sizes) => {
+      calls.setCommittedThumbnailSizes = sizes;
+    },
   };
   return { sink, calls };
 }
@@ -733,6 +748,7 @@ describe("applyDashboardListSnapshot", () => {
       committedTotalCount: 3,
       thumbnailPaths: new Map([["a", "/a"]]),
       thumbnailStamps: new Map([["a", "ta"]]),
+      thumbnailSizes: new Map(),
     };
     const { sink, calls } = recordingSnapshotSink();
     applyDashboardListSnapshot(snapshot, sink);
@@ -777,6 +793,7 @@ describe("applyDashboardListSnapshot", () => {
       committedTotalCount: 0,
       thumbnailPaths: new Map(),
       thumbnailStamps: new Map(),
+      thumbnailSizes: new Map(),
     };
     const { sink, calls } = recordingSnapshotSink();
     applyDashboardListSnapshot(snapshot, sink);

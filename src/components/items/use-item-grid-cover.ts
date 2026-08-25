@@ -11,7 +11,6 @@ import {
 import { resolveCoverSrc } from "../../utils/item-cover-src";
 import {
   ITEM_GRID_COVER_DECODE_TIMEOUT_MS,
-  isPortraitNaturalSize,
   planItemGridCoverDecode,
   settleDomImgCoverDecode,
 } from "./item-grid-cover-decode";
@@ -29,7 +28,7 @@ export function useItemGridCover(args: {
   coverSrc: string | null;
   coverSettled: boolean;
   coverPixelSize: ItemGridCoverPixelSize | null;
-  isPortraitCover: boolean;
+  coverPending: boolean;
   showCover: boolean;
   loadCover: boolean;
   onCoverImgLoad: (img: HTMLImageElement) => void;
@@ -41,7 +40,6 @@ export function useItemGridCover(args: {
   const [coverSettled, setCoverSettled] = useState(false);
   const [coverPixelSize, setCoverPixelSize] =
     useState<ItemGridCoverPixelSize | null>(null);
-  const [isPortraitCover, setIsPortraitCover] = useState(false);
   const warmDecode = useSyncExternalStore(
     subscribeDashboardGridWarm,
     isDashboardGridWarmActive,
@@ -54,7 +52,7 @@ export function useItemGridCover(args: {
 
   const expectedCoverSrc =
     thumbnailPath === undefined ? null : resolveCoverSrc(thumbnailPath);
-  const { showCover, loadCover } = itemGridCoverSlot({
+  const { coverPending, showCover, loadCover } = itemGridCoverSlot({
     expectedCoverSrc,
     coverSrc,
     coverSettled,
@@ -87,7 +85,6 @@ export function useItemGridCover(args: {
       setCoverSrc(null);
       setCoverSettled(true);
       setCoverPixelSize(null);
-      setIsPortraitCover(false);
       return;
     }
 
@@ -95,14 +92,12 @@ export function useItemGridCover(args: {
       setCoverSrc(null);
       setCoverSettled(false);
       setCoverPixelSize(null);
-      setIsPortraitCover(false);
       return;
     }
 
     setCoverSrc(plan.src);
     setCoverSettled(false);
     setCoverPixelSize(null);
-    setIsPortraitCover(false);
   }, [decodeCovers, thumbnailPath]);
 
   useEffect(() => {
@@ -121,7 +116,6 @@ export function useItemGridCover(args: {
       setCoverSrc(null);
       setCoverSettled(true);
       setCoverPixelSize(null);
-      setIsPortraitCover(false);
     }, ITEM_GRID_COVER_DECODE_TIMEOUT_MS);
 
     return () => {
@@ -134,7 +128,6 @@ export function useItemGridCover(args: {
     setCoverSrc(img.currentSrc || img.src);
     setCoverSettled(true);
     setCoverPixelSize(itemGridCoverPixelSizeFromImg(img));
-    setIsPortraitCover(isPortraitNaturalSize(img));
     if (isDashboardPerfEnabled()) {
       dashboardPerfRecordCoverDecode(dashboardPerfGetActiveRunId());
     }
@@ -144,7 +137,6 @@ export function useItemGridCover(args: {
     setCoverSrc(null);
     setCoverSettled(true);
     setCoverPixelSize(null);
-    setIsPortraitCover(false);
   }, []);
 
   const onCoverImgRef = useCallback(
@@ -164,7 +156,7 @@ export function useItemGridCover(args: {
     coverSrc,
     coverSettled,
     coverPixelSize,
-    isPortraitCover,
+    coverPending,
     showCover,
     loadCover,
     onCoverImgLoad,

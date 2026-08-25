@@ -1,7 +1,11 @@
 /**
  * Detail hero media: which gallery/cover file is chosen, and its kind.
  *
- * Order: gallery image → gallery video → cover.webp.
+ * Display SoT matches dashboard thumbnails (#276): `cover.webp` when present
+ * (the chosen preview). Gallery-first duplicated “preferred cover” and broke
+ * when the cover was set from a non-lex-min gallery file.
+ *
+ * Video-only items keep Play on the gallery video with cover.webp as poster.
  * Play affordance follows kind === "video" (the chosen file), not item content_type.
  */
 
@@ -30,7 +34,27 @@ export async function resolveItemHeroMedia(
   vaultPath: string,
   itemId: string,
 ): Promise<ItemHeroMedia | null> {
+  const cover = itemCoverPath(vaultPath, itemId);
+  const hasCover = await fs.exists(cover);
   const galleryImage = await findFirstGalleryImagePath(fs, vaultPath, itemId);
+  const galleryVideo = await findFirstGalleryVideoPath(fs, vaultPath, itemId);
+
+  if (hasCover) {
+    // Same chosen preview as the grid. Video-only keeps Play + cover poster.
+    if (galleryImage === null && galleryVideo !== null) {
+      return {
+        kind: "video",
+        filePath: galleryVideo,
+        displayPath: cover,
+      };
+    }
+    return {
+      kind: "image",
+      filePath: cover,
+      displayPath: cover,
+    };
+  }
+
   if (galleryImage !== null) {
     return {
       kind: "image",
@@ -39,23 +63,11 @@ export async function resolveItemHeroMedia(
     };
   }
 
-  const galleryVideo = await findFirstGalleryVideoPath(fs, vaultPath, itemId);
   if (galleryVideo !== null) {
-    const cover = itemCoverPath(vaultPath, itemId);
-    const hasCover = await fs.exists(cover);
     return {
       kind: "video",
       filePath: galleryVideo,
-      displayPath: hasCover ? cover : null,
-    };
-  }
-
-  const cover = itemCoverPath(vaultPath, itemId);
-  if (await fs.exists(cover)) {
-    return {
-      kind: "image",
-      filePath: cover,
-      displayPath: cover,
+      displayPath: null,
     };
   }
 

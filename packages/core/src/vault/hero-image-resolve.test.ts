@@ -54,35 +54,34 @@ describe("resolveItemHeroMedia", () => {
     return { ctx, path, vaultId: meta.id, itemId };
   }
 
-  it("prefers gallery image over cover and video", async () => {
+  it("prefers cover.webp over gallery so hero matches dashboard preview", async () => {
     const { ctx, path, vaultId, itemId } = await seedItem("Both");
-    const image = await attachMediaFile(ctx, path, itemId, {
-      filename: "shot.png",
-      data: new TextEncoder().encode("full-res"),
+    await attachMediaFile(ctx, path, itemId, {
+      filename: "a-first.png",
+      data: new TextEncoder().encode("full-res-a"),
     });
     await attachMediaFile(ctx, path, itemId, {
-      filename: "clip.mp4",
-      data: new TextEncoder().encode("video-bytes"),
-      mediaType: "video",
+      filename: "z-cover-source.png",
+      data: new TextEncoder().encode("full-res-z"),
     });
     await applyItemCover(
       ctx,
       path,
       vaultId,
       itemId,
-      new TextEncoder().encode("fake-webp"),
+      new TextEncoder().encode("fake-webp-from-z"),
     );
 
     const resolved = await resolveItemHeroMedia(fs, path, itemId);
 
     expect(resolved).toEqual({
       kind: "image",
-      filePath: mediaFilePath(path, itemId, image.id, image.filename),
-      displayPath: mediaFilePath(path, itemId, image.id, image.filename),
+      filePath: itemCoverPath(path, itemId),
+      displayPath: itemCoverPath(path, itemId),
     });
   });
 
-  it("selects gallery video with cover as display poster", async () => {
+  it("selects gallery video with cover as display poster when no gallery image", async () => {
     const { ctx, path, vaultId, itemId } = await seedItem("Video");
     const video = await attachMediaFile(ctx, path, itemId, {
       filename: "demo.mp4",
@@ -122,6 +121,22 @@ describe("resolveItemHeroMedia", () => {
       kind: "image",
       filePath: itemCoverPath(path, itemId),
       displayPath: itemCoverPath(path, itemId),
+    });
+  });
+
+  it("falls back to gallery image when cover is missing", async () => {
+    const { ctx, path, itemId } = await seedItem("Gallery only");
+    const image = await attachMediaFile(ctx, path, itemId, {
+      filename: "shot.png",
+      data: new TextEncoder().encode("full-res"),
+    });
+
+    const resolved = await resolveItemHeroMedia(fs, path, itemId);
+
+    expect(resolved).toEqual({
+      kind: "image",
+      filePath: mediaFilePath(path, itemId, image.id, image.filename),
+      displayPath: mediaFilePath(path, itemId, image.id, image.filename),
     });
   });
 

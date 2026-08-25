@@ -1,10 +1,26 @@
 import type { CSSProperties } from "react";
+import type { ItemThumbnailPixelSize } from "@collector/api";
+import { measureCoverImageForm } from "../../lib/teaser-layout/cover-image-form.ts";
 
-/** Decoded cover pixel size used to reserve masonry teaser layout. */
-export type ItemGridCoverPixelSize = {
-  width: number;
-  height: number;
-};
+/** Decoded / resolved cover pixel size used to reserve masonry teaser layout. */
+export type ItemGridCoverPixelSize = ItemThumbnailPixelSize;
+
+/**
+ * Portrait overlay chrome from reserved WxH — before decode settles.
+ * Waiting for decode flipped meta below→overlay and jerked masonry height.
+ */
+export function itemGridCoverOverlayLayout(args: {
+  hasCover: boolean;
+  slotSize: ItemGridCoverPixelSize | null;
+}): boolean {
+  if (!args.hasCover || args.slotSize === null) {
+    return false;
+  }
+  return (
+    measureCoverImageForm(args.slotSize.width, args.slotSize.height) ===
+    "portrait"
+  );
+}
 
 /** Pure cover-slot flags for ItemGridCard (keeps failed loads from sticky gray teasers). */
 export function itemGridCoverSlot(args: {
@@ -16,6 +32,23 @@ export function itemGridCoverSlot(args: {
   const showCover = Boolean(args.coverSrc && args.coverSettled);
   const loadCover = Boolean(args.coverSrc) && !args.coverSettled;
   return { coverPending, showCover, loadCover };
+}
+
+/**
+ * Reserve cover teaser only when host already gave exact WxH (or decode settled).
+ * No optimistic 16:9 / 3:4 — those jump after real pixels arrive.
+ */
+export function itemGridCoverSlotPending(args: {
+  coverPending: boolean;
+  resolvedPixelSize: ItemGridCoverPixelSize | null;
+}): boolean {
+  const size = args.resolvedPixelSize;
+  return (
+    args.coverPending &&
+    size != null &&
+    size.width > 0 &&
+    size.height > 0
+  );
 }
 
 /**
@@ -40,7 +73,7 @@ export function itemGridCoverImgSizeAttrs(
 
 /**
  * Stable aspect box for the cover slot — owns teaser height before/while the
- * visible `<img>` paints. Ratio matches decoded pixels (no vault schema).
+ * visible `<img>` paints. Ratio matches resolved or decoded pixels.
  */
 export function itemGridCoverSlotAspectStyle(
   size: ItemGridCoverPixelSize,
@@ -51,7 +84,7 @@ export function itemGridCoverSlotAspectStyle(
 /**
  * Cover `<img>` layout classes.
  * Settled covers fill the reserved aspect slot (not `h-auto` alone).
- * In-flight decode uses a detached 1×1 img in ItemGridCard — not this helper.
+ * In-flight decode uses opacity-0 over the reserved slot.
  */
 export function itemGridCoverImgClassName(args: { loadCover: boolean }): string {
   if (args.loadCover) {

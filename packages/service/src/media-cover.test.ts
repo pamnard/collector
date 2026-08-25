@@ -41,6 +41,12 @@ describe("createMediaCoverService", () => {
     async (_vaultPath: string, items: Array<{ id: string }>) =>
       items.map((item) => ({ id: item.id, path: `/thumb/${item.id}` })),
   );
+  const readCoverPixelSize = vi.fn(async (absolutePath: string) => {
+    if (absolutePath.includes("null")) {
+      throw new Error("unexpected size read");
+    }
+    return { width: 320, height: 240 };
+  });
 
   beforeEach(() => {
     listItemMediaWithPaths.mockReset();
@@ -54,6 +60,7 @@ describe("createMediaCoverService", () => {
     enqueueGenerateCover.mockClear();
     waitForCoverJob.mockClear();
     resolveThumbnailPathsBatch.mockClear();
+    readCoverPixelSize.mockClear();
     enqueueGenerateCover.mockResolvedValue({ id: "job-1" });
     waitForCoverJob.mockResolvedValue("succeeded");
     touchItemUpdatedAt.mockResolvedValue({
@@ -63,13 +70,16 @@ describe("createMediaCoverService", () => {
     });
   });
 
-  function createService() {
+  function createService(opts?: { withSizes?: boolean }) {
     return createMediaCoverService({
       resolveActiveVault: async () => ({ vault: vault as never, path: "/vault" }),
       getContext: () => ctx,
       enqueueGenerateCover,
       waitForCoverJob,
       resolveThumbnailPathsBatch,
+      ...(opts?.withSizes === false
+        ? {}
+        : { readCoverPixelSize }),
     });
   }
 
@@ -94,6 +104,38 @@ describe("createMediaCoverService", () => {
     expect(first.get("note.md")).toBe("/thumb/note.md");
     expect(second.get("note.md")).toBe("/thumb/note.md");
     expect(resolveThumbnailPathsBatch).toHaveBeenCalledTimes(1);
+    expect(readCoverPixelSize).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolveItemThumbnailEntries returns path + size when host injects reader", async () => {
+    const service = createService();
+    const item = {
+      id: "note.md",
+      thumbnail: "cover.webp",
+      updated_at: "t1",
+    } as never;
+
+    const entries = await service.resolveItemThumbnailEntries([item]);
+    expect(entries.get("note.md")).toEqual({
+      path: "/thumb/note.md",
+      size: { width: 320, height: 240 },
+    });
+  });
+
+  it("resolveItemThumbnailEntries omits size when reader not injected", async () => {
+    const service = createService({ withSizes: false });
+    const item = {
+      id: "note.md",
+      thumbnail: "cover.webp",
+      updated_at: "t1",
+    } as never;
+
+    const entries = await service.resolveItemThumbnailEntries([item]);
+    expect(entries.get("note.md")).toEqual({
+      path: "/thumb/note.md",
+      size: null,
+    });
+    expect(readCoverPixelSize).not.toHaveBeenCalled();
   });
 
   it("attach invalidates stale null thumbnail cache after updated_at bump (#720)", async () => {

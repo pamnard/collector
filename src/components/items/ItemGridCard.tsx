@@ -1,5 +1,9 @@
 import { memo, useMemo } from "react";
 import type { TagWithCount } from "@collector/core";
+import {
+  positiveThumbnailPixelSize,
+  type ItemThumbnailPixelSize,
+} from "@collector/api";
 import { cn } from "../../lib/utils";
 import { useMainScrollElement } from "../../hooks/useMainScrollElement";
 import { useNearViewportRef } from "../../hooks/useNearViewport";
@@ -8,7 +12,9 @@ import { textOnlyTeaserChromeClass } from "./text-only-teaser-chrome";
 import {
   itemGridCoverImgClassName,
   itemGridCoverImgSizeAttrs,
+  itemGridCoverOverlayLayout,
   itemGridCoverSlotAspectStyle,
+  itemGridCoverSlotPending,
 } from "./item-grid-cover-slot";
 import { useItemGridCover } from "./use-item-grid-cover";
 import {
@@ -19,6 +25,7 @@ import {
 function ItemGridCardInner({
   item,
   thumbnailPath,
+  thumbnailSize,
   tagsById,
   onOpen,
 }: ItemGridCardProps) {
@@ -38,7 +45,7 @@ function ItemGridCardInner({
   const {
     coverSrc,
     coverPixelSize,
-    isPortraitCover,
+    coverPending,
     showCover,
     loadCover,
     onCoverImgLoad,
@@ -49,12 +56,22 @@ function ItemGridCardInner({
     shouldDecode: nearViewport,
   });
 
-  // Cover chrome only after a successful settle — pending/timeout/error = text teaser.
-  const hasCover = showCover;
-  if (hasCover && !coverPixelSize) {
+  const slotSize: ItemThumbnailPixelSize | null =
+    coverPixelSize ??
+    positiveThumbnailPixelSize(
+      thumbnailSize?.width,
+      thumbnailSize?.height,
+    );
+
+  const coverSlotPending = itemGridCoverSlotPending({
+    coverPending,
+    resolvedPixelSize: slotSize,
+  });
+  const hasCover = showCover || coverSlotPending;
+  if (showCover && !coverPixelSize) {
     throw new Error("settled grid cover requires reserved pixel size");
   }
-  const overlayLayout = Boolean(showCover && isPortraitCover);
+  const overlayLayout = itemGridCoverOverlayLayout({ hasCover, slotSize });
   const decodingCover = Boolean(loadCover && coverSrc && !showCover);
 
   const meta = (
@@ -80,17 +97,15 @@ function ItemGridCardInner({
           onOpen(item.id);
         }
       }}
-      // No content-visibility / contain-intrinsic-size: WebKitGTK (Tauri Linux)
-      // leaves those masonry cards as blank 280px boxes.
       className={cn(
         "group flex cursor-pointer flex-col overflow-hidden",
-        decodingCover && "relative",
+        decodingCover && !hasCover && "relative",
         !hasCover && "h-full",
         !hasCover && textOnlyTeaserChromeClass,
         hasCover && overlayLayout && "relative h-full",
       )}
     >
-      {decodingCover && coverSrc ? (
+      {decodingCover && coverSrc && !hasCover ? (
         <img
           ref={onCoverImgRef}
           src={coverSrc}
@@ -103,30 +118,40 @@ function ItemGridCardInner({
           onError={onCoverImgError}
         />
       ) : null}
-      {hasCover && coverSrc && coverPixelSize ? (
+      {hasCover && slotSize ? (
         <div
           className={cn(
             "relative w-full overflow-hidden rounded-lg bg-neutral-100 dark:bg-neutral-700",
             !overlayLayout && "mb-4 shrink-0",
           )}
-          style={itemGridCoverSlotAspectStyle(coverPixelSize)}
+          style={itemGridCoverSlotAspectStyle(slotSize)}
         >
-          <img
-            ref={onCoverImgRef}
-            src={coverSrc}
-            alt=""
-            {...itemGridCoverImgSizeAttrs(coverPixelSize)}
-            className={itemGridCoverImgClassName({ loadCover: false })}
-            loading="eager"
-            decoding="async"
-            onLoad={(event) => onCoverImgLoad(event.currentTarget)}
-            onError={onCoverImgError}
-          />
-          {overlayLayout && (
+          {(loadCover || showCover) && coverSrc ? (
+            <img
+              ref={onCoverImgRef}
+              src={coverSrc}
+              alt=""
+              {...itemGridCoverImgSizeAttrs(slotSize)}
+              className={itemGridCoverImgClassName({
+                loadCover: Boolean(loadCover && !showCover),
+              })}
+              loading="eager"
+              decoding="async"
+              onLoad={(event) => onCoverImgLoad(event.currentTarget)}
+              onError={onCoverImgError}
+            />
+          ) : null}
+          {!showCover ? (
+            <div
+              aria-hidden
+              className="absolute inset-0 animate-pulse bg-neutral-100 dark:bg-neutral-700"
+            />
+          ) : null}
+          {overlayLayout ? (
             <div className="absolute inset-x-0 bottom-0 flex flex-col bg-gradient-to-t from-neutral-950/95 via-neutral-950/75 to-transparent p-5 pt-16 dark:from-white/95 dark:via-white/75 dark:to-transparent">
               {meta}
             </div>
-          )}
+          ) : null}
         </div>
       ) : null}
 

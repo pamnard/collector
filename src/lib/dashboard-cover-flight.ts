@@ -5,7 +5,10 @@
  */
 
 import type { ItemFile } from "@collector/shared";
-import type { UiSessionThumbnailResolveProgressiveOptions } from "@collector/api";
+import type {
+  ItemThumbnailPixelSize,
+  UiSessionThumbnailResolveProgressiveOptions,
+} from "@collector/api";
 import {
   coverNeedsResolve,
   itemCoverStamp,
@@ -34,9 +37,11 @@ export type RunCoverPathFlightOptions = {
   getOrderedIds: () => string[];
   getPaths: () => Map<string, string | null>;
   getStamps: () => Map<string, string>;
+  getSizes: () => Map<string, ItemThumbnailPixelSize | null>;
   commit: (
     paths: Map<string, string | null>,
     stamps: Map<string, string>,
+    sizes: Map<string, ItemThumbnailPixelSize | null>,
   ) => void;
   getFlight: () => CoverFlightSlot;
   setFlight: (flight: CoverFlightSlot) => void;
@@ -51,7 +56,12 @@ export async function runCoverPathFlight(
 
   const collectNeedsResolve = () =>
     options.orderedItems.filter((item) =>
-      coverNeedsResolve(item, options.getPaths(), options.getStamps()),
+      coverNeedsResolve(
+        item,
+        options.getPaths(),
+        options.getStamps(),
+        options.getSizes(),
+      ),
     );
 
   // Same-version waiters share one flight so sync republish does not abort
@@ -85,6 +95,7 @@ export async function runCoverPathFlight(
       getOrderedIds: options.getOrderedIds,
       getPaths: options.getPaths,
       getStamps: options.getStamps,
+      getSizes: options.getSizes,
       commit: options.commit,
       scheduleFlush: options.scheduleFlush,
     });
@@ -92,12 +103,12 @@ export async function runCoverPathFlight(
     const flightPromise = (async () => {
       await resolveProgressive(needsResolve, {
         signal: coverController.signal,
-        onResolved: (id, path) => {
+        onResolved: (id, path, size) => {
           const stamp = stampById.get(id);
           if (stamp === undefined) {
             return;
           }
-          coverBatcher.enqueue(id, path, stamp);
+          coverBatcher.enqueue(id, path, stamp, size);
         },
       });
       coverBatcher.flush();
