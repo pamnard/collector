@@ -140,10 +140,12 @@ export function createHostThumbnailsPort(
           return;
         }
 
-        const row = rows.find((entry) => entry.id === item.id) ?? {
-          id: item.id,
-          path: null,
-        };
+        const row = rows[0];
+        if (!row || row.id !== item.id) {
+          throw new Error(
+            `thumbnail wire row missing for id: ${item.id}`,
+          );
+        }
         options.onResolved(item.id, row.path, sizeFromWireRow(row));
       }
     };
