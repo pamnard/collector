@@ -30,6 +30,7 @@ import {
   createJobQueue,
   type JobQueue,
 } from "../jobs/job-queue.js";
+import { emptyStatusCounts } from "../jobs/job-store-types.js";
 import { createJobPermanentFailureStore } from "../job-permanent-failure.js";
 import { phaseBHandlerBindings } from "../jobs/phase-b-bindings.js";
 import {
@@ -432,14 +433,7 @@ export function createServiceDomainRuntime(
     // Fail closed when the queue is already torn down (#817 / #811).
     stats: async () => {
       if (!jobsQueue) {
-        return {
-          pending: 0,
-          running: 0,
-          succeeded: 0,
-          failed: 0,
-          cancelled: 0,
-          byType: {},
-        };
+        return { ...emptyStatusCounts(), byType: {} };
       }
       return jobsQueue.stats();
     },
