@@ -3,22 +3,6 @@ import { SERVICE_HOST_EVENTS } from "@collector/service/wire";
 import { createHostFoldersPort } from "./folders.js";
 import type { HostSessionCtx } from "../host-session-ctx.js";
 
-function foldersCtx(transport: {
-  request: (...args: never[]) => unknown;
-  onEvent: (...args: never[]) => unknown;
-}): HostSessionCtx {
-  return {
-    transport,
-    cachedSyncStatus: {
-      vaultId: null,
-      status: "idle",
-      progress: null,
-      metadataReady: false,
-      ftsReady: false,
-    },
-  } as unknown as HostSessionCtx;
-}
-
 describe("createHostFoldersPort.subscribeFolderTree (#567)", () => {
   it("re-lists the tree when vaultIndexSyncStatus transitions to done", async () => {
     const listeners = new Map<string, Set<(payload: unknown) => void>>();
@@ -37,13 +21,21 @@ describe("createHostFoldersPort.subscribeFolderTree (#567)", () => {
         };
       },
     };
+    const ctx = {
+      transport,
+      cachedSyncStatus: {
+        vaultId: null,
+        status: "idle",
+        progress: null,
+        metadataReady: false,
+        ftsReady: false,
+      },
+    } as unknown as HostSessionCtx;
 
     const updates: unknown[] = [];
-    const sub = createHostFoldersPort(foldersCtx(transport)).subscribeFolderTree(
-      (tree) => {
-        updates.push(tree);
-      },
-    );
+    const sub = createHostFoldersPort(ctx).subscribeFolderTree((tree) => {
+      updates.push(tree);
+    });
 
     await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1));
 
@@ -70,52 +62,43 @@ describe("createHostFoldersPort.subscribeFolderTree (#567)", () => {
     sub.unsubscribe();
   });
 
-  it("does not start listFolderTree when the abort signal is already aborted (#798)", async () => {
+  it("forwards listFolderTree failures via onError (#797)", async () => {
     const request = vi.fn(async () => {
-      throw new Error("should not call host");
+      throw new Error("tree failed");
     });
-    const updates: unknown[] = [];
+    const transport = {
+      request,
+      onEvent: () => () => {},
+    };
+    const ctx = { transport } as unknown as HostSessionCtx;
     const onError = vi.fn();
-    const sub = createHostFoldersPort(
-      foldersCtx({ request, onEvent: () => () => {} }),
-    ).subscribeFolderTree(
-      (tree) => {
-        updates.push(tree);
-      },
-      { onError },
-      AbortSignal.abort(),
-    );
-
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(request).not.toHaveBeenCalled();
-    expect(updates).toEqual([]);
-    expect(onError).not.toHaveBeenCalled();
-    sub.unsubscribe();
+    createHostFoldersPort(ctx).subscribeFolderTree(() => {}, { onError });
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+    expect(onError.mock.calls[0]![0]).toBe("folder tree");
+    expect(onError.mock.calls[0]![1]).toMatchObject({ message: "tree failed" });
   });
 
-  it("suppresses onError when aborted before a failing list settles (#798)", async () => {
-    let rejectRequest!: (error: unknown) => void;
+  it("skips onError after unsubscribe (#797)", async () => {
+    let rejectRequest!: (error: Error) => void;
     const request = vi.fn(
       () =>
-        new Promise((_resolve, reject) => {
+        new Promise<never>((_, reject) => {
           rejectRequest = reject;
         }),
     );
+    const transport = {
+      request,
+      onEvent: () => () => {},
+    };
+    const ctx = { transport } as unknown as HostSessionCtx;
     const onError = vi.fn();
-    const external = new AbortController();
-    const sub = createHostFoldersPort(
-      foldersCtx({ request, onEvent: () => () => {} }),
-    ).subscribeFolderTree(() => {}, { onError }, external.signal);
-
-    expect(request).toHaveBeenCalledOnce();
-    external.abort();
-    rejectRequest(new Error("folder tree down"));
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(onError).not.toHaveBeenCalled();
+    const sub = createHostFoldersPort(ctx).subscribeFolderTree(() => {}, {
+      onError,
+    });
     sub.unsubscribe();
+    rejectRequest(new Error("late"));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onError).not.toHaveBeenCalled();
   });
 });

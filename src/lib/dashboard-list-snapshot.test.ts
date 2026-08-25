@@ -15,6 +15,7 @@ describe("pruneItemIdFromDashboardListSnapshot", () => {
       bodyStamps: new Map([["a", "1"]]),
       thumbnailPaths: new Map<string, string | null>([["a", "/a"]]),
       thumbnailStamps: new Map([["a", "sa"]]),
+      thumbnailSizes: new Map(),
       streamEndOffset: 1,
       totalCount: 1,
     };
@@ -47,6 +48,7 @@ describe("pruneItemIdFromDashboardListSnapshot", () => {
         ["b", "sb"],
         ["c", "sc"],
       ]),
+      thumbnailSizes: new Map(),
       streamEndOffset: 3,
       totalCount: 10,
     };

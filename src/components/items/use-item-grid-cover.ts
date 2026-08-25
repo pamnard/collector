@@ -11,11 +11,14 @@ import {
 import { resolveCoverSrc } from "../../utils/item-cover-src";
 import {
   ITEM_GRID_COVER_DECODE_TIMEOUT_MS,
-  isPortraitNaturalSize,
   planItemGridCoverDecode,
   settleDomImgCoverDecode,
 } from "./item-grid-cover-decode";
-import { itemGridCoverSlot } from "./item-grid-cover-slot";
+import {
+  itemGridCoverPixelSizeFromImg,
+  itemGridCoverSlot,
+  type ItemGridCoverPixelSize,
+} from "./item-grid-cover-slot";
 
 export function useItemGridCover(args: {
   thumbnailPath: string | null | undefined;
@@ -24,7 +27,8 @@ export function useItemGridCover(args: {
 }): {
   coverSrc: string | null;
   coverSettled: boolean;
-  isPortraitCover: boolean;
+  coverPixelSize: ItemGridCoverPixelSize | null;
+  coverPending: boolean;
   showCover: boolean;
   loadCover: boolean;
   onCoverImgLoad: (img: HTMLImageElement) => void;
@@ -34,7 +38,8 @@ export function useItemGridCover(args: {
   const { thumbnailPath, shouldDecode } = args;
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
   const [coverSettled, setCoverSettled] = useState(false);
-  const [isPortraitCover, setIsPortraitCover] = useState(false);
+  const [coverPixelSize, setCoverPixelSize] =
+    useState<ItemGridCoverPixelSize | null>(null);
   const warmDecode = useSyncExternalStore(
     subscribeDashboardGridWarm,
     isDashboardGridWarmActive,
@@ -47,7 +52,7 @@ export function useItemGridCover(args: {
 
   const expectedCoverSrc =
     thumbnailPath === undefined ? null : resolveCoverSrc(thumbnailPath);
-  const { showCover, loadCover } = itemGridCoverSlot({
+  const { coverPending, showCover, loadCover } = itemGridCoverSlot({
     expectedCoverSrc,
     coverSrc,
     coverSettled,
@@ -79,20 +84,20 @@ export function useItemGridCover(args: {
     if (plan.kind === "settled-empty") {
       setCoverSrc(null);
       setCoverSettled(true);
-      setIsPortraitCover(false);
+      setCoverPixelSize(null);
       return;
     }
 
     if (plan.kind === "defer") {
       setCoverSrc(null);
       setCoverSettled(false);
-      setIsPortraitCover(false);
+      setCoverPixelSize(null);
       return;
     }
 
     setCoverSrc(plan.src);
     setCoverSettled(false);
-    setIsPortraitCover(false);
+    setCoverPixelSize(null);
   }, [decodeCovers, thumbnailPath]);
 
   useEffect(() => {
@@ -110,7 +115,7 @@ export function useItemGridCover(args: {
       console.warn("[ItemGridCard] cover decode timed out", { src: coverSrc });
       setCoverSrc(null);
       setCoverSettled(true);
-      setIsPortraitCover(false);
+      setCoverPixelSize(null);
     }, ITEM_GRID_COVER_DECODE_TIMEOUT_MS);
 
     return () => {
@@ -122,7 +127,7 @@ export function useItemGridCover(args: {
   const onCoverImgLoad = useCallback((img: HTMLImageElement) => {
     setCoverSrc(img.currentSrc || img.src);
     setCoverSettled(true);
-    setIsPortraitCover(isPortraitNaturalSize(img));
+    setCoverPixelSize(itemGridCoverPixelSizeFromImg(img));
     if (isDashboardPerfEnabled()) {
       dashboardPerfRecordCoverDecode(dashboardPerfGetActiveRunId());
     }
@@ -131,7 +136,7 @@ export function useItemGridCover(args: {
   const onCoverImgError = useCallback(() => {
     setCoverSrc(null);
     setCoverSettled(true);
-    setIsPortraitCover(false);
+    setCoverPixelSize(null);
   }, []);
 
   const onCoverImgRef = useCallback(
@@ -150,7 +155,8 @@ export function useItemGridCover(args: {
   return {
     coverSrc,
     coverSettled,
-    isPortraitCover,
+    coverPixelSize,
+    coverPending,
     showCover,
     loadCover,
     onCoverImgLoad,

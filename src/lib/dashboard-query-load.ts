@@ -14,6 +14,10 @@ export type BuildDashboardQueryCacheEntryInput = {
   totalCount: number;
   thumbnailPaths: Map<string, string | null>;
   thumbnailStamps: Map<string, string>;
+  thumbnailSizes: Map<
+    string,
+    import("@collector/api").ItemThumbnailPixelSize | null
+  >;
   now?: number;
 };
 
@@ -28,6 +32,7 @@ export function buildDashboardQueryCacheEntry(
     totalCount: input.totalCount,
     thumbnailPaths: new Map(input.thumbnailPaths),
     thumbnailStamps: new Map(input.thumbnailStamps),
+    thumbnailSizes: new Map(input.thumbnailSizes),
     updatedAt: input.now ?? Date.now(),
   };
 }
@@ -41,6 +46,10 @@ export type CacheEntryAppliedState = {
   ordered: ItemFile[];
   thumbnailPaths: Map<string, string | null>;
   thumbnailStamps: Map<string, string>;
+  thumbnailSizes: Map<
+    string,
+    import("@collector/api").ItemThumbnailPixelSize | null
+  >;
   hasMore: boolean;
 };
 
@@ -64,6 +73,7 @@ export function stateFromDashboardCacheEntry(
     ordered,
     thumbnailPaths: new Map(entry.thumbnailPaths),
     thumbnailStamps: new Map(entry.thumbnailStamps),
+    thumbnailSizes: new Map(entry.thumbnailSizes ?? []),
     hasMore: entry.streamEndOffset < entry.totalCount,
   };
 }

@@ -47,7 +47,7 @@ export function createThumbnailResolveSession(
       if (options.signal?.aborted) {
         return;
       }
-      options.onResolved(item.id, path);
+      options.onResolved(item.id, path, null);
     }
   };
 

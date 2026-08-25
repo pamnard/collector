@@ -4,13 +4,10 @@ import type {
   TagWithCount,
   TagsPort,
 } from "@collector/api";
-import {
-  asCollectorApiError,
-  subscriptionFromTeardown,
-} from "@collector/api";
+import { subscriptionFromTeardown } from "@collector/api";
 import type { Tag } from "@collector/shared";
 import type { HostSessionCtx } from "../host-session-ctx.js";
-import { createLinkedAbortController } from "./subscribe-helpers.js";
+import { voidSubscribePublish, withAbortBridge } from "./subscribe-helpers.js";
 
 export function createHostTagsPort(ctx: HostSessionCtx): TagsPort {
   const { transport } = ctx;
@@ -20,21 +17,16 @@ export function createHostTagsPort(ctx: HostSessionCtx): TagsPort {
       handlers?: ServiceSubscribeHandlers,
       signal?: AbortSignal,
     ): Subscription {
-      const controller = createLinkedAbortController(signal);
-      const active = controller.signal;
-      void (async () => {
-        try {
-          if (active.aborted) {
-            return;
-          }
+      const { signal: active, dispose } = withAbortBridge(signal);
+      voidSubscribePublish(
+        active,
+        async () => {
           onUpdate((await transport.request("listTags")) as TagWithCount[]);
-        } catch (error: unknown) {
-          if (!active.aborted) {
-            handlers?.onError?.("tags", asCollectorApiError(error));
-          }
-        }
-      })();
-      return subscriptionFromTeardown(() => controller.abort());
+        },
+        handlers,
+        "tags",
+      );
+      return subscriptionFromTeardown(dispose);
     },
     listTags: async (): Promise<TagWithCount[]> =>
       transport.request("listTags") as Promise<TagWithCount[]>,

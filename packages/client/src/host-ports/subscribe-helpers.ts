@@ -1,22 +1,30 @@
 /**
- * Shared abort / throttled-republish primitives for host ports (#798 / #797).
- * Ports stay thin; helpers own the nested subscribe scaffolding.
+ * Shared abort / throttled-republish / error-forward helpers for host-ports (#797).
  */
 
-/** Local controller aborted when an optional external signal aborts. */
-export function createLinkedAbortController(
-  signal?: AbortSignal,
-): AbortController {
+import type { ServiceSubscribeHandlers } from "@collector/api";
+import { asCollectorApiError } from "@collector/api";
+
+export type SubscribeErrorHandlers = Pick<ServiceSubscribeHandlers, "onError">;
+
+export function withAbortBridge(external?: AbortSignal): {
+  signal: AbortSignal;
+  dispose: () => void;
+} {
   const controller = new AbortController();
-  if (!signal) {
-    return controller;
+  if (external) {
+    if (external.aborted) {
+      controller.abort();
+    } else {
+      external.addEventListener("abort", () => controller.abort(), {
+        once: true,
+      });
+    }
   }
-  if (signal.aborted) {
-    controller.abort();
-    return controller;
-  }
-  signal.addEventListener("abort", () => controller.abort(), { once: true });
-  return controller;
+  return {
+    signal: controller.signal,
+    dispose: () => controller.abort(),
+  };
 }
 
 export function createThrottledPublisher(
@@ -64,4 +72,35 @@ export function createThrottledPublisher(
       }
     },
   };
+}
+
+export function forwardSubscribeError(
+  handlers: SubscribeErrorHandlers | undefined,
+  label: string,
+  error: unknown,
+  signal?: AbortSignal,
+): void {
+  if (signal?.aborted) {
+    return;
+  }
+  handlers?.onError?.(label, asCollectorApiError(error));
+}
+
+/** Fire-and-forget publish that skips work/errors once `signal` is aborted. */
+export function voidSubscribePublish(
+  signal: AbortSignal,
+  publish: () => Promise<void>,
+  handlers: SubscribeErrorHandlers | undefined,
+  label: string,
+): void {
+  void (async () => {
+    try {
+      if (signal.aborted) {
+        return;
+      }
+      await publish();
+    } catch (error: unknown) {
+      forwardSubscribeError(handlers, label, error, signal);
+    }
+  })();
 }

@@ -61,10 +61,11 @@ function sealEntry(entry: DashboardQueryCacheEntry): DashboardQueryCacheEntry {
     bodyStamps: sealMap(entry.bodyStamps),
     thumbnailPaths: sealMap(entry.thumbnailPaths),
     thumbnailStamps: sealMap(entry.thumbnailStamps),
+    thumbnailSizes: sealMap(entry.thumbnailSizes ?? new Map()),
     streamEndOffset: entry.streamEndOffset,
     totalCount: entry.totalCount,
     updatedAt: entry.updatedAt,
-  });
+  }) as DashboardQueryCacheEntry;
 }
 
 /** Structural-sharing cover replace: keep list/body Maps, seal new thumbnails. */
@@ -72,6 +73,10 @@ function entryWithSealedCovers(
   entry: DashboardQueryCacheEntry,
   thumbnailPaths: ReadonlyMap<string, string | null>,
   thumbnailStamps: ReadonlyMap<string, string>,
+  thumbnailSizes: ReadonlyMap<
+    string,
+    import("@collector/api").ItemThumbnailPixelSize | null
+  >,
 ): DashboardQueryCacheEntry {
   return Object.freeze({
     itemIds: entry.itemIds,
@@ -81,8 +86,9 @@ function entryWithSealedCovers(
     totalCount: entry.totalCount,
     thumbnailPaths: sealMap(thumbnailPaths),
     thumbnailStamps: sealMap(thumbnailStamps),
+    thumbnailSizes: sealMap(thumbnailSizes),
     updatedAt: Date.now(),
-  });
+  }) as DashboardQueryCacheEntry;
 }
 
 function evictOverflow(): void {
@@ -123,12 +129,24 @@ export function patchDashboardQueryCacheCovers(
   key: string,
   thumbnailPaths: ReadonlyMap<string, string | null>,
   thumbnailStamps: ReadonlyMap<string, string>,
+  thumbnailSizes: ReadonlyMap<
+    string,
+    import("@collector/api").ItemThumbnailPixelSize | null
+  >,
 ): boolean {
   const entry = entries.get(key);
   if (!entry) {
     return false;
   }
-  touch(key, entryWithSealedCovers(entry, thumbnailPaths, thumbnailStamps));
+  touch(
+    key,
+    entryWithSealedCovers(
+      entry,
+      thumbnailPaths,
+      thumbnailStamps,
+      thumbnailSizes,
+    ),
+  );
   return true;
 }
 
@@ -141,6 +159,10 @@ export type ApplyDashboardQueryCacheCoverFlightPatchOptions = {
   getLiveVersion: () => number;
   thumbnailPaths: ReadonlyMap<string, string | null>;
   thumbnailStamps: ReadonlyMap<string, string>;
+  thumbnailSizes: ReadonlyMap<
+    string,
+    import("@collector/api").ItemThumbnailPixelSize | null
+  >;
   /** Full rewrite when the flight key was LRU-evicted mid-flight. */
   rewriteFull: () => void;
 };
@@ -164,6 +186,7 @@ export function applyDashboardQueryCacheCoverFlightPatch(
       options.flightKey,
       options.thumbnailPaths,
       options.thumbnailStamps,
+      options.thumbnailSizes,
     )
   ) {
     return "patched";

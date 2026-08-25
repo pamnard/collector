@@ -256,4 +256,34 @@ describe("createExecuteJob (#798 / #793 seam)", () => {
       vi.useRealTimers();
     }
   });
+
+  it("settles unexpected handler result as permanent failure (does not leave running)", async () => {
+    const registry = createJobRegistry([testNoopJobType]);
+    registry.register(testNoopJobType, async () => {
+      return { status: "wat" } as never;
+    });
+
+    const markFailed = vi.fn(async () => undefined);
+    const markSucceeded = vi.fn(async () => undefined);
+    const reportPermanentFailure = vi.fn();
+    const applyRetry = vi.fn(async () => undefined);
+
+    const executeJob = createExecuteJob({
+      store: { markFailed, markSucceeded } as never,
+      registry,
+      timeoutMs: 1000,
+      now,
+      applyRetry,
+      reportPermanentFailure,
+    });
+
+    await expect(executeJob(baseJob())).resolves.toBeUndefined();
+
+    expect(markSucceeded).not.toHaveBeenCalled();
+    expect(markFailed).toHaveBeenCalledOnce();
+    expect(String(markFailed.mock.calls[0]![2])).toMatch(/unexpected job handler result/);
+    expect(reportPermanentFailure).toHaveBeenCalledOnce();
+    expect(applyRetry).not.toHaveBeenCalled();
+  });
+
 });

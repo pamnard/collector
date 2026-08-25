@@ -3,6 +3,10 @@ import type {
   DashboardSnapshot,
   ItemFile,
 } from "@collector/shared";
+import {
+  positiveThumbnailPixelSize,
+  type ItemThumbnailPixelSize,
+} from "@collector/api";
 import type { DashboardQueryCacheEntry } from "../services/dashboard-query-cache";
 import { itemIdsEqual } from "./dashboard-display.ts";
 import {
@@ -25,11 +29,19 @@ export function coverNeedsResolve(
   item: ItemFile,
   paths: Map<string, string | null>,
   stamps: Map<string, string>,
+  sizes?: Map<string, ItemThumbnailPixelSize | null>,
 ): boolean {
   if (!paths.has(item.id)) {
     return true;
   }
-  return stamps.get(item.id) !== itemCoverStamp(item);
+  if (stamps.get(item.id) !== itemCoverStamp(item)) {
+    return true;
+  }
+  // Path without pixel size → re-resolve so the grid can reserve exact aspect.
+  if (sizes && !sizes.has(item.id)) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -40,11 +52,25 @@ export function resolveDashboardGridThumbnailPath(
   item: ItemFile,
   paths: Map<string, string | null>,
   stamps: Map<string, string>,
+  sizes?: Map<string, ItemThumbnailPixelSize | null>,
 ): string | null | undefined {
-  if (!coverNeedsResolve(item, paths, stamps)) {
+  if (!coverNeedsResolve(item, paths, stamps, sizes)) {
     return paths.get(item.id) ?? null;
   }
   return undefined;
+}
+
+/** Pixel size when path is resolved; undefined while still resolving. */
+export function resolveDashboardGridThumbnailSize(
+  item: ItemFile,
+  paths: Map<string, string | null>,
+  stamps: Map<string, string>,
+  sizes: Map<string, ItemThumbnailPixelSize | null>,
+): ItemThumbnailPixelSize | null | undefined {
+  if (coverNeedsResolve(item, paths, stamps, sizes)) {
+    return undefined;
+  }
+  return sizes.get(item.id) ?? null;
 }
 
 export function thumbnailPathsEqual(
@@ -60,8 +86,71 @@ export function thumbnailPathsEqual(
   return true;
 }
 
-function tagIdsKey(tagIds: string[]): string {
-  return [...tagIds].sort().join("\0");
+export function thumbnailPixelSizesEqual(
+  left: ItemThumbnailPixelSize | null | undefined,
+  right: ItemThumbnailPixelSize | null | undefined,
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (left == null || right == null) {
+    return left === right;
+  }
+  return left.width === right.width && left.height === right.height;
+}
+
+export function thumbnailSizesEqual(
+  left: Map<string, ItemThumbnailPixelSize | null>,
+  right: Map<string, ItemThumbnailPixelSize | null>,
+  ids: string[],
+): boolean {
+  for (const id of ids) {
+    if (
+      !thumbnailPixelSizesEqual(left.get(id) ?? null, right.get(id) ?? null)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Order-independent tag multiset equality without sorting a fresh copy (#788).
+ * Same-reference / same-order paths avoid Map allocation on the commit hot path.
+ */
+function tagIdsMultisetEqual(left: string[], right: string[]): boolean {
+  const counts = new Map<string, number>();
+  for (const id of left) {
+    const n = counts.get(id);
+    counts.set(id, n === undefined ? 1 : n + 1);
+  }
+  for (const id of right) {
+    const n = counts.get(id);
+    if (n === undefined) {
+      return false;
+    }
+    if (n === 1) {
+      counts.delete(id);
+    } else {
+      counts.set(id, n - 1);
+    }
+  }
+  return counts.size === 0;
+}
+
+function tagIdsEqualUnordered(left: string[], right: string[]): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (left.length !== right.length) {
+    return false;
+  }
+  for (let i = 0; i < left.length; i++) {
+    if (left[i] !== right[i]) {
+      return tagIdsMultisetEqual(left, right);
+    }
+  }
+  return true;
 }
 
 export function itemsBodiesEqual(left: ItemFile[], right: ItemFile[]): boolean {
@@ -79,7 +168,7 @@ export function itemsBodiesEqual(left: ItemFile[], right: ItemFile[]): boolean {
       a.description !== b.description ||
       a.url !== b.url ||
       a.content_type !== b.content_type ||
-      tagIdsKey(a.tag_ids) !== tagIdsKey(b.tag_ids)
+      !tagIdsEqualUnordered(a.tag_ids, b.tag_ids)
     ) {
       return false;
     }
@@ -197,9 +286,30 @@ export function mergeCommittedThumbnailStamps(
   return merged;
 }
 
+export function mergeCommittedThumbnailSizes(
+  prev: Map<string, ItemThumbnailPixelSize | null>,
+  resolved: Map<string, ItemThumbnailPixelSize | null>,
+  orderedItemIds: string[],
+): Map<string, ItemThumbnailPixelSize | null> {
+  const merged = new Map(prev);
+  for (const id of orderedItemIds) {
+    if (resolved.has(id)) {
+      merged.set(id, resolved.get(id) ?? null);
+    }
+  }
+  const orderedSet = new Set(orderedItemIds);
+  for (const id of [...merged.keys()]) {
+    if (!orderedSet.has(id)) {
+      merged.delete(id);
+    }
+  }
+  return merged;
+}
+
 export function coverPathsFromMaps(
   paths: Map<string, string | null>,
   stamps: Map<string, string>,
+  sizes?: Map<string, ItemThumbnailPixelSize | null>,
 ): Record<string, DashboardCoverPathEntry> {
   const out: Record<string, DashboardCoverPathEntry> = {};
   for (const [id, path] of paths) {
@@ -207,7 +317,13 @@ export function coverPathsFromMaps(
     if (stamp === undefined) {
       continue;
     }
-    out[id] = { path, stamp };
+    const size = sizes?.get(id) ?? null;
+    out[id] = {
+      path,
+      stamp,
+      width: size?.width ?? null,
+      height: size?.height ?? null,
+    };
   }
   return out;
 }
@@ -215,9 +331,11 @@ export function coverPathsFromMaps(
 export function mapsFromCoverPaths(coverPaths: DashboardSnapshot["cover_paths"]): {
   thumbnailPaths: Map<string, string | null>;
   thumbnailStamps: Map<string, string>;
+  thumbnailSizes: Map<string, ItemThumbnailPixelSize | null>;
 } {
   const thumbnailPaths = new Map<string, string | null>();
   const thumbnailStamps = new Map<string, string>();
+  const thumbnailSizes = new Map<string, ItemThumbnailPixelSize | null>();
   for (const [id, entry] of Object.entries(coverPaths ?? {})) {
     // Never warm a sticky null (#720): cover may exist on disk without stamp bump.
     // Missing map entry → coverNeedsResolve → fresh host resolve.
@@ -226,8 +344,12 @@ export function mapsFromCoverPaths(coverPaths: DashboardSnapshot["cover_paths"])
     }
     thumbnailPaths.set(id, entry.path);
     thumbnailStamps.set(id, entry.stamp);
+    const size = positiveThumbnailPixelSize(entry.width, entry.height);
+    if (size) {
+      thumbnailSizes.set(id, size);
+    }
   }
-  return { thumbnailPaths, thumbnailStamps };
+  return { thumbnailPaths, thumbnailStamps, thumbnailSizes };
 }
 
 export function mapsFromBodyStamps(
@@ -245,7 +367,7 @@ export function bodyStampsFromMap(
 export function snapshotToCacheEntry(
   snap: DashboardSnapshot,
 ): DashboardQueryCacheEntry {
-  const { thumbnailPaths, thumbnailStamps } = mapsFromCoverPaths(
+  const { thumbnailPaths, thumbnailStamps, thumbnailSizes } = mapsFromCoverPaths(
     snap.cover_paths,
   );
   return {
@@ -256,6 +378,7 @@ export function snapshotToCacheEntry(
     totalCount: snap.total_count,
     thumbnailPaths,
     thumbnailStamps,
+    thumbnailSizes,
     updatedAt: Date.now(),
   };
 }
@@ -343,6 +466,9 @@ export type DashboardListSnapshotSink = {
   setCommittedHasMore: (hasMore: boolean) => void;
   setCommittedThumbnailPaths: (paths: Map<string, string | null>) => void;
   setCommittedThumbnailStamps: (stamps: Map<string, string>) => void;
+  setCommittedThumbnailSizes: (
+    sizes: Map<string, ItemThumbnailPixelSize | null>,
+  ) => void;
 };
 
 /**
@@ -365,6 +491,7 @@ export function applyDashboardListSnapshot(
   );
   sink.setCommittedThumbnailPaths(snapshot.thumbnailPaths);
   sink.setCommittedThumbnailStamps(snapshot.thumbnailStamps);
+  sink.setCommittedThumbnailSizes(snapshot.thumbnailSizes);
 }
 
 /**
@@ -393,6 +520,7 @@ export function pruneItemIdFromDashboardLists(
       bodyStamps: list.bodyStamps,
       thumbnailPaths: list.thumbnailPaths,
       thumbnailStamps: list.thumbnailStamps,
+      thumbnailSizes: list.thumbnailSizes,
       streamEndOffset: list.streamEndOffset,
       totalCount: list.totalCount,
       committedItems,
@@ -414,6 +542,8 @@ export function pruneItemIdFromDashboardLists(
   thumbnailPaths.delete(itemId);
   const thumbnailStamps = new Map(input.thumbnailStamps);
   thumbnailStamps.delete(itemId);
+  const thumbnailSizes = new Map(input.thumbnailSizes);
+  thumbnailSizes.delete(itemId);
   return {
     removed: true,
     itemIds: [...input.itemIds],
@@ -421,6 +551,7 @@ export function pruneItemIdFromDashboardLists(
     bodyStamps,
     thumbnailPaths,
     thumbnailStamps,
+    thumbnailSizes,
     streamEndOffset: Math.min(input.streamEndOffset, input.itemIds.length),
     totalCount: input.totalCount,
     committedItems,
