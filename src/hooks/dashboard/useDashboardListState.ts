@@ -124,10 +124,10 @@ export function useDashboardListState(options: {
   );
   const [committedThumbnailPaths, setCommittedThumbnailPaths] = useState<
     Map<string, string | null>
-  >(() => new Map(initial?.thumbnailPaths ?? []));
+  >(() => (initial ? new Map(initial.thumbnailPaths) : new Map()));
   const [committedThumbnailStamps, setCommittedThumbnailStamps] = useState<
     Map<string, string>
-  >(() => new Map(initial?.thumbnailStamps ?? []));
+  >(() => (initial ? new Map(initial.thumbnailStamps) : new Map()));
   const [committedThumbnailSizes, setCommittedThumbnailSizes] = useState<
     Map<string, ItemThumbnailPixelSize | null>
   >(() => (initial ? new Map(initial.thumbnailSizes) : new Map()));
