@@ -7,7 +7,7 @@ import { DashboardGridSkeleton } from "./DashboardListSkeleton";
 import { MASONRY_BREAKPOINTS } from "./masonry-breakpoints";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
 import { useMainScrollElement } from "../../hooks/useMainScrollElement";
-import { resolveDashboardGridThumbnailPath, resolveDashboardGridThumbnailSize } from "../../lib/dashboard-commit";
+import { resolveDashboardGridThumbnail } from "../../lib/dashboard-commit";
 import {
   dashboardPerfActiveRunId,
   dashboardPerfBeginPhase,
@@ -32,7 +32,7 @@ function gridMayAwaitCoverDecode(
   thumbnailSizes: ReturnType<typeof useDashboardItems>["thumbnailSizes"],
 ): boolean {
   return items.some((item) => {
-    const path = resolveDashboardGridThumbnailPath(
+    const { path } = resolveDashboardGridThumbnail(
       item,
       thumbnailPaths,
       thumbnailStamps,
@@ -149,27 +149,26 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
         className="my-masonry-grid"
         columnClassName="my-masonry-grid_column"
       >
-        {dashboard.items.map((item) => (
-          <div key={item.id} data-dashboard-card>
-            <ItemGridCard
-              item={item}
-              thumbnailPath={resolveDashboardGridThumbnailPath(
-                item,
-                dashboard.thumbnailPaths,
-                dashboard.thumbnailStamps,
-                dashboard.thumbnailSizes,
-              )}
-              thumbnailSize={resolveDashboardGridThumbnailSize(
-                item,
-                dashboard.thumbnailPaths,
-                dashboard.thumbnailStamps,
-                dashboard.thumbnailSizes,
-              )}
-              tagsById={tagsById}
-              onOpen={handleOpenItem}
-            />
-          </div>
-        ))}
+        {dashboard.items.map((item) => {
+          const { path: thumbnailPath, size: thumbnailSize } =
+            resolveDashboardGridThumbnail(
+              item,
+              dashboard.thumbnailPaths,
+              dashboard.thumbnailStamps,
+              dashboard.thumbnailSizes,
+            );
+          return (
+            <div key={item.id} data-dashboard-card>
+              <ItemGridCard
+                item={item}
+                thumbnailPath={thumbnailPath}
+                thumbnailSize={thumbnailSize}
+                tagsById={tagsById}
+                onOpen={handleOpenItem}
+              />
+            </div>
+          );
+        })}
       </Masonry>
 
       {dashboard.hasMore && (

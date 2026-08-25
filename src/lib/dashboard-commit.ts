@@ -47,14 +47,36 @@ export function coverNeedsResolve(
 /**
  * Dashboard masonry reads committed cover maps only (#657).
  * `undefined` = still resolving; `null` = no cover.
+ * Path + size share one `coverNeedsResolve` (#824).
  */
+export function resolveDashboardGridThumbnail(
+  item: ItemFile,
+  paths: Map<string, string | null>,
+  stamps: Map<string, string>,
+  sizes: Map<string, ItemThumbnailPixelSize | null>,
+): {
+  path: string | null | undefined;
+  size: ItemThumbnailPixelSize | null | undefined;
+} {
+  if (coverNeedsResolve(item, paths, stamps, sizes)) {
+    return { path: undefined, size: undefined };
+  }
+  return {
+    path: paths.get(item.id) ?? null,
+    size: sizes.get(item.id) ?? null,
+  };
+}
+
 export function resolveDashboardGridThumbnailPath(
   item: ItemFile,
   paths: Map<string, string | null>,
   stamps: Map<string, string>,
   sizes?: Map<string, ItemThumbnailPixelSize | null>,
 ): string | null | undefined {
-  if (!coverNeedsResolve(item, paths, stamps, sizes)) {
+  if (sizes !== undefined) {
+    return resolveDashboardGridThumbnail(item, paths, stamps, sizes).path;
+  }
+  if (!coverNeedsResolve(item, paths, stamps)) {
     return paths.get(item.id) ?? null;
   }
   return undefined;
@@ -67,10 +89,7 @@ export function resolveDashboardGridThumbnailSize(
   stamps: Map<string, string>,
   sizes: Map<string, ItemThumbnailPixelSize | null>,
 ): ItemThumbnailPixelSize | null | undefined {
-  if (coverNeedsResolve(item, paths, stamps, sizes)) {
-    return undefined;
-  }
-  return sizes.get(item.id) ?? null;
+  return resolveDashboardGridThumbnail(item, paths, stamps, sizes).size;
 }
 
 export function thumbnailPathsEqual(
