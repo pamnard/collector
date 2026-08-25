@@ -73,7 +73,7 @@ export function stateFromDashboardCacheEntry(
     ordered,
     thumbnailPaths: new Map(entry.thumbnailPaths),
     thumbnailStamps: new Map(entry.thumbnailStamps),
-    thumbnailSizes: new Map(entry.thumbnailSizes ?? []),
+    thumbnailSizes: new Map(entry.thumbnailSizes),
     hasMore: entry.streamEndOffset < entry.totalCount,
   };
 }

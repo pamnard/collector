@@ -61,7 +61,7 @@ function sealEntry(entry: DashboardQueryCacheEntry): DashboardQueryCacheEntry {
     bodyStamps: sealMap(entry.bodyStamps),
     thumbnailPaths: sealMap(entry.thumbnailPaths),
     thumbnailStamps: sealMap(entry.thumbnailStamps),
-    thumbnailSizes: sealMap(entry.thumbnailSizes ?? new Map()),
+    thumbnailSizes: sealMap(entry.thumbnailSizes),
     streamEndOffset: entry.streamEndOffset,
     totalCount: entry.totalCount,
     updatedAt: entry.updatedAt,

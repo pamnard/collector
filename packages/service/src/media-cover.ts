@@ -42,6 +42,19 @@ export type ItemThumbnailCacheEntry = {
   size: ItemThumbnailPixelSize | null;
 };
 
+/**
+ * Explicit browser / DevMock stub for in-process compose.
+ * Never omit {@link MediaCoverServiceDeps.readCoverPixelSize} — inject this
+ * (or another real reader) so missing SoT cannot silently become `size: null`.
+ */
+export async function stubReadCoverPixelSizeUnavailable(
+  absolutePath: string,
+): Promise<ItemThumbnailPixelSize> {
+  throw new Error(
+    `readCoverPixelSize unavailable outside Node host: ${absolutePath}`,
+  );
+}
+
 export interface MediaCoverServiceDeps {
   resolveActiveVault: () => Promise<{ vault: VaultMeta; path: string }>;
   getContext: () => VaultContext;
@@ -53,10 +66,11 @@ export interface MediaCoverServiceDeps {
   waitForCoverJob: (jobId: string) => Promise<TerminalJobStatus>;
   resolveThumbnailPathsBatch: ResolveThumbnailPathsBatch;
   /**
-   * Host-only sharp.metadata reader. Omit in browser/DevMock in-process
-   * (never import sharp from this module — Vite pulls it into the client).
+   * Required pixel-size reader. Node host injects sharp.metadata; browser /
+   * DevMock in-process must pass {@link stubReadCoverPixelSizeUnavailable}
+   * (or an explicit alternative) — never silent omit.
    */
-  readCoverPixelSize?: (
+  readCoverPixelSize: (
     absolutePath: string,
   ) => Promise<ItemThumbnailPixelSize>;
   onVaultPresentationChanged?: (
@@ -162,13 +176,12 @@ export function createMediaCoverService(
       })),
     );
 
-    const readSize = deps.readCoverPixelSize;
     const entries = await Promise.all(
       rows.map(async (row): Promise<[string, ItemThumbnailResolved]> => {
         if (row.path === null) {
           return [row.id, { path: null, size: null }];
         }
-        const size = readSize ? await readSize(row.path) : null;
+        const size = await deps.readCoverPixelSize(row.path);
         return [row.id, { path: row.path, size }];
       }),
     );

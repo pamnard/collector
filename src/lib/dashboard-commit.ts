@@ -29,7 +29,7 @@ export function coverNeedsResolve(
   item: ItemFile,
   paths: Map<string, string | null>,
   stamps: Map<string, string>,
-  sizes?: Map<string, ItemThumbnailPixelSize | null>,
+  sizes: Map<string, ItemThumbnailPixelSize | null>,
 ): boolean {
   if (!paths.has(item.id)) {
     return true;
@@ -38,7 +38,7 @@ export function coverNeedsResolve(
     return true;
   }
   // Path without pixel size → re-resolve so the grid can reserve exact aspect.
-  if (sizes && !sizes.has(item.id)) {
+  if (!sizes.has(item.id)) {
     return true;
   }
   return false;
@@ -52,7 +52,7 @@ export function resolveDashboardGridThumbnailPath(
   item: ItemFile,
   paths: Map<string, string | null>,
   stamps: Map<string, string>,
-  sizes?: Map<string, ItemThumbnailPixelSize | null>,
+  sizes: Map<string, ItemThumbnailPixelSize | null>,
 ): string | null | undefined {
   if (!coverNeedsResolve(item, paths, stamps, sizes)) {
     return paths.get(item.id) ?? null;
@@ -309,7 +309,7 @@ export function mergeCommittedThumbnailSizes(
 export function coverPathsFromMaps(
   paths: Map<string, string | null>,
   stamps: Map<string, string>,
-  sizes?: Map<string, ItemThumbnailPixelSize | null>,
+  sizes: Map<string, ItemThumbnailPixelSize | null>,
 ): Record<string, DashboardCoverPathEntry> {
   const out: Record<string, DashboardCoverPathEntry> = {};
   for (const [id, path] of paths) {
@@ -317,7 +317,7 @@ export function coverPathsFromMaps(
     if (stamp === undefined) {
       continue;
     }
-    const size = sizes?.get(id) ?? null;
+    const size = sizes.get(id) ?? null;
     out[id] = {
       path,
       stamp,

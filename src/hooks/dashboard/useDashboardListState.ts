@@ -130,7 +130,7 @@ export function useDashboardListState(options: {
   >(() => new Map(initial?.thumbnailStamps ?? []));
   const [committedThumbnailSizes, setCommittedThumbnailSizes] = useState<
     Map<string, ItemThumbnailPixelSize | null>
-  >(() => new Map(initial?.thumbnailSizes ?? []));
+  >(() => (initial ? new Map(initial.thumbnailSizes) : new Map()));
   const [committedTotalCount, setCommittedTotalCount] = useState(
     () => initial?.totalCount ?? 0,
   );

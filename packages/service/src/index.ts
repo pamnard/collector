@@ -35,6 +35,7 @@ export {
 
 export {
   createMediaCoverService,
+  stubReadCoverPixelSizeUnavailable,
   type MediaCoverService,
   type MediaCoverServiceDeps,
   type ResolveThumbnailPathsBatch,

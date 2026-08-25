@@ -65,7 +65,7 @@ describe("coverNeedsResolve", () => {
   it("needs resolve when path key is missing", () => {
     const item = stubItem("a");
     assert.equal(
-      coverNeedsResolve(item, new Map(), new Map()),
+      coverNeedsResolve(item, new Map(), new Map(), new Map()),
       true,
     );
   });
@@ -74,21 +74,33 @@ describe("coverNeedsResolve", () => {
     const item = stubItem("a", { thumbnail: "c.webp" });
     const paths = new Map<string, string | null>([["a", "/a"]]);
     const stamps = new Map([["a", "old:stamp"]]);
-    assert.equal(coverNeedsResolve(item, paths, stamps), true);
+    assert.equal(
+      coverNeedsResolve(item, paths, stamps, new Map([["a", null]])),
+      true,
+    );
   });
 
-  it("skips resolve when path and stamp match", () => {
+  it("needs resolve when size key is missing", () => {
     const item = stubItem("a", { thumbnail: "c.webp" });
     const paths = new Map<string, string | null>([["a", "/a"]]);
     const stamps = new Map([["a", itemCoverStamp(item)]]);
-    assert.equal(coverNeedsResolve(item, paths, stamps), false);
+    assert.equal(coverNeedsResolve(item, paths, stamps, new Map()), true);
   });
 
-  it("treats explicit null path with matching stamp as resolved", () => {
+  it("skips resolve when path stamp and size match", () => {
+    const item = stubItem("a", { thumbnail: "c.webp" });
+    const paths = new Map<string, string | null>([["a", "/a"]]);
+    const stamps = new Map([["a", itemCoverStamp(item)]]);
+    const sizes = new Map([["a", { width: 10, height: 10 }]]);
+    assert.equal(coverNeedsResolve(item, paths, stamps, sizes), false);
+  });
+
+  it("treats explicit null path with matching stamp and size as resolved", () => {
     const item = stubItem("a");
     const paths = new Map<string, string | null>([["a", null]]);
     const stamps = new Map([["a", itemCoverStamp(item)]]);
-    assert.equal(coverNeedsResolve(item, paths, stamps), false);
+    const sizes = new Map([["a", null]]);
+    assert.equal(coverNeedsResolve(item, paths, stamps, sizes), false);
   });
 });
 
@@ -97,8 +109,9 @@ describe("resolveDashboardGridThumbnailPath", () => {
     const item = stubItem("a", { thumbnail: "c.webp" });
     const paths = new Map<string, string | null>([["a", "/a"]]);
     const stamps = new Map([["a", itemCoverStamp(item)]]);
+    const sizes = new Map([["a", { width: 10, height: 10 }]]);
     assert.equal(
-      resolveDashboardGridThumbnailPath(item, paths, stamps),
+      resolveDashboardGridThumbnailPath(item, paths, stamps, sizes),
       "/a",
     );
   });
@@ -107,8 +120,9 @@ describe("resolveDashboardGridThumbnailPath", () => {
     const item = stubItem("a");
     const paths = new Map<string, string | null>([["a", null]]);
     const stamps = new Map([["a", itemCoverStamp(item)]]);
+    const sizes = new Map([["a", null]]);
     assert.equal(
-      resolveDashboardGridThumbnailPath(item, paths, stamps),
+      resolveDashboardGridThumbnailPath(item, paths, stamps, sizes),
       null,
     );
   });
@@ -116,7 +130,12 @@ describe("resolveDashboardGridThumbnailPath", () => {
   it("returns undefined while cover still needs resolve", () => {
     const item = stubItem("a");
     assert.equal(
-      resolveDashboardGridThumbnailPath(item, new Map(), new Map()),
+      resolveDashboardGridThumbnailPath(
+        item,
+        new Map(),
+        new Map(),
+        new Map(),
+      ),
       undefined,
     );
   });
@@ -459,7 +478,7 @@ describe("coverPathsFromMaps / mapsFromCoverPaths", () => {
   it("skips path entries without stamps", () => {
     const paths = new Map<string, string | null>([["a", "/a"]]);
     const stamps = new Map<string, string>();
-    assert.deepEqual(coverPathsFromMaps(paths, stamps), {});
+    assert.deepEqual(coverPathsFromMaps(paths, stamps, new Map()), {});
   });
 });
 
