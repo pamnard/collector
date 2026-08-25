@@ -1,7 +1,7 @@
 import {
   buildFtsMatchQuery,
   buildMetadataFtsMatchQuery,
-  resolveItemThumbnailPathsBatch,
+  resolveItemThumbnailPathsProgressive,
   type SqlVaultIndexStore,
   type IndexSyncProgress,
 } from "@collector/core";
@@ -120,8 +120,13 @@ export function createDomainServices(deps: DomainServicesDeps): DomainServices {
     getContext: deps.getContext,
     enqueueGenerateCover: (input) => enqueueGenerateCover(deps.requireJobs(), input),
     waitForCoverJob: (jobId) => waitForJobTerminal(deps.requireJobs(), jobId),
-    resolveThumbnailPathsBatch: (vaultPath, items) =>
-      resolveItemThumbnailPathsBatch(deps.getContext().fs, vaultPath, items),
+    resolveThumbnailPathsProgressive: (vaultPath, items, options) =>
+      resolveItemThumbnailPathsProgressive(
+        deps.getContext().fs,
+        vaultPath,
+        items,
+        options,
+      ),
     readCoverPixelSize,
     onVaultPresentationChanged: (payload) =>
       deps.vaultPresentationChanged.notify(payload),

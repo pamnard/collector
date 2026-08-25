@@ -31,7 +31,7 @@ export function resolveThumbnailCandidate(
   return existsSync(candidate) ? candidate : null;
 }
 
-/** Node UI session thumbnails — same host wire batch as browser (path + size). */
+/** Node UI session thumbnails — host wire path + size (#552); progressive chunks (#823). */
 export function createNodeThumbnailPaths(
   transport: HostWireClient,
 ): UiSessionThumbnailPaths {

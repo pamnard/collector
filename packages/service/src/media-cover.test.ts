@@ -41,9 +41,18 @@ describe("createMediaCoverService", () => {
   const ctx = { fs: { readBinary } } as never;
   const enqueueGenerateCover = vi.fn(async () => ({ id: "job-1" }));
   const waitForCoverJob = vi.fn(async () => "succeeded" as const);
-  const resolveThumbnailPathsBatch = vi.fn(
-    async (_vaultPath: string, items: Array<{ id: string }>) =>
-      items.map((item) => ({ id: item.id, path: `/thumb/${item.id}` })),
+  const resolveThumbnailPathsProgressive = vi.fn(
+    async (
+      _vaultPath: string,
+      items: Array<{ id: string }>,
+      options: {
+        onResolved: (result: { id: string; path: string | null }) => void;
+      },
+    ) => {
+      for (const item of items) {
+        options.onResolved({ id: item.id, path: `/thumb/${item.id}` });
+      }
+    },
   );
   const readCoverPixelSize = vi.fn(async (absolutePath: string) => {
     if (absolutePath.includes("null")) {
@@ -65,7 +74,7 @@ describe("createMediaCoverService", () => {
     readBinary.mockClear();
     enqueueGenerateCover.mockClear();
     waitForCoverJob.mockClear();
-    resolveThumbnailPathsBatch.mockClear();
+    resolveThumbnailPathsProgressive.mockClear();
     readCoverPixelSize.mockClear();
     enqueueGenerateCover.mockResolvedValue({ id: "job-1" });
     waitForCoverJob.mockResolvedValue("succeeded");
@@ -86,7 +95,7 @@ describe("createMediaCoverService", () => {
       getContext: () => ctx,
       enqueueGenerateCover,
       waitForCoverJob,
-      resolveThumbnailPathsBatch,
+      resolveThumbnailPathsProgressive,
       readCoverPixelSize: opts?.readCoverPixelSize ?? readCoverPixelSize,
     });
   }
@@ -112,7 +121,7 @@ describe("createMediaCoverService", () => {
 
     expect(first.get("note.md")).toBe("/thumb/note.md");
     expect(second.get("note.md")).toBe("/thumb/note.md");
-    expect(resolveThumbnailPathsBatch).toHaveBeenCalledTimes(1);
+    expect(resolveThumbnailPathsProgressive).toHaveBeenCalledTimes(1);
     // Missing sidecar → one-time sharp backfill (#822).
     expect(readCoverPixelSize).toHaveBeenCalledTimes(1);
     expect(writeItemCoverSize).toHaveBeenCalledTimes(1);
@@ -205,9 +214,20 @@ describe("createMediaCoverService", () => {
 
   it("attach invalidates stale null thumbnail cache after updated_at bump (#720)", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    resolveThumbnailPathsBatch
-      .mockResolvedValueOnce([{ id: "note.md", path: null }])
-      .mockResolvedValueOnce([{ id: "note.md", path: "/vault/media/note/cover.webp" }]);
+    resolveThumbnailPathsProgressive
+      .mockImplementationOnce(async (_vault, items, options) => {
+        for (const item of items) {
+          options.onResolved({ id: item.id, path: null });
+        }
+      })
+      .mockImplementationOnce(async (_vault, items, options) => {
+        for (const item of items) {
+          options.onResolved({
+            id: item.id,
+            path: "/vault/media/note/cover.webp",
+          });
+        }
+      });
 
     const service = createService();
     const before = {
@@ -218,7 +238,7 @@ describe("createMediaCoverService", () => {
 
     const first = await service.resolveItemThumbnailPaths([before]);
     expect(first.get("note.md")).toBeNull();
-    expect(resolveThumbnailPathsBatch).toHaveBeenCalledTimes(1);
+    expect(resolveThumbnailPathsProgressive).toHaveBeenCalledTimes(1);
 
     attachMediaFile.mockResolvedValue({ id: "m1", filename: "a.png" });
     listItemMediaWithPaths.mockResolvedValue([
@@ -248,7 +268,55 @@ describe("createMediaCoverService", () => {
     } as never;
     const second = await service.resolveItemThumbnailPaths([after]);
     expect(second.get("note.md")).toBe("/vault/media/note/cover.webp");
-    expect(resolveThumbnailPathsBatch).toHaveBeenCalledTimes(2);
+    expect(resolveThumbnailPathsProgressive).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
+  });
+
+  it("starts size read for a fast id before the last path resolve finishes (#823)", async () => {
+    let releaseSlow: (() => void) | undefined;
+    const slowGate = new Promise<void>((resolve) => {
+      releaseSlow = resolve;
+    });
+    let slowStarted = false;
+    const sizeStartedFor: string[] = [];
+
+    resolveThumbnailPathsProgressive.mockImplementationOnce(
+      async (_vault, items, options) => {
+        await Promise.all(
+          items.map(async (item) => {
+            if (item.id === "slow.md") {
+              slowStarted = true;
+              await slowGate;
+            }
+            options.onResolved({
+              id: item.id,
+              path: `/thumb/${item.id}`,
+            });
+          }),
+        );
+      },
+    );
+
+    readCoverPixelSize.mockImplementation(async (absolutePath: string) => {
+      const id = absolutePath.replace("/thumb/", "");
+      sizeStartedFor.push(id);
+      if (id === "fast.md") {
+        expect(slowStarted).toBe(true);
+        releaseSlow?.();
+      }
+      return { width: 10, height: 10 };
+    });
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const service = createService();
+    const entries = await service.resolveItemThumbnailEntries([
+      { id: "slow.md", thumbnail: null, updated_at: "t1" } as never,
+      { id: "fast.md", thumbnail: null, updated_at: "t1" } as never,
+    ]);
+
+    expect(sizeStartedFor[0]).toBe("fast.md");
+    expect(entries.get("fast.md")?.size).toEqual({ width: 10, height: 10 });
+    expect(entries.get("slow.md")?.size).toEqual({ width: 10, height: 10 });
     warn.mockRestore();
   });
 

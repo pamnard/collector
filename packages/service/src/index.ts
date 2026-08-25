@@ -38,7 +38,7 @@ export {
   stubReadCoverPixelSizeUnavailable,
   type MediaCoverService,
   type MediaCoverServiceDeps,
-  type ResolveThumbnailPathsBatch,
+  type ResolveThumbnailPathsProgressive,
 } from "./media-cover.js";
 
 export {
