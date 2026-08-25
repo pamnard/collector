@@ -30,6 +30,7 @@ import {
   createJobQueue,
   type JobQueue,
 } from "../jobs/job-queue.js";
+import { emptyStatusCounts } from "../jobs/job-store-types.js";
 import { createJobPermanentFailureStore } from "../job-permanent-failure.js";
 import { phaseBHandlerBindings } from "../jobs/phase-b-bindings.js";
 import {
@@ -429,7 +430,13 @@ export function createServiceDomainRuntime(
 
   const derivedCatchUpRefresher = createDerivedCatchUpStatusRefresher({
     store: derivedCatchUpStatus,
-    stats: () => requireJobs().stats(),
+    // Fail closed when the queue is already torn down (#817 / #811).
+    stats: async () => {
+      if (!jobsQueue) {
+        return { ...emptyStatusCounts(), byType: {} };
+      }
+      return jobsQueue.stats();
+    },
     getActiveVaultId: () =>
       vaultsHolder.current?.getActiveVaultEntry()?.meta.id ?? null,
   });
@@ -458,6 +465,7 @@ export function createServiceDomainRuntime(
     isHealthy: () => indexBoot.isHealthy(),
     async close() {
       runtimeClosed = true;
+      derivedCatchUpRefresher.dispose();
       embeddingReconcile.dispose();
       vaultLayoutGuard.dispose();
       syncPluginWake.dispose();

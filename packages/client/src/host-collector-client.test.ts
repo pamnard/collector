@@ -230,10 +230,13 @@ describe("CollectorHostServiceClient", () => {
         });
         expect(updated.title).toBe("Host Note 2");
 
+        // Derived refresh from create may still emit itemDerivedComplete after
+        // subscribe; wait for the upsert event the update path guarantees (#817).
         await vi.waitFor(() => {
-          expect(presentationEvents.length).toBeGreaterThanOrEqual(1);
+          expect(
+            presentationEvents.some((event) => event.kind === "itemUpserted"),
+          ).toBe(true);
         });
-        expect(presentationEvents[0]?.kind).toBe("itemUpserted");
         unsubPresentation.unsubscribe();
 
         await vi.waitFor(async () => {
@@ -670,8 +673,13 @@ describe("CollectorHostServiceClient", () => {
         await client.startVaultFilesystemWatcher(active.vault.id, active.path);
         expect(await client.isVaultFilesystemWatcherActive()).toBe(true);
 
-        const ids = await client.items.listDashboardItemIds("all");
-        expect(ids.itemIds.length).toBeGreaterThan(0);
+        // Vault index sync / derived refresh are async (#631/#766); wait for the
+        // welcome (or any) item before exercising the watcher mutation path (#817).
+        let ids = await client.items.listDashboardItemIds("all");
+        await vi.waitFor(async () => {
+          ids = await client.items.listDashboardItemIds("all");
+          expect(ids.itemIds.length).toBeGreaterThan(0);
+        });
         const targetId = ids.itemIds[0]!;
         const target = (await client.items.getItemById(targetId)).item;
         const docPath = join(active.path, target.id);

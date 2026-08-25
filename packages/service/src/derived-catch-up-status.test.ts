@@ -119,4 +119,25 @@ describe("createDerivedCatchUpStatusRefresher", () => {
       running: 0,
     });
   });
+
+  it("dispose cancels a pending debounce so flush does not run after teardown (#817)", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = createDerivedCatchUpStatusStore();
+      const stats = vi.fn(async () => emptyStats);
+      const refresher = createDerivedCatchUpStatusRefresher({
+        store,
+        stats,
+        getActiveVaultId: () => "vault-a",
+      });
+
+      void refresher.refresh();
+      refresher.dispose();
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(stats).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
