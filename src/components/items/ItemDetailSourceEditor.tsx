@@ -33,8 +33,8 @@ interface ItemDetailSourceEditorProps {
    * Source mode: YAML frontmatter + markdown body as one document.
    * Form mode: markdown body only (FM edited via property rows).
    */
-  withFrontmatter?: boolean;
-  ariaLabel?: string;
+  withFrontmatter: boolean;
+  ariaLabel: string;
 }
 
 function languageExtension(withFrontmatter: boolean) {
@@ -148,8 +148,8 @@ function highlightExtension(dark: boolean) {
 export function ItemDetailSourceEditor({
   value,
   onChange,
-  withFrontmatter = true,
-  ariaLabel = "Исходный markdown",
+  withFrontmatter,
+  ariaLabel,
 }: ItemDetailSourceEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);

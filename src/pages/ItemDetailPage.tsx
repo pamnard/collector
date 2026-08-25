@@ -252,6 +252,8 @@ export function ItemDetailPage() {
                       <ItemDetailSourceEditor
                         value={sourceText}
                         onChange={setSourceText}
+                        withFrontmatter
+                        ariaLabel="Исходный markdown"
                       />
                     </Suspense>
                   </div>

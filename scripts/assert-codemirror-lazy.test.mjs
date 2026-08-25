@@ -60,11 +60,21 @@ describe("CodeMirror lazy-load (#803, #820)", () => {
     const source = readSrc("components/items/ItemDetailSourceEditor.tsx");
     assert.match(
       source,
-      /withFrontmatter/,
-      "ItemDetailSourceEditor must accept withFrontmatter for form vs source",
+      /withFrontmatter:\s*boolean/,
+      "ItemDetailSourceEditor must require withFrontmatter for form vs source",
     );
     assert.match(source, /yamlFrontmatter/);
     assert.match(source, /markdown\(\s*\{\s*base:\s*markdownLanguage\s*\}\s*\)/);
+  });
+
+  it("ItemDetailPage source mode enables frontmatter on the shared editor", () => {
+    const page = readSrc("pages/ItemDetailPage.tsx");
+    assert.match(page, /\bwithFrontmatter\b/);
+    assert.equal(
+      /withFrontmatter=\{false\}/.test(page),
+      false,
+      "Source mode must not disable frontmatter",
+    );
   });
 
   it("syntax-highlight-colors does not import @codemirror (preview/dashboard safe)", () => {
