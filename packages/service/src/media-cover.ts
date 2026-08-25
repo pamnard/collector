@@ -33,10 +33,14 @@ import { folderPathFromItemPath } from "@collector/shared";
 import type { TerminalJobStatus } from "./jobs/job-wait.js";
 import type { VaultPresentationChangedPayload } from "./vault-presentation-changed.js";
 
-export type ResolveThumbnailPathsBatch = (
+export type ResolveThumbnailPathsProgressive = (
   vaultPath: string,
   items: Array<{ id: string; thumbnail: string | null }>,
-) => Promise<Array<{ id: string; path: string | null }>>;
+  options: {
+    onResolved: (result: { id: string; path: string | null }) => void;
+    concurrency?: number;
+  },
+) => Promise<void>;
 
 export type ItemThumbnailCacheEntry = {
   cacheKey: string;
@@ -66,7 +70,11 @@ export interface MediaCoverServiceDeps {
   ) => Promise<{ id: string }>;
   /** Wait until generateCover leaves pending/running. */
   waitForCoverJob: (jobId: string) => Promise<TerminalJobStatus>;
-  resolveThumbnailPathsBatch: ResolveThumbnailPathsBatch;
+  /**
+   * Progressive path resolve (#544 / #823). Size reads overlap remaining path
+   * work so early ids finish before the last sibling path probe.
+   */
+  resolveThumbnailPathsProgressive: ResolveThumbnailPathsProgressive;
   /**
    * Required pixel-size reader for one-time size backfill when
    * `cover.size.json` is missing (#822). Node host injects sharp.metadata;
@@ -195,24 +203,37 @@ export function createMediaCoverService(
     }
 
     const { path: vaultPath } = await deps.resolveActiveVault();
-    const rows = await deps.resolveThumbnailPathsBatch(
+    const resolved = new Map<string, ItemThumbnailResolved>();
+    const sizeJobs: Promise<void>[] = [];
+
+    await deps.resolveThumbnailPathsProgressive(
       vaultPath,
       items.map((item) => ({
         id: item.id,
         thumbnail: item.thumbnail ?? null,
       })),
+      {
+        onResolved: (row) => {
+          sizeJobs.push(
+            (async () => {
+              if (row.path === null) {
+                resolved.set(row.id, { path: null, size: null });
+                return;
+              }
+              const size = await resolveCoverPixelSize(
+                vaultPath,
+                row.id,
+                row.path,
+              );
+              resolved.set(row.id, { path: row.path, size });
+            })(),
+          );
+        },
+      },
     );
 
-    const entries = await Promise.all(
-      rows.map(async (row): Promise<[string, ItemThumbnailResolved]> => {
-        if (row.path === null) {
-          return [row.id, { path: null, size: null }];
-        }
-        const size = await resolveCoverPixelSize(vaultPath, row.id, row.path);
-        return [row.id, { path: row.path, size }];
-      }),
-    );
-    return new Map(entries);
+    await Promise.all(sizeJobs);
+    return resolved;
   };
 
   const resolveItemThumbnailEntries = async (

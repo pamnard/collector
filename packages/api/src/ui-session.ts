@@ -38,7 +38,7 @@ export function positiveThumbnailPixelSize(
   return null;
 }
 
-/** Options for streaming thumbnail path resolution (#544). */
+/** Options for progressive thumbnail path resolution (#544 / #823). */
 export interface UiSessionThumbnailResolveProgressiveOptions {
   onResolved: (
     id: string,
@@ -63,7 +63,7 @@ export interface UiSessionThumbnailPaths {
   resolveItemThumbnailPaths(
     items: ItemFile[],
   ): Promise<Map<string, string | null>>;
-  /** Emit each id as soon as resolved; bounded parallel FS work (#544). */
+  /** Emit each id as soon as resolved; host wire chunks per id (#544 / #823). */
   resolveItemThumbnailPathsProgressive(
     items: ItemFile[],
     options: UiSessionThumbnailResolveProgressiveOptions,

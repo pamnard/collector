@@ -29,6 +29,12 @@ export const DASHBOARD_PREFETCH_SIZE = 60;
 export const DASHBOARD_HYDRATE_CHUNK_SIZE = 400;
 
 /**
+ * Bound parallel per-item thumbnail wire RPCs for progressive resolve (#823).
+ * Matches core disk-read concurrency spirit (#544).
+ */
+export const THUMBNAIL_RESOLVE_WIRE_CONCURRENCY = 4;
+
+/**
  * Fail-fast ceiling for hydrate id lists (#666). Never silently truncate.
  * Aligned with core `SQL_IN_LIST_MAX`.
  */

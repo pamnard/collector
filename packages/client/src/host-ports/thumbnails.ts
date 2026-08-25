@@ -1,18 +1,27 @@
 /**
- * Thumbnail path resolution over host RPC (#552).
+ * Thumbnail path resolution over host RPC (#552 / #823).
  * Host returns absolute vault paths (exists + gallery-first); UI maps via /media.
  * Wire batch shape: Array<{ id, path, width, height }> — Maps reconstructed here.
+ *
+ * Progressive resolve (#823): concurrent per-item wire chunks so `onResolved`
+ * can fire for early ids before the rest of the batch finishes (same contract
+ * as disk progressive concurrency, #544). Batch `resolveItemThumbnailPaths`
+ * remains one RPC for callers that need the full Map.
  */
 
 import {
   positiveThumbnailPixelSize,
+  THUMBNAIL_RESOLVE_WIRE_CONCURRENCY,
   type ItemHeroMedia,
   type ItemThumbnailPixelSize,
   type UiSessionThumbnailPaths,
   type UiSessionThumbnailResolveProgressiveOptions,
 } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
-import type { HostWireClient } from "@collector/service/wire";
+import {
+  isHostWireError,
+  type HostWireClient,
+} from "@collector/service/wire";
 
 type ThumbnailWireRow = {
   id: string;
@@ -37,6 +46,19 @@ function wireRowsToMaps(rows: ThumbnailWireRow[]): ThumbnailWireMaps {
     );
   }
   return { paths, sizes };
+}
+
+function sizeFromWireRow(
+  row: ThumbnailWireRow,
+): ItemThumbnailPixelSize | null {
+  if (row.path === null) {
+    return null;
+  }
+  return positiveThumbnailPixelSize(row.width, row.height);
+}
+
+function isWireCancel(error: unknown): boolean {
+  return isHostWireError(error) && error.code === "cancelled";
 }
 
 export function createHostThumbnailsPort(
@@ -74,17 +96,60 @@ export function createHostThumbnailsPort(
     if (options.signal?.aborted) {
       return;
     }
-    const { paths, sizes } = await resolveItemThumbnailWireMaps(items);
-    for (const item of items) {
-      if (options.signal?.aborted) {
-        return;
+
+    const concurrency = Math.max(
+      1,
+      options.concurrency ?? THUMBNAIL_RESOLVE_WIRE_CONCURRENCY,
+    );
+    let nextIndex = 0;
+
+    const worker = async (): Promise<void> => {
+      while (true) {
+        if (options.signal?.aborted) {
+          return;
+        }
+        const index = nextIndex;
+        nextIndex += 1;
+        if (index >= items.length) {
+          return;
+        }
+
+        const item = items[index]!;
+        let rows: ThumbnailWireRow[];
+        try {
+          rows = (await transport.request(
+            "resolveItemThumbnailPaths",
+            {
+              items: [
+                {
+                  id: item.id,
+                  thumbnail: item.thumbnail ?? null,
+                },
+              ],
+            },
+            { signal: options.signal },
+          )) as ThumbnailWireRow[];
+        } catch (error) {
+          if (options.signal?.aborted && isWireCancel(error)) {
+            return;
+          }
+          throw error;
+        }
+
+        if (options.signal?.aborted) {
+          return;
+        }
+
+        const row = rows.find((entry) => entry.id === item.id) ?? {
+          id: item.id,
+          path: null,
+        };
+        options.onResolved(item.id, row.path, sizeFromWireRow(row));
       }
-      options.onResolved(
-        item.id,
-        paths.get(item.id) ?? null,
-        sizes.get(item.id) ?? null,
-      );
-    }
+    };
+
+    const workerCount = Math.min(concurrency, items.length);
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
   };
 
   return {
