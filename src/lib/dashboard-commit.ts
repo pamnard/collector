@@ -114,8 +114,43 @@ export function thumbnailSizesEqual(
   return true;
 }
 
-function tagIdsKey(tagIds: string[]): string {
-  return [...tagIds].sort().join("\0");
+/**
+ * Order-independent tag multiset equality without sorting a fresh copy (#788).
+ * Same-reference / same-order paths avoid Map allocation on the commit hot path.
+ */
+function tagIdsMultisetEqual(left: string[], right: string[]): boolean {
+  const counts = new Map<string, number>();
+  for (const id of left) {
+    const n = counts.get(id);
+    counts.set(id, n === undefined ? 1 : n + 1);
+  }
+  for (const id of right) {
+    const n = counts.get(id);
+    if (n === undefined) {
+      return false;
+    }
+    if (n === 1) {
+      counts.delete(id);
+    } else {
+      counts.set(id, n - 1);
+    }
+  }
+  return counts.size === 0;
+}
+
+function tagIdsEqualUnordered(left: string[], right: string[]): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (left.length !== right.length) {
+    return false;
+  }
+  for (let i = 0; i < left.length; i++) {
+    if (left[i] !== right[i]) {
+      return tagIdsMultisetEqual(left, right);
+    }
+  }
+  return true;
 }
 
 export function itemsBodiesEqual(left: ItemFile[], right: ItemFile[]): boolean {
@@ -133,7 +168,7 @@ export function itemsBodiesEqual(left: ItemFile[], right: ItemFile[]): boolean {
       a.description !== b.description ||
       a.url !== b.url ||
       a.content_type !== b.content_type ||
-      tagIdsKey(a.tag_ids) !== tagIdsKey(b.tag_ids)
+      !tagIdsEqualUnordered(a.tag_ids, b.tag_ids)
     ) {
       return false;
     }
