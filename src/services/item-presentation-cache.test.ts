@@ -24,6 +24,7 @@ describe("invalidateItemPresentationCache", () => {
       totalCount: 1,
       thumbnailPaths: new Map(),
       thumbnailStamps: new Map(),
+      thumbnailSizes: new Map(),
       updatedAt: Date.now(),
     });
     invalidateItemPresentationCache();

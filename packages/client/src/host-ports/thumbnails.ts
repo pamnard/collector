@@ -1,31 +1,52 @@
 /**
  * Thumbnail path resolution over host RPC (#552).
  * Host returns absolute vault paths (exists + gallery-first); UI maps via /media.
- * Wire batch shape: Array<{ id, path }> — Map is reconstructed on the client.
+ * Wire batch shape: Array<{ id, path, width, height }> — Maps reconstructed here.
  */
 
-import type {
-  ItemHeroMedia,
-  UiSessionThumbnailPaths,
-  UiSessionThumbnailResolveProgressiveOptions,
+import {
+  positiveThumbnailPixelSize,
+  type ItemHeroMedia,
+  type ItemThumbnailPixelSize,
+  type UiSessionThumbnailPaths,
+  type UiSessionThumbnailResolveProgressiveOptions,
 } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
 import type { HostWireClient } from "@collector/service/wire";
 
-type ThumbnailWireRow = { id: string; path: string | null };
+type ThumbnailWireRow = {
+  id: string;
+  path: string | null;
+  width?: number | null;
+  height?: number | null;
+};
 
-function wireRowsToMap(rows: ThumbnailWireRow[]): Map<string, string | null> {
-  return new Map(rows.map((row) => [row.id, row.path]));
+type ThumbnailWireMaps = {
+  paths: Map<string, string | null>;
+  sizes: Map<string, ItemThumbnailPixelSize | null>;
+};
+
+function wireRowsToMaps(rows: ThumbnailWireRow[]): ThumbnailWireMaps {
+  const paths = new Map<string, string | null>();
+  const sizes = new Map<string, ItemThumbnailPixelSize | null>();
+  for (const row of rows) {
+    paths.set(row.id, row.path);
+    sizes.set(
+      row.id,
+      row.path === null ? null : positiveThumbnailPixelSize(row.width, row.height),
+    );
+  }
+  return { paths, sizes };
 }
 
 export function createHostThumbnailsPort(
   transport: HostWireClient,
 ): UiSessionThumbnailPaths {
-  const resolveItemThumbnailPaths = async (
+  const resolveItemThumbnailWireMaps = async (
     items: ItemFile[],
-  ): Promise<Map<string, string | null>> => {
+  ): Promise<ThumbnailWireMaps> => {
     if (items.length === 0) {
-      return new Map();
+      return { paths: new Map(), sizes: new Map() };
     }
     const rows = (await transport.request("resolveItemThumbnailPaths", {
       items: items.map((item) => ({
@@ -33,7 +54,14 @@ export function createHostThumbnailsPort(
         thumbnail: item.thumbnail ?? null,
       })),
     })) as ThumbnailWireRow[];
-    return wireRowsToMap(rows);
+    return wireRowsToMaps(rows);
+  };
+
+  const resolveItemThumbnailPaths = async (
+    items: ItemFile[],
+  ): Promise<Map<string, string | null>> => {
+    const { paths } = await resolveItemThumbnailWireMaps(items);
+    return paths;
   };
 
   const resolveItemThumbnailPathsProgressive = async (
@@ -46,12 +74,16 @@ export function createHostThumbnailsPort(
     if (options.signal?.aborted) {
       return;
     }
-    const resolved = await resolveItemThumbnailPaths(items);
+    const { paths, sizes } = await resolveItemThumbnailWireMaps(items);
     for (const item of items) {
       if (options.signal?.aborted) {
         return;
       }
-      options.onResolved(item.id, resolved.get(item.id) ?? null);
+      options.onResolved(
+        item.id,
+        paths.get(item.id) ?? null,
+        sizes.get(item.id) ?? null,
+      );
     }
   };
 

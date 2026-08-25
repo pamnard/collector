@@ -5,62 +5,17 @@ import type {
   Subscription,
   VaultIndexSyncStatus,
 } from "@collector/api";
-import {
-  asCollectorApiError,
-  subscriptionFromTeardown,
-} from "@collector/api";
+import { subscriptionFromTeardown } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
 import { SERVICE_HOST_EVENTS } from "@collector/service/wire";
 import type { HostSessionCtx } from "../host-session-ctx.js";
+import {
+  createThrottledPublisher,
+  voidSubscribePublish,
+  withAbortBridge,
+} from "./subscribe-helpers.js";
 
 const FOLDER_TREE_SYNC_REPUBLISH_MS = 500;
-
-function createThrottledPublisher(
-  fn: () => void,
-  intervalMs: number,
-): { schedule: () => void; flush: () => void; cancel: () => void } {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  let lastRun = 0;
-
-  const run = () => {
-    lastRun = Date.now();
-    fn();
-  };
-
-  return {
-    schedule() {
-      const elapsed = Date.now() - lastRun;
-      if (elapsed >= intervalMs) {
-        if (timer) {
-          clearTimeout(timer);
-          timer = null;
-        }
-        run();
-        return;
-      }
-      if (timer) {
-        return;
-      }
-      timer = setTimeout(() => {
-        timer = null;
-        run();
-      }, intervalMs - elapsed);
-    },
-    flush() {
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
-      run();
-    },
-    cancel() {
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
-    },
-  };
-}
 
 export function createHostFoldersPort(ctx: HostSessionCtx): FoldersPort {
   const { transport } = ctx;
@@ -70,36 +25,23 @@ export function createHostFoldersPort(ctx: HostSessionCtx): FoldersPort {
       handlers?: ServiceSubscribeHandlers,
       signal?: AbortSignal,
     ): Subscription {
-      const controller = new AbortController();
-      if (signal) {
-        if (signal.aborted) {
-          controller.abort();
-        } else {
-          signal.addEventListener("abort", () => controller.abort(), {
-            once: true,
-          });
-        }
-      }
-      const active = controller.signal;
+      const { signal: active, dispose } = withAbortBridge(signal);
       let lastStatus: VaultIndexSyncStatus["status"] | null = null;
 
-      const publish = async () => {
-        if (active.aborted) {
-          return;
-        }
-        try {
-          onUpdate(
-            (await transport.request("listFolderTree")) as FolderTreeNode[],
-          );
-        } catch (error: unknown) {
-          if (!active.aborted) {
-            handlers?.onError?.("folder tree", asCollectorApiError(error));
-          }
-        }
-      };
+      const publish = () =>
+        voidSubscribePublish(
+          active,
+          async () => {
+            onUpdate(
+              (await transport.request("listFolderTree")) as FolderTreeNode[],
+            );
+          },
+          handlers,
+          "folder tree",
+        );
 
       const republish = createThrottledPublisher(() => {
-        void publish();
+        publish();
       }, FOLDER_TREE_SYNC_REPUBLISH_MS);
 
       const unsubEvent = transport.onEvent(
@@ -123,12 +65,12 @@ export function createHostFoldersPort(ctx: HostSessionCtx): FoldersPort {
         },
       );
 
-      void publish();
+      publish();
 
       return subscriptionFromTeardown(() => {
         republish.cancel();
         unsubEvent();
-        controller.abort();
+        dispose();
       });
     },
     listFolderTree: async (): Promise<FolderTreeNode[]> =>

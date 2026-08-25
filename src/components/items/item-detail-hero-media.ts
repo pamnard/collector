@@ -1,15 +1,13 @@
-/** Reserved hero box for item detail — UI-only size reservation (no vault schema). */
-
-export const DETAIL_HERO_MEDIA_WIDTH = 1600;
-export const DETAIL_HERO_MEDIA_HEIGHT = 900;
-export const DETAIL_HERO_ASPECT_RATIO =
-  DETAIL_HERO_MEDIA_WIDTH / DETAIL_HERO_MEDIA_HEIGHT;
+/** Detail hero media layout helpers. */
 
 /**
- * Layout classes for the detail hero `<img>`.
- * Always fill a pre-sized aspect box — never `h-auto` (CLS from intrinsic decode).
+ * Collapsed (16:9 crop) vs expanded (full intrinsic height) image classes.
+ * Expanded must use in-flow `h-auto` so the block grows with the image —
+ * never keep a fixed AspectRatio box and only swap object-fit (#800 regression).
  */
 export function itemDetailHeroImgClassName(expanded: boolean): string {
-  const fit = expanded ? "object-contain" : "object-cover";
-  return `absolute inset-0 h-full w-full rounded-lg ${fit}`;
+  if (expanded) {
+    return "h-auto w-full rounded-lg";
+  }
+  return "absolute inset-0 h-full w-full rounded-lg object-cover";
 }

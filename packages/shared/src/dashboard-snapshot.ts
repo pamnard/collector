@@ -8,6 +8,8 @@ export const DASHBOARD_SNAPSHOT_FILE = "dashboard-snapshot.json";
 export const dashboardCoverPathEntrySchema = z.object({
   path: z.string().nullable(),
   stamp: z.string(),
+  width: z.number().int().positive().nullable().optional(),
+  height: z.number().int().positive().nullable().optional(),
 });
 
 export const dashboardSnapshotSchema = z.object({

@@ -3,7 +3,13 @@
  * Host injects vault accessors + cover/thumbnail adapters (Tauri/DOM stay outside).
  */
 
-import type { AttachMediaFileInput, ItemHeroMedia, MediaWithPath } from "@collector/api";
+import type {
+  AttachMediaFileInput,
+  ItemHeroMedia,
+  ItemThumbnailPixelSize,
+  ItemThumbnailResolved,
+  MediaWithPath,
+} from "@collector/api";
 import type {
   ItemFile,
   MediaFileMeta,
@@ -30,6 +36,12 @@ export type ResolveThumbnailPathsBatch = (
   items: Array<{ id: string; thumbnail: string | null }>,
 ) => Promise<Array<{ id: string; path: string | null }>>;
 
+export type ItemThumbnailCacheEntry = {
+  cacheKey: string;
+  path: string | null;
+  size: ItemThumbnailPixelSize | null;
+};
+
 export interface MediaCoverServiceDeps {
   resolveActiveVault: () => Promise<{ vault: VaultMeta; path: string }>;
   getContext: () => VaultContext;
@@ -40,6 +52,13 @@ export interface MediaCoverServiceDeps {
   /** Wait until generateCover leaves pending/running. */
   waitForCoverJob: (jobId: string) => Promise<TerminalJobStatus>;
   resolveThumbnailPathsBatch: ResolveThumbnailPathsBatch;
+  /**
+   * Host-only sharp.metadata reader. Omit in browser/DevMock in-process
+   * (never import sharp from this module — Vite pulls it into the client).
+   */
+  readCoverPixelSize?: (
+    absolutePath: string,
+  ) => Promise<ItemThumbnailPixelSize>;
   onVaultPresentationChanged?: (
     payload: VaultPresentationChangedPayload,
   ) => void;
@@ -51,6 +70,10 @@ export interface MediaCoverService {
   resolveItemThumbnailPaths(
     items: ItemFile[],
   ): Promise<Map<string, string | null>>;
+  /** Path + sharp pixel size for dashboard slot reservation. */
+  resolveItemThumbnailEntries(
+    items: ItemFile[],
+  ): Promise<Map<string, ItemThumbnailResolved>>;
   resolveItemHeroMedia(item: ItemFile): Promise<ItemHeroMedia | null>;
   setItemCoverFromMedia(itemId: string, mediaId: string): Promise<ItemFile>;
   attachMediaFiles(
@@ -72,10 +95,7 @@ function itemThumbnailCacheKey(item: ItemFile): string {
 export function createMediaCoverService(
   deps: MediaCoverServiceDeps,
 ): MediaCoverService {
-  const itemThumbnailPathCache = new Map<
-    string,
-    { cacheKey: string; path: string | null }
-  >();
+  const itemThumbnailPathCache = new Map<string, ItemThumbnailCacheEntry>();
 
   const invalidateThumbnailPathCache = (itemId: string): void => {
     itemThumbnailPathCache.delete(itemId);
@@ -128,42 +148,48 @@ export function createMediaCoverService(
 
   const resolveItemThumbnailPathsUncached = async (
     items: ItemFile[],
-  ): Promise<Map<string, string | null>> => {
+  ): Promise<Map<string, ItemThumbnailResolved>> => {
     if (!items.length) {
       return new Map();
     }
 
-    const { path } = await deps.resolveActiveVault();
+    const { path: vaultPath } = await deps.resolveActiveVault();
     const rows = await deps.resolveThumbnailPathsBatch(
-      path,
+      vaultPath,
       items.map((item) => ({
         id: item.id,
         thumbnail: item.thumbnail ?? null,
       })),
     );
 
-    const resolved = new Map<string, string | null>();
-    for (const row of rows) {
-      resolved.set(row.id, row.path);
-    }
-    return resolved;
+    const readSize = deps.readCoverPixelSize;
+    const entries = await Promise.all(
+      rows.map(async (row): Promise<[string, ItemThumbnailResolved]> => {
+        if (row.path === null) {
+          return [row.id, { path: null, size: null }];
+        }
+        const size = readSize ? await readSize(row.path) : null;
+        return [row.id, { path: row.path, size }];
+      }),
+    );
+    return new Map(entries);
   };
 
-  const resolveItemThumbnailPaths = async (
+  const resolveItemThumbnailEntries = async (
     items: ItemFile[],
-  ): Promise<Map<string, string | null>> => {
+  ): Promise<Map<string, ItemThumbnailResolved>> => {
     if (!items.length) {
       return new Map();
     }
 
     const uncached: ItemFile[] = [];
-    const resolved = new Map<string, string | null>();
+    const resolved = new Map<string, ItemThumbnailResolved>();
 
     for (const item of items) {
       const cacheKey = itemThumbnailCacheKey(item);
       const cached = itemThumbnailPathCache.get(item.id);
       if (cached && cached.cacheKey === cacheKey) {
-        resolved.set(item.id, cached.path);
+        resolved.set(item.id, { path: cached.path, size: cached.size });
         continue;
       }
       uncached.push(item);
@@ -172,15 +198,32 @@ export function createMediaCoverService(
     if (uncached.length) {
       const fresh = await resolveItemThumbnailPathsUncached(uncached);
       for (const item of uncached) {
-        const path = fresh.get(item.id) ?? null;
+        const entry = fresh.get(item.id);
+        if (!entry) {
+          throw new Error(
+            `thumbnail resolve missing id in batch result: ${item.id}`,
+          );
+        }
         itemThumbnailPathCache.set(item.id, {
           cacheKey: itemThumbnailCacheKey(item),
-          path,
+          path: entry.path,
+          size: entry.size,
         });
-        resolved.set(item.id, path);
+        resolved.set(item.id, entry);
       }
     }
 
+    return resolved;
+  };
+
+  const resolveItemThumbnailPaths = async (
+    items: ItemFile[],
+  ): Promise<Map<string, string | null>> => {
+    const entries = await resolveItemThumbnailEntries(items);
+    const resolved = new Map<string, string | null>();
+    for (const [id, entry] of entries) {
+      resolved.set(id, entry.path);
+    }
     return resolved;
   };
 
@@ -269,6 +312,7 @@ export function createMediaCoverService(
     listItemMedia,
     resolveItemThumbnailPath,
     resolveItemThumbnailPaths,
+    resolveItemThumbnailEntries,
     resolveItemHeroMedia: async (item) => {
       const { path } = await deps.resolveActiveVault();
       return resolveItemHeroMedia(deps.getContext().fs, path, item.id);

@@ -7,7 +7,7 @@ import { DashboardGridSkeleton } from "./DashboardListSkeleton";
 import { MASONRY_BREAKPOINTS } from "./masonry-breakpoints";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
 import { useMainScrollElement } from "../../hooks/useMainScrollElement";
-import { resolveDashboardGridThumbnailPath } from "../../lib/dashboard-commit";
+import { resolveDashboardGridThumbnailPath, resolveDashboardGridThumbnailSize } from "../../lib/dashboard-commit";
 import {
   dashboardPerfActiveRunId,
   dashboardPerfBeginPhase,
@@ -29,12 +29,14 @@ function gridMayAwaitCoverDecode(
   items: ReturnType<typeof useDashboardItems>["items"],
   thumbnailPaths: ReturnType<typeof useDashboardItems>["thumbnailPaths"],
   thumbnailStamps: ReturnType<typeof useDashboardItems>["thumbnailStamps"],
+  thumbnailSizes: ReturnType<typeof useDashboardItems>["thumbnailSizes"],
 ): boolean {
   return items.some((item) => {
     const path = resolveDashboardGridThumbnailPath(
       item,
       thumbnailPaths,
       thumbnailStamps,
+      thumbnailSizes,
     );
     return path !== null;
   });
@@ -120,6 +122,7 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
             dashboard.items,
             dashboard.thumbnailPaths,
             dashboard.thumbnailStamps,
+            dashboard.thumbnailSizes,
           )
         ) {
           dashboardPerfCompleteRunWithoutL3(runId);
@@ -131,6 +134,7 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
     dashboard.items,
     dashboard.thumbnailPaths,
     dashboard.thumbnailStamps,
+    dashboard.thumbnailSizes,
     gridVisible,
   ]);
 
@@ -153,6 +157,13 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
                 item,
                 dashboard.thumbnailPaths,
                 dashboard.thumbnailStamps,
+                dashboard.thumbnailSizes,
+              )}
+              thumbnailSize={resolveDashboardGridThumbnailSize(
+                item,
+                dashboard.thumbnailPaths,
+                dashboard.thumbnailStamps,
+                dashboard.thumbnailSizes,
               )}
               tagsById={tagsById}
               onOpen={handleOpenItem}

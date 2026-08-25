@@ -35,6 +35,7 @@ describe("buildDashboardQueryCacheEntry", () => {
       totalCount: 1,
       thumbnailPaths: paths,
       thumbnailStamps: stamps,
+      thumbnailSizes: new Map(),
       now: 1234,
     });
     assert.deepEqual(entry.itemIds, ["a"]);
@@ -62,6 +63,7 @@ describe("readInitialDashboardCacheEntry", () => {
       totalCount: 1,
       thumbnailPaths: new Map(),
       thumbnailStamps: new Map(),
+      thumbnailSizes: new Map(),
       updatedAt: 1,
     };
     let peeked = false;
@@ -96,6 +98,7 @@ describe("readInitialDashboardCacheEntry", () => {
       totalCount: 1,
       thumbnailPaths: new Map(),
       thumbnailStamps: new Map(),
+      thumbnailSizes: new Map(),
       updatedAt: 9,
     };
     const store = new Map<string, DashboardQueryCacheEntry>();
@@ -144,6 +147,7 @@ describe("stateFromDashboardCacheEntry", () => {
       totalCount: 2,
       thumbnailPaths: new Map([["a", "/a"]]),
       thumbnailStamps: new Map([["a", "ta"]]),
+      thumbnailSizes: new Map(),
       updatedAt: 1,
     };
     const state = stateFromDashboardCacheEntry(entry);

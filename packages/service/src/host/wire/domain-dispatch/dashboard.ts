@@ -78,8 +78,13 @@ export const DASHBOARD_DISPATCH = {
         return { id, thumbnail } as ItemFile;
       });
       await runtime.ensureInitialized();
-      const resolved = await runtime.mediaCover.resolveItemThumbnailPaths(items);
-      return Array.from(resolved, ([id, path]) => ({ id, path }));
+      const resolved = await runtime.mediaCover.resolveItemThumbnailEntries(items);
+      return Array.from(resolved, ([id, entry]) => ({
+        id,
+        path: entry.path,
+        width: entry.size?.width ?? null,
+        height: entry.size?.height ?? null,
+      }));
     },
   },
   [M.resolveItemHeroMedia]: {

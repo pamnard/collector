@@ -1,4 +1,5 @@
 import type { ItemFile } from "@collector/shared";
+import type { ItemThumbnailPixelSize } from "@collector/api";
 
 /**
  * Shared dashboard list fields used by live working state and query-cache entries.
@@ -11,6 +12,7 @@ export interface DashboardListSnapshot {
   bodyStamps: Map<string, string>;
   thumbnailPaths: Map<string, string | null>;
   thumbnailStamps: Map<string, string>;
+  thumbnailSizes: Map<string, ItemThumbnailPixelSize | null>;
   streamEndOffset: number;
   totalCount: number;
 }
@@ -21,6 +23,7 @@ export type DashboardListSnapshotPruneInput = {
   bodyStamps: ReadonlyMap<string, string>;
   thumbnailPaths: ReadonlyMap<string, string | null>;
   thumbnailStamps: ReadonlyMap<string, string>;
+  thumbnailSizes: ReadonlyMap<string, ItemThumbnailPixelSize | null>;
   streamEndOffset: number;
   totalCount: number;
 };
@@ -51,6 +54,8 @@ export function pruneItemIdFromDashboardListSnapshot(
   thumbnailPaths.delete(itemId);
   const thumbnailStamps = new Map(input.thumbnailStamps);
   thumbnailStamps.delete(itemId);
+  const thumbnailSizes = new Map(input.thumbnailSizes);
+  thumbnailSizes.delete(itemId);
 
   return {
     removed: true,
@@ -59,6 +64,7 @@ export function pruneItemIdFromDashboardListSnapshot(
     bodyStamps,
     thumbnailPaths,
     thumbnailStamps,
+    thumbnailSizes,
     streamEndOffset: Math.min(input.streamEndOffset, itemIds.length),
     totalCount: Math.max(0, input.totalCount - removedFromIds),
   };

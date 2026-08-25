@@ -9,9 +9,42 @@ import type { AppSettings, ItemFile } from "@collector/shared";
 import type { DashboardSnapshotPort } from "./service-api.js";
 import { DASHBOARD_SNAPSHOT_PORT_KEYS } from "./service-compose.js";
 
+/** Pixel size of an on-disk cover when path is non-null (sharp.metadata). */
+export type ItemThumbnailPixelSize = {
+  width: number;
+  height: number;
+};
+
+/** Path + size from host thumbnail resolve. */
+export type ItemThumbnailResolved = {
+  path: string | null;
+  /** null iff path is null; positive pixels when path is set. */
+  size: ItemThumbnailPixelSize | null;
+};
+
+/** Positive WxH from wire/snapshot fields; otherwise null. */
+export function positiveThumbnailPixelSize(
+  width: unknown,
+  height: unknown,
+): ItemThumbnailPixelSize | null {
+  if (
+    typeof width === "number" &&
+    width > 0 &&
+    typeof height === "number" &&
+    height > 0
+  ) {
+    return { width, height };
+  }
+  return null;
+}
+
 /** Options for streaming thumbnail path resolution (#544). */
 export interface UiSessionThumbnailResolveProgressiveOptions {
-  onResolved: (id: string, path: string | null) => void;
+  onResolved: (
+    id: string,
+    path: string | null,
+    size: ItemThumbnailPixelSize | null,
+  ) => void;
   signal?: AbortSignal;
   concurrency?: number;
 }

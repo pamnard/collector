@@ -2,7 +2,6 @@ import { lazy, Suspense } from "react";
 import { BrowserRouter, Outlet, Route, Routes } from "react-router-dom";
 import { AppSettingsProvider } from "./context/AppSettingsContext";
 import { AppLayout } from "./components/layout/AppLayout";
-import { Spinner } from "./components/ui/spinner";
 
 const DashboardPage = lazy(() =>
   import("./pages/DashboardPage").then((m) => ({ default: m.DashboardPage })),
@@ -14,19 +13,11 @@ const SettingsPage = lazy(() =>
   import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })),
 );
 
-function RouteChunkFallback() {
-  return (
-    <div className="flex items-center gap-2 p-4 text-sm text-neutral-500 dark:text-neutral-400">
-      <Spinner className="shrink-0" />
-      <span>Загрузка…</span>
-    </div>
-  );
-}
-
-/** Keeps AppLayout mounted while page route chunks resolve. */
+/** Keeps AppLayout mounted while page route chunks resolve.
+ * No layout status copy — loading belongs in AlertStack (#801 regression). */
 function LazyRouteOutlet() {
   return (
-    <Suspense fallback={<RouteChunkFallback />}>
+    <Suspense fallback={null}>
       <Outlet />
     </Suspense>
   );

@@ -1,11 +1,17 @@
 import type { ItemFile } from "@collector/shared";
 import type { TagWithCount } from "@collector/core";
-import { itemCoverStamp } from "../../lib/dashboard-commit.ts";
+import type { ItemThumbnailPixelSize } from "@collector/api";
+import {
+  itemCoverStamp,
+  thumbnailPixelSizesEqual,
+} from "../../lib/dashboard-commit.ts";
 
 export interface ItemGridCardProps {
   item: ItemFile;
   /** undefined = paths still resolving; null = no file cover; string = path */
   thumbnailPath?: string | null;
+  /** Host sharp.metadata size when path is known; undefined while resolving. */
+  thumbnailSize?: ItemThumbnailPixelSize | null;
   tagsById: Map<string, TagWithCount>;
   onOpen: (itemId: string) => void;
 }
@@ -27,7 +33,7 @@ function tagIdsEqual(left: string[], right: string[]): boolean {
 
 /**
  * Memo equality for masonry cards: every field the card renders (or uses for
- * cover resolve / portrait optimism), not only cover stamp identity.
+ * cover resolve), not only cover stamp identity.
  */
 export function itemGridCardPropsAreEqual(
   prev: ItemGridCardProps,
@@ -43,6 +49,7 @@ export function itemGridCardPropsAreEqual(
     tagIdsEqual(prev.item.tag_ids, next.item.tag_ids) &&
     itemCoverStamp(prev.item) === itemCoverStamp(next.item) &&
     prev.thumbnailPath === next.thumbnailPath &&
+    thumbnailPixelSizesEqual(prev.thumbnailSize, next.thumbnailSize) &&
     prev.tagsById === next.tagsById &&
     prev.onOpen === next.onOpen
   );

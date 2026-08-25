@@ -61,4 +61,44 @@ describe("createHostFoldersPort.subscribeFolderTree (#567)", () => {
     expect(updates.length).toBeGreaterThanOrEqual(2);
     sub.unsubscribe();
   });
+
+  it("forwards listFolderTree failures via onError (#797)", async () => {
+    const request = vi.fn(async () => {
+      throw new Error("tree failed");
+    });
+    const transport = {
+      request,
+      onEvent: () => () => {},
+    };
+    const ctx = { transport } as unknown as HostSessionCtx;
+    const onError = vi.fn();
+    createHostFoldersPort(ctx).subscribeFolderTree(() => {}, { onError });
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+    expect(onError.mock.calls[0]![0]).toBe("folder tree");
+    expect(onError.mock.calls[0]![1]).toMatchObject({ message: "tree failed" });
+  });
+
+  it("skips onError after unsubscribe (#797)", async () => {
+    let rejectRequest!: (error: Error) => void;
+    const request = vi.fn(
+      () =>
+        new Promise<never>((_, reject) => {
+          rejectRequest = reject;
+        }),
+    );
+    const transport = {
+      request,
+      onEvent: () => () => {},
+    };
+    const ctx = { transport } as unknown as HostSessionCtx;
+    const onError = vi.fn();
+    const sub = createHostFoldersPort(ctx).subscribeFolderTree(() => {}, {
+      onError,
+    });
+    sub.unsubscribe();
+    rejectRequest(new Error("late"));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onError).not.toHaveBeenCalled();
+  });
 });

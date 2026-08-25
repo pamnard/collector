@@ -30,6 +30,7 @@ describe("runCoverPathFlight", () => {
     const stamp = itemCoverStamp(item);
     let paths = new Map<string, string | null>([["a", "/a"]]);
     let stamps = new Map<string, string>([["a", stamp]]);
+    let sizes = new Map([["a", { width: 10, height: 10 }]]);
     let resolveCalls = 0;
     let flight: CoverFlightSlot = null;
 
@@ -40,9 +41,11 @@ describe("runCoverPathFlight", () => {
       getOrderedIds: () => ["a"],
       getPaths: () => paths,
       getStamps: () => stamps,
-      commit: (nextPaths, nextStamps) => {
+      getSizes: () => sizes,
+      commit: (nextPaths, nextStamps, nextSizes) => {
         paths = nextPaths;
         stamps = nextStamps;
+        sizes = nextSizes;
       },
       getFlight: () => flight,
       setFlight: (next) => {
@@ -61,6 +64,7 @@ describe("runCoverPathFlight", () => {
     const item = stubItem("a");
     let paths = new Map<string, string | null>();
     let stamps = new Map<string, string>();
+    let sizes = new Map();
     let flight: CoverFlightSlot = null;
     const scheduled: Array<() => void> = [];
 
@@ -71,9 +75,11 @@ describe("runCoverPathFlight", () => {
       getOrderedIds: () => ["a"],
       getPaths: () => paths,
       getStamps: () => stamps,
-      commit: (nextPaths, nextStamps) => {
+      getSizes: () => sizes,
+      commit: (nextPaths, nextStamps, nextSizes) => {
         paths = nextPaths;
         stamps = nextStamps;
+        sizes = nextSizes;
       },
       getFlight: () => flight,
       setFlight: (next) => {
@@ -90,7 +96,7 @@ describe("runCoverPathFlight", () => {
       },
       resolveProgressive: async (items, options) => {
         assert.equal(items.length, 1);
-        options.onResolved?.("a", "/cover-a");
+        options.onResolved?.("a", "/cover-a", { width: 100, height: 80 });
       },
     });
 
@@ -103,6 +109,7 @@ describe("runCoverPathFlight", () => {
     const item = stubItem("a");
     let paths = new Map<string, string | null>();
     let stamps = new Map<string, string>();
+    let sizes = new Map();
     let flight: CoverFlightSlot = null;
     let resolveCalls = 0;
     let releaseResolve: (() => void) | null = null;
@@ -119,9 +126,11 @@ describe("runCoverPathFlight", () => {
       getOrderedIds: () => ["a"],
       getPaths: () => paths,
       getStamps: () => stamps,
-      commit: (nextPaths, nextStamps) => {
+      getSizes: () => sizes,
+      commit: (nextPaths, nextStamps, nextSizes) => {
         paths = nextPaths;
         stamps = nextStamps;
+        sizes = nextSizes;
       },
       getFlight: () => flight,
       setFlight: (next) => {
@@ -133,7 +142,7 @@ describe("runCoverPathFlight", () => {
         await new Promise<void>((resolve) => {
           releaseResolve = resolve;
         });
-        options.onResolved?.("a", "/shared");
+        options.onResolved?.("a", "/shared", { width: 10, height: 10 });
       },
     });
 
@@ -149,9 +158,11 @@ describe("runCoverPathFlight", () => {
       getOrderedIds: () => ["a"],
       getPaths: () => paths,
       getStamps: () => stamps,
-      commit: (nextPaths, nextStamps) => {
+      getSizes: () => sizes,
+      commit: (nextPaths, nextStamps, nextSizes) => {
         paths = nextPaths;
         stamps = nextStamps;
+        sizes = nextSizes;
       },
       getFlight: () => flight,
       setFlight: (next) => {
@@ -175,6 +186,7 @@ describe("runCoverPathFlight", () => {
     let version = 1;
     let paths = new Map<string, string | null>();
     let stamps = new Map<string, string>();
+    let sizes = new Map();
     let flight: CoverFlightSlot = null;
     let resolveCalls = 0;
 
@@ -185,9 +197,11 @@ describe("runCoverPathFlight", () => {
       getOrderedIds: () => ["a"],
       getPaths: () => paths,
       getStamps: () => stamps,
-      commit: (nextPaths, nextStamps) => {
+      getSizes: () => sizes,
+      commit: (nextPaths, nextStamps, nextSizes) => {
         paths = nextPaths;
         stamps = nextStamps;
+        sizes = nextSizes;
       },
       getFlight: () => flight,
       setFlight: (next) => {
