@@ -24,7 +24,7 @@ function createNullThumbnailPaths(): UiSessionThumbnailPaths {
         if (options.signal?.aborted) {
           return;
         }
-        options.onResolved(item.id, null);
+        options.onResolved(item.id, null, null);
       }
     },
     resolveItemHeroMedia: async (): Promise<ItemHeroMedia | null> => null,

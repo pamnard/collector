@@ -32,6 +32,7 @@ function entry(
     totalCount: partial.totalCount ?? partial.itemIds.length,
     thumbnailPaths: partial.thumbnailPaths ?? new Map(),
     thumbnailStamps: partial.thumbnailStamps ?? new Map(),
+    thumbnailSizes: partial.thumbnailSizes ?? new Map(),
     updatedAt: partial.updatedAt ?? Date.now(),
   };
 }
@@ -77,6 +78,7 @@ describe("dashboard query cache LRU", () => {
         bodyStamps: new Map([["1", "s1"]]),
         thumbnailPaths: new Map([["1", "/a"]]),
         thumbnailStamps: new Map([["1", "t:a"]]),
+        thumbnailSizes: new Map(),
       }),
     );
     const got = getDashboardQueryCache(key);
@@ -130,6 +132,7 @@ describe("dashboard query cache LRU", () => {
         bodyStamps: new Map([["1", "s1"], ["2", "s2"]]),
         thumbnailPaths: new Map([["1", "/old"]]),
         thumbnailStamps: new Map([["1", "t:old"]]),
+        thumbnailSizes: new Map(),
       }),
     );
     const before = getDashboardQueryCache(key);
@@ -145,6 +148,10 @@ describe("dashboard query cache LRU", () => {
         new Map([
           ["1", "t:new"],
           ["2", "t:two"],
+        ]),
+        new Map([
+          ["1", { width: 10, height: 10 }],
+          ["2", { width: 20, height: 20 }],
         ]),
       ),
       true,
@@ -201,6 +208,7 @@ describe("dashboard query cache LRU", () => {
       getLiveVersion: () => 1,
       thumbnailPaths: new Map([["old", "/poison"]]),
       thumbnailStamps: new Map([["old", "t:poison"]]),
+      thumbnailSizes: new Map(),
       rewriteFull: () => {
         throw new Error("rewriteFull must not run when live key diverged");
       },
@@ -226,6 +234,7 @@ describe("dashboard query cache LRU", () => {
       getLiveVersion: () => 3,
       thumbnailPaths: new Map([["1", "/rewritten"]]),
       thumbnailStamps: new Map([["1", "t:rewritten"]]),
+      thumbnailSizes: new Map(),
       rewriteFull: () => {
         setDashboardQueryCache(
           flightKey,
@@ -233,6 +242,7 @@ describe("dashboard query cache LRU", () => {
             itemIds: ["1"],
             thumbnailPaths: new Map([["1", "/rewritten"]]),
             thumbnailStamps: new Map([["1", "t:rewritten"]]),
+            thumbnailSizes: new Map(),
           }),
         );
       },
@@ -276,6 +286,7 @@ describe("dashboard query cache LRU", () => {
         totalCount: 2,
         thumbnailPaths: new Map([["x", "/x"], ["y", "/y"]]),
         thumbnailStamps: new Map([["x", "t:x"], ["y", "t:y"]]),
+        thumbnailSizes: new Map(),
       }),
     );
     setDashboardQueryCache(

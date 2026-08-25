@@ -94,6 +94,8 @@ describe("createHostThumbnailsPort (#552)", () => {
         return items.map((item) => ({
           id: item.id,
           path: `/vault/media/${item.id}/cover.webp`,
+          width: 640,
+          height: 480,
         }));
       }
       throw new Error(`unexpected ${method}`);
@@ -103,10 +105,13 @@ describe("createHostThumbnailsPort (#552)", () => {
     const map = await port.resolveItemThumbnailPaths([item]);
     expect(map.get("note-1")).toBe("/vault/media/note-1/cover.webp");
 
-    const progressive: Array<[string, string | null]> = [];
+    const progressive: Array<[string, string | null, { width: number; height: number } | null]> =
+      [];
     await port.resolveItemThumbnailPathsProgressive([item], {
-      onResolved: (id, path) => progressive.push([id, path]),
+      onResolved: (id, path, size) => progressive.push([id, path, size]),
     });
-    expect(progressive).toEqual([["note-1", "/vault/media/note-1/cover.webp"]]);
+    expect(progressive).toEqual([
+      ["note-1", "/vault/media/note-1/cover.webp", { width: 640, height: 480 }],
+    ]);
   });
 });

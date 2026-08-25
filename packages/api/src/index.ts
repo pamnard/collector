@@ -128,6 +128,9 @@ export {
   type UiSessionThumbnailResolveProgressiveOptions,
   type ItemHeroMedia,
   type ItemHeroMediaKind,
+  type ItemThumbnailPixelSize,
+  type ItemThumbnailResolved,
+  positiveThumbnailPixelSize,
 } from "./ui-session.js";
 
 export {

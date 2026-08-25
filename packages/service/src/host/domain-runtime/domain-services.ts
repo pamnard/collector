@@ -15,6 +15,7 @@ import type { createJobPermanentFailureStore } from "../../job-permanent-failure
 import { createItemsSearchService } from "../../items-search.js";
 import { createTagsFoldersService } from "../../tags-folders.js";
 import { createMediaCoverService } from "../../media-cover.js";
+import { readCoverPixelSize } from "../../cover-pixel-size.js";
 import { createVaultsService } from "../../vaults.js";
 import { enqueueGenerateCover } from "../../jobs/handlers/generate-cover.js";
 import { waitForJobTerminal } from "../../jobs/job-wait.js";
@@ -121,6 +122,7 @@ export function createDomainServices(deps: DomainServicesDeps): DomainServices {
     waitForCoverJob: (jobId) => waitForJobTerminal(deps.requireJobs(), jobId),
     resolveThumbnailPathsBatch: (vaultPath, items) =>
       resolveItemThumbnailPathsBatch(deps.getContext().fs, vaultPath, items),
+    readCoverPixelSize,
     onVaultPresentationChanged: (payload) =>
       deps.vaultPresentationChanged.notify(payload),
   });

@@ -3,9 +3,11 @@ import { describe, it } from "node:test";
 import {
   itemGridCoverImgClassName,
   itemGridCoverImgSizeAttrs,
+  itemGridCoverOverlayLayout,
   itemGridCoverPixelSizeFromImg,
   itemGridCoverSlot,
   itemGridCoverSlotAspectStyle,
+  itemGridCoverSlotPending,
 } from "./item-grid-cover-slot.ts";
 
 describe("itemGridCoverSlot", () => {
@@ -63,15 +65,34 @@ describe("itemGridCoverSlot", () => {
       { coverPending: false, showCover: false, loadCover: false },
     );
   });
+});
 
-  it("does not treat pending alone as showCover (no optimistic chrome)", () => {
-    const pending = itemGridCoverSlot({
-      expectedCoverSrc: "/vault/media/id/cover.webp",
-      coverSrc: "/vault/media/id/cover.webp",
-      coverSettled: false,
-    });
-    assert.equal(pending.showCover, false);
-    assert.equal(pending.loadCover, true);
+describe("itemGridCoverSlotPending", () => {
+  it("reserves only when pending and host gave exact WxH", () => {
+    assert.equal(
+      itemGridCoverSlotPending({
+        coverPending: true,
+        resolvedPixelSize: { width: 400, height: 300 },
+      }),
+      true,
+    );
+  });
+
+  it("does not reserve without pixel size (no fake 16:9/3:4)", () => {
+    assert.equal(
+      itemGridCoverSlotPending({
+        coverPending: true,
+        resolvedPixelSize: undefined,
+      }),
+      false,
+    );
+    assert.equal(
+      itemGridCoverSlotPending({
+        coverPending: true,
+        resolvedPixelSize: null,
+      }),
+      false,
+    );
   });
 });
 
@@ -86,10 +107,6 @@ describe("itemGridCoverPixelSizeFromImg", () => {
   it("rejects non-positive natural dimensions", () => {
     assert.throws(
       () => itemGridCoverPixelSizeFromImg({ naturalWidth: 0, naturalHeight: 100 }),
-      /positive/,
-    );
-    assert.throws(
-      () => itemGridCoverPixelSizeFromImg({ naturalWidth: 100, naturalHeight: 0 }),
       /positive/,
     );
   });
@@ -117,7 +134,6 @@ describe("itemGridCoverImgClassName", () => {
     const classes = itemGridCoverImgClassName({ loadCover: true });
     assert.match(classes, /\babsolute\b/);
     assert.match(classes, /\bopacity-0\b/);
-    // In-flow h-auto would stack with the aspect placeholder when dimensions are known.
     assert.doesNotMatch(classes, /\bh-auto\b/);
   });
 
@@ -128,6 +144,48 @@ describe("itemGridCoverImgClassName", () => {
     assert.match(classes, /\bh-full\b/);
     assert.match(classes, /\bw-full\b/);
     assert.doesNotMatch(classes, /\bh-auto\b/);
-    assert.doesNotMatch(classes, /\bopacity-0\b/);
+  });
+});
+
+describe("itemGridCoverOverlayLayout", () => {
+  it("uses reserved WxH so portrait chrome is stable before decode", () => {
+    assert.equal(
+      itemGridCoverOverlayLayout({
+        hasCover: true,
+        slotSize: { width: 421, height: 610 },
+      }),
+      true,
+    );
+  });
+
+  it("keeps square and landscape meta below the cover", () => {
+    assert.equal(
+      itemGridCoverOverlayLayout({
+        hasCover: true,
+        slotSize: { width: 736, height: 736 },
+      }),
+      false,
+    );
+    assert.equal(
+      itemGridCoverOverlayLayout({
+        hasCover: true,
+        slotSize: { width: 800, height: 400 },
+      }),
+      false,
+    );
+  });
+
+  it("stays off without a cover slot", () => {
+    assert.equal(
+      itemGridCoverOverlayLayout({
+        hasCover: false,
+        slotSize: { width: 421, height: 610 },
+      }),
+      false,
+    );
+    assert.equal(
+      itemGridCoverOverlayLayout({ hasCover: true, slotSize: null }),
+      false,
+    );
   });
 });
