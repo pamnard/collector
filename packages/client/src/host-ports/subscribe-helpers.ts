@@ -104,3 +104,28 @@ export function voidSubscribePublish(
     }
   })();
 }
+
+/**
+ * Load-then-deliver publish: skips `onResult` (and errors) if aborted after await.
+ * Prefer this over calling user callbacks inside a raw `voidSubscribePublish` body.
+ */
+export function voidSubscribePublishResult<T>(
+  signal: AbortSignal,
+  load: () => Promise<T>,
+  onResult: (value: T) => void,
+  handlers: SubscribeErrorHandlers | undefined,
+  label: string,
+): void {
+  voidSubscribePublish(
+    signal,
+    async () => {
+      const value = await load();
+      if (signal.aborted) {
+        return;
+      }
+      onResult(value);
+    },
+    handlers,
+    label,
+  );
+}

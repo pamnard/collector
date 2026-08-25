@@ -3,6 +3,7 @@ import {
   createThrottledPublisher,
   forwardSubscribeError,
   voidSubscribePublish,
+  voidSubscribePublishResult,
   withAbortBridge,
 } from "./subscribe-helpers.js";
 
@@ -112,5 +113,30 @@ describe("voidSubscribePublish (#797)", () => {
     await Promise.resolve();
     expect(skipped).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("voidSubscribePublishResult (#813)", () => {
+  it("skips onResult after abort mid-request when load later resolves", async () => {
+    let resolveLoad!: (value: string) => void;
+    const onResult = vi.fn();
+    const onError = vi.fn();
+    const controller = new AbortController();
+    voidSubscribePublishResult(
+      controller.signal,
+      () =>
+        new Promise<string>((resolve) => {
+          resolveLoad = resolve;
+        }),
+      onResult,
+      { onError },
+      "scope",
+    );
+    controller.abort();
+    resolveLoad("late");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onResult).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
   });
 });

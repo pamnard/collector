@@ -7,7 +7,10 @@ import type {
 import { subscriptionFromTeardown } from "@collector/api";
 import type { Tag } from "@collector/shared";
 import type { HostSessionCtx } from "../host-session-ctx.js";
-import { voidSubscribePublish, withAbortBridge } from "./subscribe-helpers.js";
+import {
+  voidSubscribePublishResult,
+  withAbortBridge,
+} from "./subscribe-helpers.js";
 
 export function createHostTagsPort(ctx: HostSessionCtx): TagsPort {
   const { transport } = ctx;
@@ -18,11 +21,10 @@ export function createHostTagsPort(ctx: HostSessionCtx): TagsPort {
       signal?: AbortSignal,
     ): Subscription {
       const { signal: active, dispose } = withAbortBridge(signal);
-      voidSubscribePublish(
+      voidSubscribePublishResult(
         active,
-        async () => {
-          onUpdate((await transport.request("listTags")) as TagWithCount[]);
-        },
+        () => transport.request("listTags") as Promise<TagWithCount[]>,
+        onUpdate,
         handlers,
         "tags",
       );

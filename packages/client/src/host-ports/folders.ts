@@ -11,7 +11,7 @@ import { SERVICE_HOST_EVENTS } from "@collector/service/wire";
 import type { HostSessionCtx } from "../host-session-ctx.js";
 import {
   createThrottledPublisher,
-  voidSubscribePublish,
+  voidSubscribePublishResult,
   withAbortBridge,
 } from "./subscribe-helpers.js";
 
@@ -29,13 +29,10 @@ export function createHostFoldersPort(ctx: HostSessionCtx): FoldersPort {
       let lastStatus: VaultIndexSyncStatus["status"] | null = null;
 
       const publish = () =>
-        voidSubscribePublish(
+        voidSubscribePublishResult(
           active,
-          async () => {
-            onUpdate(
-              (await transport.request("listFolderTree")) as FolderTreeNode[],
-            );
-          },
+          () => transport.request("listFolderTree") as Promise<FolderTreeNode[]>,
+          onUpdate,
           handlers,
           "folder tree",
         );

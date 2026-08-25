@@ -50,6 +50,36 @@ describe("createHostTagsPort.subscribeTags (#797)", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it("skips onUpdate after abort mid-request when listTags later resolves (#813)", async () => {
+    let resolveRequest!: (value: TagWithCount[]) => void;
+    const request = vi.fn(
+      () =>
+        new Promise<TagWithCount[]>((resolve) => {
+          resolveRequest = resolve;
+        }),
+    );
+    const transport = {
+      request,
+      onEvent: () => () => {},
+    };
+    const ctx = { transport } as unknown as HostSessionCtx;
+    const onUpdate = vi.fn();
+    const onError = vi.fn();
+    const controller = new AbortController();
+    const sub = createHostTagsPort(ctx).subscribeTags(
+      onUpdate,
+      { onError },
+      controller.signal,
+    );
+    controller.abort();
+    sub.unsubscribe();
+    resolveRequest([{ id: "t1", name: "a", color: null, item_count: 1 }]);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onUpdate).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it("publishes listTags result when not aborted", async () => {
     const tags: TagWithCount[] = [
       { id: "t1", name: "a", color: null, item_count: 1 },

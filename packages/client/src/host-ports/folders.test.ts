@@ -101,4 +101,30 @@ describe("createHostFoldersPort.subscribeFolderTree (#567)", () => {
     await Promise.resolve();
     expect(onError).not.toHaveBeenCalled();
   });
+
+  it("skips onUpdate after unsubscribe mid-request when listFolderTree later resolves (#813)", async () => {
+    let resolveRequest!: (value: unknown) => void;
+    const request = vi.fn(
+      () =>
+        new Promise<unknown>((resolve) => {
+          resolveRequest = resolve;
+        }),
+    );
+    const transport = {
+      request,
+      onEvent: () => () => {},
+    };
+    const ctx = { transport } as unknown as HostSessionCtx;
+    const onUpdate = vi.fn();
+    const onError = vi.fn();
+    const sub = createHostFoldersPort(ctx).subscribeFolderTree(onUpdate, {
+      onError,
+    });
+    sub.unsubscribe();
+    resolveRequest([{ path: "Inbox", item_count: 0, children: [] }]);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onUpdate).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+  });
 });
