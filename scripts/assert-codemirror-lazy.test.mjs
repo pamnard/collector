@@ -1,5 +1,5 @@
 /**
- * Guard: CodeMirror loads only with the item source editor (#803).
+ * Guard: CodeMirror loads only with the item markdown editor (#803, #820).
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -13,7 +13,7 @@ function readSrc(rel) {
   return readFileSync(join(root, "src", rel), "utf8");
 }
 
-describe("CodeMirror lazy-load (#803)", () => {
+describe("CodeMirror lazy-load (#803, #820)", () => {
   it("ItemDetailPage does not statically import ItemDetailSourceEditor", () => {
     const page = readSrc("pages/ItemDetailPage.tsx");
     assert.equal(
@@ -27,6 +27,53 @@ describe("CodeMirror lazy-load (#803)", () => {
       page,
       /lazy\s*\(\s*\(\s*\)\s*=>\s*import\(\s*["'][^"']*ItemDetailSourceEditor["']/,
       "ItemDetailPage must lazy(() => import(...ItemDetailSourceEditor))",
+    );
+  });
+
+  it("ItemDetailInlineEditor does not statically import ItemDetailSourceEditor", () => {
+    const editor = readSrc("components/items/ItemDetailInlineEditor.tsx");
+    assert.equal(
+      /import\s*\{[^}]*ItemDetailSourceEditor[^}]*\}\s*from\s*["'][^"']*ItemDetailSourceEditor["']/.test(
+        editor,
+      ),
+      false,
+      "ItemDetailInlineEditor must not statically import ItemDetailSourceEditor",
+    );
+    assert.equal(
+      /@codemirror\//.test(editor),
+      false,
+      "ItemDetailInlineEditor must not import @codemirror/*",
+    );
+    assert.match(
+      editor,
+      /lazy\s*\(\s*\(\s*\)\s*=>\s*import\(\s*["'][^"']*ItemDetailSourceEditor["']/,
+      "ItemDetailInlineEditor must lazy(() => import(...ItemDetailSourceEditor))",
+    );
+    assert.match(
+      editor,
+      /withFrontmatter=\{false\}/,
+      "Form body editor must disable frontmatter (body-only)",
+    );
+  });
+
+  it("ItemDetailSourceEditor supports body-only vs full source language modes", () => {
+    const source = readSrc("components/items/ItemDetailSourceEditor.tsx");
+    assert.match(
+      source,
+      /withFrontmatter:\s*boolean/,
+      "ItemDetailSourceEditor must require withFrontmatter for form vs source",
+    );
+    assert.match(source, /yamlFrontmatter/);
+    assert.match(source, /markdown\(\s*\{\s*base:\s*markdownLanguage\s*\}\s*\)/);
+  });
+
+  it("ItemDetailPage source mode enables frontmatter on the shared editor", () => {
+    const page = readSrc("pages/ItemDetailPage.tsx");
+    assert.match(page, /\bwithFrontmatter\b/);
+    assert.equal(
+      /withFrontmatter=\{false\}/.test(page),
+      false,
+      "Source mode must not disable frontmatter",
     );
   });
 
