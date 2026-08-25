@@ -29,6 +29,19 @@ import { darkSyntaxColors } from "../../lib/syntax-highlight-colors";
 interface ItemDetailSourceEditorProps {
   value: string;
   onChange: (value: string) => void;
+  /**
+   * Source mode: YAML frontmatter + markdown body as one document.
+   * Form mode: markdown body only (FM edited via property rows).
+   */
+  withFrontmatter?: boolean;
+  ariaLabel?: string;
+}
+
+function languageExtension(withFrontmatter: boolean) {
+  const markdownBody = markdown({ base: markdownLanguage });
+  return withFrontmatter
+    ? yamlFrontmatter({ content: markdownBody })
+    : markdownBody;
 }
 
 /** Editor-only highlight style — kept out of syntax-highlight-colors so preview/dashboard stay CodeMirror-free. */
@@ -135,6 +148,8 @@ function highlightExtension(dark: boolean) {
 export function ItemDetailSourceEditor({
   value,
   onChange,
+  withFrontmatter = true,
+  ariaLabel = "Исходный markdown",
 }: ItemDetailSourceEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -165,9 +180,7 @@ export function ItemDetailSourceEditor({
           bracketMatching(),
           EditorView.lineWrapping,
           keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
-          yamlFrontmatter({
-            content: markdown({ base: markdownLanguage }),
-          }),
+          languageExtension(withFrontmatter),
           themeCompartment.of(sourceEditorTheme(dark)),
           highlightCompartment.of(highlightExtension(dark)),
           EditorView.updateListener.of((update) => {
@@ -176,7 +189,7 @@ export function ItemDetailSourceEditor({
             }
           }),
           EditorView.contentAttributes.of({
-            "aria-label": "Исходный markdown",
+            "aria-label": ariaLabel,
           }),
         ],
       }),
@@ -187,7 +200,8 @@ export function ItemDetailSourceEditor({
       view.destroy();
       viewRef.current = null;
     };
-    // Mount once when source mode opens (value is already loaded).
+    // Mount once when the edit surface opens (value is already loaded).
+    // withFrontmatter / ariaLabel are fixed per mode instance.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

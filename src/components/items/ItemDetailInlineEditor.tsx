@@ -1,11 +1,18 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { ItemFormValues } from "../../types/item";
 import { inferPropertyKind } from "../../lib/frontmatter-property-kind";
+import { Spinner } from "../ui/spinner";
 import { PRODUCT_PROPERTY_ROWS } from "./item-detail-inline-editor-helpers";
 import { ItemDetailForeignValueEditor } from "./ItemDetailForeignValueEditor";
 import { ItemDetailProductPropertyRows } from "./ItemDetailProductPropertyRows";
 import { ItemDetailPropertyRow } from "./ItemDetailPropertyRow";
+
+const ItemDetailSourceEditor = lazy(() =>
+  import("./ItemDetailSourceEditor").then((m) => ({
+    default: m.ItemDetailSourceEditor,
+  })),
+);
 
 interface ItemDetailInlineEditorProps {
   values: ItemFormValues;
@@ -86,16 +93,25 @@ export function ItemDetailInlineEditor({
         )}
       </div>
 
-      <label className="block">
+      <div className="block">
         <span className="text-sm font-medium">Содержимое (Markdown)</span>
-        <textarea
-          value={values.content}
-          onChange={(event) => update("content", event.target.value)}
-          rows={16}
-          placeholder="Markdown…"
-          className="mt-2 w-full bg-transparent px-0 py-0 text-sm font-mono leading-relaxed resize-y min-h-[320px] outline-hidden"
-        />
-      </label>
+        <div className="mt-2">
+          <Suspense
+            fallback={
+              <div className="flex min-h-48 items-center justify-center">
+                <Spinner className="size-5" />
+              </div>
+            }
+          >
+            <ItemDetailSourceEditor
+              value={values.content}
+              onChange={(content) => update("content", content)}
+              withFrontmatter={false}
+              ariaLabel="Содержимое (Markdown)"
+            />
+          </Suspense>
+        </div>
+      </div>
     </article>
   );
 }
