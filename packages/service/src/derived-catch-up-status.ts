@@ -83,12 +83,22 @@ export function createDerivedCatchUpStatusRefresher(deps: {
   store: DerivedCatchUpStatusStore;
   stats: () => Promise<JobStats>;
   getActiveVaultId: () => string | null;
-}): { refresh: (immediate?: boolean) => Promise<void> } {
+}): {
+  refresh: (immediate?: boolean) => Promise<void>;
+  dispose: () => void;
+} {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let inflight: Promise<void> | null = null;
+  let disposed = false;
 
   async function flush(): Promise<void> {
+    if (disposed) {
+      return;
+    }
     const stats = await deps.stats();
+    if (disposed) {
+      return;
+    }
     const next = deriveCatchUpStatusFromJobStats(
       stats,
       deps.getActiveVaultId(),
@@ -98,6 +108,9 @@ export function createDerivedCatchUpStatusRefresher(deps: {
 
   return {
     refresh(immediate = false) {
+      if (disposed) {
+        return Promise.resolve();
+      }
       if (immediate) {
         if (timer) {
           clearTimeout(timer);
@@ -116,6 +129,13 @@ export function createDerivedCatchUpStatusRefresher(deps: {
         }, DERIVED_CATCH_UP_REFRESH_DEBOUNCE_MS);
       });
       return inflight;
+    },
+    dispose() {
+      disposed = true;
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
     },
   };
 }

@@ -429,7 +429,20 @@ export function createServiceDomainRuntime(
 
   const derivedCatchUpRefresher = createDerivedCatchUpStatusRefresher({
     store: derivedCatchUpStatus,
-    stats: () => requireJobs().stats(),
+    // Fail closed when the queue is already torn down (#817 / #811).
+    stats: async () => {
+      if (!jobsQueue) {
+        return {
+          pending: 0,
+          running: 0,
+          succeeded: 0,
+          failed: 0,
+          cancelled: 0,
+          byType: {},
+        };
+      }
+      return jobsQueue.stats();
+    },
     getActiveVaultId: () =>
       vaultsHolder.current?.getActiveVaultEntry()?.meta.id ?? null,
   });
@@ -458,6 +471,7 @@ export function createServiceDomainRuntime(
     isHealthy: () => indexBoot.isHealthy(),
     async close() {
       runtimeClosed = true;
+      derivedCatchUpRefresher.dispose();
       embeddingReconcile.dispose();
       vaultLayoutGuard.dispose();
       syncPluginWake.dispose();

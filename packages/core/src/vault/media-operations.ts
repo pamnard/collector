@@ -2,11 +2,49 @@ import type { MediaFileMeta } from "@collector/shared";
 import { inferMediaType } from "@collector/shared";
 import type { VaultContext } from "../adapters/types.js";
 import { createId, nowIso } from "../util/ids.js";
-import { itemMediaRoot } from "./paths.js";
+import { readVaultMeta, readItemFile } from "./item-io.js";
+import { upsertItemIndexFromVault } from "./item-index-refresh.js";
+import { itemMarkdownPath, itemMediaRoot } from "./paths.js";
 import { listMediaFiles, mediaFilePath } from "./media-io.js";
 
 export interface MediaWithPath extends MediaFileMeta {
   absolute_path: string;
+}
+
+/**
+ * Ensure the parent item row exists before media FK insert.
+ * createItem may defer index refresh to itemDerivedRefresh (#766/#776); attach
+ * must not race that job (#817).
+ */
+async function ensureItemIndexedForMedia(
+  ctx: VaultContext,
+  vaultPath: string,
+  itemId: string,
+): Promise<void> {
+  const vaultMeta = await readVaultMeta(ctx.fs, vaultPath);
+  const [syncMeta] = await ctx.index.listItemSyncMetaByIds(vaultMeta.id, [
+    itemId,
+  ]);
+  if (syncMeta) {
+    return;
+  }
+  const docPath = itemMarkdownPath(vaultPath, itemId);
+  if (!(await ctx.fs.exists(docPath))) {
+    throw new Error(`Item not found: ${itemId}`);
+  }
+  const fileStat = await ctx.fs.stat(docPath);
+  if (fileStat.mtimeMs === null) {
+    throw new Error(`attachMediaFile: missing file mtime for ${itemId}`);
+  }
+  const item = await readItemFile(ctx.fs, vaultPath, itemId, vaultMeta.id);
+  await upsertItemIndexFromVault(
+    ctx,
+    vaultPath,
+    vaultMeta.id,
+    itemId,
+    item.content_revision,
+    fileStat.mtimeMs,
+  );
 }
 
 export async function attachMediaFile(
@@ -28,6 +66,7 @@ export async function attachMediaFile(
   const destination = mediaFilePath(vaultPath, itemId, mediaId, input.filename);
   await ctx.fs.mkdir(itemMediaRoot(vaultPath, itemId));
   await ctx.fs.writeBinary(destination, input.data);
+  await ensureItemIndexedForMedia(ctx, vaultPath, itemId);
   await ctx.index.upsertMedia(entry);
   return entry;
 }
