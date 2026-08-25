@@ -15,6 +15,7 @@ import {
   mergeCommittedThumbnailStamps,
   orderedIds,
   pruneItemIdFromDashboardLists,
+  resolveDashboardGridThumbnail,
   resolveDashboardGridThumbnailPath,
   bodyStampsForOrderedIds,
   shouldSkipCommitPaint,
@@ -118,6 +119,53 @@ describe("resolveDashboardGridThumbnailPath", () => {
     assert.equal(
       resolveDashboardGridThumbnailPath(item, new Map(), new Map()),
       undefined,
+    );
+  });
+});
+
+describe("resolveDashboardGridThumbnail", () => {
+  it("returns undefined path and size while cover still needs resolve (pending)", () => {
+    const item = stubItem("a");
+    assert.deepEqual(
+      resolveDashboardGridThumbnail(
+        item,
+        new Map(),
+        new Map(),
+        new Map(),
+      ),
+      { path: undefined, size: undefined },
+    );
+  });
+
+  it("returns committed path and size when resolve is settled", () => {
+    const item = stubItem("a", { thumbnail: "c.webp" });
+    const paths = new Map<string, string | null>([["a", "/a"]]);
+    const stamps = new Map([["a", itemCoverStamp(item)]]);
+    const sizes = new Map([["a", { width: 120, height: 80 }]]);
+    assert.deepEqual(
+      resolveDashboardGridThumbnail(item, paths, stamps, sizes),
+      { path: "/a", size: { width: 120, height: 80 } },
+    );
+  });
+
+  it("returns null path and size for settled null-cover", () => {
+    const item = stubItem("a");
+    const paths = new Map<string, string | null>([["a", null]]);
+    const stamps = new Map([["a", itemCoverStamp(item)]]);
+    const sizes = new Map([["a", null]]);
+    assert.deepEqual(
+      resolveDashboardGridThumbnail(item, paths, stamps, sizes),
+      { path: null, size: null },
+    );
+  });
+
+  it("returns undefined path and size when size key is missing (needs re-resolve)", () => {
+    const item = stubItem("a", { thumbnail: "c.webp" });
+    const paths = new Map<string, string | null>([["a", "/a"]]);
+    const stamps = new Map([["a", itemCoverStamp(item)]]);
+    assert.deepEqual(
+      resolveDashboardGridThumbnail(item, paths, stamps, new Map()),
+      { path: undefined, size: undefined },
     );
   });
 });
