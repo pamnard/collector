@@ -3,8 +3,8 @@
  * Thin adapter only — never opens SQLite.
  *
  * Catalog (`tools-catalog.ts`) owns names/descriptions; this file owns zod
- * shapes and host-client call bodies. Registration is DRY via
- * `registerCatalogTool` (#832).
+ * shapes and host-client call bodies. Registration is DRY via a local
+ * `tool` helper (#832).
  */
 
 import type { CollectorHostServiceClient } from "@collector/client";
@@ -66,36 +66,6 @@ const contentTypeSchema = z.enum(CONTENT_TYPES);
 
 type ToolArgs<Shape extends ZodRawShape> = z.infer<z.ZodObject<Shape>>;
 
-/**
- * Load catalog entry, register on the MCP server, and wrap the host call in
- * `runTool` (auth refresh unchanged). Each tool is one compact call site.
- */
-function registerCatalogTool<const Shape extends ZodRawShape>(
-  server: McpServer,
-  session: McpHostSession,
-  toolName: string,
-  inputSchema: Shape,
-  run: (
-    args: ToolArgs<Shape>,
-    client: CollectorHostServiceClient,
-  ) => Promise<unknown>,
-): void {
-  const catalog = requireMcpToolCatalogEntry(toolName);
-  // McpServer.registerTool generics do not compose with a Shape type parameter
-  // (InputArgs collapses to ZodRawShape). Keep typed `run` at call sites;
-  // assert only at this SDK boundary.
-  const handler = (async (args: ToolArgs<Shape>) =>
-    runTool(session, (client) => run(args, client))) as unknown as ToolCallback<Shape>;
-  server.registerTool(
-    catalog.name,
-    {
-      description: catalog.description,
-      inputSchema,
-    },
-    handler,
-  );
-}
-
 /** Zod field builders with catalog `.describe` text for one tool. */
 function params(toolName: string) {
   const describe = (paramName: string) =>
@@ -121,8 +91,9 @@ function params(toolName: string) {
   };
 }
 
-function mediaFileInputSchema(toolName: string) {
-  const p = params(toolName);
+type ToolParams = ReturnType<typeof params>;
+
+function mediaFileFields(p: ToolParams) {
   return {
     filename: p.optionalString("filename"),
     dataBase64: p.optionalString("dataBase64"),
@@ -169,333 +140,293 @@ export function createCollectorMcpServer(session: McpHostSession): McpServer {
     version: "0.1.0",
   });
 
+  /**
+   * Catalog lookup + registerTool + runTool. `buildSchema` receives param
+   * builders already bound to `toolName` so each tool is one compact entry.
+   *
+   * Cast at the SDK boundary: `registerTool` generics do not compose with a
+   * Shape type parameter (InputArgs collapses to ZodRawShape).
+   */
   const tool = <const Shape extends ZodRawShape>(
     toolName: string,
-    inputSchema: Shape,
+    buildSchema: (p: ToolParams) => Shape,
     run: (
       args: ToolArgs<Shape>,
       client: CollectorHostServiceClient,
     ) => Promise<unknown>,
-  ) => registerCatalogTool(server, session, toolName, inputSchema, run);
-
-  tool("collector_health", {}, (_args, client) => client.health());
-
-  {
-    const p = params("collector_search");
-    tool(
-      "collector_search",
-      { query: p.requiredString("query") },
-      ({ query }, client) => client.items.searchItems(query, "all"),
-    );
-  }
-
-  {
-    const p = params("collector_get_item");
-    tool(
-      "collector_get_item",
-      { itemId: p.requiredString("itemId") },
-      ({ itemId }, client) => client.items.getItemById(itemId),
-    );
-  }
-
-  {
-    const p = params("collector_create_item");
-    tool(
-      "collector_create_item",
+  ): void => {
+    const catalog = requireMcpToolCatalogEntry(toolName);
+    const inputSchema = buildSchema(params(toolName));
+    const handler = (async (args: ToolArgs<Shape>) =>
+      runTool(session, (client) => run(args, client))) as unknown as ToolCallback<Shape>;
+    server.registerTool(
+      catalog.name,
       {
-        title: p.requiredString("title"),
-        content_type: p.contentTypeDefaultNote("content_type"),
-        description: p.optionalString("description"),
-        url: p.nullableOptionalString("url"),
-        content: p.nullableOptionalString("content"),
-        folder_path: p.optionalString("folder_path"),
+        description: catalog.description,
+        inputSchema,
       },
-      (input, client) =>
-        client.items.createItem({
-          title: input.title,
-          content_type: input.content_type,
-          ...(input.description === undefined
-            ? {}
-            : { description: input.description }),
-          ...(input.url === undefined ? {} : { url: input.url }),
-          ...(input.content === undefined ? {} : { content: input.content }),
-          ...(input.folder_path === undefined
-            ? {}
-            : { folder_path: input.folder_path }),
-        }),
+      handler,
     );
-  }
+  };
 
-  {
-    const p = params("collector_update_item");
-    tool(
-      "collector_update_item",
-      {
-        itemId: p.requiredString("itemId"),
-        title: p.optionalString("title"),
-        description: p.optionalString("description"),
-        url: p.nullableOptionalString("url"),
-        content: p.nullableOptionalString("content"),
-        content_type: p.contentTypeOptional("content_type"),
-        tags: p.optionalStringArray("tags"),
-        folder_path: p.optionalString("folder_path"),
-      },
-      (input, client) =>
-        client.items.updateItem(input.itemId, {
-          ...(input.title === undefined ? {} : { title: input.title }),
-          ...(input.description === undefined
-            ? {}
-            : { description: input.description }),
-          ...(input.url === undefined ? {} : { url: input.url }),
-          ...(input.content === undefined ? {} : { content: input.content }),
-          ...(input.content_type === undefined
-            ? {}
-            : { content_type: input.content_type }),
-          ...(input.tags === undefined ? {} : { tags: input.tags }),
-          ...(input.folder_path === undefined
-            ? {}
-            : { folder_path: input.folder_path }),
-        }),
-    );
-  }
+  tool("collector_health", () => ({}), (_args, client) => client.health());
 
-  {
-    const p = params("collector_get_item_source");
-    tool(
-      "collector_get_item_source",
-      { itemId: p.requiredString("itemId") },
-      ({ itemId }, client) => client.items.getItemSource(itemId),
-    );
-  }
+  tool(
+    "collector_search",
+    (p) => ({ query: p.requiredString("query") }),
+    ({ query }, client) => client.items.searchItems(query, "all"),
+  );
 
-  {
-    const p = params("collector_update_item_source");
-    tool(
-      "collector_update_item_source",
-      {
-        itemId: p.requiredString("itemId"),
-        rawMarkdown: p.string("rawMarkdown"),
-      },
-      (input, client) =>
-        client.items.updateItemSource(input.itemId, input.rawMarkdown),
-    );
-  }
+  tool(
+    "collector_get_item",
+    (p) => ({ itemId: p.requiredString("itemId") }),
+    ({ itemId }, client) => client.items.getItemById(itemId),
+  );
 
-  {
-    const p = params("collector_wait_derived");
-    tool(
-      "collector_wait_derived",
-      {
-        itemId: p.requiredString("itemId"),
-        contentRevision: p.requiredInt("contentRevision"),
-        timeoutMs: p.optionalPositiveNumber("timeoutMs"),
-      },
-      (input, client) =>
-        client.items.waitDerived(input.itemId, input.contentRevision, {
-          ...(input.timeoutMs === undefined
-            ? {}
-            : { timeoutMs: input.timeoutMs }),
-        }),
-    );
-  }
+  tool(
+    "collector_create_item",
+    (p) => ({
+      title: p.requiredString("title"),
+      content_type: p.contentTypeDefaultNote("content_type"),
+      description: p.optionalString("description"),
+      url: p.nullableOptionalString("url"),
+      content: p.nullableOptionalString("content"),
+      folder_path: p.optionalString("folder_path"),
+    }),
+    (input, client) =>
+      client.items.createItem({
+        title: input.title,
+        content_type: input.content_type,
+        ...(input.description === undefined
+          ? {}
+          : { description: input.description }),
+        ...(input.url === undefined ? {} : { url: input.url }),
+        ...(input.content === undefined ? {} : { content: input.content }),
+        ...(input.folder_path === undefined
+          ? {}
+          : { folder_path: input.folder_path }),
+      }),
+  );
 
-  {
-    const p = params("collector_delete_item");
-    tool(
-      "collector_delete_item",
-      { itemId: p.requiredString("itemId") },
-      async ({ itemId }, client) => {
-        await client.items.deleteItem(itemId);
-        return { ok: true, deleted: itemId };
-      },
-    );
-  }
+  tool(
+    "collector_update_item",
+    (p) => ({
+      itemId: p.requiredString("itemId"),
+      title: p.optionalString("title"),
+      description: p.optionalString("description"),
+      url: p.nullableOptionalString("url"),
+      content: p.nullableOptionalString("content"),
+      content_type: p.contentTypeOptional("content_type"),
+      tags: p.optionalStringArray("tags"),
+      folder_path: p.optionalString("folder_path"),
+    }),
+    (input, client) =>
+      client.items.updateItem(input.itemId, {
+        ...(input.title === undefined ? {} : { title: input.title }),
+        ...(input.description === undefined
+          ? {}
+          : { description: input.description }),
+        ...(input.url === undefined ? {} : { url: input.url }),
+        ...(input.content === undefined ? {} : { content: input.content }),
+        ...(input.content_type === undefined
+          ? {}
+          : { content_type: input.content_type }),
+        ...(input.tags === undefined ? {} : { tags: input.tags }),
+        ...(input.folder_path === undefined
+          ? {}
+          : { folder_path: input.folder_path }),
+      }),
+  );
 
-  {
-    const p = params("collector_create_tag");
-    tool(
-      "collector_create_tag",
-      {
-        name: p.requiredString("name"),
-        color: p.nullableOptionalString("color"),
-      },
-      (input, client) =>
-        client.tags.createTag({
-          name: input.name,
-          ...(input.color === undefined ? {} : { color: input.color }),
-        }),
-    );
-  }
+  tool(
+    "collector_get_item_source",
+    (p) => ({ itemId: p.requiredString("itemId") }),
+    ({ itemId }, client) => client.items.getItemSource(itemId),
+  );
 
-  {
-    const p = params("collector_delete_tag");
-    tool(
-      "collector_delete_tag",
-      { tagId: p.requiredString("tagId") },
-      async ({ tagId }, client) => {
-        await client.tags.deleteTag(tagId);
-        return { ok: true, deleted: tagId };
-      },
-    );
-  }
+  tool(
+    "collector_update_item_source",
+    (p) => ({
+      itemId: p.requiredString("itemId"),
+      rawMarkdown: p.string("rawMarkdown"),
+    }),
+    (input, client) =>
+      client.items.updateItemSource(input.itemId, input.rawMarkdown),
+  );
 
-  {
-    const p = params("collector_create_folder");
-    tool(
-      "collector_create_folder",
-      { folderPath: p.requiredString("folderPath") },
-      async ({ folderPath }, client) => {
-        const path = await client.folders.createFolder(folderPath);
-        return { ok: true, path };
-      },
-    );
-  }
+  tool(
+    "collector_wait_derived",
+    (p) => ({
+      itemId: p.requiredString("itemId"),
+      contentRevision: p.requiredInt("contentRevision"),
+      timeoutMs: p.optionalPositiveNumber("timeoutMs"),
+    }),
+    (input, client) =>
+      client.items.waitDerived(input.itemId, input.contentRevision, {
+        ...(input.timeoutMs === undefined
+          ? {}
+          : { timeoutMs: input.timeoutMs }),
+      }),
+  );
 
-  tool("collector_list_folders", {}, (_args, client) =>
+  tool(
+    "collector_delete_item",
+    (p) => ({ itemId: p.requiredString("itemId") }),
+    async ({ itemId }, client) => {
+      await client.items.deleteItem(itemId);
+      return { ok: true, deleted: itemId };
+    },
+  );
+
+  tool(
+    "collector_create_tag",
+    (p) => ({
+      name: p.requiredString("name"),
+      color: p.nullableOptionalString("color"),
+    }),
+    (input, client) =>
+      client.tags.createTag({
+        name: input.name,
+        ...(input.color === undefined ? {} : { color: input.color }),
+      }),
+  );
+
+  tool(
+    "collector_delete_tag",
+    (p) => ({ tagId: p.requiredString("tagId") }),
+    async ({ tagId }, client) => {
+      await client.tags.deleteTag(tagId);
+      return { ok: true, deleted: tagId };
+    },
+  );
+
+  tool(
+    "collector_create_folder",
+    (p) => ({ folderPath: p.requiredString("folderPath") }),
+    async ({ folderPath }, client) => {
+      const path = await client.folders.createFolder(folderPath);
+      return { ok: true, path };
+    },
+  );
+
+  tool("collector_list_folders", () => ({}), (_args, client) =>
     client.folders.listFolderTree(),
   );
 
-  {
-    const p = params("collector_rename_folder");
-    tool(
-      "collector_rename_folder",
-      {
-        oldPath: p.requiredString("oldPath"),
-        newPath: p.requiredString("newPath"),
-      },
-      async ({ oldPath, newPath }, client) => {
-        const path = await client.folders.renameFolder(oldPath, newPath);
-        return { ok: true, path };
-      },
-    );
-  }
+  tool(
+    "collector_rename_folder",
+    (p) => ({
+      oldPath: p.requiredString("oldPath"),
+      newPath: p.requiredString("newPath"),
+    }),
+    async ({ oldPath, newPath }, client) => {
+      const path = await client.folders.renameFolder(oldPath, newPath);
+      return { ok: true, path };
+    },
+  );
 
-  {
-    const p = params("collector_move_folder");
-    tool(
-      "collector_move_folder",
-      {
-        oldPath: p.requiredString("oldPath"),
-        newPath: p.requiredString("newPath"),
-      },
-      async ({ oldPath, newPath }, client) => {
-        const path = await client.folders.renameFolder(oldPath, newPath);
-        return { ok: true, path };
-      },
-    );
-  }
+  tool(
+    "collector_move_folder",
+    (p) => ({
+      oldPath: p.requiredString("oldPath"),
+      newPath: p.requiredString("newPath"),
+    }),
+    async ({ oldPath, newPath }, client) => {
+      const path = await client.folders.renameFolder(oldPath, newPath);
+      return { ok: true, path };
+    },
+  );
 
-  {
-    const p = params("collector_delete_folder");
-    tool(
-      "collector_delete_folder",
-      { folderPath: p.requiredString("folderPath") },
-      async ({ folderPath }, client) => {
-        await client.folders.deleteFolder(folderPath);
-        return { ok: true, deleted: folderPath };
-      },
-    );
-  }
+  tool(
+    "collector_delete_folder",
+    (p) => ({ folderPath: p.requiredString("folderPath") }),
+    async ({ folderPath }, client) => {
+      await client.folders.deleteFolder(folderPath);
+      return { ok: true, deleted: folderPath };
+    },
+  );
 
-  {
-    const p = params("collector_move_item");
-    tool(
-      "collector_move_item",
-      {
-        itemId: p.requiredString("itemId"),
-        folderPath: p.requiredString("folderPath"),
-      },
-      async ({ itemId, folderPath }, client) => {
-        const moved = await client.folders.moveItemToFolderPath(
-          itemId,
-          folderPath,
-        );
-        return {
-          ok: true,
-          itemId: moved.id,
-          folder_path: moved.folder_path,
-          item: moved,
-        };
-      },
-    );
-  }
+  tool(
+    "collector_move_item",
+    (p) => ({
+      itemId: p.requiredString("itemId"),
+      folderPath: p.requiredString("folderPath"),
+    }),
+    async ({ itemId, folderPath }, client) => {
+      const moved = await client.folders.moveItemToFolderPath(
+        itemId,
+        folderPath,
+      );
+      return {
+        ok: true,
+        itemId: moved.id,
+        folder_path: moved.folder_path,
+        item: moved,
+      };
+    },
+  );
 
-  {
-    const p = params("collector_list_item_media");
-    tool(
-      "collector_list_item_media",
-      { itemId: p.requiredString("itemId") },
-      ({ itemId }, client) => client.media.listItemMedia(itemId),
-    );
-  }
+  tool(
+    "collector_list_item_media",
+    (p) => ({ itemId: p.requiredString("itemId") }),
+    ({ itemId }, client) => client.media.listItemMedia(itemId),
+  );
 
-  {
-    const p = params("collector_attach_media");
-    tool(
-      "collector_attach_media",
-      {
-        itemId: p.requiredString("itemId"),
-        ...mediaFileInputSchema("collector_attach_media"),
-      },
-      async ({ itemId, filename, dataBase64, sourcePath }, client) => {
-        const file = await resolveMediaFileInput({
-          filename,
-          dataBase64,
-          sourcePath,
-        });
-        const attached = await client.media.attachMediaFiles(itemId, [file]);
-        return attached[0] ?? attached;
-      },
-    );
-  }
+  tool(
+    "collector_attach_media",
+    (p) => ({
+      itemId: p.requiredString("itemId"),
+      ...mediaFileFields(p),
+    }),
+    async ({ itemId, filename, dataBase64, sourcePath }, client) => {
+      const file = await resolveMediaFileInput({
+        filename,
+        dataBase64,
+        sourcePath,
+      });
+      const attached = await client.media.attachMediaFiles(itemId, [file]);
+      return attached[0] ?? attached;
+    },
+  );
 
-  {
-    const p = params("collector_replace_media");
-    tool(
-      "collector_replace_media",
-      {
-        itemId: p.requiredString("itemId"),
-        mediaId: p.requiredString("mediaId"),
-        ...mediaFileInputSchema("collector_replace_media"),
-      },
-      async ({ itemId, mediaId, filename, dataBase64, sourcePath }, client) => {
-        const file = await resolveMediaFileInput({
-          filename,
-          dataBase64,
-          sourcePath,
-        });
-        return client.media.replaceItemMedia(itemId, mediaId, file);
-      },
-    );
-  }
+  tool(
+    "collector_replace_media",
+    (p) => ({
+      itemId: p.requiredString("itemId"),
+      mediaId: p.requiredString("mediaId"),
+      ...mediaFileFields(p),
+    }),
+    async ({ itemId, mediaId, filename, dataBase64, sourcePath }, client) => {
+      const file = await resolveMediaFileInput({
+        filename,
+        dataBase64,
+        sourcePath,
+      });
+      return client.media.replaceItemMedia(itemId, mediaId, file);
+    },
+  );
 
-  {
-    const p = params("collector_delete_media");
-    tool(
-      "collector_delete_media",
-      {
-        itemId: p.requiredString("itemId"),
-        mediaId: p.requiredString("mediaId"),
-      },
-      async ({ itemId, mediaId }, client) => {
-        await client.media.deleteItemMedia(itemId, mediaId);
-        return { ok: true, deleted: mediaId };
-      },
-    );
-  }
+  tool(
+    "collector_delete_media",
+    (p) => ({
+      itemId: p.requiredString("itemId"),
+      mediaId: p.requiredString("mediaId"),
+    }),
+    async ({ itemId, mediaId }, client) => {
+      await client.media.deleteItemMedia(itemId, mediaId);
+      return { ok: true, deleted: mediaId };
+    },
+  );
 
-  {
-    const p = params("collector_set_item_cover");
-    tool(
-      "collector_set_item_cover",
-      {
-        itemId: p.requiredString("itemId"),
-        mediaId: p.requiredString("mediaId"),
-      },
-      ({ itemId, mediaId }, client) =>
-        client.media.setItemCoverFromMedia(itemId, mediaId),
-    );
-  }
+  tool(
+    "collector_set_item_cover",
+    (p) => ({
+      itemId: p.requiredString("itemId"),
+      mediaId: p.requiredString("mediaId"),
+    }),
+    ({ itemId, mediaId }, client) =>
+      client.media.setItemCoverFromMedia(itemId, mediaId),
+  );
 
   return server;
 }
