@@ -105,7 +105,7 @@ You choose `--data-dir` (vault files + default self-contained layout). Settings 
 
 Release archives ship **`collector-cli`** and **`collector-mcp`** inside `collector-service-host/` (bundled Node + JS entrypoints). They are **thin clients** of the living host: start the host first (`./collector` or `npm run dev:host`), then point tools at it. They never open SQLite themselves.
 
-**MCP** (`collector-mcp`) and **CLI** (`collector-cli`) dial the host over **HTTP** (`POST /api/rpc` + Bearer) using the same host token as the UI. Pass `--base-url` from the READY line and `--data-dir` (or `--token` / `COLLECTOR_HOST_TOKEN`). Missing host or bad auth fails loudly. MCP does not open the events WebSocket; RPC is HTTP-only, so a host restart does not require restarting the MCP process.
+**MCP** (`collector-mcp`) and **CLI** (`collector-cli`) dial the host over **HTTP** (`POST /api/rpc` + Bearer) using the same host token as the UI. Pass `--base-url` from the READY line and `--data-dir` (or `--token` / `COLLECTOR_HOST_TOKEN`). Missing host or bad auth fails loudly. MCP does not open the events WebSocket; RPC is HTTP-only. With `--data-dir` only (no pinned `--token`), MCP re-reads published base-url/token files once after auth failure so a host remint does not require restarting MCP. Cursor `mcp_auth` is not the host Bearer token.
 
 Browser Vite env uses `VITE_COLLECTOR_SERVICE_*` (Vite requires the `VITE_` prefix). Node tools use `COLLECTOR_HOST_TOKEN` / the host token file — not the Vite names.
 

@@ -1,14 +1,19 @@
 /**
- * MCP tool registration over a living domain-host client (#174/#556).
+ * MCP tool registration over a living domain-host client (#174/#556/#826).
  * Thin adapter only — never opens SQLite.
  */
 
 import type { CollectorHostServiceClient } from "@collector/client";
+import { isHostWireError } from "@collector/service/host";
 import { CONTENT_TYPES } from "@collector/shared";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { z } from "zod";
+import {
+  formatMcpAuthFailure,
+  type McpHostSession,
+} from "./host-session.js";
 import {
   requireMcpToolCatalogEntry,
   requireMcpToolParamDescription,
@@ -26,12 +31,28 @@ function textResult(payload: unknown) {
   };
 }
 
-function errorResult(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
+function errorResult(error: unknown, session: McpHostSession) {
+  const message =
+    isHostWireError(error) && error.code === "auth_failed"
+      ? formatMcpAuthFailure(error, session)
+      : error instanceof Error
+        ? error.message
+        : String(error);
   return {
     content: [{ type: "text" as const, text: message }],
     isError: true as const,
   };
+}
+
+async function runTool(
+  session: McpHostSession,
+  fn: (client: CollectorHostServiceClient) => Promise<unknown>,
+) {
+  try {
+    return textResult(await session.withAuthRetry(fn));
+  } catch (error) {
+    return errorResult(error, session);
+  }
 }
 
 function paramDescribe(toolName: string, paramName: string) {
@@ -71,10 +92,9 @@ async function resolveMediaFileInput(args: {
 
 /**
  * Build an MCP server whose tools call the living domain host (HTTP client).
+ * Session may refresh data-dir credentials once on auth_failed (#826).
  */
-export function createCollectorMcpServer(
-  client: CollectorHostServiceClient,
-): McpServer {
+export function createCollectorMcpServer(session: McpHostSession): McpServer {
   const server = new McpServer({
     name: "collector",
     version: "0.1.0",
@@ -87,13 +107,7 @@ export function createCollectorMcpServer(
       description: health.description,
       inputSchema: {},
     },
-    async () => {
-      try {
-        return textResult(await client.health());
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+    async () => runTool(session, (client) => client.health()),
   );
 
   const search = requireMcpToolCatalogEntry("collector_search");
@@ -108,14 +122,8 @@ export function createCollectorMcpServer(
           .describe(paramDescribe(search.name, "query")),
       },
     },
-    async ({ query }) => {
-      try {
-        const result = await client.items.searchItems(query, "all");
-        return textResult(result);
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+    async ({ query }) =>
+      runTool(session, (client) => client.items.searchItems(query, "all")),
   );
 
   const getItem = requireMcpToolCatalogEntry("collector_get_item");
@@ -130,13 +138,8 @@ export function createCollectorMcpServer(
           .describe(paramDescribe(getItem.name, "itemId")),
       },
     },
-    async ({ itemId }) => {
-      try {
-        return textResult(await client.items.getItemById(itemId));
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+    async ({ itemId }) =>
+      runTool(session, (client) => client.items.getItemById(itemId)),
   );
 
   const createItem = requireMcpToolCatalogEntry("collector_create_item");
@@ -172,26 +175,21 @@ export function createCollectorMcpServer(
           .describe(paramDescribe(createItem.name, "folder_path")),
       },
     },
-    async (input) => {
-      try {
-        return textResult(
-          await client.items.createItem({
-            title: input.title,
-            content_type: input.content_type,
-            ...(input.description === undefined
-              ? {}
-              : { description: input.description }),
-            ...(input.url === undefined ? {} : { url: input.url }),
-            ...(input.content === undefined ? {} : { content: input.content }),
-            ...(input.folder_path === undefined
-              ? {}
-              : { folder_path: input.folder_path }),
-          }),
-        );
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+    async (input) =>
+      runTool(session, (client) =>
+        client.items.createItem({
+          title: input.title,
+          content_type: input.content_type,
+          ...(input.description === undefined
+            ? {}
+            : { description: input.description }),
+          ...(input.url === undefined ? {} : { url: input.url }),
+          ...(input.content === undefined ? {} : { content: input.content }),
+          ...(input.folder_path === undefined
+            ? {}
+            : { folder_path: input.folder_path }),
+        }),
+      ),
   );
 
   const updateItem = requireMcpToolCatalogEntry("collector_update_item");
@@ -235,29 +233,24 @@ export function createCollectorMcpServer(
           .describe(paramDescribe(updateItem.name, "folder_path")),
       },
     },
-    async (input) => {
-      try {
-        return textResult(
-          await client.items.updateItem(input.itemId, {
-            ...(input.title === undefined ? {} : { title: input.title }),
-            ...(input.description === undefined
-              ? {}
-              : { description: input.description }),
-            ...(input.url === undefined ? {} : { url: input.url }),
-            ...(input.content === undefined ? {} : { content: input.content }),
-            ...(input.content_type === undefined
-              ? {}
-              : { content_type: input.content_type }),
-            ...(input.tags === undefined ? {} : { tags: input.tags }),
-            ...(input.folder_path === undefined
-              ? {}
-              : { folder_path: input.folder_path }),
-          }),
-        );
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+    async (input) =>
+      runTool(session, (client) =>
+        client.items.updateItem(input.itemId, {
+          ...(input.title === undefined ? {} : { title: input.title }),
+          ...(input.description === undefined
+            ? {}
+            : { description: input.description }),
+          ...(input.url === undefined ? {} : { url: input.url }),
+          ...(input.content === undefined ? {} : { content: input.content }),
+          ...(input.content_type === undefined
+            ? {}
+            : { content_type: input.content_type }),
+          ...(input.tags === undefined ? {} : { tags: input.tags }),
+          ...(input.folder_path === undefined
+            ? {}
+            : { folder_path: input.folder_path }),
+        }),
+      ),
   );
 
   const getItemSource = requireMcpToolCatalogEntry("collector_get_item_source");
@@ -272,13 +265,8 @@ export function createCollectorMcpServer(
           .describe(paramDescribe(getItemSource.name, "itemId")),
       },
     },
-    async ({ itemId }) => {
-      try {
-        return textResult(await client.items.getItemSource(itemId));
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+    async ({ itemId }) =>
+      runTool(session, (client) => client.items.getItemSource(itemId)),
   );
 
   const updateItemSource = requireMcpToolCatalogEntry(
@@ -298,15 +286,10 @@ export function createCollectorMcpServer(
           .describe(paramDescribe(updateItemSource.name, "rawMarkdown")),
       },
     },
-    async (input) => {
-      try {
-        return textResult(
-          await client.items.updateItemSource(input.itemId, input.rawMarkdown),
-        );
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+    async (input) =>
+      runTool(session, (client) =>
+        client.items.updateItemSource(input.itemId, input.rawMarkdown),
+      ),
   );
 
   const waitDerived = requireMcpToolCatalogEntry("collector_wait_derived");
@@ -330,19 +313,14 @@ export function createCollectorMcpServer(
           .describe(paramDescribe(waitDerived.name, "timeoutMs")),
       },
     },
-    async (input) => {
-      try {
-        return textResult(
-          await client.items.waitDerived(input.itemId, input.contentRevision, {
-            ...(input.timeoutMs === undefined
-              ? {}
-              : { timeoutMs: input.timeoutMs }),
-          }),
-        );
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+    async (input) =>
+      runTool(session, (client) =>
+        client.items.waitDerived(input.itemId, input.contentRevision, {
+          ...(input.timeoutMs === undefined
+            ? {}
+            : { timeoutMs: input.timeoutMs }),
+        }),
+      ),
   );
 
   const deleteItem = requireMcpToolCatalogEntry("collector_delete_item");
@@ -357,14 +335,11 @@ export function createCollectorMcpServer(
           .describe(paramDescribe(deleteItem.name, "itemId")),
       },
     },
-    async ({ itemId }) => {
-      try {
+    async ({ itemId }) =>
+      runTool(session, async (client) => {
         await client.items.deleteItem(itemId);
-        return textResult({ ok: true, deleted: itemId });
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+        return { ok: true, deleted: itemId };
+      }),
   );
 
   const createTag = requireMcpToolCatalogEntry("collector_create_tag");
@@ -384,18 +359,13 @@ export function createCollectorMcpServer(
           .describe(paramDescribe(createTag.name, "color")),
       },
     },
-    async (input) => {
-      try {
-        return textResult(
-          await client.tags.createTag({
-            name: input.name,
-            ...(input.color === undefined ? {} : { color: input.color }),
-          }),
-        );
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+    async (input) =>
+      runTool(session, (client) =>
+        client.tags.createTag({
+          name: input.name,
+          ...(input.color === undefined ? {} : { color: input.color }),
+        }),
+      ),
   );
 
   const deleteTag = requireMcpToolCatalogEntry("collector_delete_tag");
@@ -410,14 +380,11 @@ export function createCollectorMcpServer(
           .describe(paramDescribe(deleteTag.name, "tagId")),
       },
     },
-    async ({ tagId }) => {
-      try {
+    async ({ tagId }) =>
+      runTool(session, async (client) => {
         await client.tags.deleteTag(tagId);
-        return textResult({ ok: true, deleted: tagId });
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+        return { ok: true, deleted: tagId };
+      }),
   );
 
   const createFolder = requireMcpToolCatalogEntry("collector_create_folder");
@@ -432,14 +399,11 @@ export function createCollectorMcpServer(
           .describe(paramDescribe(createFolder.name, "folderPath")),
       },
     },
-    async ({ folderPath }) => {
-      try {
+    async ({ folderPath }) =>
+      runTool(session, async (client) => {
         const path = await client.folders.createFolder(folderPath);
-        return textResult({ ok: true, path });
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+        return { ok: true, path };
+      }),
   );
 
   const listFolders = requireMcpToolCatalogEntry("collector_list_folders");
@@ -449,14 +413,8 @@ export function createCollectorMcpServer(
       description: listFolders.description,
       inputSchema: {},
     },
-    async () => {
-      try {
-        const tree = await client.folders.listFolderTree();
-        return textResult(tree);
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+    async () =>
+      runTool(session, (client) => client.folders.listFolderTree()),
   );
 
   const renameFolder = requireMcpToolCatalogEntry("collector_rename_folder");
@@ -475,14 +433,11 @@ export function createCollectorMcpServer(
           .describe(paramDescribe(renameFolder.name, "newPath")),
       },
     },
-    async ({ oldPath, newPath }) => {
-      try {
+    async ({ oldPath, newPath }) =>
+      runTool(session, async (client) => {
         const path = await client.folders.renameFolder(oldPath, newPath);
-        return textResult({ ok: true, path });
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+        return { ok: true, path };
+      }),
   );
 
   const moveFolder = requireMcpToolCatalogEntry("collector_move_folder");
@@ -501,14 +456,11 @@ export function createCollectorMcpServer(
           .describe(paramDescribe(moveFolder.name, "newPath")),
       },
     },
-    async ({ oldPath, newPath }) => {
-      try {
+    async ({ oldPath, newPath }) =>
+      runTool(session, async (client) => {
         const path = await client.folders.renameFolder(oldPath, newPath);
-        return textResult({ ok: true, path });
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+        return { ok: true, path };
+      }),
   );
 
   const deleteFolder = requireMcpToolCatalogEntry("collector_delete_folder");
@@ -523,14 +475,11 @@ export function createCollectorMcpServer(
           .describe(paramDescribe(deleteFolder.name, "folderPath")),
       },
     },
-    async ({ folderPath }) => {
-      try {
+    async ({ folderPath }) =>
+      runTool(session, async (client) => {
         await client.folders.deleteFolder(folderPath);
-        return textResult({ ok: true, deleted: folderPath });
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+        return { ok: true, deleted: folderPath };
+      }),
   );
 
   const moveItem = requireMcpToolCatalogEntry("collector_move_item");
@@ -549,19 +498,19 @@ export function createCollectorMcpServer(
           .describe(paramDescribe(moveItem.name, "folderPath")),
       },
     },
-    async ({ itemId, folderPath }) => {
-      try {
-        const moved = await client.folders.moveItemToFolderPath(itemId, folderPath);
-        return textResult({
+    async ({ itemId, folderPath }) =>
+      runTool(session, async (client) => {
+        const moved = await client.folders.moveItemToFolderPath(
+          itemId,
+          folderPath,
+        );
+        return {
           ok: true,
           itemId: moved.id,
           folder_path: moved.folder_path,
           item: moved,
-        });
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+        };
+      }),
   );
 
   const listItemMedia = requireMcpToolCatalogEntry("collector_list_item_media");
@@ -576,13 +525,8 @@ export function createCollectorMcpServer(
           .describe(paramDescribe(listItemMedia.name, "itemId")),
       },
     },
-    async ({ itemId }) => {
-      try {
-        return textResult(await client.media.listItemMedia(itemId));
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+    async ({ itemId }) =>
+      runTool(session, (client) => client.media.listItemMedia(itemId)),
   );
 
   const attachMedia = requireMcpToolCatalogEntry("collector_attach_media");
@@ -609,19 +553,16 @@ export function createCollectorMcpServer(
           .describe(paramDescribe(attachMedia.name, "sourcePath")),
       },
     },
-    async ({ itemId, filename, dataBase64, sourcePath }) => {
-      try {
+    async ({ itemId, filename, dataBase64, sourcePath }) =>
+      runTool(session, async (client) => {
         const file = await resolveMediaFileInput({
           filename,
           dataBase64,
           sourcePath,
         });
         const attached = await client.media.attachMediaFiles(itemId, [file]);
-        return textResult(attached[0] ?? attached);
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+        return attached[0] ?? attached;
+      }),
   );
 
   const replaceMedia = requireMcpToolCatalogEntry("collector_replace_media");
@@ -652,18 +593,15 @@ export function createCollectorMcpServer(
           .describe(paramDescribe(replaceMedia.name, "sourcePath")),
       },
     },
-    async ({ itemId, mediaId, filename, dataBase64, sourcePath }) => {
-      try {
+    async ({ itemId, mediaId, filename, dataBase64, sourcePath }) =>
+      runTool(session, async (client) => {
         const file = await resolveMediaFileInput({
           filename,
           dataBase64,
           sourcePath,
         });
-        return textResult(await client.media.replaceItemMedia(itemId, mediaId, file));
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+        return client.media.replaceItemMedia(itemId, mediaId, file);
+      }),
   );
 
   const deleteMedia = requireMcpToolCatalogEntry("collector_delete_media");
@@ -682,14 +620,11 @@ export function createCollectorMcpServer(
           .describe(paramDescribe(deleteMedia.name, "mediaId")),
       },
     },
-    async ({ itemId, mediaId }) => {
-      try {
+    async ({ itemId, mediaId }) =>
+      runTool(session, async (client) => {
         await client.media.deleteItemMedia(itemId, mediaId);
-        return textResult({ ok: true, deleted: mediaId });
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+        return { ok: true, deleted: mediaId };
+      }),
   );
 
   const setItemCover = requireMcpToolCatalogEntry("collector_set_item_cover");
@@ -708,13 +643,10 @@ export function createCollectorMcpServer(
           .describe(paramDescribe(setItemCover.name, "mediaId")),
       },
     },
-    async ({ itemId, mediaId }) => {
-      try {
-        return textResult(await client.media.setItemCoverFromMedia(itemId, mediaId));
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
+    async ({ itemId, mediaId }) =>
+      runTool(session, (client) =>
+        client.media.setItemCoverFromMedia(itemId, mediaId),
+      ),
   );
 
   return server;

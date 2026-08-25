@@ -20,6 +20,10 @@ To open a known path: `get-item` / `get-item-source` with that full path.
 
 Only the domain host mutates the vault and index. MCP and CLI talk to that host over HTTP. Parallel hosts on the same data-dir fail; do not “fix” lock issues by editing files under the vault.
 
+## MCP auth vs Cursor `mcp_auth`
+
+Collector MCP has no `mcp_auth` tool — Cursor may inject that name for its own connect UI. Host auth is the Bearer token from `--data-dir` files (or pinned `--token` / `COLLECTOR_HOST_TOKEN`). Prefer **`--data-dir` only** in MCP config so a host restart (new token file) is picked up on the next tool call. A successful Cursor `mcp_auth` does not prove host Bearer is valid; use `collector_health`.
+
 ## Structured vs source
 
 - One or few fields → structured update.

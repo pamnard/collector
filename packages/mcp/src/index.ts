@@ -12,4 +12,9 @@ export {
   type McpHostEndpoint,
   type ParsedMcpEndpointArgs,
 } from "./endpoint.js";
+export {
+  createMcpHostSession,
+  createStaticMcpHostSession,
+  type McpHostSession,
+} from "./host-session.js";
 export { runCollectorMcp, type RunCollectorMcpIo } from "./run.js";
