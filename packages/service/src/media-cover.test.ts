@@ -7,6 +7,8 @@ const deleteMediaFile = vi.fn();
 const clearItemCover = vi.fn();
 const readItemFile = vi.fn();
 const touchItemUpdatedAt = vi.fn();
+const readItemCoverSize = vi.fn();
+const writeItemCoverSize = vi.fn();
 
 vi.mock("@collector/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@collector/core")>();
@@ -20,6 +22,8 @@ vi.mock("@collector/core", async (importOriginal) => {
     clearItemCover: (...args: unknown[]) => clearItemCover(...args),
     readItemFile: (...args: unknown[]) => readItemFile(...args),
     touchItemUpdatedAt: (...args: unknown[]) => touchItemUpdatedAt(...args),
+    readItemCoverSize: (...args: unknown[]) => readItemCoverSize(...args),
+    writeItemCoverSize: (...args: unknown[]) => writeItemCoverSize(...args),
   };
 });
 
@@ -56,6 +60,8 @@ describe("createMediaCoverService", () => {
     clearItemCover.mockReset();
     readItemFile.mockReset();
     touchItemUpdatedAt.mockReset();
+    readItemCoverSize.mockReset();
+    writeItemCoverSize.mockReset();
     readBinary.mockClear();
     enqueueGenerateCover.mockClear();
     waitForCoverJob.mockClear();
@@ -63,6 +69,8 @@ describe("createMediaCoverService", () => {
     readCoverPixelSize.mockClear();
     enqueueGenerateCover.mockResolvedValue({ id: "job-1" });
     waitForCoverJob.mockResolvedValue("succeeded");
+    readItemCoverSize.mockResolvedValue(null);
+    writeItemCoverSize.mockResolvedValue(undefined);
     touchItemUpdatedAt.mockResolvedValue({
       id: "note.md",
       thumbnail: null,
@@ -104,7 +112,9 @@ describe("createMediaCoverService", () => {
     expect(first.get("note.md")).toBe("/thumb/note.md");
     expect(second.get("note.md")).toBe("/thumb/note.md");
     expect(resolveThumbnailPathsBatch).toHaveBeenCalledTimes(1);
+    // Missing sidecar → one-time sharp backfill (#822).
     expect(readCoverPixelSize).toHaveBeenCalledTimes(1);
+    expect(writeItemCoverSize).toHaveBeenCalledTimes(1);
   });
 
   it("resolveItemThumbnailEntries returns path + size when host injects reader", async () => {
@@ -120,6 +130,58 @@ describe("createMediaCoverService", () => {
       path: "/thumb/note.md",
       size: { width: 320, height: 240 },
     });
+  });
+
+  it("warm resolve reads cover.size.json and skips sharp.metadata (#822)", async () => {
+    readItemCoverSize.mockResolvedValue({ width: 640, height: 480 });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const service = createService();
+    const item = {
+      id: "note.md",
+      thumbnail: "cover.webp",
+      updated_at: "t1",
+    } as never;
+
+    const entries = await service.resolveItemThumbnailEntries([item]);
+    expect(entries.get("note.md")).toEqual({
+      path: "/thumb/note.md",
+      size: { width: 640, height: 480 },
+    });
+    expect(readItemCoverSize).toHaveBeenCalledWith(ctx.fs, "/vault", "note.md");
+    expect(readCoverPixelSize).not.toHaveBeenCalled();
+    expect(writeItemCoverSize).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("missing cover size sidecar backfills once via sharp and logs (#822)", async () => {
+    readItemCoverSize.mockResolvedValue(null);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const service = createService();
+    const item = {
+      id: "note.md",
+      thumbnail: "cover.webp",
+      updated_at: "t1",
+    } as never;
+
+    const entries = await service.resolveItemThumbnailEntries([item]);
+    expect(entries.get("note.md")).toEqual({
+      path: "/thumb/note.md",
+      size: { width: 320, height: 240 },
+    });
+    expect(readCoverPixelSize).toHaveBeenCalledTimes(1);
+    expect(readCoverPixelSize).toHaveBeenCalledWith("/thumb/note.md");
+    expect(writeItemCoverSize).toHaveBeenCalledWith(
+      ctx.fs,
+      "/vault",
+      "note.md",
+      { width: 320, height: 240 },
+    );
+    expect(warn).toHaveBeenCalledWith(
+      "[media-cover] cover size sidecar missing; backfilling via sharp.metadata",
+      { itemId: "note.md", absoluteCoverPath: "/thumb/note.md" },
+    );
+    warn.mockRestore();
   });
 
   it("cold resolve with unavailable stub fails instead of null-filled size", async () => {

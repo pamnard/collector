@@ -54,6 +54,8 @@ export const ITEM_FILES = {
   source: ".source.json",
   mediaManifest: "manifest.json",
   cover: "cover.webp",
+  /** Pixel size sidecar next to cover.webp (#822). */
+  coverSize: "cover.size.json",
   /** Legacy only — migration reads these. */
   legacyMeta: "item.json",
   legacyContent: "content.md",

@@ -9,7 +9,7 @@ import type { AppSettings, ItemFile } from "@collector/shared";
 import type { DashboardSnapshotPort } from "./service-api.js";
 import { DASHBOARD_SNAPSHOT_PORT_KEYS } from "./service-compose.js";
 
-/** Pixel size of an on-disk cover when path is non-null (sharp.metadata). */
+/** Pixel size of an on-disk cover when path is non-null (cover.size.json / sharp backfill). */
 export type ItemThumbnailPixelSize = {
   width: number;
   height: number;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   itemCoverRelativePath,
+  itemCoverSizePath,
   itemMediaRoot,
   isUuidMarkdownBasename,
   joinSegments,
@@ -75,5 +76,8 @@ describe("noteUuidFromItemPath / itemMediaRoot (#279)", () => {
     const itemId = `Work/${uuid}.md`;
     expect(itemMediaRoot("/vault", itemId)).toBe(`/vault/media/${uuid}`);
     expect(itemCoverRelativePath(itemId)).toBe(`media/${uuid}/cover.webp`);
+    expect(itemCoverSizePath("/vault", itemId)).toBe(
+      `/vault/media/${uuid}/cover.size.json`,
+    );
   });
 });

@@ -1,5 +1,5 @@
 import { applyItemCover, type VaultContext } from "@collector/core";
-import type { MediaType } from "@collector/shared";
+import type { GeneratedCover, MediaType } from "@collector/shared";
 import {
   generateCoverJobType,
   type GenerateCoverJobPayload,
@@ -14,7 +14,7 @@ export type GenerateCoverFromMedia = (
   data: Uint8Array,
   filename: string,
   mediaType: MediaType,
-) => Promise<Uint8Array | null>;
+) => Promise<GeneratedCover | null>;
 
 export function createGenerateCoverHandler(deps: {
   getContext: () => VaultContext;
@@ -47,7 +47,14 @@ export function createGenerateCoverHandler(deps: {
         error: "generateCover returned null",
       };
     }
-    await applyItemCover(ctx, vaultPath, vaultId, itemId, cover);
+    await applyItemCover(
+      ctx,
+      vaultPath,
+      vaultId,
+      itemId,
+      cover.data,
+      cover.size,
+    );
     deps.onVaultPresentationChanged?.({
       vaultId,
       kind: "itemCoverChanged",

@@ -13,7 +13,7 @@ import {
 } from "./cover-operations.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import { createId } from "../util/ids.js";
-import { itemCoverPath, itemMarkdownPath } from "./paths.js";
+import { itemCoverPath, itemCoverSizePath, itemMarkdownPath } from "./paths.js";
 import { readItemFile, writeItemFile } from "./item-io.js";
 
 async function seedPhotoItem(
@@ -79,15 +79,27 @@ describe("cover operations", () => {
     });
 
     const coverBytes = new TextEncoder().encode("fake-webp");
-    const updated = await applyItemCover(ctx, path, meta.id, itemId, coverBytes);
+    const coverSize = { width: 320, height: 240 };
+    const updated = await applyItemCover(
+      ctx,
+      path,
+      meta.id,
+      itemId,
+      coverBytes,
+      coverSize,
+    );
 
     expect(updated.thumbnail).toBeNull();
     expect(await fs.exists(itemCoverPath(path, itemId))).toBe(true);
     expect(await fs.readBinary(itemCoverPath(path, itemId))).toEqual(coverBytes);
+    expect(JSON.parse(await fs.readText(itemCoverSizePath(path, itemId)))).toEqual(
+      coverSize,
+    );
 
     const cleared = await clearItemCover(ctx, path, meta.id, itemId);
     expect(cleared.thumbnail).toBeNull();
     expect(await fs.exists(itemCoverPath(path, itemId))).toBe(false);
+    expect(await fs.exists(itemCoverSizePath(path, itemId))).toBe(false);
     expect((await readItemFile(fs, path, itemId, meta.id)).thumbnail).toBeNull();
   });
 
@@ -104,7 +116,14 @@ describe("cover operations", () => {
     expect(beforeItem.updated_at).toBe(before);
 
     const coverBytes = new TextEncoder().encode("fake-webp");
-    const updated = await applyItemCover(ctx, path, meta.id, itemId, coverBytes);
+    const updated = await applyItemCover(
+      ctx,
+      path,
+      meta.id,
+      itemId,
+      coverBytes,
+      { width: 160, height: 90 },
+    );
 
     expect(updated.thumbnail).toBeNull();
     expect(updated.updated_at > before).toBe(true);
@@ -128,6 +147,7 @@ describe("cover operations", () => {
       meta.id,
       itemId,
       new TextEncoder().encode("fake-webp"),
+      { width: 100, height: 100 },
     );
     const beforeClear = afterApply.updated_at;
 
@@ -135,6 +155,31 @@ describe("cover operations", () => {
     expect(cleared.thumbnail).toBeNull();
     expect(cleared.updated_at > beforeClear).toBe(true);
     expect(await fs.exists(itemCoverPath(path, itemId))).toBe(false);
+    expect(await fs.exists(itemCoverSizePath(path, itemId))).toBe(false);
+  });
+
+  it("applyItemCover rejects non-positive size (#822)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-cover-size-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemId = await seedPhotoItem(
+      ctx,
+      path,
+      meta.id,
+      "2026-01-01T00:00:00.000Z",
+    );
+
+    await expect(
+      applyItemCover(
+        ctx,
+        path,
+        meta.id,
+        itemId,
+        new TextEncoder().encode("fake-webp"),
+        { width: 0, height: 10 },
+      ),
+    ).rejects.toThrow();
   });
 
   it("touchItemUpdatedAt bumps updated_at without changing thumbnail (#720)", async () => {

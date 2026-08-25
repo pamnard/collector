@@ -97,6 +97,17 @@ export function itemCoverPath(vaultRootPath: string, itemRelativePath: string): 
   return joinSegments(itemMediaRoot(vaultRootPath, itemRelativePath), ITEM_FILES.cover);
 }
 
+/** Absolute path of `cover.size.json` beside `cover.webp` (#822). */
+export function itemCoverSizePath(
+  vaultRootPath: string,
+  itemRelativePath: string,
+): string {
+  return joinSegments(
+    itemMediaRoot(vaultRootPath, itemRelativePath),
+    ITEM_FILES.coverSize,
+  );
+}
+
 /** Vault-relative cover path for frontmatter thumbnail (#279). */
 export function itemCoverRelativePath(itemRelativePath: string): string {
   const uuid = noteUuidFromItemPath(itemRelativePath);

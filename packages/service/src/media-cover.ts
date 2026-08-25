@@ -21,10 +21,12 @@ import {
   clearItemCover,
   deleteMediaFile,
   listItemMediaWithPaths,
+  readItemCoverSize,
   readItemFile,
   replaceMediaFile,
   resolveItemHeroMedia,
   touchItemUpdatedAt,
+  writeItemCoverSize,
   type VaultContext,
 } from "@collector/core";
 import { folderPathFromItemPath } from "@collector/shared";
@@ -66,9 +68,11 @@ export interface MediaCoverServiceDeps {
   waitForCoverJob: (jobId: string) => Promise<TerminalJobStatus>;
   resolveThumbnailPathsBatch: ResolveThumbnailPathsBatch;
   /**
-   * Required pixel-size reader. Node host injects sharp.metadata; browser /
-   * DevMock in-process must pass {@link stubReadCoverPixelSizeUnavailable}
-   * (or an explicit alternative) — never silent omit.
+   * Required pixel-size reader for one-time size backfill when
+   * `cover.size.json` is missing (#822). Node host injects sharp.metadata;
+   * browser / DevMock in-process must pass
+   * {@link stubReadCoverPixelSizeUnavailable} (or an explicit alternative) —
+   * never silent omit (#821).
    */
   readCoverPixelSize: (
     absolutePath: string,
@@ -84,7 +88,7 @@ export interface MediaCoverService {
   resolveItemThumbnailPaths(
     items: ItemFile[],
   ): Promise<Map<string, string | null>>;
-  /** Path + sharp pixel size for dashboard slot reservation. */
+  /** Path + cover pixel size for dashboard slot reservation. */
   resolveItemThumbnailEntries(
     items: ItemFile[],
   ): Promise<Map<string, ItemThumbnailResolved>>;
@@ -160,6 +164,29 @@ export function createMediaCoverService(
     });
   };
 
+  /**
+   * Prefer cover.size.json; sharp.metadata only once when the sidecar is missing (#822).
+   */
+  const resolveCoverPixelSize = async (
+    vaultPath: string,
+    itemId: string,
+    absoluteCoverPath: string,
+  ): Promise<ItemThumbnailPixelSize | null> => {
+    const ctx = deps.getContext();
+    const stored = await readItemCoverSize(ctx.fs, vaultPath, itemId);
+    if (stored) {
+      return stored;
+    }
+
+    console.warn(
+      "[media-cover] cover size sidecar missing; backfilling via sharp.metadata",
+      { itemId, absoluteCoverPath },
+    );
+    const size = await deps.readCoverPixelSize(absoluteCoverPath);
+    await writeItemCoverSize(ctx.fs, vaultPath, itemId, size);
+    return size;
+  };
+
   const resolveItemThumbnailPathsUncached = async (
     items: ItemFile[],
   ): Promise<Map<string, ItemThumbnailResolved>> => {
@@ -181,7 +208,7 @@ export function createMediaCoverService(
         if (row.path === null) {
           return [row.id, { path: null, size: null }];
         }
-        const size = await deps.readCoverPixelSize(row.path);
+        const size = await resolveCoverPixelSize(vaultPath, row.id, row.path);
         return [row.id, { path: row.path, size }];
       }),
     );

@@ -1,5 +1,6 @@
-import type { ItemFile } from "@collector/shared";
-import { VAULT_DIRS } from "@collector/shared";
+import type { CoverPixelSize, ItemFile } from "@collector/shared";
+import { coverPixelSizeSchema, VAULT_DIRS } from "@collector/shared";
+import type { FileSystemAdapter } from "../adapters/types.js";
 import type { VaultContext } from "../adapters/types.js";
 import { nowIso } from "../util/ids.js";
 import { ftsFieldsFromDocumentMarkdown } from "./frontmatter.js";
@@ -11,6 +12,7 @@ import {
 import {
   dirname,
   itemCoverPath,
+  itemCoverSizePath,
   itemMarkdownPath,
   itemMediaRoot,
   joinSegments,
@@ -95,17 +97,48 @@ export async function touchItemUpdatedAt(
   return persistItemPresentation(ctx, vaultPath, vaultId, itemId, item);
 }
 
+export async function writeItemCoverSize(
+  fs: FileSystemAdapter,
+  vaultPath: string,
+  itemId: string,
+  size: CoverPixelSize,
+): Promise<void> {
+  const parsed = coverPixelSizeSchema.parse(size);
+  const sizePath = itemCoverSizePath(vaultPath, itemId);
+  await fs.writeText(sizePath, `${JSON.stringify(parsed)}\n`);
+}
+
+/**
+ * Read persisted cover WxH beside cover.webp.
+ * Returns null when the sidecar is absent (caller may backfill).
+ * Invalid sidecar JSON/schema fails fast.
+ */
+export async function readItemCoverSize(
+  fs: FileSystemAdapter,
+  vaultPath: string,
+  itemId: string,
+): Promise<CoverPixelSize | null> {
+  const sizePath = itemCoverSizePath(vaultPath, itemId);
+  if (!(await fs.exists(sizePath))) {
+    return null;
+  }
+  const raw = await fs.readText(sizePath);
+  return coverPixelSizeSchema.parse(JSON.parse(raw));
+}
+
 export async function applyItemCover(
   ctx: VaultContext,
   vaultPath: string,
   vaultId: string,
   itemId: string,
   coverData: Uint8Array,
+  size: CoverPixelSize,
 ): Promise<ItemFile> {
   const coverPath = itemCoverPath(vaultPath, itemId);
 
   await ctx.fs.mkdir(itemMediaRoot(vaultPath, itemId));
   await ctx.fs.writeBinary(coverPath, coverData);
+  await writeItemCoverSize(ctx.fs, vaultPath, itemId, size);
 
   // Cover SoT is the file on disk (#276); do not store vault image paths in FM.
   // Always bump updated_at so preview stamps/caches cannot stick on null (#720).
@@ -120,9 +153,13 @@ export async function clearItemCover(
   itemId: string,
 ): Promise<ItemFile> {
   const coverPath = itemCoverPath(vaultPath, itemId);
+  const sizePath = itemCoverSizePath(vaultPath, itemId);
 
   if (await ctx.fs.exists(coverPath)) {
     await ctx.fs.remove(coverPath);
+  }
+  if (await ctx.fs.exists(sizePath)) {
+    await ctx.fs.remove(sizePath);
   }
 
   // Drop leftover FM image paths from pre-#279 sidecars; always bump stamp (#720).

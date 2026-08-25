@@ -10,7 +10,7 @@ export interface ItemGridCardProps {
   item: ItemFile;
   /** undefined = paths still resolving; null = no file cover; string = path */
   thumbnailPath?: string | null;
-  /** Host sharp.metadata size when path is known; undefined while resolving. */
+  /** Host sharp.metadata / cover.size.json when path is known; undefined while resolving. */
   thumbnailSize?: ItemThumbnailPixelSize | null;
   tagsById: Map<string, TagWithCount>;
   onOpen: (itemId: string) => void;

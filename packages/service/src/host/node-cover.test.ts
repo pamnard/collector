@@ -126,10 +126,11 @@ describe("generateCoverFromMedia (node)", () => {
     );
 
     expect(cover).not.toBeNull();
-    const meta = await sharp(Buffer.from(cover!)).metadata();
+    const meta = await sharp(Buffer.from(cover!.data)).metadata();
     expect(meta.format).toBe("webp");
     expect(meta.width).toBeLessThanOrEqual(480);
     expect(meta.height).toBeLessThanOrEqual(480);
+    expect(cover!.size).toEqual({ width: meta.width, height: meta.height });
   });
 
   it("extracts a video frame to webp cover when ffmpeg is available", async () => {
@@ -143,10 +144,11 @@ describe("generateCoverFromMedia (node)", () => {
     const cover = await generateCoverFromMedia(mp4, "clip.mp4", "video");
 
     expect(cover).not.toBeNull();
-    const meta = await sharp(Buffer.from(cover!)).metadata();
+    const meta = await sharp(Buffer.from(cover!.data)).metadata();
     expect(meta.format).toBe("webp");
     expect(meta.width).toBeLessThanOrEqual(480);
     expect(meta.height).toBeLessThanOrEqual(480);
+    expect(cover!.size).toEqual({ width: meta.width, height: meta.height });
   });
 
   it("soft-fails to null when COLLECTOR_FFMPEG points at a missing binary", async () => {

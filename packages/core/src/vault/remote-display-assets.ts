@@ -7,6 +7,7 @@
  */
 
 import { inferMediaType, sanitizeMediaFilename } from "@collector/shared";
+import type { GeneratedCover } from "@collector/shared";
 import type { VaultContext } from "../adapters/types.js";
 import {
   parseDocumentMarkdown,
@@ -314,7 +315,7 @@ export type FetchRemoteBytes = (url: string) => Promise<Uint8Array>;
 export type EncodeCoverWebp = (
   data: Uint8Array,
   filename: string,
-) => Promise<Uint8Array>;
+) => Promise<GeneratedCover>;
 
 export interface LocalizeRemoteDisplayAssetsOptions {
   ctx: VaultContext;
@@ -514,12 +515,26 @@ export async function localizeRemoteDisplayAssets(
     if (fmThumbnailBytes && fmThumbnail) {
       const filename = filenameFromRemoteImageUrl(fmThumbnail);
       const cover = await encodeCoverWebp(fmThumbnailBytes, filename);
-      await applyItemCover(ctx, vaultPath, vaultId, itemId, cover);
+      await applyItemCover(
+        ctx,
+        vaultPath,
+        vaultId,
+        itemId,
+        cover.data,
+        cover.size,
+      );
       clearThumbnail = true;
       changed = true;
     } else if (teaserBytes) {
       const cover = await encodeCoverWebp(teaserBytes, "mqdefault.jpg");
-      await applyItemCover(ctx, vaultPath, vaultId, itemId, cover);
+      await applyItemCover(
+        ctx,
+        vaultPath,
+        vaultId,
+        itemId,
+        cover.data,
+        cover.size,
+      );
       changed = true;
     }
 
