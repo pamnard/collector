@@ -3,17 +3,13 @@
  * Never opens SQLite; dials an already-running host only.
  */
 
-import {
-  createCollectorHostServiceClient,
-  createHttpHostTransport,
-} from "@collector/client";
 import { formatHostConnectFailure } from "@collector/service/host";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   McpEndpointError,
   parseMcpEndpointArgs,
-  resolveMcpHostEndpoint,
 } from "./endpoint.js";
+import { createMcpHostSession } from "./host-session.js";
 import { createCollectorMcpServer } from "./server.js";
 
 export type RunCollectorMcpIo = {
@@ -32,10 +28,9 @@ export async function runCollectorMcp(
     stderr: (line) => console.error(line),
   },
 ): Promise<number> {
-  let endpoint: Awaited<ReturnType<typeof resolveMcpHostEndpoint>>;
+  let parsed: ReturnType<typeof parseMcpEndpointArgs>;
   try {
-    const parsed = parseMcpEndpointArgs(argv);
-    endpoint = await resolveMcpHostEndpoint(parsed);
+    parsed = parseMcpEndpointArgs(argv);
   } catch (error) {
     const message =
       error instanceof McpEndpointError ? error.message : String(error);
@@ -43,21 +38,23 @@ export async function runCollectorMcp(
     return 2;
   }
 
-  let client;
+  let session;
   try {
-    const httpTransport = await createHttpHostTransport({
-      baseUrl: endpoint.baseUrl,
-      token: endpoint.token,
-      connectTimeoutMs: 2_000,
-      enableEvents: false,
-    });
-    client = createCollectorHostServiceClient(httpTransport);
+    session = await createMcpHostSession(parsed);
   } catch (error) {
-    io.stderr(formatHostConnectFailure(error, endpoint.baseUrl));
+    if (error instanceof McpEndpointError) {
+      io.stderr(error.message);
+      return 2;
+    }
+    const endpointLabel =
+      parsed.baseUrl?.trim() ||
+      parsed.dataDir?.trim() ||
+      "Collector host";
+    io.stderr(formatHostConnectFailure(error, endpointLabel));
     return 1;
   }
 
-  const server = createCollectorMcpServer(client);
+  const server = createCollectorMcpServer(session);
   const stdioTransport = new StdioServerTransport();
   await server.connect(stdioTransport);
   return 0;

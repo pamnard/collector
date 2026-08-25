@@ -23,6 +23,10 @@ import {
   parseMcpEndpointArgs,
   resolveMcpHostEndpoint,
 } from "./endpoint.js";
+import {
+  createMcpHostSession,
+  createStaticMcpHostSession,
+} from "./host-session.js";
 import { createCollectorMcpServer } from "./server.js";
 import { runCollectorMcp } from "./run.js";
 
@@ -117,7 +121,7 @@ describe("MCP tools over host HTTP (#556)", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
     const client = await dialHttpClient(host.baseUrl, dataDir);
-    const mcp = createCollectorMcpServer(client);
+    const mcp = createCollectorMcpServer(createStaticMcpHostSession(client));
 
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const mcpClient = new Client({ name: "test", version: "0.0.1" });
@@ -224,7 +228,7 @@ describe("MCP tools over host HTTP (#556)", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
     const client = await dialHttpClient(host.baseUrl, dataDir);
-    const mcp = createCollectorMcpServer(client);
+    const mcp = createCollectorMcpServer(createStaticMcpHostSession(client));
 
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const mcpClient = new Client({ name: "test", version: "0.0.1" });
@@ -307,7 +311,7 @@ describe("MCP tools over host HTTP (#556)", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
     const client = await dialHttpClient(host.baseUrl, dataDir);
-    const mcp = createCollectorMcpServer(client);
+    const mcp = createCollectorMcpServer(createStaticMcpHostSession(client));
 
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const mcpClient = new Client({ name: "test", version: "0.0.1" });
@@ -382,7 +386,7 @@ describe("MCP tools over host HTTP (#556)", () => {
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
     const client = await dialHttpClient(host.baseUrl, dataDir);
-    const mcp = createCollectorMcpServer(client);
+    const mcp = createCollectorMcpServer(createStaticMcpHostSession(client));
 
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const mcpClient = new Client({ name: "test", version: "0.0.1" });
@@ -494,9 +498,69 @@ describe("MCP tools over host HTTP (#556)", () => {
     );
   });
 
+  it("data-dir session re-reads token after host restart (#826)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-mcp-refresh-"));
+    dirs.push(dataDir);
+    const host1 = await startServiceHost({
+      dataDir,
+      host: "127.0.0.1",
+      port: 0,
+    });
+    const listenPort = Number(new URL(host1.baseUrl).port);
+    const session = await createMcpHostSession({ dataDir });
+    expect(session.canRefreshFromDataDir).toBe(true);
+    const mcp = createCollectorMcpServer(session);
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    await mcp.connect(serverTransport);
+    const mcpClient = new Client({ name: "test", version: "0.0.0" });
+    await mcpClient.connect(clientTransport);
+
+    const before = await mcpClient.callTool({
+      name: "collector_health",
+      arguments: {},
+    });
+    expect(before.isError).toBeFalsy();
+
+    await host1.close();
+    // Same port → stale Bearer gets HTTP 401 (auth_failed), not connect refused.
+    const host2 = await startServiceHost({
+      dataDir,
+      host: "127.0.0.1",
+      port: listenPort,
+    });
+    try {
+      const after = await mcpClient.callTool({
+        name: "collector_health",
+        arguments: {},
+      });
+      expect(after.isError).toBeFalsy();
+      const body = JSON.parse(
+        (after.content as { text: string }[])[0]!.text,
+      ) as { ok?: boolean; healthy?: boolean };
+      expect(body.ok).toBe(true);
+      expect(body.healthy).toBe(true);
+      expect(session.getEndpoint().token).toBe(
+        readFileSync(defaultServiceHostTokenPath(dataDir), "utf8").trim(),
+      );
+      expect(session.getEndpoint().baseUrl).toBe(host2.baseUrl);
+    } finally {
+      await mcpClient.close();
+      await mcp.close();
+      await session.getClient().close();
+      await host2.close();
+    }
+  });
+
   it("production MCP sources do not open the index themselves", async () => {
     const { readFileSync: read } = await import("node:fs");
-    for (const name of ["main.ts", "run.ts", "server.ts", "endpoint.ts"] as const) {
+    for (const name of [
+      "main.ts",
+      "run.ts",
+      "server.ts",
+      "endpoint.ts",
+      "host-session.ts",
+    ] as const) {
       const src = read(join(import.meta.dirname, name), "utf8");
       expect(src).not.toMatch(/createServiceDomainRuntime/);
       expect(src).not.toMatch(/startServiceHost/);
