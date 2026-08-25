@@ -4,47 +4,69 @@ import type { VaultContext } from "../adapters/types.js";
 import { createId, nowIso } from "../util/ids.js";
 import { readVaultMeta, readItemFile } from "./item-io.js";
 import { upsertItemIndexFromVault } from "./item-index-refresh.js";
-import { itemMarkdownPath, itemMediaRoot } from "./paths.js";
+import {
+  itemMarkdownPath,
+  itemMediaRoot,
+  normalizeRelativePath,
+} from "./paths.js";
 import { listMediaFiles, mediaFilePath } from "./media-io.js";
 
 export interface MediaWithPath extends MediaFileMeta {
   absolute_path: string;
 }
 
+/** Catch-up attempts when concurrent derived refresh races TOCTOU gates (#828). */
+const ENSURE_ITEM_INDEXED_ATTEMPTS = 3;
+
 /**
  * Ensure the parent item row exists before media FK insert.
  * createItem may defer index refresh to itemDerivedRefresh (#766/#776); attach
- * must not race that job (#817).
+ * must not race that job (#828). Verifies the row landed — ignoring a stale
+ * catch-up outcome previously left upsertMedia to fail with opaque FK errors.
  */
 async function ensureItemIndexedForMedia(
   ctx: VaultContext,
   vaultPath: string,
   itemId: string,
 ): Promise<void> {
+  const id = normalizeRelativePath(itemId);
   const vaultMeta = await readVaultMeta(ctx.fs, vaultPath);
-  const [syncMeta] = await ctx.index.listItemSyncMetaByIds(vaultMeta.id, [
-    itemId,
-  ]);
-  if (syncMeta) {
-    return;
+  const docPath = itemMarkdownPath(vaultPath, id);
+
+  for (let attempt = 0; ; attempt++) {
+    const [syncMeta] = await ctx.index.listItemSyncMetaByIds(vaultMeta.id, [
+      id,
+    ]);
+    if (syncMeta) {
+      return;
+    }
+    if (attempt >= ENSURE_ITEM_INDEXED_ATTEMPTS) {
+      throw new Error(`Item not in index: ${id}`);
+    }
+
+    if (!(await ctx.fs.exists(docPath))) {
+      throw new Error(`Item not found: ${id}`);
+    }
+    const fileStat = await ctx.fs.stat(docPath);
+    if (fileStat.mtimeMs === null) {
+      throw new Error(`attachMediaFile: missing file mtime for ${id}`);
+    }
+    const item = await readItemFile(ctx.fs, vaultPath, id, vaultMeta.id);
+    const outcome = await upsertItemIndexFromVault(
+      ctx,
+      vaultPath,
+      vaultMeta.id,
+      id,
+      item.content_revision,
+      fileStat.mtimeMs,
+    );
+    if (outcome === "missing") {
+      throw new Error(`Item not found: ${id}`);
+    }
+    // "upserted" or "stale": re-check. Stale may mean a concurrent derived job
+    // advanced disk mid-flight (retry with a fresh snapshot) or already wrote
+    // the row (next listItemSyncMetaByIds hits).
   }
-  const docPath = itemMarkdownPath(vaultPath, itemId);
-  if (!(await ctx.fs.exists(docPath))) {
-    throw new Error(`Item not found: ${itemId}`);
-  }
-  const fileStat = await ctx.fs.stat(docPath);
-  if (fileStat.mtimeMs === null) {
-    throw new Error(`attachMediaFile: missing file mtime for ${itemId}`);
-  }
-  const item = await readItemFile(ctx.fs, vaultPath, itemId, vaultMeta.id);
-  await upsertItemIndexFromVault(
-    ctx,
-    vaultPath,
-    vaultMeta.id,
-    itemId,
-    item.content_revision,
-    fileStat.mtimeMs,
-  );
 }
 
 export async function attachMediaFile(
@@ -133,6 +155,7 @@ export async function replaceMediaFile(
   const destination = mediaFilePath(vaultPath, itemId, mediaId, input.filename);
   await ctx.fs.mkdir(itemMediaRoot(vaultPath, itemId));
   await ctx.fs.writeBinary(destination, input.data);
+  await ensureItemIndexedForMedia(ctx, vaultPath, itemId);
   await ctx.index.upsertMedia(entry);
   return entry;
 }
@@ -143,6 +166,7 @@ export async function syncItemMediaToIndex(
   itemId: string,
 ): Promise<void> {
   const files = await listMediaFiles(ctx.fs, vaultPath, itemId);
+  await ensureItemIndexedForMedia(ctx, vaultPath, itemId);
   await ctx.index.deleteMediaForItem(itemId);
   for (const file of files) {
     await ctx.index.upsertMedia(file);

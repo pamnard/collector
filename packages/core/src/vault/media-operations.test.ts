@@ -190,7 +190,7 @@ describe("media operations", () => {
     ).rejects.toThrow(/Media not found/);
   });
 
-  it("attaches when item exists on disk but is not yet in the index (#817)", async () => {
+  it("attaches when item exists on disk but is not yet in the index (#828)", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "collector-media-deferred-"));
     const sql = new MemorySqlAdapter();
     const ctx = { fs, index: new SqlVaultIndexStore(sql) };
@@ -232,5 +232,51 @@ describe("media operations", () => {
     const [after] = await ctx.index.listItemSyncMetaByIds(meta.id, [itemId]);
     expect(after).toBeTruthy();
     expect(await listItemMediaWithPaths(ctx, path, itemId)).toHaveLength(1);
+  });
+
+  it("fails loud when catch-up cannot place the item in the index (#828)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-media-index-miss-"));
+    const sql = new MemorySqlAdapter();
+    const index = new SqlVaultIndexStore(sql);
+    const ctx = { fs, index };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemId = `Inbox/${createId()}.md`;
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Missing index row",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "Inbox",
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      content: "m",
+      deferIndexRefresh: true,
+    });
+
+    // Simulate catch-up upsert that never lands a row (e.g. repeated stale TOCTOU).
+    const realUpsertItem = index.upsertItem.bind(index);
+    index.upsertItem = async () => undefined;
+    try {
+      await expect(
+        attachMediaFile(ctx, path, itemId, {
+          filename: "dot.png",
+          data: Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]),
+        }),
+      ).rejects.toThrow(/Item not in index/);
+    } finally {
+      index.upsertItem = realUpsertItem;
+    }
   });
 });
