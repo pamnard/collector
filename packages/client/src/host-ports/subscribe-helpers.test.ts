@@ -114,8 +114,10 @@ describe("voidSubscribePublish (#797)", () => {
     expect(skipped).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledTimes(1);
   });
+});
 
-  it("skips onResult after abort mid-request when load later resolves (#813)", async () => {
+describe("voidSubscribePublishResult (#813)", () => {
+  it("skips onResult after abort mid-request when load later resolves", async () => {
     let resolveLoad!: (value: string) => void;
     const onResult = vi.fn();
     const onError = vi.fn();

@@ -28,7 +28,7 @@ import { bytesToBase64 } from "../bytes-to-base64.js";
 import type { HostSessionCtx } from "../host-session-ctx.js";
 import { hydrateHostItems } from "./items-hydrate.js";
 import {
-  voidSubscribePublish,
+  voidSubscribePublishResult,
   withAbortBridge,
 } from "./subscribe-helpers.js";
 
@@ -109,18 +109,16 @@ function createItemsDashboardMethods(
       sort?: DashboardItemSort,
     ): Subscription {
       const { signal: active, dispose } = withAbortBridge(signal);
-      voidSubscribePublish(
+      voidSubscribePublishResult(
         active,
-        async () => {
-          const page = (await transport.request("fetchDashboardIndexPage", {
+        () =>
+          transport.request("fetchDashboardIndexPage", {
             filter,
             query,
             page: { limit: DASHBOARD_PREFETCH_SIZE, offset: 0 },
             sort,
-          })) as DashboardIndexPage;
-          if (active.aborted) {
-            return;
-          }
+          }) as Promise<DashboardIndexPage>,
+        (page) => {
           handlers.onIndexPage(page);
           handlers.onLoadComplete?.();
         },
