@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { TeaserBoardId } from "./board";
+import { BOARD_SHRINK_ORDER, type TeaserBoardId } from "./board";
 import {
   compositionId,
   listAllowedCompositions,
@@ -7,6 +7,7 @@ import {
   type TeaserSpan,
 } from "./composition";
 import {
+  boardTilingKey,
   isCompleteTiling,
   listAllowedCompositionsForBoard,
   listFullTilings,
@@ -14,6 +15,13 @@ import {
 } from "./tiling";
 
 const BOARDS: TeaserBoardId[] = ["4x2", "3x2", "2x2"];
+
+/** Locked sizes from the historical enumerateTilings search (issue #790). */
+const EXPECTED_TILING_COUNTS: Record<TeaserBoardId, number> = {
+  "4x2": 90,
+  "3x2": 26,
+  "2x2": 7,
+};
 
 describe("listFullTilings", () => {
   it("returns at least one complete tiling per board", () => {
@@ -24,6 +32,22 @@ describe("listFullTilings", () => {
         expect(tiling.board).toBe(board);
         expect(isCompleteTiling(tiling)).toBe(true);
       }
+    }
+  });
+
+  it("covers every known board with the frozen tiling counts and unique keys", () => {
+    expect([...BOARD_SHRINK_ORDER]).toEqual(BOARDS);
+    for (const board of BOARD_SHRINK_ORDER) {
+      const tilings = listFullTilings(board);
+      expect(tilings.length).toBe(EXPECTED_TILING_COUNTS[board]);
+      const keys = tilings.map(boardTilingKey);
+      expect(new Set(keys).size).toBe(keys.length);
+    }
+  });
+
+  it("returns the same precomputed list reference on every call", () => {
+    for (const board of BOARD_SHRINK_ORDER) {
+      expect(listFullTilings(board)).toBe(listFullTilings(board));
     }
   });
 
