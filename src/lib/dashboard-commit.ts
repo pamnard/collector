@@ -47,7 +47,6 @@ export function coverNeedsResolve(
 /**
  * Dashboard masonry reads committed cover maps only (#657).
  * `undefined` = still resolving; `null` = no cover.
- * Path + size share one `coverNeedsResolve` (#824).
  */
 export function resolveDashboardGridThumbnail(
   item: ItemFile,
