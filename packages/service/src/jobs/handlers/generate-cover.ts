@@ -3,12 +3,12 @@ import type { GeneratedCover, MediaType } from "@collector/shared";
 import {
   generateCoverJobType,
   type GenerateCoverJobPayload,
+  folderPathFromItemPath,
 } from "@collector/shared";
 import type { JobQueue, EnqueueResult } from "../job-queue.js";
 import type { TypedJobHandler } from "../job-registry.js";
 import type { JobHandlerResult } from "../job-types.js";
 import type { VaultPresentationChangedPayload } from "../../vault-presentation-changed.js";
-import { folderPathFromItemPath } from "@collector/shared";
 
 export type GenerateCoverFromMedia = (
   data: Uint8Array,

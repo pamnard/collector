@@ -6,8 +6,11 @@ import {
   localizeRemoteDisplayAssets,
   type VaultContext,
 } from "@collector/core";
-import type { GeneratedCover, MediaType } from "@collector/shared";
-import { inferMediaType } from "@collector/shared";
+import {
+  inferMediaType,
+  type GeneratedCover,
+  type MediaType,
+} from "@collector/shared";
 import { fetchRemoteBytes } from "./fetch-remote-bytes.js";
 import { generateCoverFromMedia } from "./host/node-cover.js";
 

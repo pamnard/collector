@@ -6,8 +6,11 @@
  * source. `item.url` (content link) may remain remote.
  */
 
-import { inferMediaType, sanitizeMediaFilename } from "@collector/shared";
-import type { GeneratedCover } from "@collector/shared";
+import {
+  inferMediaType,
+  sanitizeMediaFilename,
+  type GeneratedCover,
+} from "@collector/shared";
 import type { VaultContext } from "../adapters/types.js";
 import {
   parseDocumentMarkdown,

@@ -99,6 +99,7 @@ describe("createMediaCoverService", () => {
   });
 
   it("resolveItemThumbnailPaths caches by thumbnail+updated_at", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const service = createService();
     const item = {
       id: "note.md",
@@ -115,9 +116,11 @@ describe("createMediaCoverService", () => {
     // Missing sidecar → one-time sharp backfill (#822).
     expect(readCoverPixelSize).toHaveBeenCalledTimes(1);
     expect(writeItemCoverSize).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 
   it("resolveItemThumbnailEntries returns path + size when host injects reader", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const service = createService();
     const item = {
       id: "note.md",
@@ -130,6 +133,7 @@ describe("createMediaCoverService", () => {
       path: "/thumb/note.md",
       size: { width: 320, height: 240 },
     });
+    warn.mockRestore();
   });
 
   it("warm resolve reads cover.size.json and skips sharp.metadata (#822)", async () => {
@@ -200,6 +204,7 @@ describe("createMediaCoverService", () => {
   });
 
   it("attach invalidates stale null thumbnail cache after updated_at bump (#720)", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     resolveThumbnailPathsBatch
       .mockResolvedValueOnce([{ id: "note.md", path: null }])
       .mockResolvedValueOnce([{ id: "note.md", path: "/vault/media/note/cover.webp" }]);
@@ -244,6 +249,7 @@ describe("createMediaCoverService", () => {
     const second = await service.resolveItemThumbnailPaths([after]);
     expect(second.get("note.md")).toBe("/vault/media/note/cover.webp");
     expect(resolveThumbnailPathsBatch).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
   });
 
   it("attachMediaFiles enqueues the preferred current cover candidate", async () => {

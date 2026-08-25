@@ -1,7 +1,6 @@
 import type { CoverPixelSize, ItemFile } from "@collector/shared";
 import { coverPixelSizeSchema, VAULT_DIRS } from "@collector/shared";
-import type { FileSystemAdapter } from "../adapters/types.js";
-import type { VaultContext } from "../adapters/types.js";
+import type { FileSystemAdapter, VaultContext } from "../adapters/types.js";
 import { nowIso } from "../util/ids.js";
 import { ftsFieldsFromDocumentMarkdown } from "./frontmatter.js";
 import {

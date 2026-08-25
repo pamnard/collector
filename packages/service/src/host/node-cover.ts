@@ -18,6 +18,7 @@ import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { GeneratedCover, MediaType } from "@collector/shared";
+import { coverPixelSizeSchema } from "@collector/shared";
 import sharp from "sharp";
 
 const execFileAsync = promisify(execFile);
@@ -167,22 +168,12 @@ async function imageBytesToCoverWebp(data: Uint8Array): Promise<GeneratedCover> 
     .webp({ quality: COVER_WEBP_QUALITY })
     .toBuffer({ resolveWithObject: true });
 
-  const width = info.width;
-  const height = info.height;
-  if (
-    !(
-      typeof width === "number" &&
-      width > 0 &&
-      typeof height === "number" &&
-      height > 0
-    )
-  ) {
-    throw new Error("cover encode missing positive width/height");
-  }
-
   return {
     data: new Uint8Array(buffer),
-    size: { width, height },
+    size: coverPixelSizeSchema.parse({
+      width: info.width,
+      height: info.height,
+    }),
   };
 }
 
