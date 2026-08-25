@@ -55,13 +55,16 @@ function sealMap<K, V>(source: ReadonlyMap<K, V>): Map<K, V> {
 
 /** Clone + seal so get() can share refs without store poisoning (#665). */
 function sealEntry(entry: DashboardQueryCacheEntry): DashboardQueryCacheEntry {
+  if (!entry.thumbnailSizes) {
+    throw new Error("DashboardQueryCacheEntry.thumbnailSizes is required");
+  }
   return Object.freeze({
     itemIds: Object.freeze([...entry.itemIds]),
     itemsById: sealMap(entry.itemsById),
     bodyStamps: sealMap(entry.bodyStamps),
     thumbnailPaths: sealMap(entry.thumbnailPaths),
     thumbnailStamps: sealMap(entry.thumbnailStamps),
-    thumbnailSizes: sealMap(entry.thumbnailSizes ?? new Map()),
+    thumbnailSizes: sealMap(entry.thumbnailSizes),
     streamEndOffset: entry.streamEndOffset,
     totalCount: entry.totalCount,
     updatedAt: entry.updatedAt,

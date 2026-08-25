@@ -57,6 +57,9 @@ export type CacheEntryAppliedState = {
 export function stateFromDashboardCacheEntry(
   entry: DashboardQueryCacheEntry,
 ): CacheEntryAppliedState {
+  if (!entry.thumbnailSizes) {
+    throw new Error("DashboardQueryCacheEntry.thumbnailSizes is required");
+  }
   const itemIds = [...entry.itemIds];
   const itemsById = new Map(entry.itemsById);
   const ordered = orderDashboardItems(
@@ -73,7 +76,7 @@ export function stateFromDashboardCacheEntry(
     ordered,
     thumbnailPaths: new Map(entry.thumbnailPaths),
     thumbnailStamps: new Map(entry.thumbnailStamps),
-    thumbnailSizes: new Map(entry.thumbnailSizes ?? []),
+    thumbnailSizes: new Map(entry.thumbnailSizes),
     hasMore: entry.streamEndOffset < entry.totalCount,
   };
 }

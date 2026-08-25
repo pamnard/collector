@@ -23,7 +23,7 @@ vi.mock("@collector/core", async (importOriginal) => {
   };
 });
 
-import { createMediaCoverService } from "./media-cover.js";
+import { createMediaCoverService, stubReadCoverPixelSizeUnavailable } from "./media-cover.js";
 
 describe("createMediaCoverService", () => {
   const vault = {
@@ -70,16 +70,16 @@ describe("createMediaCoverService", () => {
     });
   });
 
-  function createService(opts?: { withSizes?: boolean }) {
+  function createService(
+    opts?: { readCoverPixelSize?: typeof readCoverPixelSize },
+  ) {
     return createMediaCoverService({
       resolveActiveVault: async () => ({ vault: vault as never, path: "/vault" }),
       getContext: () => ctx,
       enqueueGenerateCover,
       waitForCoverJob,
       resolveThumbnailPathsBatch,
-      ...(opts?.withSizes === false
-        ? {}
-        : { readCoverPixelSize }),
+      readCoverPixelSize: opts?.readCoverPixelSize ?? readCoverPixelSize,
     });
   }
 
@@ -122,20 +122,19 @@ describe("createMediaCoverService", () => {
     });
   });
 
-  it("resolveItemThumbnailEntries omits size when reader not injected", async () => {
-    const service = createService({ withSizes: false });
+  it("cold resolve with unavailable stub fails instead of null-filled size", async () => {
+    const service = createService({
+      readCoverPixelSize: stubReadCoverPixelSizeUnavailable,
+    });
     const item = {
       id: "note.md",
       thumbnail: "cover.webp",
       updated_at: "t1",
     } as never;
 
-    const entries = await service.resolveItemThumbnailEntries([item]);
-    expect(entries.get("note.md")).toEqual({
-      path: "/thumb/note.md",
-      size: null,
-    });
-    expect(readCoverPixelSize).not.toHaveBeenCalled();
+    await expect(service.resolveItemThumbnailEntries([item])).rejects.toThrow(
+      /readCoverPixelSize unavailable outside Node host/,
+    );
   });
 
   it("attach invalidates stale null thumbnail cache after updated_at bump (#720)", async () => {
