@@ -53,4 +53,82 @@ describe("createJobPoll", () => {
     );
     expect(executeJob).not.toHaveBeenCalled();
   });
+
+  it("skips claiming vault-mutating bulk jobs while one is already in flight", async () => {
+    const bulkJob = {
+      ...runningJob("bulk-1"),
+      type: "vaultIndexSync",
+    };
+    const claimNext = vi.fn(
+      async (
+        _nowIso: string,
+        opts?: { skipVaultMutatingBulkJobs?: boolean },
+      ) => {
+        if (opts?.skipVaultMutatingBulkJobs) {
+          return null;
+        }
+        return bulkJob;
+      },
+    );
+    let resolveExecute: (() => void) | undefined;
+    const executeJob = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveExecute = resolve;
+        }),
+    );
+
+    let stopped = false;
+    const poll = createJobPoll({
+      store: { claimNext, releaseClaim: vi.fn() } as never,
+      concurrency: 2,
+      pollIntervalMs: 1000,
+      now: () => new Date("2020-01-01T00:00:00.000Z"),
+      executeJob,
+      isStopped: () => stopped,
+    });
+
+    try {
+      await poll.runTick();
+      // claimed>0 && inFlight < concurrency arms schedulePoll(0); disarm before asserts.
+      poll.clearPollTimer();
+
+      expect(executeJob).toHaveBeenCalledTimes(1);
+      expect(claimNext).toHaveBeenCalledTimes(2);
+      expect(claimNext).toHaveBeenNthCalledWith(
+        1,
+        "2020-01-01T00:00:00.000Z",
+        { skipVaultMutatingBulkJobs: false },
+      );
+      expect(claimNext).toHaveBeenNthCalledWith(
+        2,
+        "2020-01-01T00:00:00.000Z",
+        { skipVaultMutatingBulkJobs: true },
+      );
+    } finally {
+      stopped = true;
+      poll.clearPollTimer();
+      resolveExecute?.();
+    }
+  });
+
+  it("wake is a no-op after stop", async () => {
+    let stopped = false;
+    const claimNext = vi.fn(async () => null);
+    const poll = createJobPoll({
+      store: { claimNext } as never,
+      concurrency: 1,
+      pollIntervalMs: 50,
+      now: () => new Date("2020-01-01T00:00:00.000Z"),
+      executeJob: vi.fn(async () => undefined),
+      isStopped: () => stopped,
+    });
+
+    await poll.runTick();
+    expect(claimNext).toHaveBeenCalledOnce();
+    stopped = true;
+    poll.clearPollTimer();
+    poll.wake();
+    expect(claimNext).toHaveBeenCalledOnce();
+  });
 });

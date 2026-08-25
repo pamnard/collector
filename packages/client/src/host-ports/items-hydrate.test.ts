@@ -74,4 +74,48 @@ describe("createHostItemsPort.hydrate (#666)", () => {
     }).rejects.toThrow(/exceeds max/);
     expect(transport.request).not.toHaveBeenCalled();
   });
+
+  it("stops before the first request when the abort signal is already aborted (#798)", async () => {
+    const transport = mockTransport(async () => {
+      throw new Error("should not call host");
+    });
+    const port = createHostItemsPort(createHostSessionCtx(transport));
+    const signal = AbortSignal.abort();
+    const yielded: string[] = [];
+    for await (const item of port.hydrate(["a.md"], { signal })) {
+      yielded.push(item.id);
+    }
+    expect(yielded).toEqual([]);
+    expect(transport.request).not.toHaveBeenCalled();
+  });
+
+  it("stops between hydrate chunks when aborted mid-stream (#798)", async () => {
+    const ids = Array.from(
+      { length: DASHBOARD_HYDRATE_CHUNK_SIZE + 2 },
+      (_, i) => `item-${i}.md`,
+    );
+    const controller = new AbortController();
+    let calls = 0;
+    const transport = mockTransport(async (method, params) => {
+      if (method !== "loadDashboardItems") {
+        throw new Error(`unexpected ${method}`);
+      }
+      calls += 1;
+      const p = params as { itemIds: string[]; offset: number; limit: number };
+      return p.itemIds.slice(p.offset, p.offset + p.limit).map((id) => ({
+        id,
+        title: id,
+      }));
+    });
+    const port = createHostItemsPort(createHostSessionCtx(transport));
+    const yielded: string[] = [];
+    for await (const item of port.hydrate(ids, { signal: controller.signal })) {
+      yielded.push(item.id);
+      if (yielded.length === DASHBOARD_HYDRATE_CHUNK_SIZE) {
+        controller.abort();
+      }
+    }
+    expect(calls).toBe(1);
+    expect(yielded).toHaveLength(DASHBOARD_HYDRATE_CHUNK_SIZE);
+  });
 });
