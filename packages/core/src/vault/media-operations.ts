@@ -33,12 +33,15 @@ async function ensureItemIndexedForMedia(
   const vaultMeta = await readVaultMeta(ctx.fs, vaultPath);
   const docPath = itemMarkdownPath(vaultPath, id);
 
-  for (let attempt = 0; attempt < ENSURE_ITEM_INDEXED_ATTEMPTS; attempt++) {
+  for (let attempt = 0; ; attempt++) {
     const [syncMeta] = await ctx.index.listItemSyncMetaByIds(vaultMeta.id, [
       id,
     ]);
     if (syncMeta) {
       return;
+    }
+    if (attempt >= ENSURE_ITEM_INDEXED_ATTEMPTS) {
+      throw new Error(`Item not in index: ${id}`);
     }
 
     if (!(await ctx.fs.exists(docPath))) {
@@ -64,12 +67,6 @@ async function ensureItemIndexedForMedia(
     // advanced disk mid-flight (retry with a fresh snapshot) or already wrote
     // the row (next listItemSyncMetaByIds hits).
   }
-
-  const [finalMeta] = await ctx.index.listItemSyncMetaByIds(vaultMeta.id, [id]);
-  if (finalMeta) {
-    return;
-  }
-  throw new Error(`Item not in index: ${id}`);
 }
 
 export async function attachMediaFile(

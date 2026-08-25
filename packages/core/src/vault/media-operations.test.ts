@@ -268,14 +268,15 @@ describe("media operations", () => {
     // Simulate catch-up upsert that never lands a row (e.g. repeated stale TOCTOU).
     const realUpsertItem = index.upsertItem.bind(index);
     index.upsertItem = async () => undefined;
-
-    await expect(
-      attachMediaFile(ctx, path, itemId, {
-        filename: "dot.png",
-        data: Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]),
-      }),
-    ).rejects.toThrow(/Item not in index/);
-
-    index.upsertItem = realUpsertItem;
+    try {
+      await expect(
+        attachMediaFile(ctx, path, itemId, {
+          filename: "dot.png",
+          data: Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]),
+        }),
+      ).rejects.toThrow(/Item not in index/);
+    } finally {
+      index.upsertItem = realUpsertItem;
+    }
   });
 });
