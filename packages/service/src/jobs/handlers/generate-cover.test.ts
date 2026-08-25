@@ -50,7 +50,11 @@ describe("generateCover job (#636 / #640)", () => {
   const readBinary = vi.fn(async () => new Uint8Array([1, 2, 3]));
   const resolveVaultPath = vi.fn(async () => "/vault");
   const generateCoverFromMedia = vi.fn(
-    async () => new Uint8Array([9, 9, 9]),
+    async () =>
+      ({
+        data: new Uint8Array([9, 9, 9]),
+        size: { width: 320, height: 240 },
+      }) as const,
   );
   const onVaultPresentationChanged = vi.fn();
 
@@ -60,7 +64,10 @@ describe("generateCover job (#636 / #640)", () => {
     readBinary.mockClear();
     resolveVaultPath.mockClear();
     generateCoverFromMedia.mockReset();
-    generateCoverFromMedia.mockResolvedValue(new Uint8Array([9, 9, 9]));
+    generateCoverFromMedia.mockResolvedValue({
+      data: new Uint8Array([9, 9, 9]),
+      size: { width: 320, height: 240 },
+    });
     onVaultPresentationChanged.mockClear();
   });
 
@@ -102,6 +109,7 @@ describe("generateCover job (#636 / #640)", () => {
       "vault-1",
       "note.md",
       new Uint8Array([9, 9, 9]),
+      { width: 320, height: 240 },
     );
     expect(onVaultPresentationChanged).toHaveBeenCalledWith({
       vaultId: "vault-1",
@@ -139,7 +147,10 @@ describe("generateCover job (#636 / #640)", () => {
     });
     generateCoverFromMedia.mockImplementation(async () => {
       await gate;
-      return new Uint8Array([9]);
+      return {
+        data: new Uint8Array([9]),
+        size: { width: 9, height: 9 },
+      };
     });
     const registry = createJobRegistry([generateCoverJobType]);
     registry.register(generateCoverJobType, handler());

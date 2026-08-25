@@ -29,6 +29,7 @@ export {
   isUuidMarkdownBasename,
   itemCoverPath,
   itemCoverRelativePath,
+  itemCoverSizePath,
   itemMarkdownPath,
   itemMediaDirName,
   itemMediaManifestPath,
@@ -236,8 +237,10 @@ export {
 export {
   applyItemCover,
   clearItemCover,
+  readItemCoverSize,
   resolveItemThumbnailAbsolutePath,
   touchItemUpdatedAt,
+  writeItemCoverSize,
 } from "./vault/cover-operations.js";
 export {
   resolveItemThumbnailPathsBatch,

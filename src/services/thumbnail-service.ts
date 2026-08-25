@@ -1,4 +1,4 @@
-import type { MediaType } from "@collector/shared";
+import type { MediaType, GeneratedCover } from "@collector/shared";
 
 const IMAGE_MIME: Record<string, string> = {
   jpg: "image/jpeg",
@@ -74,17 +74,27 @@ function drawToCoverCanvas(source: CanvasImageSource, width: number, height: num
   return canvas;
 }
 
+async function generatedCoverFromCanvas(
+  canvas: HTMLCanvasElement,
+): Promise<GeneratedCover> {
+  const data = await canvasToWebp(canvas);
+  return {
+    data,
+    size: { width: canvas.width, height: canvas.height },
+  };
+}
+
 async function generateCoverFromImage(
   data: Uint8Array,
   filename: string,
-): Promise<Uint8Array> {
+): Promise<GeneratedCover> {
   const blob = new Blob([data], { type: mimeForFilename(filename, "image") });
   const url = URL.createObjectURL(blob);
 
   try {
     const image = await loadImage(url);
     const canvas = drawToCoverCanvas(image, image.naturalWidth, image.naturalHeight);
-    return canvasToWebp(canvas);
+    return generatedCoverFromCanvas(canvas);
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -93,7 +103,7 @@ async function generateCoverFromImage(
 async function generateCoverFromVideo(
   data: Uint8Array,
   filename: string,
-): Promise<Uint8Array | null> {
+): Promise<GeneratedCover | null> {
   const blob = new Blob([data], { type: mimeForFilename(filename, "video") });
   const url = URL.createObjectURL(blob);
   const video = document.createElement("video");
@@ -119,7 +129,7 @@ async function generateCoverFromVideo(
     });
 
     const canvas = drawToCoverCanvas(video, video.videoWidth, video.videoHeight);
-    return canvasToWebp(canvas);
+    return generatedCoverFromCanvas(canvas);
   } catch {
     return null;
   } finally {
@@ -132,7 +142,7 @@ export async function generateCoverFromMedia(
   data: Uint8Array,
   filename: string,
   mediaType: MediaType,
-): Promise<Uint8Array | null> {
+): Promise<GeneratedCover | null> {
   if (mediaType === "image") {
     return generateCoverFromImage(data, filename);
   }

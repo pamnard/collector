@@ -83,8 +83,21 @@ export const mediaFileMetaSchema = z.object({
   created_at: z.string().datetime(),
 });
 
+/** Positive cover.webp pixel size persisted beside the file (#822). */
+export const coverPixelSizeSchema = z.object({
+  width: z.number().positive().finite(),
+  height: z.number().positive().finite(),
+});
+
 export type ItemFile = z.infer<typeof itemFileSchema>;
 export type DocumentFrontmatter = z.infer<typeof documentFrontmatterSchema>;
 export type VaultMeta = z.infer<typeof vaultMetaSchema>;
 export type SourceRef = z.infer<typeof sourceRefSchema>;
 export type MediaFileMeta = z.infer<typeof mediaFileMetaSchema>;
+export type CoverPixelSize = z.infer<typeof coverPixelSizeSchema>;
+
+/** Encoded cover.webp bytes plus true output WxH from generateCover. */
+export type GeneratedCover = {
+  data: Uint8Array;
+  size: CoverPixelSize;
+};

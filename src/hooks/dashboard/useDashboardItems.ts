@@ -28,7 +28,7 @@ export interface UseDashboardItemsResult {
   thumbnailPaths: Map<string, string | null>;
   /** Freshness stamps for cover paths (`thumbnail:updated_at`). */
   thumbnailStamps: Map<string, string>;
-  /** Cover pixel sizes from host sharp.metadata (null = no cover). */
+  /** Cover pixel sizes from host (cover.size.json / sharp backfill; null = no cover). */
   thumbnailSizes: Map<string, ItemThumbnailPixelSize | null>;
   totalCount: number;
   isLoading: boolean;

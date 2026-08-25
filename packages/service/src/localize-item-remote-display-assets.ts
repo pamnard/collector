@@ -6,7 +6,11 @@ import {
   localizeRemoteDisplayAssets,
   type VaultContext,
 } from "@collector/core";
-import { inferMediaType } from "@collector/shared";
+import {
+  inferMediaType,
+  type GeneratedCover,
+  type MediaType,
+} from "@collector/shared";
 import { fetchRemoteBytes } from "./fetch-remote-bytes.js";
 import { generateCoverFromMedia } from "./host/node-cover.js";
 
@@ -23,8 +27,8 @@ export function createLocalizeItemRemoteDisplayAssets(deps: {
   encodeCoverWebp?: (
     data: Uint8Array,
     filename: string,
-    mediaType: import("@collector/shared").MediaType,
-  ) => Promise<Uint8Array | null>;
+    mediaType: MediaType,
+  ) => Promise<GeneratedCover | null>;
 }): LocalizeItemRemoteDisplayAssets {
   const fetchBytes = deps.fetchBytes ?? fetchRemoteBytes;
   const encodeCover = deps.encodeCoverWebp ?? generateCoverFromMedia;

@@ -1,20 +1,20 @@
 import { applyItemCover, type VaultContext } from "@collector/core";
-import type { MediaType } from "@collector/shared";
+import type { GeneratedCover, MediaType } from "@collector/shared";
 import {
   generateCoverJobType,
   type GenerateCoverJobPayload,
+  folderPathFromItemPath,
 } from "@collector/shared";
 import type { JobQueue, EnqueueResult } from "../job-queue.js";
 import type { TypedJobHandler } from "../job-registry.js";
 import type { JobHandlerResult } from "../job-types.js";
 import type { VaultPresentationChangedPayload } from "../../vault-presentation-changed.js";
-import { folderPathFromItemPath } from "@collector/shared";
 
 export type GenerateCoverFromMedia = (
   data: Uint8Array,
   filename: string,
   mediaType: MediaType,
-) => Promise<Uint8Array | null>;
+) => Promise<GeneratedCover | null>;
 
 export function createGenerateCoverHandler(deps: {
   getContext: () => VaultContext;
@@ -47,7 +47,14 @@ export function createGenerateCoverHandler(deps: {
         error: "generateCover returned null",
       };
     }
-    await applyItemCover(ctx, vaultPath, vaultId, itemId, cover);
+    await applyItemCover(
+      ctx,
+      vaultPath,
+      vaultId,
+      itemId,
+      cover.data,
+      cover.size,
+    );
     deps.onVaultPresentationChanged?.({
       vaultId,
       kind: "itemCoverChanged",

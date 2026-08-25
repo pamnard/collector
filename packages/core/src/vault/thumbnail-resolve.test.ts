@@ -93,7 +93,7 @@ describe("resolveItemThumbnailPathsBatch", () => {
   it("returns cover path when cover.webp exists on disk", async () => {
     const { ctx, path, vaultId, itemId } = await seedItem("Covered");
     const coverBytes = new TextEncoder().encode("fake-webp");
-    await applyItemCover(ctx, path, vaultId, itemId, coverBytes);
+    await applyItemCover(ctx, path, vaultId, itemId, coverBytes, { width: 320, height: 240 });
 
     const rows = await resolveItemThumbnailPathsBatch(fs, path, [
       { id: itemId, thumbnail: null },
@@ -110,7 +110,7 @@ describe("resolveItemThumbnailPathsBatch", () => {
   it("prefers cover.webp over stale frontmatter sidecar path", async () => {
     const { ctx, path, vaultId, itemId } = await seedItem("Stale FM");
     const coverBytes = new TextEncoder().encode("fake-webp");
-    await applyItemCover(ctx, path, vaultId, itemId, coverBytes);
+    await applyItemCover(ctx, path, vaultId, itemId, coverBytes, { width: 320, height: 240 });
     const uuid = itemId.replace(/\.md$/, "");
 
     const rows = await resolveItemThumbnailPathsBatch(fs, path, [

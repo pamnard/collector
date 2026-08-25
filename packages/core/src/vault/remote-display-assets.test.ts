@@ -8,7 +8,7 @@ import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import { createId } from "../util/ids.js";
 import { createVault } from "./vault-operations.js";
 import { upsertItem } from "./item-operations.js";
-import { itemCoverPath } from "./paths.js";
+import { itemCoverPath, itemCoverSizePath } from "./paths.js";
 import { listMediaFiles } from "./media-io.js";
 import {
   extractMarkdownRemoteImageRefs,
@@ -147,7 +147,7 @@ describe("localizeRemoteDisplayAssets (#739)", () => {
         fetched.push(url);
         return bytes;
       },
-      encodeCoverWebp: async () => new Uint8Array([9, 9]),
+      encodeCoverWebp: async () => ({ data: new Uint8Array([9, 9]), size: { width: 9, height: 9 } }),
     });
 
     expect(fetched).toEqual(["https://cdn.example/shot.png"]);
@@ -175,7 +175,7 @@ describe("localizeRemoteDisplayAssets (#739)", () => {
         fetchBytes: async () => {
           throw new Error("network down");
         },
-        encodeCoverWebp: async () => new Uint8Array([1]),
+        encodeCoverWebp: async () => ({ data: new Uint8Array([1]), size: { width: 1, height: 1 } }),
       }),
     ).rejects.toThrow(/failed to download markdown image/);
 
@@ -203,7 +203,7 @@ describe("localizeRemoteDisplayAssets (#739)", () => {
       fetchBytes: async () => new Uint8Array([7, 7, 7]),
       encodeCoverWebp: async (data) => {
         expect(data).toEqual(new Uint8Array([7, 7, 7]));
-        return new Uint8Array([8, 8, 8]);
+        return { data: new Uint8Array([8, 8, 8]), size: { width: 8, height: 8 } };
       },
     });
 
@@ -213,6 +213,10 @@ describe("localizeRemoteDisplayAssets (#739)", () => {
     expect(await fs.readBinary(itemCoverPath(path, itemId))).toEqual(
       new Uint8Array([8, 8, 8]),
     );
+    expect(JSON.parse(await fs.readText(itemCoverSizePath(path, itemId)))).toEqual({
+      width: 8,
+      height: 8,
+    });
   });
 
   it("downloads YouTube teaser once when cover is missing", async () => {
@@ -231,7 +235,7 @@ describe("localizeRemoteDisplayAssets (#739)", () => {
         fetched.push(url);
         return new Uint8Array([3, 3, 3]);
       },
-      encodeCoverWebp: async () => new Uint8Array([4, 4, 4]),
+      encodeCoverWebp: async () => ({ data: new Uint8Array([4, 4, 4]), size: { width: 4, height: 4 } }),
     });
 
     expect(fetched).toEqual([
@@ -285,7 +289,7 @@ describe("localizeRemoteDisplayAssets (#739)", () => {
           }
           throw new Error("second failed");
         },
-        encodeCoverWebp: async () => new Uint8Array([9]),
+        encodeCoverWebp: async () => ({ data: new Uint8Array([9]), size: { width: 9, height: 9 } }),
       }),
     ).rejects.toThrow(/second failed/);
 

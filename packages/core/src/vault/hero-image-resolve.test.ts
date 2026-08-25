@@ -70,6 +70,7 @@ describe("resolveItemHeroMedia", () => {
       vaultId,
       itemId,
       new TextEncoder().encode("fake-webp-from-z"),
+      { width: 320, height: 240 },
     );
 
     const resolved = await resolveItemHeroMedia(fs, path, itemId);
@@ -94,6 +95,7 @@ describe("resolveItemHeroMedia", () => {
       vaultId,
       itemId,
       new TextEncoder().encode("fake-webp"),
+      { width: 320, height: 240 },
     );
 
     const resolved = await resolveItemHeroMedia(fs, path, itemId);
@@ -113,6 +115,7 @@ describe("resolveItemHeroMedia", () => {
       vaultId,
       itemId,
       new TextEncoder().encode("fake-webp"),
+      { width: 320, height: 240 },
     );
 
     const resolved = await resolveItemHeroMedia(fs, path, itemId);

@@ -17,7 +17,8 @@ import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import type { MediaType } from "@collector/shared";
+import type { GeneratedCover, MediaType } from "@collector/shared";
+import { coverPixelSizeSchema } from "@collector/shared";
 import sharp from "sharp";
 
 const execFileAsync = promisify(execFile);
@@ -155,8 +156,8 @@ async function extractVideoFramePng(
   );
 }
 
-async function imageBytesToCoverWebp(data: Uint8Array): Promise<Uint8Array> {
-  const buffer = await sharp(Buffer.from(data))
+async function imageBytesToCoverWebp(data: Uint8Array): Promise<GeneratedCover> {
+  const { data: buffer, info } = await sharp(Buffer.from(data))
     .rotate()
     .resize({
       width: COVER_MAX_EDGE,
@@ -165,15 +166,21 @@ async function imageBytesToCoverWebp(data: Uint8Array): Promise<Uint8Array> {
       withoutEnlargement: true,
     })
     .webp({ quality: COVER_WEBP_QUALITY })
-    .toBuffer();
+    .toBuffer({ resolveWithObject: true });
 
-  return new Uint8Array(buffer);
+  return {
+    data: new Uint8Array(buffer),
+    size: coverPixelSizeSchema.parse({
+      width: info.width,
+      height: info.height,
+    }),
+  };
 }
 
 async function generateCoverFromVideo(
   data: Uint8Array,
   filename: string,
-): Promise<Uint8Array | null> {
+): Promise<GeneratedCover | null> {
   const ffmpegBin = resolveFfmpegBinary();
   if (!ffmpegBin) {
     console.error("[node-cover] video cover soft-fail: ffmpeg binary not resolved", {
@@ -227,7 +234,7 @@ export async function generateCoverFromMedia(
   data: Uint8Array,
   filename: string,
   mediaType: MediaType,
-): Promise<Uint8Array | null> {
+): Promise<GeneratedCover | null> {
   if (mediaType === "image") {
     return imageBytesToCoverWebp(data);
   }
