@@ -1,6 +1,7 @@
 /**
  * Instagram ExtractorPlugin assembly (#318).
  * Wires discover → fetch → CDN download → merge → updateItem → attachMediaFiles.
+ * Public posts only — no user session / credentials.
  */
 
 import type {
@@ -13,6 +14,7 @@ import type {
 import { fetchExtractMediaBytes } from "../../fetch-extract-media-bytes.js";
 import { discoverInstagramCandidates } from "./instagram-url-discover.js";
 import { fetchInstagramMedia } from "./fetch.js";
+import { IG_WEB_ORIGIN } from "./http.js";
 import { mergeInstagramIntoNote } from "./merge.js";
 import type {
   FetchInstagramMediaOptions,
@@ -21,7 +23,12 @@ import type {
 } from "./types.js";
 
 export const INSTAGRAM_PLUGIN_ID = "instagram";
-export const INSTAGRAM_SESSION_COOKIES_KEY = "session_cookies";
+
+const CDN_DOWNLOAD_HEADERS: Record<string, string> = {
+  Referer: `${IG_WEB_ORIGIN}/`,
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+};
 
 export type InstagramExtractorPluginDeps = {
   getItemById: (itemId: string) => Promise<GetItemResult>;
@@ -30,10 +37,6 @@ export type InstagramExtractorPluginDeps = {
     itemId: string,
     files: AttachMediaFileInput[],
   ) => Promise<unknown>;
-  getCredential: (input: {
-    pluginId: string;
-    key: string;
-  }) => Promise<string | null>;
   /** Override for offline tests. */
   fetchInstagramMediaImpl?: (
     urlOrShortcode: string,
@@ -42,7 +45,10 @@ export type InstagramExtractorPluginDeps = {
   /** Override CDN download for offline tests. */
   fetchExtractMediaBytesImpl?: (
     url: string,
-    options?: { fetchImpl?: InstagramHttpFetch },
+    options?: {
+      fetchImpl?: InstagramHttpFetch;
+      headers?: Record<string, string>;
+    },
   ) => Promise<Uint8Array>;
   fetchImpl?: InstagramHttpFetch;
 };
@@ -74,17 +80,9 @@ export function createInstagramExtractorPlugin(
         );
       }
 
-      const cookies = await deps.getCredential({
-        pluginId: INSTAGRAM_PLUGIN_ID,
-        key: INSTAGRAM_SESSION_COOKIES_KEY,
-      });
-
       const fetchOptions: FetchInstagramMediaOptions = {};
       if (deps.fetchImpl) {
         fetchOptions.fetchImpl = deps.fetchImpl;
-      }
-      if (cookies !== null && cookies.trim().length > 0) {
-        fetchOptions.cookies = cookies;
       }
 
       const fetchResult = await runFetch(candidate.url, fetchOptions);
@@ -110,6 +108,7 @@ export function createInstagramExtractorPlugin(
       for (const intent of merged.mediaIntents) {
         const bytes = await runDownload(intent.sourceUrl, {
           fetchImpl: deps.fetchImpl,
+          headers: CDN_DOWNLOAD_HEADERS,
         });
         files.push({ name: intent.filename, bytes });
       }

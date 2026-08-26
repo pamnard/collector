@@ -423,7 +423,6 @@ export function createServiceDomainRuntime(
     updateItem: (itemId, input) => itemsSearch.updateItem(itemId, input),
     attachMediaFiles: (itemId, files) =>
       mediaCover.attachMediaFiles(itemId, files),
-    getCredential: (input) => credentials.getCredential(input),
   });
 
   const extract = createExtractPluginRegistry({

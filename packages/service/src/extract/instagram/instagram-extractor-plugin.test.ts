@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { GetItemResult } from "@collector/api";
 import {
   INSTAGRAM_PLUGIN_ID,
-  INSTAGRAM_SESSION_COOKIES_KEY,
   createInstagramExtractorPlugin,
 } from "./instagram-extractor-plugin.js";
 import type { InstagramFetchSuccess } from "./types.js";
@@ -66,7 +65,6 @@ describe("createInstagramExtractorPlugin (#318)", () => {
       getItemById: vi.fn(),
       updateItem: vi.fn(),
       attachMediaFiles: vi.fn(),
-      getCredential: vi.fn(async () => null),
     });
 
     const candidates = plugin.discover({
@@ -84,7 +82,6 @@ describe("createInstagramExtractorPlugin (#318)", () => {
   it("extract writes title/body/url and attaches media after CDN download", async () => {
     const updateItem = vi.fn(async () => fakeNote({ body: "" }).item);
     const attachMediaFiles = vi.fn(async () => []);
-    const getCredential = vi.fn(async () => null);
     const fetchInstagramMediaImpl = vi.fn(async () => ({
       ok: true as const,
       value: fetchSuccess(),
@@ -98,7 +95,6 @@ describe("createInstagramExtractorPlugin (#318)", () => {
         }),
       updateItem,
       attachMediaFiles,
-      getCredential,
       fetchInstagramMediaImpl,
       fetchExtractMediaBytesImpl,
     });
@@ -112,14 +108,17 @@ describe("createInstagramExtractorPlugin (#318)", () => {
       },
     });
 
-    expect(getCredential).toHaveBeenCalledWith({
-      pluginId: INSTAGRAM_PLUGIN_ID,
-      key: INSTAGRAM_SESSION_COOKIES_KEY,
-    });
-    expect(fetchInstagramMediaImpl).toHaveBeenCalled();
+    expect(fetchInstagramMediaImpl).toHaveBeenCalledWith(
+      "https://www.instagram.com/p/AbC123/",
+      expect.not.objectContaining({ cookies: expect.anything() }),
+    );
     expect(fetchExtractMediaBytesImpl).toHaveBeenCalledWith(
       "https://cdn.instagram.com/t/a.jpg",
-      expect.anything(),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Referer: "https://www.instagram.com/",
+        }),
+      }),
     );
     expect(updateItem).toHaveBeenCalledWith("Inbox/note.md", {
       title: "First line title",
@@ -144,7 +143,6 @@ describe("createInstagramExtractorPlugin (#318)", () => {
       getItemById: vi.fn(),
       updateItem,
       attachMediaFiles,
-      getCredential: async () => null,
       fetchInstagramMediaImpl: async () => ({
         ok: false,
         code: "login_wall",
@@ -177,7 +175,6 @@ describe("createInstagramExtractorPlugin (#318)", () => {
         fakeNote({ body: "https://www.instagram.com/p/AbC123/" }),
       updateItem,
       attachMediaFiles,
-      getCredential: async () => null,
       fetchInstagramMediaImpl: async () => ({
         ok: true,
         value: fetchSuccess(),
@@ -199,34 +196,5 @@ describe("createInstagramExtractorPlugin (#318)", () => {
 
     expect(updateItem).not.toHaveBeenCalled();
     expect(attachMediaFiles).not.toHaveBeenCalled();
-  });
-
-  it("passes session cookies into fetch when credential is set", async () => {
-    const fetchInstagramMediaImpl = vi.fn(async () => ({
-      ok: true as const,
-      value: fetchSuccess(),
-    }));
-
-    const plugin = createInstagramExtractorPlugin({
-      getItemById: async () => fakeNote({ body: "" }),
-      updateItem: vi.fn(async () => fakeNote({ body: "" }).item),
-      attachMediaFiles: vi.fn(async () => []),
-      getCredential: async () => "sessionid=abc; ds_user_id=1",
-      fetchInstagramMediaImpl,
-      fetchExtractMediaBytesImpl: async () => JPEG,
-    });
-
-    await plugin.extract({
-      itemId: "Inbox/note.md",
-      candidate: {
-        extractorId: INSTAGRAM_PLUGIN_ID,
-        url: "https://www.instagram.com/p/AbC123/",
-      },
-    });
-
-    expect(fetchInstagramMediaImpl).toHaveBeenCalledWith(
-      "https://www.instagram.com/p/AbC123/",
-      expect.objectContaining({ cookies: "sessionid=abc; ds_user_id=1" }),
-    );
   });
 });

@@ -364,7 +364,6 @@ export async function fetchInstagramMedia(
 
   const client = createInstagramHttpClient({
     fetchImpl,
-    cookies: options.cookies,
   });
 
   const layers: Array<() => Promise<LayerResult>> = [

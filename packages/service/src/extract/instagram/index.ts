@@ -34,7 +34,6 @@ export {
 
 export {
   INSTAGRAM_PLUGIN_ID,
-  INSTAGRAM_SESSION_COOKIES_KEY,
   createInstagramExtractorPlugin,
   type InstagramExtractorPluginDeps,
 } from "./instagram-extractor-plugin.js";

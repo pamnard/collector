@@ -210,11 +210,14 @@ export async function fetchExtractMediaBytes(
     timeoutMs?: number;
     maxBytes?: number;
     fetchImpl?: typeof fetch;
+    /** Extra request headers (e.g. Referer for Instagram CDN). */
+    headers?: Record<string, string>;
   },
 ): Promise<Uint8Array> {
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxBytes = options?.maxBytes ?? EXTRACT_MEDIA_MAX_BYTES;
   const fetchImpl = options?.fetchImpl ?? fetch;
+  const requestHeaders = options?.headers;
 
   let current = normalizeFetchUrl(url);
   const controller = new AbortController();
@@ -226,6 +229,7 @@ export async function fetchExtractMediaBytes(
         method: "GET",
         redirect: "manual",
         signal: controller.signal,
+        ...(requestHeaders === undefined ? {} : { headers: requestHeaders }),
       });
 
       if (
