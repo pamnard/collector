@@ -39,6 +39,11 @@ import {
   parseReplaceMedia,
   parseSetItemCover,
 } from "./media.js";
+import {
+  EXTRACT_ITEM_CANDIDATE_FLAGS,
+  parseDiscoverExtractCandidates,
+  parseExtractItemCandidate,
+} from "./extract.js";
 
 export type CommandParser = (argv: string[], rest: string[]) => CliCommand;
 
@@ -52,6 +57,7 @@ export const ALL_COMMAND_FLAGS = unionFlagSets(
   WAIT_DERIVED_FLAGS,
   ATTACH_MEDIA_FLAGS,
   REPLACE_MEDIA_FLAGS,
+  EXTRACT_ITEM_CANDIDATE_FLAGS,
 );
 
 export const COMMAND_PARSERS: Record<string, CommandParser> = {
@@ -78,4 +84,6 @@ export const COMMAND_PARSERS: Record<string, CommandParser> = {
   "replace-media": parseReplaceMedia,
   "delete-media": parseDeleteMedia,
   "set-item-cover": parseSetItemCover,
+  "discover-extract-candidates": parseDiscoverExtractCandidates,
+  "extract-item-candidate": parseExtractItemCandidate,
 };

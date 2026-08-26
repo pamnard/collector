@@ -5,7 +5,10 @@ export type {
   InstagramFetchSuccess,
   InstagramFetchedMedia,
   InstagramHttpFetch,
+  InstagramMediaIntent,
   InstagramMediaKind,
+  InstagramMergeResult,
+  InstagramNoteSnapshot,
 } from "./types.js";
 
 export { fetchInstagramMedia } from "./fetch.js";
@@ -15,3 +18,16 @@ export {
   parseGraphqlShortcodeMedia,
 } from "./parse-media.js";
 export { shortcodeToMediaId } from "./media-id.js";
+
+export {
+  INSTAGRAM_TITLE_MAX_LENGTH,
+  deriveInstagramTitle,
+  listInstagramMediaIntents,
+  mergeInstagramIntoNote,
+} from "./merge.js";
+
+export {
+  discoverInstagramCandidates,
+  parseInstagramShortcode,
+  type InstagramExtractCandidate,
+} from "./instagram-url-discover.js";

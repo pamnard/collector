@@ -47,6 +47,11 @@ export type {
   SyncPlugin,
 } from "./sync-plugin.js";
 
+export type {
+  ExtractCandidate,
+  ExtractorPlugin,
+} from "./extract-plugin.js";
+
 export {
   DASHBOARD_PREFETCH_SIZE,
   DASHBOARD_HYDRATE_CHUNK_SIZE,
@@ -91,6 +96,7 @@ export {
   type Subscription,
   type SyncNowResult,
   type SyncPluginsPort,
+  type ExtractPort,
   type TagsPort,
   type TelegramBotIdentity,
   type TelegramSyncPort,
@@ -114,6 +120,7 @@ export {
   MEDIA_PORT_KEYS,
   SETTINGS_PORT_KEYS,
   SYNC_PLUGINS_PORT_KEYS,
+  EXTRACT_PORT_KEYS,
   TAGS_PORT_KEYS,
   TELEGRAM_SYNC_PORT_KEYS,
   VAULTS_PORT_KEYS,

@@ -4,6 +4,7 @@ import {
 } from "../domain-methods.js";
 import { CREDENTIALS_DISPATCH } from "./credentials.js";
 import { DASHBOARD_DISPATCH } from "./dashboard.js";
+import { EXTRACT_DISPATCH } from "./extract.js";
 import { FOLDERS_DISPATCH } from "./folders.js";
 import { INDEX_BOOT_DISPATCH } from "./index-boot.js";
 import { ITEMS_DISPATCH } from "./items.js";
@@ -35,6 +36,7 @@ export const DOMAIN_DISPATCH_REGISTRY = mergeDomainDispatchGroups(
   SETTINGS_DISPATCH,
   CREDENTIALS_DISPATCH,
   SYNC_DISPATCH,
+  EXTRACT_DISPATCH,
   TELEGRAM_DISPATCH,
   DASHBOARD_DISPATCH,
   WATCHER_DISPATCH,
