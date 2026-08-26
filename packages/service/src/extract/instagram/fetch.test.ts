@@ -272,6 +272,45 @@ describe("fetchInstagramMedia (#847)", () => {
     expect(result.value.accessibilityCaption).toBeNull();
   });
 
+  it("falls through to legacy GraphQL when embed and Polaris yield no media", async () => {
+    const coverEmbed = readFixture("reel-cover-only-embed.html");
+    const legacy = JSON.parse(
+      readFixture("legacy-reel-graphql.json"),
+    ) as unknown;
+
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("/embed/")) {
+        return textResponse(coverEmbed);
+      }
+      if (url === "https://www.instagram.com/" || url === "https://www.instagram.com") {
+        // No LSD token → Polaris aborts empty
+        return textResponse("<html><body>no token</body></html>");
+      }
+      if (url.includes("/graphql/query/")) {
+        return jsonResponse(legacy);
+      }
+      throw new Error(`unexpected URL in legacy GraphQL test: ${url}`);
+    };
+
+    const result = await fetchInstagramMedia(
+      "https://www.instagram.com/reel/CzReelVid3ef/",
+      { fetchImpl },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error("expected success");
+    }
+    expect(result.value.media).toEqual([
+      {
+        kind: "video",
+        url: "https://cdn.instagram.fixture/reel-legacy.mp4",
+        suggestedFilename: "CzReelVid3ef.mp4",
+      },
+    ]);
+  });
+
   it("surfaces rate_limited without trying further layers after 429", async () => {
     let calls = 0;
     const result = await fetchInstagramMedia(

@@ -2,6 +2,7 @@
  * Minimal cookie jar + Instagram HTTP helpers for multi-layer fetch.
  */
 
+import { asRecord } from "./json-unknown.js";
 import type { InstagramHttpFetch } from "./types.js";
 
 export const IG_WEB_ORIGIN = "https://www.instagram.com";
@@ -30,6 +31,19 @@ const API_HEADERS: Record<string, string> = {
   "X-IG-WWW-Claim": "0",
 };
 
+function parseCookiePair(part: string): { name: string; value: string } | null {
+  const eq = part.indexOf("=");
+  if (eq <= 0) {
+    return null;
+  }
+  const name = part.slice(0, eq).trim();
+  const value = part.slice(eq + 1).trim();
+  if (name.length === 0) {
+    return null;
+  }
+  return { name, value };
+}
+
 export class InstagramCookieJar {
   private readonly store = new Map<string, string>();
 
@@ -38,7 +52,12 @@ export class InstagramCookieJar {
       return;
     }
     if (typeof initial === "string") {
-      this.applyCookieHeader(initial);
+      for (const part of initial.split(";")) {
+        const pair = parseCookiePair(part);
+        if (pair) {
+          this.store.set(pair.name, pair.value);
+        }
+      }
       return;
     }
     for (const [name, value] of Object.entries(initial)) {
@@ -65,32 +84,9 @@ export class InstagramCookieJar {
     }
     const parts = Array.isArray(header) ? header : [header];
     for (const part of parts) {
-      const pair = part.split(";", 1)[0];
-      if (!pair) {
-        continue;
-      }
-      const eq = pair.indexOf("=");
-      if (eq <= 0) {
-        continue;
-      }
-      const name = pair.slice(0, eq).trim();
-      const value = pair.slice(eq + 1).trim();
-      if (name.length > 0) {
-        this.store.set(name, value);
-      }
-    }
-  }
-
-  private applyCookieHeader(header: string): void {
-    for (const part of header.split(";")) {
-      const eq = part.indexOf("=");
-      if (eq <= 0) {
-        continue;
-      }
-      const name = part.slice(0, eq).trim();
-      const value = part.slice(eq + 1).trim();
-      if (name.length > 0) {
-        this.store.set(name, value);
+      const pair = parseCookiePair(part.split(";", 1)[0] ?? "");
+      if (pair) {
+        this.store.set(pair.name, pair.value);
       }
     }
   }
@@ -216,110 +212,110 @@ export function extractLsdToken(webpage: string): string | null {
   if (!eqmc?.[1]) {
     return null;
   }
-  const data: unknown = JSON.parse(eqmc[1]);
-  const row =
-    data !== null && typeof data === "object" && !Array.isArray(data)
-      ? (data as Record<string, unknown>)
-      : null;
-  const token = row?.l;
+  let data: unknown;
+  try {
+    data = JSON.parse(eqmc[1]);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return null;
+    }
+    throw error;
+  }
+  const token = asRecord(data)?.l;
   return typeof token === "string" && token.length > 0 ? token : null;
-}
-
-export function extractContextJsonMedia(
-  webpage: string,
-): unknown | null {
-  const key = '"contextJSON":';
-  const index = webpage.indexOf(key);
-  if (index < 0) {
-    return null;
-  }
-  const start = index + key.length;
-  const decoder = new ContextJsonDecoder();
-  const inner = decoder.rawDecodeString(webpage, start);
-  if (inner === null) {
-    return null;
-  }
-  const context: unknown = JSON.parse(inner);
-  const root =
-    context !== null && typeof context === "object" && !Array.isArray(context)
-      ? (context as Record<string, unknown>)
-      : null;
-  const gql =
-    root?.gql_data !== null &&
-    typeof root?.gql_data === "object" &&
-    !Array.isArray(root.gql_data)
-      ? (root.gql_data as Record<string, unknown>)
-      : null;
-  return gql?.shortcode_media ?? null;
 }
 
 /**
  * Decode a JSON string literal starting at `start` (Python raw_decode equivalent
  * for the double-encoded embed `contextJSON` value).
  */
-class ContextJsonDecoder {
-  rawDecodeString(source: string, start: number): string | null {
-    let i = start;
-    while (i < source.length && /\s/.test(source[i]!)) {
-      i += 1;
-    }
-    if (source[i] !== '"') {
-      return null;
-    }
+function rawDecodeJsonStringLiteral(
+  source: string,
+  start: number,
+): string | null {
+  let i = start;
+  while (i < source.length && /\s/.test(source[i]!)) {
     i += 1;
-    let out = "";
-    while (i < source.length) {
-      const ch = source[i]!;
-      if (ch === '"') {
-        return out;
-      }
-      if (ch === "\\") {
-        i += 1;
-        if (i >= source.length) {
-          return null;
-        }
-        const esc = source[i]!;
-        switch (esc) {
-          case '"':
-          case "\\":
-          case "/":
-            out += esc;
-            break;
-          case "b":
-            out += "\b";
-            break;
-          case "f":
-            out += "\f";
-            break;
-          case "n":
-            out += "\n";
-            break;
-          case "r":
-            out += "\r";
-            break;
-          case "t":
-            out += "\t";
-            break;
-          case "u": {
-            const hex = source.slice(i + 1, i + 5);
-            if (!/^[0-9a-fA-F]{4}$/.test(hex)) {
-              return null;
-            }
-            out += String.fromCharCode(Number.parseInt(hex, 16));
-            i += 4;
-            break;
-          }
-          default:
-            return null;
-        }
-        i += 1;
-        continue;
-      }
-      out += ch;
-      i += 1;
-    }
+  }
+  if (source[i] !== '"') {
     return null;
   }
+  i += 1;
+  let out = "";
+  while (i < source.length) {
+    const ch = source[i]!;
+    if (ch === '"') {
+      return out;
+    }
+    if (ch === "\\") {
+      i += 1;
+      if (i >= source.length) {
+        return null;
+      }
+      const esc = source[i]!;
+      switch (esc) {
+        case '"':
+        case "\\":
+        case "/":
+          out += esc;
+          break;
+        case "b":
+          out += "\b";
+          break;
+        case "f":
+          out += "\f";
+          break;
+        case "n":
+          out += "\n";
+          break;
+        case "r":
+          out += "\r";
+          break;
+        case "t":
+          out += "\t";
+          break;
+        case "u": {
+          const hex = source.slice(i + 1, i + 5);
+          if (!/^[0-9a-fA-F]{4}$/.test(hex)) {
+            return null;
+          }
+          out += String.fromCharCode(Number.parseInt(hex, 16));
+          i += 4;
+          break;
+        }
+        default:
+          return null;
+      }
+      i += 1;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return null;
+}
+
+export function extractContextJsonMedia(webpage: string): unknown | null {
+  const key = '"contextJSON":';
+  const index = webpage.indexOf(key);
+  if (index < 0) {
+    return null;
+  }
+  const inner = rawDecodeJsonStringLiteral(webpage, index + key.length);
+  if (inner === null) {
+    return null;
+  }
+  let context: unknown;
+  try {
+    context = JSON.parse(inner);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return null;
+    }
+    throw error;
+  }
+  const gql = asRecord(asRecord(context)?.gql_data);
+  return gql?.shortcode_media ?? null;
 }
 
 export function looksLikeLoginWall(webpage: string): boolean {

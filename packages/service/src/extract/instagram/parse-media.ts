@@ -2,6 +2,7 @@
  * Normalize GraphQL / mobile-API Instagram media payloads into the fetch contract.
  */
 
+import { asRecord } from "./json-unknown.js";
 import type {
   InstagramFetchSuccess,
   InstagramFetchedMedia,
@@ -39,33 +40,12 @@ function readOptionalString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+function pickFirstUrl(entries: unknown): string | null {
+  if (!Array.isArray(entries) || entries.length === 0) {
     return null;
   }
-  return value as Record<string, unknown>;
-}
-
-function pickBestImageUrl(candidates: unknown): string | null {
-  if (!Array.isArray(candidates) || candidates.length === 0) {
-    return null;
-  }
-  for (const candidate of candidates) {
-    const row = asRecord(candidate);
-    const url = row?.url;
-    if (typeof url === "string" && url.length > 0) {
-      return url;
-    }
-  }
-  return null;
-}
-
-function pickBestVideoUrl(versions: unknown): string | null {
-  if (!Array.isArray(versions) || versions.length === 0) {
-    return null;
-  }
-  for (const version of versions) {
-    const row = asRecord(version);
+  for (const entry of entries) {
+    const row = asRecord(entry);
     const url = row?.url;
     if (typeof url === "string" && url.length > 0) {
       return url;
@@ -123,7 +103,7 @@ function mediaFromGraphqlNode(
     node.is_video === true || node.__typename === "GraphVideo";
   const videoUrl = readOptionalString(node.video_url);
   if (isVideo) {
-    // Cover-only reel payloads must not be treated as downloadable video.
+    // Cover-only reel payloads must not be treated as downloadable media.
     if (!videoUrl) {
       return null;
     }
@@ -134,6 +114,21 @@ function mediaFromGraphqlNode(
     return null;
   }
   return { kind: "image", url: displayUrl };
+}
+
+function withSuggestedNames(
+  shortcode: string,
+  mediaItems: InstagramFetchedMedia[],
+): InstagramFetchedMedia[] {
+  return mediaItems.map((item, index) => ({
+    ...item,
+    suggestedFilename: suggestedName(
+      shortcode,
+      item.kind,
+      index,
+      mediaItems.length,
+    ),
+  }));
 }
 
 /**
@@ -158,9 +153,8 @@ export function parseGraphqlShortcodeMedia(
   const shortcode =
     readOptionalString(root.shortcode) ?? shortcodeFallback;
 
-  const children = graphqlChildren(root);
   const mediaItems: InstagramFetchedMedia[] = [];
-  for (const child of children) {
+  for (const child of graphqlChildren(root)) {
     const item = mediaFromGraphqlNode(child);
     if (item) {
       mediaItems.push(item);
@@ -171,35 +165,23 @@ export function parseGraphqlShortcodeMedia(
     return null;
   }
 
-  const withNames = mediaItems.map((item, index) => ({
-    ...item,
-    suggestedFilename: suggestedName(
-      shortcode,
-      item.kind,
-      index,
-      mediaItems.length,
-    ),
-  }));
-
   return {
     shortcode,
     authorUsername,
     caption: graphqlCaption(root),
     accessibilityCaption: readOptionalString(root.accessibility_caption),
-    media: withNames,
+    media: withSuggestedNames(shortcode, mediaItems),
   };
 }
 
 function mediaFromApiItem(
   item: Record<string, unknown>,
 ): InstagramFetchedMedia | null {
-  const videoUrl = pickBestVideoUrl(item.video_versions);
+  const videoUrl = pickFirstUrl(item.video_versions);
   if (videoUrl) {
     return { kind: "video", url: videoUrl };
   }
-  const imageUrl = pickBestImageUrl(
-    asRecord(item.image_versions2)?.candidates,
-  );
+  const imageUrl = pickFirstUrl(asRecord(item.image_versions2)?.candidates);
   if (imageUrl) {
     return { kind: "image", url: imageUrl };
   }
@@ -247,21 +229,11 @@ export function parseApiMediaItem(
     return null;
   }
 
-  const withNames = mediaItems.map((entry, index) => ({
-    ...entry,
-    suggestedFilename: suggestedName(
-      shortcode,
-      entry.kind,
-      index,
-      mediaItems.length,
-    ),
-  }));
-
   return {
     shortcode,
     authorUsername,
     caption: apiCaption(root),
     accessibilityCaption: readOptionalString(root.accessibility_caption),
-    media: withNames,
+    media: withSuggestedNames(shortcode, mediaItems),
   };
 }

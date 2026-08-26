@@ -17,12 +17,7 @@ import {
   looksLikeLoginWall,
   type InstagramHttpClient,
 } from "./http.js";
-import {
-  layerEmpty,
-  layerFail,
-  layerSuccess,
-  type LayerResult,
-} from "./layer-result.js";
+import { asRecord, parseJsonObject } from "./json-unknown.js";
 import { shortcodeToMediaId } from "./media-id.js";
 import {
   parseApiMediaItem,
@@ -37,6 +32,11 @@ import type {
 } from "./types.js";
 import { parseInstagramTarget } from "./url.js";
 
+type LayerResult =
+  | { kind: "success"; value: InstagramFetchSuccess }
+  | { kind: "empty"; hint?: InstagramFetchErrorCode }
+  | { kind: "fail"; code: InstagramFetchErrorCode; message: string };
+
 function toSuccess(
   fields: ParsedMediaFields,
   sourceUrl: string,
@@ -44,20 +44,30 @@ function toSuccess(
   return { sourceUrl, ...fields };
 }
 
-function parseJsonObject(text: string): Record<string, unknown> | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      return null;
-    }
-    throw error;
+function emptyFromStatus(
+  statusKind: Exclude<ReturnType<typeof classifyHttpStatus>, "ok" | "rate_limited">,
+  bodyText?: string,
+): LayerResult {
+  if (statusKind === "not_found") {
+    return {
+      kind: "fail",
+      code: "not_found",
+      message: "Instagram returned 404",
+    };
   }
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return null;
+  if (statusKind === "private_or_unavailable") {
+    return {
+      kind: "empty",
+      hint:
+        bodyText && looksLikeLoginWall(bodyText)
+          ? "login_wall"
+          : "private_or_unavailable",
+    };
   }
-  return parsed as Record<string, unknown>;
+  return {
+    kind: "empty",
+    hint: bodyText && looksLikeLoginWall(bodyText) ? "login_wall" : undefined,
+  };
 }
 
 async function extractFromEmbed(
@@ -65,52 +75,41 @@ async function extractFromEmbed(
   shortcode: string,
   sourceUrl: string,
 ): Promise<LayerResult> {
-  const url = `${IG_WEB_ORIGIN}/p/${shortcode}/embed/`;
-  const response = await client.getText(url);
+  const response = await client.getText(
+    `${IG_WEB_ORIGIN}/p/${shortcode}/embed/`,
+  );
   const statusKind = classifyHttpStatus(response.status);
   if (statusKind === "rate_limited") {
-    return layerFail("rate_limited", "Instagram rate limited the embed request");
-  }
-  if (statusKind === "not_found") {
-    return layerFail("not_found", "Instagram embed returned 404");
-  }
-  if (statusKind === "private_or_unavailable") {
-    return layerEmpty(
-      looksLikeLoginWall(response.text) ? "login_wall" : "private_or_unavailable",
-    );
+    return {
+      kind: "fail",
+      code: "rate_limited",
+      message: "Instagram rate limited the embed request",
+    };
   }
   if (statusKind !== "ok") {
-    return layerEmpty(
-      looksLikeLoginWall(response.text) ? "login_wall" : undefined,
-    );
+    return emptyFromStatus(statusKind, response.text);
   }
 
-  if (looksLikeLoginWall(response.text) && !response.text.includes("contextJSON")) {
-    return layerEmpty("login_wall");
+  if (
+    looksLikeLoginWall(response.text) &&
+    !response.text.includes("contextJSON")
+  ) {
+    return { kind: "empty", hint: "login_wall" };
   }
 
-  let media: unknown = null;
-  try {
-    media = extractContextJsonMedia(response.text);
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      media = null;
-    } else {
-      throw error;
-    }
-  }
-
+  const media = extractContextJsonMedia(response.text);
   if (!media) {
-    return layerEmpty(
-      looksLikeLoginWall(response.text) ? "login_wall" : "no_media",
-    );
+    return {
+      kind: "empty",
+      hint: looksLikeLoginWall(response.text) ? "login_wall" : "no_media",
+    };
   }
 
   const parsed = parseGraphqlShortcodeMedia(media, shortcode);
   if (!parsed) {
-    return layerEmpty("no_media");
+    return { kind: "empty", hint: "no_media" };
   }
-  return layerSuccess(toSuccess(parsed, sourceUrl));
+  return { kind: "success", value: toSuccess(parsed, sourceUrl) };
 }
 
 async function extractFromPolaris(
@@ -121,27 +120,19 @@ async function extractFromPolaris(
   const homepage = await client.getText(`${IG_WEB_ORIGIN}/`);
   const homeStatus = classifyHttpStatus(homepage.status);
   if (homeStatus === "rate_limited") {
-    return layerFail(
-      "rate_limited",
-      "Instagram rate limited the Polaris session bootstrap",
-    );
+    return {
+      kind: "fail",
+      code: "rate_limited",
+      message: "Instagram rate limited the Polaris session bootstrap",
+    };
   }
   if (homeStatus !== "ok") {
-    return layerEmpty();
+    return { kind: "empty" };
   }
 
-  let lsdToken: string | null = null;
-  try {
-    lsdToken = extractLsdToken(homepage.text);
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      lsdToken = null;
-    } else {
-      throw error;
-    }
-  }
+  const lsdToken = extractLsdToken(homepage.text);
   if (!lsdToken) {
-    return layerEmpty();
+    return { kind: "empty" };
   }
 
   const mediaId = shortcodeToMediaId(shortcode);
@@ -158,38 +149,24 @@ async function extractFromPolaris(
   );
   const rulingStatus = classifyHttpStatus(rulingResponse.status);
   if (rulingStatus === "rate_limited") {
-    return layerFail(
-      "rate_limited",
-      "Instagram rate limited the Polaris ruling request",
-    );
-  }
-  if (rulingStatus === "not_found") {
-    return layerFail("not_found", "Polaris ruling returned 404");
+    return {
+      kind: "fail",
+      code: "rate_limited",
+      message: "Instagram rate limited the Polaris ruling request",
+    };
   }
   if (rulingStatus !== "ok") {
-    return layerEmpty(
-      rulingStatus === "private_or_unavailable"
-        ? "private_or_unavailable"
-        : undefined,
-    );
+    return emptyFromStatus(rulingStatus);
   }
 
   const ruling = parseJsonObject(rulingResponse.text);
   if (!ruling || ruling.status !== "ok") {
-    return layerEmpty("private_or_unavailable");
+    return { kind: "empty", hint: "private_or_unavailable" };
   }
 
-  const csrf = client.cookies.get("csrftoken");
-  if (!csrf) {
-    return layerEmpty();
+  if (!client.cookies.get("csrftoken")) {
+    return { kind: "empty" };
   }
-
-  const headers = apiHeaders(client.cookies, {
-    "X-FB-Friendly-Name": LOGGED_OUT_QUERY_NAME,
-    "X-FB-LSD": lsdToken,
-    "X-Requested-With": "XMLHttpRequest",
-    Referer: `${IG_WEB_ORIGIN}/reel/${shortcode}/`,
-  });
 
   const graphqlResponse = await client.postForm(
     `${IG_WEB_ORIGIN}/api/graphql`,
@@ -201,51 +178,39 @@ async function extractFromPolaris(
       variables: JSON.stringify({ media_id: mediaId }),
       doc_id: LOGGED_OUT_QUERY_DOC_ID,
     },
-    headers,
+    apiHeaders(client.cookies, {
+      "X-FB-Friendly-Name": LOGGED_OUT_QUERY_NAME,
+      "X-FB-LSD": lsdToken,
+      "X-Requested-With": "XMLHttpRequest",
+      Referer: `${IG_WEB_ORIGIN}/reel/${shortcode}/`,
+    }),
   );
 
   const gqlStatus = classifyHttpStatus(graphqlResponse.status);
   if (gqlStatus === "rate_limited") {
-    return layerFail(
-      "rate_limited",
-      "Instagram rate limited the Polaris GraphQL request",
-    );
+    return {
+      kind: "fail",
+      code: "rate_limited",
+      message: "Instagram rate limited the Polaris GraphQL request",
+    };
   }
   if (gqlStatus !== "ok") {
-    return layerEmpty(
-      gqlStatus === "private_or_unavailable"
-        ? "private_or_unavailable"
-        : gqlStatus === "not_found"
-          ? "not_found"
-          : undefined,
-    );
+    return emptyFromStatus(gqlStatus);
   }
 
   const envelope = parseJsonObject(graphqlResponse.text);
-  if (!envelope) {
-    return layerEmpty();
-  }
-
-  const data = envelope.data;
-  const dataRow =
-    data !== null && typeof data === "object" && !Array.isArray(data)
-      ? (data as Record<string, unknown>)
-      : null;
-  const polaris = dataRow?.xig_polaris_media;
-  const polarisRow =
-    polaris !== null && typeof polaris === "object" && !Array.isArray(polaris)
-      ? (polaris as Record<string, unknown>)
-      : null;
-  const product = polarisRow?.if_not_gated_logged_out;
+  const product = asRecord(
+    asRecord(asRecord(envelope)?.data)?.xig_polaris_media,
+  )?.if_not_gated_logged_out;
   if (!product) {
-    return layerEmpty("login_wall");
+    return { kind: "empty", hint: "login_wall" };
   }
 
   const parsed = parseApiMediaItem(product, shortcode);
   if (!parsed) {
-    return layerEmpty("no_media");
+    return { kind: "empty", hint: "no_media" };
   }
-  return layerSuccess(toSuccess(parsed, sourceUrl));
+  return { kind: "success", value: toSuccess(parsed, sourceUrl) };
 }
 
 async function extractFromLegacyGraphql(
@@ -272,41 +237,27 @@ async function extractFromLegacyGraphql(
   );
   const statusKind = classifyHttpStatus(response.status);
   if (statusKind === "rate_limited") {
-    return layerFail(
-      "rate_limited",
-      "Instagram rate limited the legacy GraphQL request",
-    );
-  }
-  if (statusKind === "not_found") {
-    return layerFail("not_found", "Legacy GraphQL returned 404");
+    return {
+      kind: "fail",
+      code: "rate_limited",
+      message: "Instagram rate limited the legacy GraphQL request",
+    };
   }
   if (statusKind !== "ok") {
-    return layerEmpty(
-      statusKind === "private_or_unavailable"
-        ? "private_or_unavailable"
-        : undefined,
-    );
+    return emptyFromStatus(statusKind);
   }
 
-  const envelope = parseJsonObject(response.text);
-  if (!envelope) {
-    return layerEmpty();
-  }
-  const data = envelope.data;
-  const dataRow =
-    data !== null && typeof data === "object" && !Array.isArray(data)
-      ? (data as Record<string, unknown>)
-      : null;
-  const media = dataRow?.xdt_shortcode_media;
+  const media = asRecord(parseJsonObject(response.text)?.data)
+    ?.xdt_shortcode_media;
   if (!media) {
-    return layerEmpty("no_media");
+    return { kind: "empty", hint: "no_media" };
   }
 
   const parsed = parseGraphqlShortcodeMedia(media, shortcode);
   if (!parsed) {
-    return layerEmpty("no_media");
+    return { kind: "empty", hint: "no_media" };
   }
-  return layerSuccess(toSuccess(parsed, sourceUrl));
+  return { kind: "success", value: toSuccess(parsed, sourceUrl) };
 }
 
 async function extractFromMobileApi(
@@ -318,40 +269,32 @@ async function extractFromMobileApi(
   await client.getText(`${IG_WEB_ORIGIN}/p/${shortcode}/`);
 
   const mediaId = shortcodeToMediaId(shortcode);
-  const apiUrl = `${IG_API_BASE}/media/${mediaId}/info/`;
-  const response = await client.getText(apiUrl, apiHeaders(client.cookies));
+  const response = await client.getText(
+    `${IG_API_BASE}/media/${mediaId}/info/`,
+    apiHeaders(client.cookies),
+  );
   const statusKind = classifyHttpStatus(response.status);
   if (statusKind === "rate_limited") {
-    return layerFail(
-      "rate_limited",
-      "Instagram rate limited the mobile media info request",
-    );
-  }
-  if (statusKind === "not_found") {
-    return layerFail("not_found", "Mobile media info returned 404");
+    return {
+      kind: "fail",
+      code: "rate_limited",
+      message: "Instagram rate limited the mobile media info request",
+    };
   }
   if (statusKind !== "ok") {
-    return layerEmpty(
-      statusKind === "private_or_unavailable"
-        ? "private_or_unavailable"
-        : undefined,
-    );
+    return emptyFromStatus(statusKind);
   }
 
-  const envelope = parseJsonObject(response.text);
-  if (!envelope) {
-    return layerEmpty();
-  }
-  const items = envelope.items;
+  const items = parseJsonObject(response.text)?.items;
   if (!Array.isArray(items) || items.length === 0) {
-    return layerEmpty("no_media");
+    return { kind: "empty", hint: "no_media" };
   }
 
   const parsed = parseApiMediaItem(items[0], shortcode);
   if (!parsed) {
-    return layerEmpty("no_media");
+    return { kind: "empty", hint: "no_media" };
   }
-  return layerSuccess(toSuccess(parsed, sourceUrl));
+  return { kind: "success", value: toSuccess(parsed, sourceUrl) };
 }
 
 const ERROR_PRIORITY: InstagramFetchErrorCode[] = [
@@ -376,13 +319,23 @@ function pickFinalFailure(
   }
 
   for (const code of ERROR_PRIORITY) {
-    const match = [...failures].reverse().find((entry) => entry.code === code);
-    if (match) {
-      return { ok: false, code: match.code, message: match.message };
+    for (let i = failures.length - 1; i >= 0; i -= 1) {
+      const entry = failures[i];
+      if (entry && entry.code === code) {
+        return { ok: false, code: entry.code, message: entry.message };
+      }
     }
   }
 
-  const last = failures[failures.length - 1]!;
+  const last = failures[failures.length - 1];
+  if (!last) {
+    return {
+      ok: false,
+      code: "no_media",
+      message:
+        "All Instagram extraction layers returned no downloadable media",
+    };
+  }
   return { ok: false, code: last.code, message: last.message };
 }
 
@@ -427,13 +380,6 @@ export async function fetchInstagramMedia(
   for (const run of layers) {
     const result = await run();
     if (result.kind === "success") {
-      if (result.value.media.length === 0) {
-        failures.push({
-          code: "no_media",
-          message: "Extraction succeeded with an empty media list",
-        });
-        continue;
-      }
       return { ok: true, value: result.value };
     }
     if (result.kind === "fail") {
