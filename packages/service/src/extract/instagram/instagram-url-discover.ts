@@ -3,6 +3,8 @@
  * No network — finds post/reel/tv URLs in note text and optional frontmatter.
  */
 
+import { normalizeRemoteHttpUrl } from "@collector/core";
+
 export type InstagramExtractCandidate = {
   extractorId: "instagram";
   /** Normalized https URL */
@@ -10,15 +12,11 @@ export type InstagramExtractCandidate = {
   shortcode: string;
 };
 
-const INSTAGRAM_HOSTS = new Set([
-  "instagram.com",
-  "www.instagram.com",
-  "m.instagram.com",
-]);
+const INSTAGRAM_HOSTS = new Set(["instagram.com", "m.instagram.com"]);
 
 const MEDIA_PATH_KINDS = new Set(["p", "reel", "reels", "tv"]);
 
-/** Instagram media shortcode: base64url-like alphabet used in public URLs. */
+/** Instagram media shortcode alphabet in public URLs. */
 const SHORTCODE_RE = /^[A-Za-z0-9_-]+$/;
 
 /** http(s) URL tokens in note body (bare + inside markdown links). */
@@ -26,99 +24,73 @@ const HTTP_URL_RE = /https?:\/\/[^\s<>()\[\]"'`]+/gi;
 
 const TRAILING_PUNCT_RE = /[.,;:!?)]+$/;
 
+type ParsedInstagramMedia = {
+  kind: string;
+  shortcode: string;
+};
+
 function parseUrl(raw: string): URL | null {
   const trimmed = raw.trim();
   if (trimmed.length === 0) {
     return null;
   }
-  const withScheme = trimmed.startsWith("//") ? `https:${trimmed}` : trimmed;
   try {
-    return new URL(withScheme);
+    return new URL(normalizeRemoteHttpUrl(trimmed));
   } catch {
     // Invalid URL string — expected for free-form note text.
     return null;
   }
 }
 
+function parseInstagramMedia(url: string): ParsedInstagramMedia | null {
+  const parsed = parseUrl(url);
+  if (!parsed) {
+    return null;
+  }
+
+  const host = parsed.hostname.replace(/^www\./, "").toLowerCase();
+  if (!INSTAGRAM_HOSTS.has(host)) {
+    return null;
+  }
+
+  const segments = parsed.pathname.split("/").filter(Boolean);
+  const kindRaw = segments[0];
+  const shortcode = segments[1];
+  if (kindRaw === undefined || shortcode === undefined) {
+    return null;
+  }
+
+  const kind = kindRaw.toLowerCase();
+  if (!MEDIA_PATH_KINDS.has(kind) || !SHORTCODE_RE.test(shortcode)) {
+    return null;
+  }
+
+  return { kind, shortcode };
+}
+
 /**
  * Shortcode from an Instagram post/reel/tv URL, or null when not a media URL.
  */
 export function parseInstagramShortcode(url: string): string | null {
-  const parsed = parseUrl(url);
-  if (!parsed) {
-    return null;
-  }
-
-  const host = parsed.hostname.toLowerCase();
-  if (!INSTAGRAM_HOSTS.has(host)) {
-    return null;
-  }
-
-  const segments = parsed.pathname.split("/").filter(Boolean);
-  if (segments.length < 2) {
-    return null;
-  }
-
-  const kind = segments[0]!.toLowerCase();
-  if (!MEDIA_PATH_KINDS.has(kind)) {
-    return null;
-  }
-
-  const shortcode = segments[1]!;
-  if (!SHORTCODE_RE.test(shortcode)) {
-    return null;
-  }
-
-  return shortcode;
-}
-
-function normalizeInstagramMediaUrl(url: string): string | null {
-  const parsed = parseUrl(url);
-  if (!parsed) {
-    return null;
-  }
-
-  const host = parsed.hostname.toLowerCase();
-  if (!INSTAGRAM_HOSTS.has(host)) {
-    return null;
-  }
-
-  const segments = parsed.pathname.split("/").filter(Boolean);
-  if (segments.length < 2) {
-    return null;
-  }
-
-  const kind = segments[0]!.toLowerCase();
-  if (!MEDIA_PATH_KINDS.has(kind)) {
-    return null;
-  }
-
-  const shortcode = segments[1]!;
-  if (!SHORTCODE_RE.test(shortcode)) {
-    return null;
-  }
-
-  return `https://www.instagram.com/${kind}/${shortcode}/`;
+  return parseInstagramMedia(url)?.shortcode ?? null;
 }
 
 function candidateFromUrl(raw: string): InstagramExtractCandidate | null {
-  const shortcode = parseInstagramShortcode(raw);
-  if (!shortcode) {
+  const media = parseInstagramMedia(raw);
+  if (!media) {
     return null;
   }
-  const url = normalizeInstagramMediaUrl(raw);
-  if (!url) {
-    return null;
-  }
-  return { extractorId: "instagram", url, shortcode };
+  return {
+    extractorId: "instagram",
+    url: `https://www.instagram.com/${media.kind}/${media.shortcode}/`,
+    shortcode: media.shortcode,
+  };
 }
 
 function collectHttpUrlsFromBody(body: string): string[] {
   const found: string[] = [];
-  HTTP_URL_RE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = HTTP_URL_RE.exec(body)) !== null) {
-    const token = match[0]!.replace(TRAILING_PUNCT_RE, "");
+  for (const match of body.matchAll(HTTP_URL_RE)) {
+    const token = match[0].replace(TRAILING_PUNCT_RE, "");
     if (token.length > 0) {
       found.push(token);
     }
@@ -141,12 +113,10 @@ export function discoverInstagramCandidates(input: {
       return;
     }
     const candidate = candidateFromUrl(raw);
-    if (!candidate) {
+    if (!candidate || byShortcode.has(candidate.shortcode)) {
       return;
     }
-    if (!byShortcode.has(candidate.shortcode)) {
-      byShortcode.set(candidate.shortcode, candidate);
-    }
+    byShortcode.set(candidate.shortcode, candidate);
   };
 
   consider(input.frontmatterUrl);
