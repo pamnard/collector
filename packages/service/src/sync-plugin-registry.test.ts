@@ -56,7 +56,8 @@ describe("createSyncPluginRegistry (#29)", () => {
       resolveActiveVaultId: async () => "vault-1",
       createItem,
       attachMediaFiles: vi.fn(async () => []),
-      createCatalog: () => [mock],
+      deleteItem: vi.fn(async () => {}),
+createCatalog: () => [mock],
     });
 
     const result = await registry.syncNow(MOCK_SYNC_PLUGIN_ID);
@@ -84,6 +85,7 @@ describe("createSyncPluginRegistry (#29)", () => {
       resolveActiveVaultId: async () => "vault-1",
       createItem: vi.fn(),
       attachMediaFiles: vi.fn(),
+      deleteItem: vi.fn(async () => {}),
     });
 
     await expect(registry.syncNow("nope")).rejects.toThrow(
@@ -99,6 +101,7 @@ describe("createSyncPluginRegistry (#29)", () => {
       resolveActiveVaultId: async () => "vault-1",
       createItem: vi.fn(),
       attachMediaFiles: vi.fn(),
+      deleteItem: vi.fn(async () => {}),
     });
 
     await expect(registry.syncNow(MOCK_SYNC_PLUGIN_ID)).rejects.toThrow(
@@ -122,7 +125,8 @@ describe("createSyncPluginRegistry (#29)", () => {
       resolveActiveVaultId: async () => "vault-1",
       createItem: vi.fn(),
       attachMediaFiles: vi.fn(),
-      createCatalog: () => [failing],
+      deleteItem: vi.fn(async () => {}),
+createCatalog: () => [failing],
     });
 
     await expect(registry.syncNow("fail")).rejects.toThrow(/pull exploded/);
@@ -161,7 +165,8 @@ describe("createSyncPluginRegistry (#29)", () => {
       resolveActiveVaultId: async () => "vault-1",
       createItem,
       attachMediaFiles: vi.fn(async () => []),
-      createCatalog: () => [slow],
+      deleteItem: vi.fn(async () => {}),
+createCatalog: () => [slow],
     });
 
     const first = registry.syncNow("slow");

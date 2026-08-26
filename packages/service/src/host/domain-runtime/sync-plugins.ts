@@ -66,6 +66,7 @@ export function createSyncPluginRuntime(
     createItem: (input) => deps.itemsSearch.createItem(input),
     attachMediaFiles: (itemId, files) =>
       deps.mediaCover.attachMediaFiles(itemId, files),
+    deleteItem: (itemId) => deps.itemsSearch.deleteItem(itemId),
     createCatalog: () => [telegramPlugin],
   });
 
