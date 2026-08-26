@@ -3,6 +3,9 @@ import { parseYouTubeVideoId } from "@collector/core";
 
 export type PlayableMediaKind = "video" | "audio";
 
+/** Detail overlay: local playback + markdown image preview. */
+export type OverlayMediaKind = PlayableMediaKind | "image";
+
 export interface PlayableMediaRef {
   path: string;
   kind: PlayableMediaKind;

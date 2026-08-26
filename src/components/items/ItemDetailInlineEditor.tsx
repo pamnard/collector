@@ -42,7 +42,7 @@ export function ItemDetailInlineEditor({
         value={values.title}
         onChange={(event) => update("title", event.target.value)}
         placeholder="Название"
-        className="w-full bg-transparent text-2xl font-semibold outline-hidden border-b border-black/10 dark:border-white/10 pb-2 focus:border-indigo-500/50"
+        className="w-full bg-transparent text-3xl font-bold tracking-tight leading-normal outline-hidden border-b border-black/10 dark:border-white/10 pb-2 focus:border-indigo-500/50"
       />
 
       <div className="border-y border-black/10 dark:border-white/10">

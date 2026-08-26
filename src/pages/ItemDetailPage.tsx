@@ -12,6 +12,7 @@ import { ItemDetailViewBody } from "../components/items/ItemDetailViewBody";
 import { ItemExtractDialog } from "../components/items/ItemExtractDialog";
 import { ItemRenameDialog } from "../components/items/ItemRenameDialog";
 import { useShell } from "../components/layout/AppLayout";
+import { MediaOverlayProvider } from "../components/media/MediaOverlayContext";
 import { MediaPlayerOverlay } from "../components/media/MediaPlayerOverlay";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Spinner } from "../components/ui/spinner";
@@ -112,6 +113,7 @@ export function ItemDetailPage() {
     session: mediaPlayerSession,
     openItemMedia,
     openMediaRef,
+    openImageSrc,
     close: closeMediaPlayer,
   } = useMediaPlayerOverlay();
 
@@ -242,7 +244,8 @@ export function ItemDetailPage() {
       ) : null}
 
       {item && (
-        <article className="grid grid-cols-1 gap-6 @[1100px]:grid-cols-12 @[1100px]:items-start @[1100px]:gap-8">
+        <MediaOverlayProvider openImage={openImageSrc}>
+          <article className="grid grid-cols-1 gap-6 @[1100px]:grid-cols-12 @[1100px]:items-start @[1100px]:gap-8">
           {mode === "view" ? (
             <ItemDetailViewBody
               item={item}
@@ -285,7 +288,8 @@ export function ItemDetailPage() {
               {aside}
             </>
           )}
-        </article>
+          </article>
+        </MediaOverlayProvider>
       )}
 
       {mediaPlayerSession && (

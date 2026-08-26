@@ -1,12 +1,25 @@
 import { X } from "lucide-react";
 import { useEffect } from "react";
-import type { PlayableMediaKind } from "../../utils/local-media-playback";
+import type { OverlayMediaKind } from "../../utils/local-media-playback";
 
 export interface MediaPlayerOverlayProps {
   src: string;
-  kind: PlayableMediaKind;
+  kind: OverlayMediaKind;
   onClose: () => void;
   title?: string;
+}
+
+function overlayAriaLabel(kind: OverlayMediaKind, title?: string): string {
+  if (title) {
+    return title;
+  }
+  if (kind === "video") {
+    return "Видео";
+  }
+  if (kind === "audio") {
+    return "Аудио";
+  }
+  return "Изображение";
 }
 
 /**
@@ -36,7 +49,7 @@ export function MediaPlayerOverlay({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={title ?? (kind === "video" ? "Видео" : "Аудио")}
+      aria-label={overlayAriaLabel(kind, title)}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
       onClick={onClose}
     >
@@ -61,7 +74,7 @@ export function MediaPlayerOverlay({
           onClick={(event) => event.stopPropagation()}
           className="relative z-10 h-full w-full object-contain"
         />
-      ) : (
+      ) : kind === "audio" ? (
         <audio
           key={src}
           src={src}
@@ -69,6 +82,14 @@ export function MediaPlayerOverlay({
           autoPlay
           onClick={(event) => event.stopPropagation()}
           className="relative z-10 w-full max-w-3xl"
+        />
+      ) : (
+        <img
+          key={src}
+          src={src}
+          alt={title ?? ""}
+          onClick={(event) => event.stopPropagation()}
+          className="relative z-10 max-h-full max-w-full object-contain"
         />
       )}
     </div>
