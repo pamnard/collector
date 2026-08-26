@@ -21,31 +21,27 @@ export function parseDiscoverExtractCandidates(
 }
 
 function parseMetaJson(raw: string): Record<string, string> {
+  const invalid =
+    "extract-item-candidate --meta must be a JSON object of string values";
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new CliUsageError(
-      "extract-item-candidate --meta must be a JSON object of string values",
-    );
+    throw new CliUsageError(invalid);
   }
   if (
     parsed === null ||
     typeof parsed !== "object" ||
     Array.isArray(parsed)
   ) {
-    throw new CliUsageError(
-      "extract-item-candidate --meta must be a JSON object of string values",
-    );
+    throw new CliUsageError(invalid);
   }
   const meta: Record<string, string> = {};
   for (const [key, value] of Object.entries(
     parsed as Record<string, unknown>,
   )) {
     if (typeof value !== "string") {
-      throw new CliUsageError(
-        "extract-item-candidate --meta must be a JSON object of string values",
-      );
+      throw new CliUsageError(invalid);
     }
     meta[key] = value;
   }
@@ -69,16 +65,25 @@ export function parseExtractItemCandidate(
       "extract-item-candidate requires --extractor-id and --url",
     );
   }
-  const metaRaw = hasFlag(argv, "--meta") ? readOpt(argv, "--meta") : undefined;
-  if (hasFlag(argv, "--meta") && metaRaw === undefined) {
-    throw new CliUsageError("extract-item-candidate --meta requires a JSON value");
+  if (!hasFlag(argv, "--meta")) {
+    return {
+      name: "extract-item-candidate",
+      itemId,
+      extractorId,
+      url,
+    };
   }
-  const meta = metaRaw === undefined ? undefined : parseMetaJson(metaRaw);
+  const metaRaw = readOpt(argv, "--meta");
+  if (metaRaw === undefined) {
+    throw new CliUsageError(
+      "extract-item-candidate --meta requires a JSON value",
+    );
+  }
   return {
     name: "extract-item-candidate",
     itemId,
     extractorId,
     url,
-    ...(meta === undefined ? {} : { meta }),
+    meta: parseMetaJson(metaRaw),
   };
 }

@@ -54,7 +54,7 @@ export const EXTRACT_DISPATCH = {
       const candidate = parseExtractCandidate(p.candidate, M.extractItemCandidate);
       await runtime.ensureInitialized();
       await runtime.extract.extractItemCandidate(itemId, candidate);
-      return { ok: true as const };
+      return { ok: true };
     },
   },
 } satisfies DomainDispatchGroup;

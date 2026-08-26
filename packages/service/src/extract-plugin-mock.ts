@@ -37,18 +37,18 @@ export function createMockExtractorPlugin(
         body: input.body,
         frontmatterUrl: input.frontmatterUrl,
       });
+      const frontmatterUrl = input.frontmatterUrl;
       const fromBody = input.body.includes(markerUrl);
       const fromUrl =
-        typeof input.frontmatterUrl === "string" &&
-        input.frontmatterUrl.includes(markerUrl);
+        typeof frontmatterUrl === "string" &&
+        frontmatterUrl.includes(markerUrl);
       if (!fromBody && !fromUrl) {
         return [];
       }
-      const url = fromUrl ? (input.frontmatterUrl as string) : markerUrl;
       return [
         {
           extractorId: id,
-          url,
+          url: fromUrl ? frontmatterUrl : markerUrl,
           meta: { source: fromUrl ? "frontmatter" : "body" },
         },
       ];
