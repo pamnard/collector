@@ -249,6 +249,28 @@ export async function runCollectorCli(
       io.stdout(JSON.stringify(item, null, 2));
       return 0;
     }
+    if (cmd.name === "discover-extract-candidates") {
+      const candidates = await client.extract.discoverExtractCandidates(
+        cmd.itemId,
+      );
+      io.stdout(JSON.stringify(candidates, null, 2));
+      return 0;
+    }
+    if (cmd.name === "extract-item-candidate") {
+      await client.extract.extractItemCandidate(cmd.itemId, {
+        extractorId: cmd.extractorId,
+        url: cmd.url,
+        ...(cmd.meta === undefined ? {} : { meta: cmd.meta }),
+      });
+      io.stdout(
+        JSON.stringify({
+          ok: true,
+          itemId: cmd.itemId,
+          extractorId: cmd.extractorId,
+        }),
+      );
+      return 0;
+    }
     const _exhaustive: never = cmd;
     throw new Error(`unhandled command: ${JSON.stringify(_exhaustive)}`);
   } catch (error) {

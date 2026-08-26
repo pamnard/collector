@@ -66,7 +66,15 @@ export type CliCommand =
       filename?: string;
     }
   | { name: "delete-media"; itemId: string; mediaId: string }
-  | { name: "set-item-cover"; itemId: string; mediaId: string };
+  | { name: "set-item-cover"; itemId: string; mediaId: string }
+  | { name: "discover-extract-candidates"; itemId: string }
+  | {
+      name: "extract-item-candidate";
+      itemId: string;
+      extractorId: string;
+      url: string;
+      meta?: Record<string, string>;
+    };
 
 export interface ParsedCliArgs {
   command: CliCommand;

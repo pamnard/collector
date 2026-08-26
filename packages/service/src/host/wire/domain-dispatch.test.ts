@@ -89,6 +89,10 @@ function stubRuntime(overrides: {
     syncPlugins: {
       syncNow: vi.fn(async () => ({ importedCount: 0, itemIds: [] })),
     },
+    extract: {
+      discoverExtractCandidates: vi.fn(async () => []),
+      extractItemCandidate: vi.fn(async () => undefined),
+    },
     telegramSync: {
       getTelegramSyncSettings: vi.fn(async () => ({
         enabled: false,
@@ -407,6 +411,47 @@ describe("createDomainWireRequestHandler (#330)", () => {
     expect(ensureInitialized).toHaveBeenCalledTimes(1);
 
     await expectBadRequest(() => dispatch(M.syncNow, {}));
+  });
+
+  it("discoverExtractCandidates and extractItemCandidate (#849)", async () => {
+    const candidate = {
+      extractorId: "mock",
+      url: "https://example.com/mock-extract",
+      meta: { source: "body" },
+    };
+    const discoverExtractCandidates = vi.fn(async () => [candidate]);
+    const extractItemCandidate = vi.fn(async () => undefined);
+    const { runtime, ensureInitialized } = stubRuntime({});
+    (runtime as { extract: unknown }).extract = {
+      discoverExtractCandidates,
+      extractItemCandidate,
+    };
+    const dispatch = createDomainWireRequestHandler(runtime);
+
+    await expect(
+      dispatch(M.discoverExtractCandidates, { itemId: "Inbox/a.md" }),
+    ).resolves.toEqual([candidate]);
+    expect(discoverExtractCandidates).toHaveBeenCalledWith("Inbox/a.md");
+
+    await expect(
+      dispatch(M.extractItemCandidate, {
+        itemId: "Inbox/a.md",
+        candidate,
+      }),
+    ).resolves.toEqual({ ok: true });
+    expect(extractItemCandidate).toHaveBeenCalledWith("Inbox/a.md", candidate);
+    expect(ensureInitialized).toHaveBeenCalledTimes(2);
+
+    await expectBadRequest(() => dispatch(M.discoverExtractCandidates, {}));
+    await expectBadRequest(() =>
+      dispatch(M.extractItemCandidate, { itemId: "Inbox/a.md" }),
+    );
+    await expectBadRequest(() =>
+      dispatch(M.extractItemCandidate, {
+        itemId: "Inbox/a.md",
+        candidate: { extractorId: "mock" },
+      }),
+    );
   });
 
   it("ensureActiveVault does not notify sync plugin wake (#436)", async () => {

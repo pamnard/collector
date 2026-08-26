@@ -28,6 +28,8 @@ const REGISTERED_TOOL_NAMES = [
   "collector_replace_media",
   "collector_delete_media",
   "collector_set_item_cover",
+  "collector_discover_extract_candidates",
+  "collector_extract_item_candidate",
 ] as const;
 
 describe("COLLECTOR_MCP_TOOLS catalog (#273 / #265)", () => {

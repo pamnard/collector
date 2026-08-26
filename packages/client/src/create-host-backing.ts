@@ -21,6 +21,7 @@ import { createHostJobsPort } from "./host-ports/jobs.js";
 import { createHostSettingsPort } from "./host-ports/settings.js";
 import { createHostCredentialsPort } from "./host-ports/credentials.js";
 import { createHostSyncPluginsPort } from "./host-ports/sync-plugins.js";
+import { createHostExtractPort } from "./host-ports/extract.js";
 import { createHostTelegramSyncPort } from "./host-ports/telegram-sync.js";
 
 export type HostBacking = {
@@ -50,6 +51,7 @@ export function createHostBacking(
     settings: createHostSettingsPort(ctx),
     credentials: createHostCredentialsPort(ctx),
     syncPlugins: createHostSyncPluginsPort(ctx),
+    extract: createHostExtractPort(ctx),
     telegramSync: createHostTelegramSyncPort(ctx),
   };
   const snapshot = options.snapshot ?? createMemoryDashboardSnapshotPort();

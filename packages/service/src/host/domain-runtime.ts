@@ -66,6 +66,7 @@ import { enqueueItemDerivedRefreshWithFailureReporting } from "./domain-runtime/
 import { createDropImportRuntime } from "./domain-runtime/drop-import.js";
 import { createWaitDerivedRuntime } from "./domain-runtime/wait-derived.js";
 import { createSyncPluginRuntime } from "./domain-runtime/sync-plugins.js";
+import { createExtractPluginRegistry } from "../extract-plugin-registry.js";
 import {
   createVaultSyncController,
   type VaultSyncController,
@@ -416,6 +417,10 @@ export function createServiceDomainRuntime(
     wakePolicies: options.wakePolicies,
   });
 
+  const extract = createExtractPluginRegistry({
+    getItemById: (itemId) => itemsSearch.getItemById(itemId),
+  });
+
   // Boot order: open()/start() may run before ensureActiveVault. Wake again on
   // vault-ready (same signal as sync plugins) so reconcile does not wait a full interval.
   const syncPluginWake: typeof syncPluginWakeInner = {
@@ -496,6 +501,7 @@ export function createServiceDomainRuntime(
     appSettings,
     credentials,
     syncPlugins,
+    extract,
     telegramSync,
     syncPluginWake,
     dashboardSnapshot,

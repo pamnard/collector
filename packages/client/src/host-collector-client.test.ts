@@ -23,6 +23,7 @@ import {
   BOOT_PORT_KEYS,
   CREDENTIALS_PORT_KEYS,
   DASHBOARD_SNAPSHOT_PORT_KEYS,
+  EXTRACT_PORT_KEYS,
   FOLDERS_PORT_KEYS,
   INDEX_PORT_KEYS,
   ITEMS_PORT_KEYS,
@@ -813,6 +814,7 @@ describe("CollectorHostServiceClient", () => {
 const PORT_KEYS = [
   "boot",
   "credentials",
+  "extract",
   "folders",
   "index",
   "items",
@@ -896,6 +898,9 @@ describe("CollectorHostService ports (#366)", () => {
       expect(typeof service.syncPlugins[key], `syncPlugins.${key}`).toBe(
         "function",
       );
+    }
+    for (const key of EXTRACT_PORT_KEYS) {
+      expect(typeof service.extract[key], `extract.${key}`).toBe("function");
     }
     for (const key of TELEGRAM_SYNC_PORT_KEYS) {
       expect(typeof service.telegramSync[key], `telegramSync.${key}`).toBe(

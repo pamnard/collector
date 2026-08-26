@@ -13,3 +13,9 @@ export {
   listInstagramMediaIntents,
   mergeInstagramIntoNote,
 } from "./merge.js";
+
+export {
+  discoverInstagramCandidates,
+  parseInstagramShortcode,
+  type InstagramExtractCandidate,
+} from "./instagram-url-discover.js";
