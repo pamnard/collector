@@ -32,6 +32,10 @@ export type ItemChromeDomain = {
   onSource: () => void;
   onMove: () => void;
   onRename: () => void;
+  onImport: () => void;
   onLint: () => void;
   onDelete: () => void;
+  /** Host discover found import candidates for the open item. */
+  importAvailable: boolean;
+  onActionsMenuOpenChange: (open: boolean) => void;
 };

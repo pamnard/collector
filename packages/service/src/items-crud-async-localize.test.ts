@@ -75,6 +75,7 @@ describe("createItemsCrud async localize (#768)", () => {
         }),
         normalizeMarkdown: (raw) => ({ text: raw, changed: false }),
         enqueueItemDerivedRefresh,
+        enqueueItemExtractAuto: async () => undefined,
       } as never,
       () => "unused",
     );

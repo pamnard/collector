@@ -175,6 +175,38 @@ export function itemDerivedRefreshIdempotencyKeyPrefix(
   return `itemDerivedRefresh:${payload.vaultId}:${payload.itemId}:${payload.contentRevision}:`;
 }
 
+/**
+ * One-shot auto extract after note body write.
+ * maxAttempts=1 — no network retry; user re-runs via manual Import.
+ */
+export const ITEM_EXTRACT_AUTO_TIMEOUT_MS = 5 * 60 * 1000;
+
+export const itemExtractAutoJobPayloadSchema = z.object({
+  vaultId: z.string().min(1),
+  vaultPath: z.string().min(1),
+  itemId: z.string().min(1),
+  contentRevision: z.number().int(),
+});
+export type ItemExtractAutoJobPayload = z.infer<
+  typeof itemExtractAutoJobPayloadSchema
+>;
+export const itemExtractAutoJobType = defineJobType({
+  id: "itemExtractAuto",
+  payload: itemExtractAutoJobPayloadSchema,
+  timeoutMs: ITEM_EXTRACT_AUTO_TIMEOUT_MS,
+  maxAttempts: 1,
+});
+
+/** One auto job per content revision (active dedupe only). */
+export function itemExtractAutoIdempotencyKey(
+  payload: Pick<
+    ItemExtractAutoJobPayload,
+    "vaultId" | "itemId" | "contentRevision"
+  >,
+): string {
+  return `itemExtractAuto:${payload.vaultId}:${payload.itemId}:${payload.contentRevision}`;
+}
+
 /** Embedding refresh batch (#633). */
 export const embeddingRefreshInputSchema = z.object({
   itemId: z.string().min(1),
@@ -273,6 +305,7 @@ export const JOB_TYPE_CATALOG = [
   vaultIndexSyncJobType,
   reindexVaultBatchJobType,
   itemDerivedRefreshJobType,
+  itemExtractAutoJobType,
   refreshEmbeddingsJobType,
   syncPluginPullJobType,
   generateCoverJobType,

@@ -70,6 +70,7 @@ describe("createItemsCrud metadata-only update (#776)", () => {
         getIndex: () => index,
         normalizeMarkdown,
         enqueueItemDerivedRefresh: async () => undefined,
+        enqueueItemExtractAuto: async () => undefined,
       } as never,
       () => "unused",
     );

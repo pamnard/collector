@@ -99,11 +99,13 @@ function collectHttpUrlsFromBody(body: string): string[] {
 }
 
 /**
- * Discover Instagram extract candidates from note body and optional frontmatter `url`.
- * Dedupes by shortcode (first occurrence wins).
+ * Discover Instagram extract candidates from note body only.
+ * Frontmatter `url` is the stored canonical link after import — not a pending
+ * import signal (#318). Dedupes by shortcode (first occurrence wins).
  */
 export function discoverInstagramCandidates(input: {
   body: string;
+  /** Ignored for candidates — kept for call-site compatibility. */
   frontmatterUrl?: string | null;
 }): InstagramExtractCandidate[] {
   const byShortcode = new Map<string, InstagramExtractCandidate>();
@@ -119,7 +121,6 @@ export function discoverInstagramCandidates(input: {
     byShortcode.set(candidate.shortcode, candidate);
   };
 
-  consider(input.frontmatterUrl);
   for (const raw of collectHttpUrlsFromBody(input.body)) {
     consider(raw);
   }

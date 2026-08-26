@@ -16,13 +16,33 @@ export const LOGGED_OUT_QUERY_NAME =
 export const LOGGED_OUT_QUERY_DOC_ID = "27130156389949648";
 export const LEGACY_SHORTCODE_DOC_ID = "8845758582119845";
 
-const BASE_HEADERS: Record<string, string> = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+const USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+
+/**
+ * Document navigation headers. Without Sec-Fetch-Dest: document Instagram
+ * serves a shell HTML with no embed contextJSON (logged-out public posts fail).
+ */
+const DOCUMENT_GET_HEADERS: Record<string, string> = {
+  "User-Agent": USER_AGENT,
+  Accept:
+    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+  "Sec-Fetch-Dest": "document",
+  "Sec-Fetch-Mode": "navigate",
+  "Sec-Fetch-Site": "none",
+  "Upgrade-Insecure-Requests": "1",
+};
+
+const CORS_POST_HEADERS: Record<string, string> = {
+  "User-Agent": USER_AGENT,
   Accept: "*/*",
   "Accept-Language": "en-US,en;q=0.9",
   Origin: IG_WEB_ORIGIN,
   Referer: `${IG_WEB_ORIGIN}/`,
+  "Sec-Fetch-Dest": "empty",
+  "Sec-Fetch-Mode": "cors",
+  "Sec-Fetch-Site": "same-origin",
 };
 
 const API_HEADERS: Record<string, string> = {
@@ -112,17 +132,18 @@ export type InstagramHttpClient = {
 
 export function createInstagramHttpClient(deps: {
   fetchImpl: InstagramHttpFetch;
-  cookies?: string | Readonly<Record<string, string>>;
 }): InstagramHttpClient {
-  const cookies = new InstagramCookieJar(deps.cookies);
+  /** Jar only absorbs Set-Cookie from responses (CSRF warm-up). No user session. */
+  const cookies = new InstagramCookieJar();
   const fetchImpl = deps.fetchImpl;
 
   async function request(
     url: string,
     init: RequestInit,
+    baseHeaders: Record<string, string>,
     extraHeaders?: Record<string, string>,
   ): Promise<InstagramHttpResponse> {
-    const headers = new Headers({ ...BASE_HEADERS, ...extraHeaders });
+    const headers = new Headers({ ...baseHeaders, ...extraHeaders });
     const cookieHeader = cookies.headerValue();
     if (cookieHeader) {
       headers.set("Cookie", cookieHeader);
@@ -145,7 +166,7 @@ export function createInstagramHttpClient(deps: {
   return {
     cookies,
     getText(url, headers) {
-      return request(url, { method: "GET" }, headers);
+      return request(url, { method: "GET" }, DOCUMENT_GET_HEADERS, headers);
     },
     postForm(url, form, headers) {
       const body = new URLSearchParams(form).toString();
@@ -158,6 +179,7 @@ export function createInstagramHttpClient(deps: {
             "Content-Type": "application/x-www-form-urlencoded",
           },
         },
+        CORS_POST_HEADERS,
         headers,
       );
     },

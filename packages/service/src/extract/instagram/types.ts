@@ -43,11 +43,6 @@ export type InstagramHttpFetch = typeof fetch;
 export type FetchInstagramMediaOptions = {
   /** Injected HTTP — unit tests supply fixture-backed responses. */
   fetchImpl?: InstagramHttpFetch;
-  /**
-   * Optional session Cookie header (string) or name→value map.
-   * Without cookies, only logged-out paths run.
-   */
-  cookies?: string | Readonly<Record<string, string>>;
 };
 
 export type InstagramMediaIntent = {

@@ -170,6 +170,7 @@ function createSearchService(
     findSimilarItems: async () => [],
     normalizeMarkdown: (raw) => ({ text: raw, changed: false }),
     enqueueItemDerivedRefresh: async () => undefined,
+        enqueueItemExtractAuto: async () => undefined,
   });
 }
 

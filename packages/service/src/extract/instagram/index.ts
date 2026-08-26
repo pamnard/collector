@@ -31,3 +31,9 @@ export {
   parseInstagramShortcode,
   type InstagramExtractCandidate,
 } from "./instagram-url-discover.js";
+
+export {
+  INSTAGRAM_PLUGIN_ID,
+  createInstagramExtractorPlugin,
+  type InstagramExtractorPluginDeps,
+} from "./instagram-extractor-plugin.js";

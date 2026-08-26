@@ -6,6 +6,7 @@
 
 import type { JobPermanentFailure, Subscription } from "@collector/api";
 import { subscriptionFromTeardown } from "@collector/api";
+import type { JobQueue } from "./jobs/job-queue.js";
 
 export type { JobPermanentFailure };
 
@@ -34,6 +35,20 @@ export function createJobPermanentFailureStore(): JobPermanentFailureStore {
   };
 }
 
+export function notifyJobPermanentFailure(
+  store: JobPermanentFailureStore,
+  info: JobPermanentFailure,
+  logKind: "permanent failure" | "enqueue failure" = "permanent failure",
+): void {
+  console.error(`[jobs] ${logKind}`, {
+    jobId: info.id,
+    type: info.type,
+    error: info.error,
+    attempts: info.attempts,
+  });
+  store.notify(info);
+}
+
 /**
  * Surface a failed enqueue on the same AlertStack path as terminal job failures.
  * Uses a synthetic id — no row was inserted into the jobs store.
@@ -45,16 +60,29 @@ export function reportEnqueueFailure(
   createId: () => string = () => crypto.randomUUID(),
 ): void {
   const message = error instanceof Error ? error.message : String(error);
-  const info: JobPermanentFailure = {
-    id: `enqueue-failed:${type}:${createId()}`,
-    type,
-    error: `enqueue failed: ${message}`,
-    attempts: 0,
-  };
-  console.error("[jobs] enqueue failure", {
-    jobId: info.id,
-    type: info.type,
-    error: info.error,
-  });
-  store.notify(info);
+  notifyJobPermanentFailure(
+    store,
+    {
+      id: `enqueue-failed:${type}:${createId()}`,
+      type,
+      error: `enqueue failed: ${message}`,
+      attempts: 0,
+    },
+    "enqueue failure",
+  );
+}
+
+export async function enqueueJobWithFailureReporting(
+  deps: {
+    requireJobs: () => JobQueue;
+    jobPermanentFailure: JobPermanentFailureStore;
+  },
+  type: string,
+  enqueue: (queue: JobQueue) => Promise<unknown>,
+): Promise<void> {
+  try {
+    await enqueue(deps.requireJobs());
+  } catch (error) {
+    reportEnqueueFailure(deps.jobPermanentFailure, type, error);
+  }
 }

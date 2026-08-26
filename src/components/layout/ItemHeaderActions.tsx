@@ -19,8 +19,11 @@ export interface ItemHeaderActionsModel {
   onSource: () => void;
   onMove: () => void;
   onRename: () => void;
+  onImport: () => void;
   onLint: () => void;
   onDelete: () => void;
+  importAvailable: boolean;
+  onActionsMenuOpenChange: (open: boolean) => void;
 }
 
 interface ItemHeaderActionsProps {
@@ -50,8 +53,11 @@ export function ItemHeaderActions({ actions }: ItemHeaderActionsProps) {
     onSource,
     onMove,
     onRename,
+    onImport,
     onLint,
     onDelete,
+    importAvailable,
+    onActionsMenuOpenChange,
   } = actions;
 
   const handleItemAction = (id: ItemActionId) => {
@@ -61,6 +67,10 @@ export function ItemHeaderActions({ actions }: ItemHeaderActionsProps) {
     }
     if (id === "rename") {
       onRename();
+      return;
+    }
+    if (id === "import") {
+      onImport();
       return;
     }
     if (id === "lint") {
@@ -125,6 +135,8 @@ export function ItemHeaderActions({ actions }: ItemHeaderActionsProps) {
       <ItemActionsMenu
         triggerVariant="header"
         disabled={!ready || isDeleting || isSaving}
+        importAvailable={importAvailable}
+        onOpenChange={onActionsMenuOpenChange}
         onAction={handleItemAction}
       />
     </ButtonGroup>

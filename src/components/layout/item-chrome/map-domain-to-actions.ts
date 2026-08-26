@@ -43,7 +43,10 @@ export function mapDomainToActions(
     onSource: domain.onSource,
     onMove: domain.onMove,
     onRename: domain.onRename,
+    onImport: domain.onImport,
     onLint: domain.onLint,
     onDelete: domain.onDelete,
+    importAvailable: domain.importAvailable,
+    onActionsMenuOpenChange: domain.onActionsMenuOpenChange,
   };
 }

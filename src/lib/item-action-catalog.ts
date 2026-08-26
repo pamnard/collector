@@ -1,4 +1,9 @@
-export type ItemActionId = "move" | "rename" | "lint" | "delete";
+export type ItemActionId =
+  | "move"
+  | "rename"
+  | "import"
+  | "lint"
+  | "delete";
 
 export type ItemActionGroup = "manage" | "modify";
 
@@ -12,16 +17,35 @@ export type ItemActionDef = {
 export const ITEM_ACTION_ORDER: readonly ItemActionDef[] = [
   { id: "move", group: "manage", label: "Переместить файл в…" },
   { id: "rename", group: "modify", label: "Переименовать" },
+  { id: "import", group: "modify", label: "Импорт" },
   { id: "lint", group: "modify", label: "Линт файла" },
   { id: "delete", group: "modify", label: "Удалить" },
 ] as const;
 
-export function isItemActionEnabled(_id: ItemActionId): boolean {
+export type ListItemActionsOptions = {
+  /**
+   * Host discover found at least one extract candidate for this item.
+   * Import stays hidden until true (default false).
+   */
+  importAvailable?: boolean;
+};
+
+export function isItemActionEnabled(
+  id: ItemActionId,
+  options: ListItemActionsOptions = {},
+): boolean {
+  if (id === "import") {
+    return options.importAvailable === true;
+  }
   return true;
 }
 
-export function listEnabledItemActions(): ItemActionDef[] {
-  return ITEM_ACTION_ORDER.filter((action) => isItemActionEnabled(action.id));
+export function listEnabledItemActions(
+  options: ListItemActionsOptions = {},
+): ItemActionDef[] {
+  return ITEM_ACTION_ORDER.filter((action) =>
+    isItemActionEnabled(action.id, options),
+  );
 }
 
 /** Consecutive same-group actions become one section (for menu separators). */
