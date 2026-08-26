@@ -1,0 +1,33 @@
+{
+  "data": {
+    "xig_polaris_media": {
+      "if_not_gated_logged_out": {
+        "code": "CzReelVid3ef",
+        "pk": "123",
+        "user": {
+          "username": "reel_creator"
+        },
+        "caption": {
+          "text": "Skate clip"
+        },
+        "accessibility_caption": null,
+        "video_versions": [
+          {
+            "url": "https://cdn.instagram.fixture/reel.mp4",
+            "width": 1080,
+            "height": 1920
+          }
+        ],
+        "image_versions2": {
+          "candidates": [
+            {
+              "url": "https://cdn.instagram.fixture/reel-cover.jpg",
+              "width": 1080,
+              "height": 1920
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "data": {
+    "xdt_shortcode_media": {
+      "shortcode": "CzReelVid3ef",
+      "owner": {
+        "username": "reel_creator"
+      },
+      "edge_media_to_caption": {
+        "edges": [
+          {
+            "node": {
+              "text": "Skate clip"
+            }
+          }
+        ]
+      },
+      "accessibility_caption": null,
+      "is_video": true,
+      "video_url": "https://cdn.instagram.fixture/reel-legacy.mp4",
+      "display_url": "https://cdn.instagram.fixture/reel-cover.jpg"
+    }
+  }
+}
