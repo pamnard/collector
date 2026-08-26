@@ -9,6 +9,7 @@ import { MoveItemDialog } from "../components/folders/MoveItemDialog";
 import { ItemDetailAside } from "../components/items/ItemDetailAside";
 import { ItemDetailInlineEditor } from "../components/items/ItemDetailInlineEditor";
 import { ItemDetailViewBody } from "../components/items/ItemDetailViewBody";
+import { ItemExtractDialog } from "../components/items/ItemExtractDialog";
 import { ItemRenameDialog } from "../components/items/ItemRenameDialog";
 import { useShell } from "../components/layout/AppLayout";
 import { MediaPlayerOverlay } from "../components/media/MediaPlayerOverlay";
@@ -19,6 +20,8 @@ import { useItemDetail } from "../hooks/useItemDetail";
 import { useItemDetailChrome } from "../hooks/useItemDetailChrome";
 import { useMediaPlayerOverlay } from "../hooks/useMediaPlayerOverlay";
 import {
+  ITEM_IMPORT_BUSY_ID,
+  ITEM_IMPORT_ERROR_ID,
   ITEM_LINT_BUSY_ID,
   ITEM_LINT_ERROR_ID,
   ITEM_MOVE_BUSY_ID,
@@ -70,6 +73,11 @@ export function ItemDetailPage() {
     setRenameOpen,
     moveOpen,
     setMoveOpen,
+    importOpen,
+    setImportOpen,
+    importCandidates,
+    importBusy,
+    confirmImport,
   } = useItemDetailChrome({
     item,
     error,
@@ -82,6 +90,9 @@ export function ItemDetailPage() {
     onLinted: () => {
       handleItemUpdated();
     },
+    onImported: () => {
+      handleItemUpdated();
+    },
   });
 
   const alerts = useAlerts();
@@ -92,6 +103,8 @@ export function ItemDetailPage() {
     ITEM_MOVE_ERROR_ID,
     ITEM_LINT_BUSY_ID,
     ITEM_LINT_ERROR_ID,
+    ITEM_IMPORT_BUSY_ID,
+    ITEM_IMPORT_ERROR_ID,
   ]);
   const [isRenaming, setIsRenaming] = useState(false);
   const [mediaPlayError, setMediaPlayError] = useState<string | null>(null);
@@ -202,6 +215,16 @@ export function ItemDetailPage() {
         onOpenChange={setRenameOpen}
         onConfirm={(nextTitle) => {
           void handleConfirmRename(nextTitle);
+        }}
+      />
+
+      <ItemExtractDialog
+        open={importOpen}
+        candidates={importCandidates}
+        busy={importBusy}
+        onOpenChange={setImportOpen}
+        onConfirm={(candidate) => {
+          void confirmImport(candidate);
         }}
       />
 

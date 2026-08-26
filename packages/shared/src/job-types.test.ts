@@ -9,6 +9,8 @@ import {
   itemDerivedRefreshIdempotencyKey,
   itemDerivedRefreshIdempotencyKeyPrefix,
   itemDerivedRefreshJobType,
+  itemExtractAutoIdempotencyKey,
+  itemExtractAutoJobType,
   isVaultMutatingBulkJob,
   isVaultMutatingBulkJobType,
   testNoopJobType,
@@ -118,5 +120,26 @@ describe("job type catalog (#629)", () => {
     expect(itemDerivedRefreshIdempotencyKeyPrefix(snapshot)).toBe(
       "itemDerivedRefresh:v1:Inbox/n.md:3:",
     );
+  });
+
+  it("includes itemExtractAuto as non-retryable one-shot (#auto-import)", () => {
+    expect(JOB_TYPE_CATALOG.some((t) => t.id === "itemExtractAuto")).toBe(true);
+    expect(itemExtractAutoJobType.id).toBe("itemExtractAuto");
+    expect(itemExtractAutoJobType.maxAttempts).toBe(1);
+    expect(isVaultMutatingBulkJobType("itemExtractAuto")).toBe(false);
+    const parsed = itemExtractAutoJobType.payload.parse({
+      vaultId: "v1",
+      vaultPath: "/vault",
+      itemId: "Inbox/n.md",
+      contentRevision: 2,
+    });
+    expect(parsed.contentRevision).toBe(2);
+    expect(
+      itemExtractAutoIdempotencyKey({
+        vaultId: "v1",
+        itemId: "Inbox/n.md",
+        contentRevision: 2,
+      }),
+    ).toBe("itemExtractAuto:v1:Inbox/n.md:2");
   });
 });

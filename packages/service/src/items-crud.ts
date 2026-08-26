@@ -160,6 +160,19 @@ export function createItemsCrud(
   };
 
   /** Normalize on persist (sync); localize runs in itemDerivedRefresh job (#768). */
+  const enqueueExtractAutoForItem = async (
+    vaultId: string,
+    vaultPath: string,
+    item: ItemFile,
+  ): Promise<void> => {
+    await deps.enqueueItemExtractAuto({
+      vaultId,
+      vaultPath,
+      itemId: item.id,
+      contentRevision: item.content_revision,
+    });
+  };
+
   const applyNormalizedSource = async (
     itemId: string,
     rawMarkdown: string,
@@ -180,6 +193,7 @@ export function createItemsCrud(
         normalized,
       );
       wrote = true;
+      await enqueueExtractAutoForItem(vault.id, path, item);
     } else {
       item = await readItemFile(ctx.fs, path, itemId, vault.id);
     }
@@ -307,11 +321,15 @@ export function createItemsCrud(
     // Localize is async via itemDerivedRefresh (#768). Create succeeds even when
     // localize will fail later; failures surface via job permanent-failure / AlertStack.
     const raw = await readItemRawMarkdown(ctx.fs, path, created.id);
-    const { item } = await applyNormalizedSource(
+    const { item, wrote } = await applyNormalizedSource(
       created.id,
       raw,
       created.url,
     );
+    // upsert already persisted body; when normalize was a no-op, still enqueue once.
+    if (!wrote) {
+      await enqueueExtractAutoForItem(vault.id, path, item);
+    }
     deps.onVaultPresentationChanged?.({
       vaultId: vault.id,
       kind: "itemCreated",
@@ -374,6 +392,8 @@ export function createItemsCrud(
       url: input.url !== undefined ? input.url : current.url,
       content_type: input.content_type ?? current.content_type,
       tag_ids: tagIds,
+      metadata:
+        input.metadata !== undefined ? input.metadata : current.metadata,
       properties: input.properties !== undefined ? input.properties : current.properties,
       updated_at: new Date().toISOString(),
     };

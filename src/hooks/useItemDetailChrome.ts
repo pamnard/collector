@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { ExtractCandidate } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
 import {
   useAlerts,
@@ -8,8 +9,13 @@ import {
   useItemChrome,
   type ItemDetailMode,
 } from "../components/layout/item-chrome";
-import { lintItemFile } from "../lib/item-actions";
+import {
+  ITEM_IMPORT_BUSY_ID,
+  ITEM_IMPORT_ERROR_ID,
+  lintItemFile,
+} from "../lib/item-actions";
 import { liveCallback } from "../lib/live-callback";
+import { useItemImportFlow } from "./useItemImportFlow";
 
 export const ITEM_COPY_ALERT_ID = "item-copy-feedback";
 
@@ -23,6 +29,7 @@ export type UseItemDetailChromeInput = {
   onForm: () => void;
   onSource: () => void;
   onLinted?: () => void;
+  onImported?: () => void;
 };
 
 export type UseItemDetailChromeResult = {
@@ -32,6 +39,11 @@ export type UseItemDetailChromeResult = {
   setRenameOpen: (open: boolean) => void;
   moveOpen: boolean;
   setMoveOpen: (open: boolean) => void;
+  importOpen: boolean;
+  setImportOpen: (open: boolean) => void;
+  importCandidates: ExtractCandidate[];
+  importBusy: boolean;
+  confirmImport: (candidate: ExtractCandidate) => Promise<void>;
   idCopyFeedback: "copied" | "failed" | null;
   dismissIdCopyFeedback: () => void;
 };
@@ -41,7 +53,11 @@ export function useItemDetailChrome(
 ): UseItemDetailChromeResult {
   const { publish, clear } = useItemChrome();
   const alerts = useAlerts();
-  useDismissAlertsOnUnmount([ITEM_COPY_ALERT_ID]);
+  useDismissAlertsOnUnmount([
+    ITEM_COPY_ALERT_ID,
+    ITEM_IMPORT_BUSY_ID,
+    ITEM_IMPORT_ERROR_ID,
+  ]);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
@@ -59,21 +75,45 @@ export function useItemDetailChrome(
     onForm,
     onSource,
     onLinted,
+    onImported,
   } = input;
 
   // Header chrome republishes only when status fields change — not on every
-  // parent render. Keep mode handlers live so leave-to-view still sees dirty source.
+  // parent render. Mode/import handlers stay live via refs so leave-to-view
+  // and menu peek still see current callbacks without unstable effect deps.
   const onViewRef = useRef(onView);
   const onFormRef = useRef(onForm);
   const onSourceRef = useRef(onSource);
   const onLintedRef = useRef(onLinted);
+  const onImportedRef = useRef(onImported);
   onViewRef.current = onView;
   onFormRef.current = onForm;
   onSourceRef.current = onSource;
   onLintedRef.current = onLinted;
+  onImportedRef.current = onImported;
   const onViewLive = useRef(liveCallback(() => onViewRef.current)).current;
   const onFormLive = useRef(liveCallback(() => onFormRef.current)).current;
   const onSourceLive = useRef(liveCallback(() => onSourceRef.current)).current;
+
+  const {
+    importOpen,
+    setImportOpen,
+    importCandidates,
+    importAvailable,
+    importBusy,
+    refreshImportAvailability,
+    handleImport,
+    runImport,
+  } = useItemImportFlow({
+    itemId: item?.id,
+    alerts,
+    onDone: () => onImportedRef.current?.(),
+  });
+
+  const handleImportRef = useRef(handleImport);
+  const refreshImportAvailabilityRef = useRef(refreshImportAvailability);
+  handleImportRef.current = handleImport;
+  refreshImportAvailabilityRef.current = refreshImportAvailability;
 
   useEffect(() => {
     return () => {
@@ -156,6 +196,7 @@ export function useItemDetailChrome(
       idCopyFeedback,
       isSaving,
       isDeleting,
+      importAvailable,
       onCopyId: () => {
         void handleCopyItemId();
       },
@@ -168,11 +209,19 @@ export function useItemDetailChrome(
       onRename: () => {
         setRenameOpen(true);
       },
+      onImport: () => {
+        void handleImportRef.current();
+      },
       onLint: () => {
         void handleLint();
       },
       onDelete: () => {
         setDeleteConfirmOpen(true);
+      },
+      onActionsMenuOpenChange: (open) => {
+        if (open) {
+          void refreshImportAvailabilityRef.current();
+        }
       },
     });
   }, [
@@ -182,6 +231,7 @@ export function useItemDetailChrome(
     idCopyFeedback,
     isSaving,
     isDeleting,
+    importAvailable,
     publish,
     onViewLive,
     onFormLive,
@@ -195,6 +245,11 @@ export function useItemDetailChrome(
     setRenameOpen,
     moveOpen,
     setMoveOpen,
+    importOpen,
+    setImportOpen,
+    importCandidates,
+    importBusy,
+    confirmImport: runImport,
     idCopyFeedback,
     dismissIdCopyFeedback,
   };

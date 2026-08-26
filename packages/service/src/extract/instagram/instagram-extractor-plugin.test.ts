@@ -140,7 +140,8 @@ describe("createInstagramExtractorPlugin (#318)", () => {
     const fetchExtractMediaBytesImpl = vi.fn();
 
     const plugin = createInstagramExtractorPlugin({
-      getItemById: vi.fn(),
+      getItemById: async () =>
+        fakeNote({ body: "https://www.instagram.com/p/AbC123/" }),
       updateItem,
       attachMediaFiles,
       fetchInstagramMediaImpl: async () => ({
@@ -157,6 +158,7 @@ describe("createInstagramExtractorPlugin (#318)", () => {
         candidate: {
           extractorId: INSTAGRAM_PLUGIN_ID,
           url: "https://www.instagram.com/p/AbC123/",
+          meta: { shortcode: "AbC123" },
         },
       }),
     ).rejects.toThrow(/login_wall/);
@@ -164,6 +166,41 @@ describe("createInstagramExtractorPlugin (#318)", () => {
     expect(updateItem).not.toHaveBeenCalled();
     expect(attachMediaFiles).not.toHaveBeenCalled();
     expect(fetchExtractMediaBytesImpl).not.toHaveBeenCalled();
+  });
+
+  it("refuses second import when body no longer has the Instagram URL", async () => {
+    const updateItem = vi.fn();
+    const attachMediaFiles = vi.fn();
+    const fetchInstagramMediaImpl = vi.fn();
+    const fetchExtractMediaBytesImpl = vi.fn();
+
+    const plugin = createInstagramExtractorPlugin({
+      getItemById: async () =>
+        fakeNote({
+          body: "Already imported caption\n\n# tags\n",
+          url: "https://www.instagram.com/p/AbC123/",
+        }),
+      updateItem,
+      attachMediaFiles,
+      fetchInstagramMediaImpl,
+      fetchExtractMediaBytesImpl,
+    });
+
+    await expect(
+      plugin.extract({
+        itemId: "Inbox/note.md",
+        candidate: {
+          extractorId: INSTAGRAM_PLUGIN_ID,
+          url: "https://www.instagram.com/p/AbC123/",
+          meta: { shortcode: "AbC123" },
+        },
+      }),
+    ).rejects.toThrow(/no matching Instagram URL in note body/);
+
+    expect(fetchInstagramMediaImpl).not.toHaveBeenCalled();
+    expect(fetchExtractMediaBytesImpl).not.toHaveBeenCalled();
+    expect(updateItem).not.toHaveBeenCalled();
+    expect(attachMediaFiles).not.toHaveBeenCalled();
   });
 
   it("CDN download failure leaves note intact", async () => {
@@ -190,6 +227,7 @@ describe("createInstagramExtractorPlugin (#318)", () => {
         candidate: {
           extractorId: INSTAGRAM_PLUGIN_ID,
           url: "https://www.instagram.com/p/AbC123/",
+          meta: { shortcode: "AbC123" },
         },
       }),
     ).rejects.toThrow(/CDN boom/);

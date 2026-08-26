@@ -144,6 +144,8 @@ export interface UpdateItemInput {
   /** Tag names as in the vault .md frontmatter; missing names are created. */
   tags?: string[];
   folder_path?: string;
+  /** Collector metadata map (frontmatter `metadata`); e.g. extract_auto markers. */
+  metadata?: Record<string, unknown>;
   /** Foreign frontmatter keys (open map). */
   properties?: Record<string, unknown>;
 }

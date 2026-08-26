@@ -39,6 +39,7 @@ import {
 import { createItemsCrud } from "./items-crud.js";
 import { subscribeDashboardLoad as subscribeDashboardLoadImpl } from "./items-dashboard-subscribe.js";
 import type { ItemDerivedRefreshEnqueueInput } from "./jobs/handlers/item-derived-refresh.js";
+import type { ItemExtractAutoEnqueueInput } from "./jobs/handlers/item-extract-auto.js";
 
 export { DASHBOARD_PREFETCH_SIZE, SEARCH_PAGE_SIZE };
 export type { DashboardIndexPage, DashboardItemIdsResult, DashboardItemSort, SearchItemsResult };
@@ -134,6 +135,13 @@ export interface ItemsSearchServiceDeps {
    */
   enqueueItemDerivedRefresh: (
     input: ItemDerivedRefreshEnqueueInput,
+  ) => Promise<void>;
+  /**
+   * One-shot auto extract after note body write. Metadata-only updates must
+   * not call this.
+   */
+  enqueueItemExtractAuto: (
+    input: ItemExtractAutoEnqueueInput,
   ) => Promise<void>;
 }
 

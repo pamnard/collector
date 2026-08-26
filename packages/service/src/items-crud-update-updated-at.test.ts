@@ -77,6 +77,7 @@ describe("createItemsCrud updateItem updated_at (#652)", () => {
         getIndex: () => index,
         normalizeMarkdown: (raw) => ({ text: raw, changed: false }),
         enqueueItemDerivedRefresh: async () => undefined,
+        enqueueItemExtractAuto: async () => undefined,
       } as never,
       () => "unused",
     );

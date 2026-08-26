@@ -70,6 +70,7 @@ describe("createItemsCrud single derived enqueue (#776)", () => {
         getIndex: () => ({}),
         normalizeMarkdown: (raw) => ({ text: raw, changed: false }),
         enqueueItemDerivedRefresh,
+        enqueueItemExtractAuto: async () => undefined,
       } as never,
       () => "n",
     );

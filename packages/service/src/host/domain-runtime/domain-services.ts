@@ -20,6 +20,7 @@ import { createVaultsService } from "../../vaults.js";
 import { enqueueGenerateCover } from "../../jobs/handlers/generate-cover.js";
 import { waitForJobTerminal } from "../../jobs/job-wait.js";
 import { enqueueItemDerivedRefreshWithFailureReporting } from "./item-derived-refresh-enqueue.js";
+import { enqueueItemExtractAutoWithFailureReporting } from "./item-extract-auto-enqueue.js";
 
 export interface DomainServicesDeps {
   dataDir: string;
@@ -98,6 +99,14 @@ export function createDomainServices(deps: DomainServicesDeps): DomainServices {
     normalizeMarkdown,
     enqueueItemDerivedRefresh: (input) =>
       enqueueItemDerivedRefreshWithFailureReporting(
+        {
+          requireJobs: deps.requireJobs,
+          jobPermanentFailure: deps.jobPermanentFailure,
+        },
+        input,
+      ),
+    enqueueItemExtractAuto: (input) =>
+      enqueueItemExtractAutoWithFailureReporting(
         {
           requireJobs: deps.requireJobs,
           jobPermanentFailure: deps.jobPermanentFailure,

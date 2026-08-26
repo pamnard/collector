@@ -74,19 +74,13 @@ describe("discoverInstagramCandidates (#846)", () => {
     expect(discoverInstagramCandidates({ body })).toEqual([]);
   });
 
-  it("considers frontmatter url when Instagram", () => {
+  it("does not treat frontmatter url as an import candidate", () => {
     expect(
       discoverInstagramCandidates({
-        body: "no links here",
+        body: "caption only — url already in frontmatter after import",
         frontmatterUrl: "http://instagram.com/tv/FrontTvCode1/",
       }),
-    ).toEqual([
-      {
-        extractorId: "instagram",
-        url: "https://www.instagram.com/tv/FrontTvCode1/",
-        shortcode: "FrontTvCode1",
-      },
-    ]);
+    ).toEqual([]);
   });
 
   it("ignores non-Instagram frontmatter url", () => {
@@ -98,7 +92,7 @@ describe("discoverInstagramCandidates (#846)", () => {
     ).toEqual([]);
   });
 
-  it("dedupes by shortcode across body and frontmatter", () => {
+  it("dedupes by shortcode across body links", () => {
     const body = [
       "https://www.instagram.com/p/SameCode123/",
       "[again](https://m.instagram.com/p/SameCode123/?utm=1)",

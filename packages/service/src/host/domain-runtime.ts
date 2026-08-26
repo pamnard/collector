@@ -48,6 +48,9 @@ import {
   createItemDerivedRefreshHandler,
 } from "../jobs/handlers/item-derived-refresh.js";
 import {
+  createItemExtractAutoHandler,
+} from "../jobs/handlers/item-extract-auto.js";
+import {
   createGenerateCoverHandler,
 } from "../jobs/handlers/generate-cover.js";
 import {
@@ -428,6 +431,16 @@ export function createServiceDomainRuntime(
   const extract = createExtractPluginRegistry({
     getItemById: (itemId) => itemsSearch.getItemById(itemId),
     createCatalog: () => [instagramExtractor],
+  });
+
+  phaseBHandlerBindings.itemExtractAuto = createItemExtractAutoHandler({
+    getItemById: (itemId) => itemsSearch.getItemById(itemId),
+    updateItem: (itemId, input) => itemsSearch.updateItem(itemId, input),
+    discoverExtractCandidates: (itemId) =>
+      extract.discoverExtractCandidates(itemId),
+    extractItemCandidate: (itemId, candidate) =>
+      extract.extractItemCandidate(itemId, candidate),
+    jobPermanentFailure,
   });
 
   // Boot order: open()/start() may run before ensureActiveVault. Wake again on

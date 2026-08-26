@@ -59,6 +59,7 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
         getIndex: () => ({}),
         normalizeMarkdown: testNormalizeMarkdown,
         enqueueItemDerivedRefresh: async () => undefined,
+        enqueueItemExtractAuto: async () => undefined,
       } as never,
       () => "n",
     );
@@ -96,6 +97,7 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
         onVaultPresentationChanged,
         normalizeMarkdown: testNormalizeMarkdown,
         enqueueItemDerivedRefresh: async () => undefined,
+        enqueueItemExtractAuto: async () => undefined,
       } as never,
       () => "n",
     );
@@ -135,6 +137,7 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
         onVaultPresentationChanged,
         normalizeMarkdown: testNormalizeMarkdown,
         enqueueItemDerivedRefresh: async () => undefined,
+        enqueueItemExtractAuto: async () => undefined,
       } as never,
       () => "n",
     );
@@ -176,6 +179,7 @@ describe("createItemsCrud createItem sourceRef (#28)", () => {
         onVaultPresentationChanged,
         normalizeMarkdown: testNormalizeMarkdown,
         enqueueItemDerivedRefresh,
+        enqueueItemExtractAuto: async () => undefined,
       } as never,
       () => "n",
     );

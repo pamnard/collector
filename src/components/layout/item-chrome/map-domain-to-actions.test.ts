@@ -22,8 +22,11 @@ function domain(
     onSource: () => {},
     onMove: () => {},
     onRename: () => {},
+    onImport: () => {},
     onLint: () => {},
     onDelete: () => {},
+    importAvailable: false,
+    onActionsMenuOpenChange: () => {},
     ...overrides,
   };
 }
@@ -102,8 +105,10 @@ describe("mapDomainToActions", () => {
     const onSource = () => {};
     const onMove = () => {};
     const onRename = () => {};
+    const onImport = () => {};
     const onLint = () => {};
     const onDelete = () => {};
+    const onActionsMenuOpenChange = () => {};
     const actions = mapDomainToActions(
       domain({
         mode: "form",
@@ -114,8 +119,11 @@ describe("mapDomainToActions", () => {
         onSource,
         onMove,
         onRename,
+        onImport,
         onLint,
         onDelete,
+        importAvailable: true,
+        onActionsMenuOpenChange,
       }),
     );
     assert.deepEqual(
@@ -129,8 +137,11 @@ describe("mapDomainToActions", () => {
         onSource: actions?.onSource,
         onMove: actions?.onMove,
         onRename: actions?.onRename,
+        onImport: actions?.onImport,
         onLint: actions?.onLint,
         onDelete: actions?.onDelete,
+        importAvailable: actions?.importAvailable,
+        onActionsMenuOpenChange: actions?.onActionsMenuOpenChange,
       },
       {
         mode: "form",
@@ -142,8 +153,11 @@ describe("mapDomainToActions", () => {
         onSource,
         onMove,
         onRename,
+        onImport,
         onLint,
         onDelete,
+        importAvailable: true,
+        onActionsMenuOpenChange,
       },
     );
     assert.equal(

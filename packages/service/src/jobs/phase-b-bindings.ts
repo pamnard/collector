@@ -25,6 +25,7 @@ export const phaseBHandlerBindings: {
   vaultIndexSync: AnyTypedHandler | null;
   reindexVaultBatch: AnyTypedHandler | null;
   itemDerivedRefresh: AnyTypedHandler | null;
+  itemExtractAuto: AnyTypedHandler | null;
   refreshEmbeddings: AnyTypedHandler | null;
   syncPluginPull: AnyTypedHandler | null;
   generateCover: AnyTypedHandler | null;
@@ -34,6 +35,7 @@ export const phaseBHandlerBindings: {
   vaultIndexSync: null,
   reindexVaultBatch: null,
   itemDerivedRefresh: null,
+  itemExtractAuto: null,
   refreshEmbeddings: null,
   syncPluginPull: null,
   generateCover: null,

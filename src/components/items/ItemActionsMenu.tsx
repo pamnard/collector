@@ -1,6 +1,7 @@
 import {
   FileCheck,
   FolderInput,
+  Import,
   MoreVertical,
   Pencil,
   Trash2,
@@ -25,6 +26,7 @@ import {
 const ITEM_ACTION_ICONS: Record<ItemActionId, LucideIcon> = {
   move: FolderInput,
   rename: Pencil,
+  import: Import,
   lint: FileCheck,
   delete: Trash2,
 };
@@ -34,15 +36,23 @@ export type ItemActionsMenuTriggerVariant = "header" | "row";
 export interface ItemActionsMenuProps {
   disabled?: boolean;
   triggerVariant?: ItemActionsMenuTriggerVariant;
+  /** Show Импорт only when host discover found candidates for this item. */
+  importAvailable?: boolean;
+  /** Fired when the overflow menu opens/closes — peek candidates on open. */
+  onOpenChange?: (open: boolean) => void;
   onAction: (id: ItemActionId) => void;
 }
 
 export function ItemActionsMenu({
   disabled = false,
   triggerVariant = "row",
+  importAvailable = false,
+  onOpenChange,
   onAction,
 }: ItemActionsMenuProps) {
-  const sections = groupItemActions(listEnabledItemActions());
+  const sections = groupItemActions(
+    listEnabledItemActions({ importAvailable }),
+  );
 
   const triggerButton =
     triggerVariant === "header" ? (
@@ -67,7 +77,7 @@ export function ItemActionsMenu({
     );
 
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={onOpenChange}>
       <DropdownMenuTrigger render={triggerButton}>
         <MoreVertical size={16} />
       </DropdownMenuTrigger>

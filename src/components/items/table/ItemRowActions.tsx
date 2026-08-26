@@ -3,6 +3,8 @@ import { folderPathFromItemPath } from "@collector/shared";
 import { useFolderTree } from "../../../hooks/useFolderTree";
 import type { ItemActionId } from "../../../lib/item-action-catalog";
 import {
+  ITEM_IMPORT_BUSY_ID,
+  ITEM_IMPORT_ERROR_ID,
   ITEM_LINT_BUSY_ID,
   ITEM_LINT_ERROR_ID,
   ITEM_MOVE_BUSY_ID,
@@ -13,6 +15,7 @@ import {
   moveItemToFolder,
   renameItemTitle,
 } from "../../../lib/item-actions";
+import { useItemImportFlow } from "../../../hooks/useItemImportFlow";
 import { getCollectorService } from "../../../services/collector-client";
 import {
   useAlerts,
@@ -22,6 +25,7 @@ import { MoveItemDialog } from "../../folders/MoveItemDialog";
 import { useShell } from "../../layout/AppLayout";
 import { ConfirmDialog } from "../../ui/confirm-dialog";
 import { ItemActionsMenu } from "../ItemActionsMenu";
+import { ItemExtractDialog } from "../ItemExtractDialog";
 import { ItemRenameDialog } from "../ItemRenameDialog";
 
 interface ItemRowActionsProps {
@@ -43,6 +47,8 @@ export function ItemRowActions({
     ITEM_MOVE_ERROR_ID,
     ITEM_LINT_BUSY_ID,
     ITEM_LINT_ERROR_ID,
+    ITEM_IMPORT_BUSY_ID,
+    ITEM_IMPORT_ERROR_ID,
   ]);
   const { vaultRevision, pruneItem } = useShell();
   const folders = useFolderTree(vaultRevision);
@@ -53,6 +59,20 @@ export function ItemRowActions({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
+  const {
+    importOpen,
+    setImportOpen,
+    importCandidates,
+    importAvailable,
+    importBusy,
+    refreshImportAvailability,
+    handleImport,
+    runImport,
+  } = useItemImportFlow({
+    itemId,
+    alerts,
+    onDone: onUpdated,
+  });
 
   const handleConfirmDelete = async () => {
     setIsDeleting(true);
@@ -106,6 +126,10 @@ export function ItemRowActions({
       setRenameOpen(true);
       return;
     }
+    if (id === "import") {
+      void handleImport();
+      return;
+    }
     if (id === "lint") {
       void handleLint();
       return;
@@ -115,7 +139,7 @@ export function ItemRowActions({
     }
   };
 
-  const busy = isDeleting || isRenaming || isMoving || isLinting;
+  const busy = isDeleting || isRenaming || isMoving || isLinting || importBusy;
   const itemLabel = itemTitle.trim() || itemId;
   const currentFolderPath = folderPathFromItemPath(itemId);
 
@@ -128,6 +152,12 @@ export function ItemRowActions({
       <ItemActionsMenu
         triggerVariant="row"
         disabled={busy}
+        importAvailable={importAvailable}
+        onOpenChange={(open) => {
+          if (open) {
+            void refreshImportAvailability();
+          }
+        }}
         onAction={handleAction}
       />
 
@@ -149,6 +179,16 @@ export function ItemRowActions({
         onOpenChange={setRenameOpen}
         onConfirm={(nextTitle) => {
           void handleConfirmRename(nextTitle);
+        }}
+      />
+
+      <ItemExtractDialog
+        open={importOpen}
+        candidates={importCandidates}
+        busy={importBusy}
+        onOpenChange={setImportOpen}
+        onConfirm={(candidate) => {
+          void runImport(candidate);
         }}
       />
 

@@ -12,7 +12,7 @@ import type {
   UpdateItemInput,
 } from "@collector/api";
 import { fetchExtractMediaBytes } from "../../fetch-extract-media-bytes.js";
-import { discoverInstagramCandidates } from "./instagram-url-discover.js";
+import { discoverInstagramCandidates, parseInstagramShortcode } from "./instagram-url-discover.js";
 import { fetchInstagramMedia } from "./fetch.js";
 import { IG_WEB_ORIGIN } from "./http.js";
 import { mergeInstagramIntoNote } from "./merge.js";
@@ -80,6 +80,26 @@ export function createInstagramExtractorPlugin(
         );
       }
 
+      const shortcode =
+        candidate.meta?.shortcode?.trim() ||
+        parseInstagramShortcode(candidate.url);
+      if (!shortcode) {
+        throw new Error(
+          `Instagram import refused: cannot resolve shortcode from candidate ${candidate.url}`,
+        );
+      }
+
+      // Import replaces a body URL. No matching link ⇒ already imported or invalid —
+      // refuse before network/write so a second pass cannot duplicate caption/media.
+      const { content } = await deps.getItemById(itemId);
+      const body = content ?? "";
+      const pending = discoverInstagramCandidates({ body });
+      if (!pending.some((entry) => entry.shortcode === shortcode)) {
+        throw new Error(
+          `Instagram import refused: no matching Instagram URL in note body for ${shortcode}`,
+        );
+      }
+
       const fetchOptions: FetchInstagramMediaOptions = {};
       if (deps.fetchImpl) {
         fetchOptions.fetchImpl = deps.fetchImpl;
@@ -92,11 +112,7 @@ export function createInstagramExtractorPlugin(
         );
       }
 
-      const { content } = await deps.getItemById(itemId);
-      const merged = mergeInstagramIntoNote(
-        { body: content ?? "" },
-        fetchResult.value,
-      );
+      const merged = mergeInstagramIntoNote({ body }, fetchResult.value);
       if (merged.mediaIntents.length === 0) {
         throw new Error(
           "Instagram extract failed (no_media): fetch succeeded with empty mediaIntents",
