@@ -1,6 +1,5 @@
 /**
- * Shared Instagram extract contracts (align with #846/#847/#848/#318).
- * Defined here so merge (#848) stays standalone until siblings land.
+ * Shared Instagram extract contracts (#846/#847/#848/#318).
  */
 
 export type InstagramMediaKind = "image" | "video";
@@ -25,6 +24,30 @@ export type InstagramFetchSuccess = {
   accessibilityCaption: string | null;
   /** All carousel items when present; non-empty on success. */
   media: InstagramFetchedMedia[];
+};
+
+export type InstagramFetchErrorCode =
+  | "login_wall"
+  | "not_found"
+  | "private_or_unavailable"
+  | "rate_limited"
+  | "no_media"
+  | "invalid_url";
+
+export type InstagramFetchResult =
+  | { ok: true; value: InstagramFetchSuccess }
+  | { ok: false; code: InstagramFetchErrorCode; message: string };
+
+export type InstagramHttpFetch = typeof fetch;
+
+export type FetchInstagramMediaOptions = {
+  /** Injected HTTP — unit tests supply fixture-backed responses. */
+  fetchImpl?: InstagramHttpFetch;
+  /**
+   * Optional session Cookie header (string) or name→value map.
+   * Without cookies, only logged-out paths run.
+   */
+  cookies?: string | Readonly<Record<string, string>>;
 };
 
 export type InstagramMediaIntent = {
