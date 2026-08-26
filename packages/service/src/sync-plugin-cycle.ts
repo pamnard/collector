@@ -1,19 +1,28 @@
 /**
- * One-plugin sync cycle (#28): authenticate → pull → import → mark → ack → nextCursor.
- * Wake/schedule is per-plugin; this only runs after something decided to sync.
+ * One-plugin sync cycle (#28): authenticate → pull → create → mark → attach → ack → nextCursor.
+ * markImported runs immediately after vault create (API contract), before attach.
  */
 
 import type {
+  BinaryPayload,
   NormalizedSyncItem,
   SyncCursor,
   SyncPlugin,
 } from "@collector/api";
 import type { SyncPluginImportResult } from "./sync-plugin-handoff.js";
 
+export interface SyncPluginCycleHandoff {
+  createFromNormalized(
+    item: NormalizedSyncItem,
+  ): Promise<SyncPluginImportResult>;
+  attachMedia(itemId: string, media?: BinaryPayload[]): Promise<void>;
+  deleteItem(itemId: string): Promise<void>;
+}
+
 export interface RunSyncPluginCycleInput {
   plugin: SyncPlugin;
   cursor: SyncCursor | null;
-  importItem: (item: NormalizedSyncItem) => Promise<SyncPluginImportResult>;
+  handoff: SyncPluginCycleHandoff;
 }
 
 export interface RunSyncPluginCycleResult {
@@ -30,7 +39,7 @@ export interface RunSyncPluginCycleResult {
 export async function runSyncPluginCycle(
   input: RunSyncPluginCycleInput,
 ): Promise<RunSyncPluginCycleResult> {
-  const { plugin, cursor, importItem } = input;
+  const { plugin, cursor, handoff } = input;
 
   if (plugin.authenticate) {
     await plugin.authenticate();
@@ -41,18 +50,31 @@ export async function runSyncPluginCycle(
   const itemIds: string[] = [];
 
   for (const item of pulled.items) {
+    let created: SyncPluginImportResult | null = null;
+    let marked = false;
     try {
-      const imported = await importItem(item);
-      importedRemoteIds.push(imported.remoteId);
-      itemIds.push(imported.itemId);
+      created = await handoff.createFromNormalized(item);
 
       if (plugin.markImported) {
-        // Durable per-item mark; ack is batched below to avoid N remote deletes / saves.
-        await plugin.markImported([imported.remoteId]);
-      } else if (plugin.ack) {
-        await plugin.ack([imported.remoteId]);
+        await plugin.markImported([created.remoteId]);
+        marked = true;
+      }
+
+      await handoff.attachMedia(created.itemId, item.media);
+
+      importedRemoteIds.push(created.remoteId);
+      itemIds.push(created.itemId);
+
+      if (!plugin.markImported && plugin.ack) {
+        await plugin.ack([created.remoteId]);
       }
     } catch (error) {
+      if (created) {
+        await handoff.deleteItem(created.itemId);
+        if (marked && plugin.clearImported) {
+          await plugin.clearImported([created.remoteId]);
+        }
+      }
       if (
         plugin.markImported &&
         plugin.ack &&

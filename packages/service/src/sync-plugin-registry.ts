@@ -36,6 +36,7 @@ export interface SyncPluginRegistryDeps {
     itemId: string,
     files: AttachMediaFileInput[],
   ) => Promise<unknown>;
+  deleteItem: (itemId: string) => Promise<void>;
   /**
    * Build-time catalog. Default empty — mock is tests-only via override.
    */
@@ -50,6 +51,7 @@ export function createSyncPluginRegistry(
   const handoff = createSyncPluginHandoff({
     createItem: deps.createItem,
     attachMediaFiles: deps.attachMediaFiles,
+    deleteItem: deps.deleteItem,
   });
 
   const statePathFor = (vaultId: string): string =>
@@ -106,7 +108,7 @@ export function createSyncPluginRegistry(
     const result = await runSyncPluginCycle({
       plugin,
       cursor,
-      importItem: (item) => handoff.importItem(item),
+      handoff,
     });
 
     state.cursors[pluginId] = result.nextCursor;

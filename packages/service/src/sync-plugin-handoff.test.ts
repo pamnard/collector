@@ -5,19 +5,22 @@ import { createSyncPluginHandoff } from "./sync-plugin-handoff.js";
 describe("createSyncPluginHandoff", () => {
   const createItem = vi.fn();
   const attachMediaFiles = vi.fn();
+  const deleteItem = vi.fn();
 
   beforeEach(() => {
     createItem.mockReset();
     attachMediaFiles.mockReset();
+    deleteItem.mockReset();
     createItem.mockImplementation(async (input: { title: string }) => ({
       id: `Inbox/${input.title}.md`,
       title: input.title,
     }));
     attachMediaFiles.mockResolvedValue([]);
+    deleteItem.mockResolvedValue(undefined);
   });
 
   function handoff() {
-    return createSyncPluginHandoff({ createItem, attachMediaFiles });
+    return createSyncPluginHandoff({ createItem, attachMediaFiles, deleteItem });
   }
 
   const baseItem: NormalizedSyncItem = {
@@ -74,6 +77,27 @@ describe("createSyncPluginHandoff", () => {
     expect(attachMediaFiles).toHaveBeenCalledWith("Inbox/Hello.md", [
       { name: "a.png", bytes },
     ]);
+  });
+
+  it("on attach failure deletes the created item then rethrows", async () => {
+    attachMediaFiles.mockRejectedValueOnce(new Error("FOREIGN KEY constraint failed"));
+    await expect(
+      handoff().importItem({
+        ...baseItem,
+        media: [{ name: "a.png", bytes: new Uint8Array([1]) }],
+      }),
+    ).rejects.toThrow(/FOREIGN KEY/);
+    expect(createItem).toHaveBeenCalledTimes(1);
+    expect(deleteItem).toHaveBeenCalledWith("Inbox/Hello.md");
+  });
+
+  it("createFromNormalized does not attach", async () => {
+    const result = await handoff().createFromNormalized({
+      ...baseItem,
+      media: [{ name: "a.png", bytes: new Uint8Array([1]) }],
+    });
+    expect(result).toEqual({ itemId: "Inbox/Hello.md", remoteId: "r1" });
+    expect(attachMediaFiles).not.toHaveBeenCalled();
   });
 
   it("rejects empty remoteId", async () => {

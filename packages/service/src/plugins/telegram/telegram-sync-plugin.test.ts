@@ -501,7 +501,8 @@ describe("createTelegramSyncPlugin (#415 / #433)", () => {
       resolveActiveVaultId: async () => "v1",
       createItem: createItem as never,
       attachMediaFiles,
-      createCatalog: () => [plugin],
+      deleteItem: vi.fn(async () => {}),
+createCatalog: () => [plugin],
     });
 
     const second = await registry.syncNow(TELEGRAM_PLUGIN_ID);
@@ -638,7 +639,8 @@ describe("createTelegramSyncPlugin (#415 / #433)", () => {
       resolveActiveVaultId: async () => "v1",
       createItem: createItem as never,
       attachMediaFiles: vi.fn(async () => []),
-      createCatalog: () => [plugin],
+      deleteItem: vi.fn(async () => {}),
+createCatalog: () => [plugin],
     });
 
     const first = await registry.syncNow(TELEGRAM_PLUGIN_ID);
@@ -714,7 +716,8 @@ describe("createTelegramSyncPlugin (#415 / #433)", () => {
         title: input.title,
       })) as never,
       attachMediaFiles: vi.fn(async () => []),
-      createCatalog: () => [plugin],
+      deleteItem: vi.fn(async () => {}),
+createCatalog: () => [plugin],
     });
 
     await expect(registry.syncNow(TELEGRAM_PLUGIN_ID)).rejects.toThrow(
@@ -772,7 +775,8 @@ describe("createTelegramSyncPlugin (#415 / #433)", () => {
       resolveActiveVaultId: async () => "v1",
       createItem: createItem as never,
       attachMediaFiles: vi.fn(async () => []),
-      createCatalog: () => [plugin],
+      deleteItem: vi.fn(async () => {}),
+createCatalog: () => [plugin],
     });
 
     const first = await registry.syncNow(TELEGRAM_PLUGIN_ID);
@@ -862,7 +866,8 @@ describe("createTelegramSyncPlugin (#415 / #433)", () => {
       resolveActiveVaultId: async () => "v1",
       createItem: createItem as never,
       attachMediaFiles: vi.fn(async () => []),
-      createCatalog: () => [plugin],
+      deleteItem: vi.fn(async () => {}),
+createCatalog: () => [plugin],
     });
 
     expect((await registry.syncNow(TELEGRAM_PLUGIN_ID)).importedCount).toBe(1);
