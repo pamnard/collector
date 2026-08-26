@@ -1,4 +1,4 @@
-import type { SyncPluginsPort, TelegramSyncPort } from "@collector/api";
+import type { ExtractPort, SyncPluginsPort, TelegramSyncPort } from "@collector/api";
 import type { createAppSettingsService } from "../../app-settings.js";
 import type { createCredentialsService } from "../../credentials.js";
 import type { createDashboardSnapshotService } from "../../dashboard-snapshot.js";
@@ -43,6 +43,7 @@ export interface ServiceDomainRuntime {
   appSettings: ReturnType<typeof createAppSettingsService>;
   credentials: ReturnType<typeof createCredentialsService>;
   syncPlugins: SyncPluginsPort;
+  extract: ExtractPort;
   telegramSync: TelegramSyncPort;
   syncPluginWake: SyncPluginWakeController;
   dashboardSnapshot: ReturnType<typeof createDashboardSnapshotService>;

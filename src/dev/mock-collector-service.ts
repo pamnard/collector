@@ -17,6 +17,7 @@ import type {
   Subscription,
   SyncNowResult,
   SyncPluginsPort,
+  ExtractPort,
   UiSession,
 } from "@collector/api";
 import {
@@ -90,6 +91,17 @@ function createDevMockSyncPluginsPort(): SyncPluginsPort {
         updated_at: stamp,
       });
       return { importedCount: 1, itemIds: [itemId] };
+    },
+  };
+}
+
+function createDevMockExtractPort(): ExtractPort {
+  return {
+    async discoverExtractCandidates() {
+      return [];
+    },
+    async extractItemCandidate(_itemId, candidate) {
+      throw new Error(`Unknown extractor: ${candidate.extractorId}`);
     },
   };
 }
@@ -444,6 +456,7 @@ export function createDevMockCollectorService(): CollectorService {
       }),
     },
     syncPlugins: createDevMockSyncPluginsPort(),
+    extract: createDevMockExtractPort(),
     telegramSync: {
       getTelegramSyncSettings: async () => ({
         enabled: false,

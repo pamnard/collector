@@ -13,6 +13,7 @@ import {
 const PORT_KEYS = [
   "boot",
   "credentials",
+  "extract",
   "folders",
   "index",
   "items",

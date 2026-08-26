@@ -552,6 +552,60 @@ export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] = [
       },
     ],
   },
+  {
+    name: "collector_discover_extract_candidates",
+    description:
+      "Discover extract candidates for one note by item id (load note body + frontmatter URL, " +
+      "ask all registered extractor plugins). Returns ExtractCandidate[] " +
+      "({ extractorId, url, optional meta }). Does not fetch or mutate the note. " +
+      "Empty when no host extractors are registered or none match. " +
+      "Use collector_extract_item_candidate with a returned candidate for the explicit extract action.",
+    params: [
+      {
+        name: "itemId",
+        required: true,
+        typeLabel: "string",
+        description: ITEM_ID_DESCRIPTION,
+      },
+    ],
+  },
+  {
+    name: "collector_extract_item_candidate",
+    description:
+      "Run an explicit extract for one candidate on an item (never auto on note open). " +
+      "Passes extractorId/url/meta to the matching ExtractorPlugin. " +
+      "Fails loudly when extractorId is unknown. " +
+      "Prefer a candidate from collector_discover_extract_candidates; host plugins own fetch/merge.",
+    params: [
+      {
+        name: "itemId",
+        required: true,
+        typeLabel: "string",
+        description: ITEM_ID_DESCRIPTION,
+      },
+      {
+        name: "extractorId",
+        required: true,
+        typeLabel: "string",
+        description:
+          "Registered extractor plugin id (e.g. from discover). Unknown ids fail loudly.",
+      },
+      {
+        name: "url",
+        required: true,
+        typeLabel: "string",
+        description:
+          "URL to extract (from discover candidate). Non-empty string required.",
+      },
+      {
+        name: "meta",
+        required: false,
+        typeLabel: "Record<string, string>",
+        description:
+          "Optional opaque per-extractor string map (e.g. shortcode). Omit when unused.",
+      },
+    ],
+  },
 ] as const;
 
 const byName = new Map(
