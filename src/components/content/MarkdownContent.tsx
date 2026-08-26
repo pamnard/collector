@@ -71,7 +71,7 @@ export function MarkdownContent({ itemId, content }: MarkdownContentProps) {
   }
 
   return (
-    <div className="prose dark:prose-invert max-w-none prose-a:text-indigo-400 prose-code:before:content-none prose-code:after:content-none prose-code:rounded prose-code:bg-neutral-100 dark:prose-code:bg-neutral-700 prose-code:px-1.5 prose-code:py-0.5 prose-code:font-mono prose-code:font-normal prose-code:text-sm prose-code:text-neutral-900 dark:text-neutral-100 prose-headings:scroll-mt-4">
+    <div className="prose dark:prose-invert max-w-none prose-headings:leading-normal prose-a:text-indigo-400 prose-code:before:content-none prose-code:after:content-none prose-code:rounded prose-code:bg-neutral-100 dark:prose-code:bg-neutral-700 prose-code:px-1.5 prose-code:py-0.5 prose-code:font-mono prose-code:font-normal prose-code:text-sm prose-code:text-neutral-900 dark:text-neutral-100 prose-headings:scroll-mt-4 [&>p:first-of-type]:text-lg [&>p:first-of-type]:leading-relaxed [&>p:first-of-type]:mb-[1.35em]">
       <ReactMarkdown
         remarkPlugins={MARKDOWN_REMARK_PLUGINS}
         rehypePlugins={MARKDOWN_REHYPE_PLUGINS}

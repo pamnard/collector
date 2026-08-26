@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { toDisplayAssetSrc } from "../utils/asset-src";
 import {
   pickPlayableMedia,
+  type OverlayMediaKind,
   type PlayableMediaKind,
   type PlayableMediaRef,
 } from "../utils/local-media-playback";
@@ -9,7 +10,7 @@ import { getCollectorService } from "../services/collector-client";
 
 export interface MediaPlayerSession {
   src: string;
-  kind: PlayableMediaKind;
+  kind: OverlayMediaKind;
   title?: string;
 }
 
@@ -25,12 +26,22 @@ export function useMediaPlayerOverlay() {
   }, []);
 
   const openPath = useCallback(
-    (path: string, kind: PlayableMediaKind, title?: string) => {
+    (path: string, kind: OverlayMediaKind, title?: string) => {
       setSession({
-        src: toDisplayAssetSrc(path),
+        src: kind === "image" ? path : toDisplayAssetSrc(path),
         kind,
         title,
       });
+    },
+    [],
+  );
+
+  const openImageSrc = useCallback(
+    (src: string, title?: string) => {
+      if (!src.trim()) {
+        return;
+      }
+      setSession({ src, kind: "image", title });
     },
     [],
   );
@@ -65,6 +76,7 @@ export function useMediaPlayerOverlay() {
   return {
     session,
     openPath,
+    openImageSrc,
     openMediaRef,
     openItemMedia,
     close,

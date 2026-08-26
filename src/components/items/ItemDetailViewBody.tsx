@@ -33,7 +33,7 @@ export function ItemDetailViewBody({
         />
         <header className="min-w-0">
           <div className="mx-auto w-full max-w-[900px]">
-            <h1 className="text-2xl font-semibold">{item.title}</h1>
+            <h1 className="text-3xl font-bold tracking-tight leading-normal">{item.title}</h1>
           </div>
         </header>
 
