@@ -67,6 +67,7 @@ import { createDropImportRuntime } from "./domain-runtime/drop-import.js";
 import { createWaitDerivedRuntime } from "./domain-runtime/wait-derived.js";
 import { createSyncPluginRuntime } from "./domain-runtime/sync-plugins.js";
 import { createExtractPluginRegistry } from "../extract-plugin-registry.js";
+import { createInstagramExtractorPlugin } from "../extract/instagram/instagram-extractor-plugin.js";
 import {
   createVaultSyncController,
   type VaultSyncController,
@@ -417,8 +418,17 @@ export function createServiceDomainRuntime(
     wakePolicies: options.wakePolicies,
   });
 
+  const instagramExtractor = createInstagramExtractorPlugin({
+    getItemById: (itemId) => itemsSearch.getItemById(itemId),
+    updateItem: (itemId, input) => itemsSearch.updateItem(itemId, input),
+    attachMediaFiles: (itemId, files) =>
+      mediaCover.attachMediaFiles(itemId, files),
+    getCredential: (input) => credentials.getCredential(input),
+  });
+
   const extract = createExtractPluginRegistry({
     getItemById: (itemId) => itemsSearch.getItemById(itemId),
+    createCatalog: () => [instagramExtractor],
   });
 
   // Boot order: open()/start() may run before ensureActiveVault. Wake again on
