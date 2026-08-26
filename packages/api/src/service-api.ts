@@ -15,6 +15,7 @@ import type {
   WaitDerivedResult,
 } from "./domain.js";
 import type { CollectorApiError } from "./errors.js";
+import type { ExtractCandidate } from "./extract-plugin.js";
 import type { Tag } from "@collector/shared";
 import type { AppSettings, DashboardSnapshot } from "@collector/shared";
 import type { MediaFileMeta } from "@collector/shared";
@@ -504,6 +505,18 @@ export interface SyncPluginsPort {
   syncNow(pluginId: string): Promise<SyncNowResult>;
 }
 
+/**
+ * Discover → extract host surface (#849).
+ * Separate from {@link SyncPluginsPort}; host fetch/merge live in extractor plugins.
+ */
+export interface ExtractPort {
+  discoverExtractCandidates(itemId: string): Promise<ExtractCandidate[]>;
+  extractItemCandidate(
+    itemId: string,
+    candidate: ExtractCandidate,
+  ): Promise<void>;
+}
+
 /** Non-secret Telegram Path C settings (#415). Token stays in CredentialsPort. */
 export interface TelegramSyncSettings {
   enabled: boolean;
@@ -588,6 +601,8 @@ export interface CollectorService {
   settings: SettingsPort;
   credentials: CredentialsPort;
   syncPlugins: SyncPluginsPort;
+  /** Discover → extract host surface (#849). */
+  extract: ExtractPort;
   /** Telegram Path C settings (#415). */
   telegramSync: TelegramSyncPort;
   /** Background job queue observability (#630). */

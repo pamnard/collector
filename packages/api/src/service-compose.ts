@@ -2,6 +2,7 @@ import type {
   BootPort,
   CredentialsPort,
   DashboardSnapshotPort,
+  ExtractPort,
   FoldersPort,
   IndexPort,
   ItemsPort,
@@ -116,6 +117,11 @@ export const CREDENTIALS_PORT_KEYS = [
 export const SYNC_PLUGINS_PORT_KEYS = [
   "syncNow",
 ] as const satisfies readonly (keyof SyncPluginsPort)[];
+
+export const EXTRACT_PORT_KEYS = [
+  "discoverExtractCandidates",
+  "extractItemCandidate",
+] as const satisfies readonly (keyof ExtractPort)[];
 
 export const TELEGRAM_SYNC_PORT_KEYS = [
   "getTelegramSyncSettings",

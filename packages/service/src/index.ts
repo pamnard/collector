@@ -116,6 +116,19 @@ export {
 } from "./sync-plugin-registry.js";
 
 export {
+  createExtractPluginRegistry,
+  type ExtractPluginRegistryDeps,
+} from "./extract-plugin-registry.js";
+
+export {
+  createMockExtractorPlugin,
+  MOCK_EXTRACTOR_ID,
+  MOCK_EXTRACT_MARKER_URL,
+  type MockExtractorPlugin,
+  type MockExtractorPluginOptions,
+} from "./extract-plugin-mock.js";
+
+export {
   createSyncPluginWakeController,
   type SyncPluginWakeController,
   type SyncPluginWakeControllerDeps,

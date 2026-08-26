@@ -88,6 +88,11 @@ function params(toolName: string) {
       contentTypeSchema.default("note").describe(describe(paramName)),
     contentTypeOptional: (paramName: string) =>
       contentTypeSchema.optional().describe(describe(paramName)),
+    optionalStringRecord: (paramName: string) =>
+      z
+        .record(z.string())
+        .optional()
+        .describe(describe(paramName)),
   };
 }
 
@@ -426,6 +431,31 @@ export function createCollectorMcpServer(session: McpHostSession): McpServer {
     }),
     ({ itemId, mediaId }, client) =>
       client.media.setItemCoverFromMedia(itemId, mediaId),
+  );
+
+  tool(
+    "collector_discover_extract_candidates",
+    (p) => ({ itemId: p.requiredString("itemId") }),
+    ({ itemId }, client) =>
+      client.extract.discoverExtractCandidates(itemId),
+  );
+
+  tool(
+    "collector_extract_item_candidate",
+    (p) => ({
+      itemId: p.requiredString("itemId"),
+      extractorId: p.requiredString("extractorId"),
+      url: p.requiredString("url"),
+      meta: p.optionalStringRecord("meta"),
+    }),
+    async ({ itemId, extractorId, url, meta }, client) => {
+      await client.extract.extractItemCandidate(itemId, {
+        extractorId,
+        url,
+        ...(meta === undefined ? {} : { meta }),
+      });
+      return { ok: true };
+    },
   );
 
   return server;
