@@ -34,52 +34,39 @@ export function listInstagramMediaIntents(
 }
 
 /**
- * Compute same-item merge: title, body (caption + optional accessibility,
- * Instagram URLs stripped, unrelated prior text preserved), canonical url,
- * and media intents.
+ * Same-item merge: title, body (caption + optional accessibility, Instagram
+ * URLs stripped, unrelated prior text preserved), canonical url, media intents.
  */
 export function mergeInstagramIntoNote(
   note: InstagramNoteSnapshot,
   fetch: InstagramFetchSuccess,
 ): InstagramMergeResult {
-  const title = deriveInstagramTitle(fetch);
-  const instagramBlock = buildInstagramBodyBlock(fetch);
-  const body = mergeBody(note.body, fetch.shortcode, instagramBlock);
-
   return {
-    title,
-    body,
+    title: deriveInstagramTitle(fetch),
+    body: mergeBody(note.body, fetch.shortcode, buildInstagramBodyBlock(fetch)),
     url: fetch.sourceUrl,
     mediaIntents: listInstagramMediaIntents(fetch),
   };
 }
 
 export function deriveInstagramTitle(fetch: InstagramFetchSuccess): string {
-  const caption = fetch.caption;
-  if (caption === null) {
-    return `@${fetch.authorUsername}`;
-  }
-  const line = firstNonEmptyLine(caption);
+  const line =
+    fetch.caption === null ? null : firstNonEmptyLine(fetch.caption);
   if (line === null) {
     return `@${fetch.authorUsername}`;
   }
-  if (line.length <= INSTAGRAM_TITLE_MAX_LENGTH) {
-    return line;
-  }
-  return line.slice(0, INSTAGRAM_TITLE_MAX_LENGTH);
+  return line.length <= INSTAGRAM_TITLE_MAX_LENGTH
+    ? line
+    : line.slice(0, INSTAGRAM_TITLE_MAX_LENGTH);
 }
 
 function buildInstagramBodyBlock(fetch: InstagramFetchSuccess): string {
   const parts: string[] = [];
-  if (fetch.caption !== null) {
-    const caption = fetch.caption.trimEnd();
-    if (caption.length > 0) {
-      parts.push(caption);
-    }
+  if (fetch.caption !== null && firstNonEmptyLine(fetch.caption) !== null) {
+    parts.push(fetch.caption.trimEnd());
   }
-  const accessibility = fetch.accessibilityCaption;
-  if (accessibility !== null) {
-    const text = accessibility.trim();
+  if (fetch.accessibilityCaption !== null) {
+    const text = fetch.accessibilityCaption.trim();
     if (text.length > 0) {
       parts.push(`${ACCESSIBILITY_HEADING}\n\n${text}`);
     }
@@ -88,10 +75,9 @@ function buildInstagramBodyBlock(fetch: InstagramFetchSuccess): string {
 }
 
 /**
- * Strip Instagram URLs matching `shortcode` (bare + markdown links). First
- * removed span is replaced with `instagramBlock` when non-empty; remaining
- * matches are deleted. Unrelated body text is kept. When no URL match exists
- * and the block is non-empty, prepend the block (enrich).
+ * Replace the first Instagram URL matching `shortcode` with `instagramBlock`
+ * (when non-empty); delete remaining matches. Preserve unrelated text. If no
+ * URL match, prepend the block when present.
  */
 function mergeBody(
   body: string,
@@ -104,34 +90,37 @@ function mergeBody(
       return normalizeBlankLines(body);
     }
     const preserved = body.trim();
-    if (preserved.length === 0) {
-      return normalizeBlankLines(instagramBlock);
-    }
-    return normalizeBlankLines(`${instagramBlock}\n\n${preserved}`);
+    return normalizeBlankLines(
+      preserved.length === 0
+        ? instagramBlock
+        : `${instagramBlock}\n\n${preserved}`,
+    );
   }
 
-  let result = "";
+  const chunks: string[] = [];
   let cursor = 0;
   let inserted = false;
   for (const match of matches) {
-    result += body.slice(cursor, match.start);
+    chunks.push(body.slice(cursor, match.start));
     if (!inserted && instagramBlock.length > 0) {
-      result += instagramBlock;
+      chunks.push(instagramBlock);
       inserted = true;
     }
     cursor = match.end;
   }
-  result += body.slice(cursor);
-  return normalizeBlankLines(result);
+  chunks.push(body.slice(cursor));
+  return normalizeBlankLines(chunks.join(""));
 }
 
 type Span = { start: number; end: number };
 
 function findInstagramUrlSpans(body: string, shortcode: string): Span[] {
   const spans: Span[] = [];
-  const mdLinkRe = /\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/gi;
-  for (const match of body.matchAll(mdLinkRe)) {
-    const rawUrl = match[2];
+
+  for (const match of body.matchAll(
+    /\[(?:[^\]]*)\]\((https?:\/\/[^)\s]+)\)/gi,
+  )) {
+    const rawUrl = match[1];
     if (rawUrl === undefined || match.index === undefined) {
       continue;
     }
@@ -141,8 +130,7 @@ function findInstagramUrlSpans(body: string, shortcode: string): Span[] {
     spans.push({ start: match.index, end: match.index + match[0].length });
   }
 
-  const bareRe = /https?:\/\/[^\s<>\]`)]+/gi;
-  for (const match of body.matchAll(bareRe)) {
+  for (const match of body.matchAll(/https?:\/\/[^\s<>\]`)]+/gi)) {
     if (match.index === undefined) {
       continue;
     }
@@ -152,18 +140,13 @@ function findInstagramUrlSpans(body: string, shortcode: string): Span[] {
       continue;
     }
     const rawUrl = trimTrailingUrlPunctuation(match[0]);
-    const consumed = rawUrl.length;
     if (!instagramUrlMatchesShortcode(rawUrl, shortcode)) {
       continue;
     }
-    spans.push({ start, end: start + consumed });
+    spans.push({ start, end: start + rawUrl.length });
   }
 
   spans.sort((a, b) => a.start - b.start);
-  return dedupeOverlappingSpans(spans);
-}
-
-function dedupeOverlappingSpans(spans: Span[]): Span[] {
   const out: Span[] = [];
   for (const span of spans) {
     const prev = out[out.length - 1];
@@ -175,11 +158,7 @@ function dedupeOverlappingSpans(spans: Span[]): Span[] {
   return out;
 }
 
-/**
- * True when `url` is an Instagram post/reel/tv URL for `shortcode`
- * (`instagram.com` / `www` / `m`).
- */
-export function instagramUrlMatchesShortcode(
+function instagramUrlMatchesShortcode(
   url: string,
   shortcode: string,
 ): boolean {
@@ -194,14 +173,15 @@ export function instagramUrlMatchesShortcode(
     return false;
   }
   const segments = parsed.pathname.split("/").filter(Boolean);
-  if (segments.length < 2) {
+  const kind = segments[0];
+  const code = segments[1];
+  if (kind === undefined || code === undefined) {
     return false;
   }
-  const kind = segments[0]!.toLowerCase();
-  if (!INSTAGRAM_PATH_KINDS.has(kind)) {
+  if (!INSTAGRAM_PATH_KINDS.has(kind.toLowerCase())) {
     return false;
   }
-  return segments[1] === shortcode;
+  return code === shortcode;
 }
 
 function mediaFilename(
@@ -218,8 +198,7 @@ function mediaFilename(
     }
     return name;
   }
-  const ext = extensionForMedia(media);
-  return `${shortcode}-${index + 1}${ext}`;
+  return `${shortcode}-${index + 1}${extensionForMedia(media)}`;
 }
 
 function extensionForMedia(media: InstagramFetchedMedia): string {
@@ -237,7 +216,10 @@ function extensionFromUrl(url: string): string | null {
   } catch {
     return null;
   }
-  const base = parsed.pathname.split("/").pop() ?? "";
+  const base = parsed.pathname.split("/").pop();
+  if (base === undefined || base.length === 0) {
+    return null;
+  }
   const dot = base.lastIndexOf(".");
   if (dot <= 0 || dot === base.length - 1) {
     return null;

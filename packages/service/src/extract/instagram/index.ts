@@ -10,7 +10,6 @@ export type {
 export {
   INSTAGRAM_TITLE_MAX_LENGTH,
   deriveInstagramTitle,
-  instagramUrlMatchesShortcode,
   listInstagramMediaIntents,
   mergeInstagramIntoNote,
 } from "./merge.js";
