@@ -47,6 +47,11 @@ export function coverNeedsResolve(
 /**
  * Dashboard masonry reads committed cover maps only (#657).
  * `undefined` = still resolving; `null` = no cover.
+ *
+ * Stale-while-revalidate (#871): if maps already hold a real cover path but the
+ * stamp is stale (softRefresh / save bumped `updated_at`), keep showing that
+ * path while a flight re-resolves. Hiding it as `undefined` made cards flash
+ * text-only on item→list return even when cover.webp was already known.
  */
 export function resolveDashboardGridThumbnail(
   item: ItemFile,
@@ -58,6 +63,13 @@ export function resolveDashboardGridThumbnail(
   size: ItemThumbnailPixelSize | null | undefined;
 } {
   if (coverNeedsResolve(item, paths, stamps, sizes)) {
+    const existing = paths.get(item.id);
+    if (existing != null) {
+      return {
+        path: existing,
+        size: sizes.get(item.id) ?? null,
+      };
+    }
     return { path: undefined, size: undefined };
   }
   return {
@@ -272,7 +284,14 @@ export function mergeCommittedThumbnailPaths(
   const mergedPaths = new Map(prev);
   for (const id of orderedItemIds) {
     if (resolved.has(id)) {
-      mergedPaths.set(id, resolved.get(id) ?? null);
+      const next = resolved.get(id) ?? null;
+      const previous = mergedPaths.get(id);
+      // Never downgrade an existing cover path to null (#871): sync republish /
+      // stamp-mismatch flights can resolve null while cover.webp already exists.
+      if (next === null && previous != null) {
+        continue;
+      }
+      mergedPaths.set(id, next);
     }
   }
   const orderedSet = new Set(orderedItemIds);
@@ -324,6 +343,57 @@ export function mergeCommittedThumbnailSizes(
   return merged;
 }
 
+/** Drop one id from cover maps so coverNeedsResolve fails open (#871). */
+export function clearCommittedCoverEntry(
+  paths: Map<string, string | null>,
+  stamps: Map<string, string>,
+  sizes: Map<string, ItemThumbnailPixelSize | null>,
+  itemId: string,
+): {
+  paths: Map<string, string | null>;
+  stamps: Map<string, string>;
+  sizes: Map<string, ItemThumbnailPixelSize | null>;
+} {
+  const nextPaths = new Map(paths);
+  const nextStamps = new Map(stamps);
+  const nextSizes = new Map(sizes);
+  nextPaths.delete(itemId);
+  nextStamps.delete(itemId);
+  nextSizes.delete(itemId);
+  return { paths: nextPaths, stamps: nextStamps, sizes: nextSizes };
+}
+
+/** Omit null paths before cache/snapshot persist (mirror mapsFromCoverPaths #720). */
+export function coverMapsForPersistence(
+  paths: Map<string, string | null>,
+  stamps: Map<string, string>,
+  sizes: Map<string, ItemThumbnailPixelSize | null>,
+): {
+  thumbnailPaths: Map<string, string | null>;
+  thumbnailStamps: Map<string, string>;
+  thumbnailSizes: Map<string, ItemThumbnailPixelSize | null>;
+} {
+  const thumbnailPaths = new Map<string, string | null>();
+  const thumbnailStamps = new Map<string, string>();
+  const thumbnailSizes = new Map<string, ItemThumbnailPixelSize | null>();
+  for (const [id, path] of paths) {
+    if (path == null) {
+      continue;
+    }
+    const stamp = stamps.get(id);
+    if (stamp === undefined) {
+      continue;
+    }
+    thumbnailPaths.set(id, path);
+    thumbnailStamps.set(id, stamp);
+    const size = sizes.get(id);
+    if (size !== undefined) {
+      thumbnailSizes.set(id, size);
+    }
+  }
+  return { thumbnailPaths, thumbnailStamps, thumbnailSizes };
+}
+
 export function coverPathsFromMaps(
   paths: Map<string, string | null>,
   stamps: Map<string, string>,
@@ -331,6 +401,10 @@ export function coverPathsFromMaps(
 ): Record<string, DashboardCoverPathEntry> {
   const out: Record<string, DashboardCoverPathEntry> = {};
   for (const [id, path] of paths) {
+    // Never persist sticky null (#720 / #871).
+    if (path == null) {
+      continue;
+    }
     const stamp = stamps.get(id);
     if (stamp === undefined) {
       continue;

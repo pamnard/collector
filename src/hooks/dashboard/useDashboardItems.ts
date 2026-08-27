@@ -38,6 +38,8 @@ export interface UseDashboardItemsResult {
   loadMore: () => void;
   /** Drop a deleted id from committed/working lists and query cache immediately. */
   pruneItem: (itemId: string) => void;
+  /** Re-resolve one item cover after itemCoverChanged (#856 / #871). */
+  refreshCoverForItem: (itemId: string) => void;
   /** Scoped live updates from vaultPresentationChanged (#756). */
   applyPresentationEvents: (
     events: VaultPresentationChangedPayload[],
@@ -143,6 +145,7 @@ export function useDashboardItems(
     error: list.error,
     loadMore: query.loadMore,
     pruneItem: list.pruneItem,
+    refreshCoverForItem: covers.refreshCoverForItem,
     applyPresentationEvents,
   };
 }

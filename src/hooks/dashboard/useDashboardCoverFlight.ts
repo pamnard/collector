@@ -69,6 +69,9 @@ export function useDashboardCoverFlight(
   const coverRefreshGenerationRef = useRef(new Map<string, number>());
   const pendingCoverRefreshRef = useRef(new Set<string>());
   const refreshCoverForItemRef = useRef<(itemId: string) => void>(() => {});
+  const prevCommittedCoverPathsRef = useRef<Map<string, string | null>>(
+    new Map(),
+  );
 
   const abortCoverFlight = useCallback(() => {
     coverFlightRef.current?.batcher.cancel();
@@ -89,7 +92,12 @@ export function useDashboardCoverFlight(
       );
       const requestVersion = requestVersionRef.current;
       const cacheKeyForFlight = queryKeyRef.current;
-      void resolveDashboardCoverPathsProgressive([item], {
+
+      // Do not clear maps before resolve (#871). Clearing a live /cover path,
+      // then committing null when onResolved races softRefresh, is what made
+      // the grid lose covers after item→list navigation.
+      const resolveItem = itemsByIdRef.current.get(itemId) ?? item;
+      void resolveDashboardCoverPathsProgressive([resolveItem], {
         onResolved: (id, path, size) => {
           if (id !== itemId) {
             return;
@@ -106,7 +114,15 @@ export function useDashboardCoverFlight(
           ) {
             return;
           }
-          const stamp = itemCoverStamp(item);
+          // Never install terminal null from coverPatch — only upgrade to a path.
+          if (path == null) {
+            return;
+          }
+          const liveItem = itemsByIdRef.current.get(itemId);
+          if (!liveItem) {
+            return;
+          }
+          const stamp = itemCoverStamp(liveItem);
           const nextPaths = new Map(committedThumbnailPathsRef.current);
           const nextStamps = new Map(committedThumbnailStampsRef.current);
           const nextSizes = new Map(committedThumbnailSizesRef.current);
@@ -263,6 +279,23 @@ export function useDashboardCoverFlight(
   );
 
   startCoverPathFlightRef.current = startCoverPathFlight;
+
+  // Re-probe only on real downgrade cover→null (#871). Do not fire for first
+  // paint terminal null (undefined→null) — that storms host resolve.
+  useEffect(() => {
+    if (showSkeleton) {
+      return;
+    }
+    const prev = prevCommittedCoverPathsRef.current;
+    for (const item of committedItems) {
+      const path = committedThumbnailPaths.get(item.id);
+      const was = prev.get(item.id);
+      if (path === null && was != null) {
+        refreshCoverForItemRef.current(item.id);
+      }
+    }
+    prevCommittedCoverPathsRef.current = new Map(committedThumbnailPaths);
+  }, [committedItems, committedThumbnailPaths, showSkeleton]);
 
   // Cover-map holes after abort/prune: restart when nothing in-flight for this version.
   useEffect(() => {

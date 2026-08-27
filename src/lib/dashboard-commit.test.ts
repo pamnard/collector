@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import type { ItemFile } from "@collector/shared";
 import {
   applyDashboardListSnapshot,
+  clearCommittedCoverEntry,
+  coverMapsForPersistence,
   coverNeedsResolve,
   coverPathsFromMaps,
   filterOutItemId,
@@ -140,6 +142,22 @@ describe("resolveDashboardGridThumbnailPath", () => {
       undefined,
     );
   });
+
+  it("keeps existing cover path while stamp is stale (#871)", () => {
+    const item = stubItem("a", { updated_at: "2026-01-02T00:00:00.000Z" });
+    const paths = new Map<string, string | null>([["a", "/cover"]]);
+    const stamps = new Map([["a", "old:stamp"]]);
+    const sizes = new Map([["a", { width: 10, height: 10 }]]);
+    assert.equal(coverNeedsResolve(item, paths, stamps, sizes), true);
+    assert.equal(
+      resolveDashboardGridThumbnailPath(item, paths, stamps, sizes),
+      "/cover",
+    );
+    assert.deepEqual(
+      resolveDashboardGridThumbnail(item, paths, stamps, sizes),
+      { path: "/cover", size: { width: 10, height: 10 } },
+    );
+  });
 });
 
 describe("resolveDashboardGridThumbnail", () => {
@@ -178,13 +196,17 @@ describe("resolveDashboardGridThumbnail", () => {
     );
   });
 
-  it("returns undefined path and size when size key is missing (needs re-resolve)", () => {
+  it("keeps cover path while size key is missing (stale-while-revalidate #871)", () => {
     const item = stubItem("a", { thumbnail: "c.webp" });
     const paths = new Map<string, string | null>([["a", "/a"]]);
     const stamps = new Map([["a", itemCoverStamp(item)]]);
+    assert.equal(
+      coverNeedsResolve(item, paths, stamps, new Map()),
+      true,
+    );
     assert.deepEqual(
       resolveDashboardGridThumbnail(item, paths, stamps, new Map()),
-      { path: undefined, size: undefined },
+      { path: "/a", size: null },
     );
   });
 });
@@ -467,6 +489,13 @@ describe("mergeCommittedThumbnailPaths", () => {
     const merged = mergeCommittedThumbnailPaths(prev, resolved, ["a"]);
     assert.equal(merged.get("a"), "/keep");
   });
+
+  it("does not downgrade an existing cover path to null (#871)", () => {
+    const prev = new Map<string, string | null>([["a", "/cover"]]);
+    const resolved = new Map<string, string | null>([["a", null]]);
+    const merged = mergeCommittedThumbnailPaths(prev, resolved, ["a"]);
+    assert.equal(merged.get("a"), "/cover");
+  });
 });
 
 describe("mergeCommittedThumbnailStamps", () => {
@@ -501,7 +530,6 @@ describe("coverPathsFromMaps / mapsFromCoverPaths", () => {
     const record = coverPathsFromMaps(paths, stamps, sizes);
     assert.deepEqual(record, {
       a: { path: "/a", stamp: "s-a", width: 100, height: 80 },
-      b: { path: null, stamp: "s-b", width: null, height: null },
     });
     const back = mapsFromCoverPaths(record);
     // Null covers are not warmed (#720 sticky-null residual).
@@ -527,6 +555,76 @@ describe("coverPathsFromMaps / mapsFromCoverPaths", () => {
     const paths = new Map<string, string | null>([["a", "/a"]]);
     const stamps = new Map<string, string>();
     assert.deepEqual(coverPathsFromMaps(paths, stamps, new Map()), {});
+  });
+});
+
+describe("clearCommittedCoverEntry (#871)", () => {
+  it("drops one id so coverNeedsResolve fails open", () => {
+    const item = stubItem("a");
+    const paths = new Map<string, string | null>([["a", null]]);
+    const stamps = new Map([["a", itemCoverStamp(item)]]);
+    const sizes = new Map([["a", null]]);
+    assert.equal(coverNeedsResolve(item, paths, stamps, sizes), false);
+
+    const cleared = clearCommittedCoverEntry(paths, stamps, sizes, "a");
+    assert.equal(coverNeedsResolve(item, cleared.paths, cleared.stamps, cleared.sizes), true);
+    assert.equal(cleared.paths.has("a"), false);
+    assert.equal(cleared.stamps.has("a"), false);
+    assert.equal(cleared.sizes.has("a"), false);
+  });
+});
+
+describe("coverMapsForPersistence (#871)", () => {
+  it("omits null paths from cache-bound maps", () => {
+    const paths = new Map<string, string | null>([
+      ["a", "/a"],
+      ["b", null],
+    ]);
+    const stamps = new Map([
+      ["a", "s-a"],
+      ["b", "s-b"],
+    ]);
+    const sizes = new Map([
+      ["a", { width: 10, height: 10 }],
+      ["b", null],
+    ]);
+    const persisted = coverMapsForPersistence(paths, stamps, sizes);
+    assert.deepEqual([...persisted.thumbnailPaths.entries()], [["a", "/a"]]);
+    assert.deepEqual([...persisted.thumbnailStamps.entries()], [["a", "s-a"]]);
+    assert.deepEqual([...persisted.thumbnailSizes.entries()], [
+      ["a", { width: 10, height: 10 }],
+    ]);
+  });
+});
+
+describe("attach race sticky null recovery (#871)", () => {
+  it("upgrades terminal null to cover path without clearing first", () => {
+    const itemT1 = stubItem("a", { updated_at: "2026-01-01T00:00:00.000Z" });
+    const itemT2 = stubItem("a", { updated_at: "2026-01-02T00:00:00.000Z" });
+    const paths = new Map<string, string | null>([["a", null]]);
+    const stamps = new Map([["a", itemCoverStamp(itemT1)]]);
+    const sizes = new Map([["a", null]]);
+    assert.equal(
+      resolveDashboardGridThumbnailPath(itemT1, paths, stamps, sizes),
+      null,
+    );
+
+    // coverPatch writes a positive path over sticky null (no clear step).
+    paths.set("a", "/media/a/cover.webp");
+    stamps.set("a", itemCoverStamp(itemT2));
+    sizes.set("a", { width: 320, height: 240 });
+
+    assert.equal(
+      resolveDashboardGridThumbnailPath(itemT2, paths, stamps, sizes),
+      "/media/a/cover.webp",
+    );
+  });
+
+  it("merge keeps cover when a later flight resolves null", () => {
+    const prev = new Map<string, string | null>([["a", "/media/a/cover.webp"]]);
+    const resolved = new Map<string, string | null>([["a", null]]);
+    const merged = mergeCommittedThumbnailPaths(prev, resolved, ["a"]);
+    assert.equal(merged.get("a"), "/media/a/cover.webp");
   });
 });
 

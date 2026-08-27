@@ -54,6 +54,30 @@ export async function runCoverPathFlight(
 ): Promise<void> {
   const { requestVersion, resolveProgressive } = options;
 
+  // Sticky null is terminal for coverNeedsResolve. Any flight re-opens those
+  // holes so disk can win after generateCover / softRefresh (#871).
+  {
+    const paths = new Map(options.getPaths());
+    const stamps = new Map(options.getStamps());
+    const sizes = new Map(options.getSizes());
+    let stripped = false;
+    for (const item of options.orderedItems) {
+      if (paths.get(item.id) !== null) {
+        continue;
+      }
+      if (!paths.has(item.id)) {
+        continue;
+      }
+      paths.delete(item.id);
+      stamps.delete(item.id);
+      sizes.delete(item.id);
+      stripped = true;
+    }
+    if (stripped) {
+      options.commit(paths, stamps, sizes);
+    }
+  }
+
   const collectNeedsResolve = () =>
     options.orderedItems.filter((item) =>
       coverNeedsResolve(

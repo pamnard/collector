@@ -9,6 +9,7 @@ import type { DashboardItemSort, VaultIndexSyncStatus } from "@collector/api";
 import {
   bodyStampsForOrderedIds,
   bodyStampsFromMap,
+  coverMapsForPersistence,
   coverPathsFromMaps,
   orderedIds,
   snapshotToCacheEntry,
@@ -518,9 +519,11 @@ export function useDashboardQueryLifecycle(
           bodyStamps: bodyStampsRef.current,
           streamEndOffset,
           totalCount,
-          thumbnailPaths: committedThumbnailPathsRef.current,
-          thumbnailStamps: committedThumbnailStampsRef.current,
-          thumbnailSizes: committedThumbnailSizesRef.current,
+          ...coverMapsForPersistence(
+            committedThumbnailPathsRef.current,
+            committedThumbnailStampsRef.current,
+            committedThumbnailSizesRef.current,
+          ),
         }),
       );
     }, 400);
