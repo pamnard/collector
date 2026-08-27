@@ -50,6 +50,7 @@ run(
     "--test",
     join(root, "src/lib/dashboard-perf.test.ts"),
     join(root, "src/lib/dashboard-commit.test.ts"),
+    join(root, "src/lib/dashboard-cover-refresh.test.ts"),
   ],
 );
 

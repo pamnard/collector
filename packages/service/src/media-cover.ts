@@ -112,6 +112,11 @@ export interface MediaCoverService {
     file: AttachMediaFileInput,
   ): Promise<MediaFileMeta>;
   deleteItemMedia(itemId: string, mediaId: string): Promise<void>;
+  /**
+   * Drop cached thumbnail path/size for one item (#856).
+   * Call after on-disk cover write so a prior null resolve cannot stick.
+   */
+  invalidateThumbnailPathCache(itemId: string): void;
 }
 
 function itemThumbnailCacheKey(item: ItemFile): string {
@@ -127,17 +132,24 @@ export function createMediaCoverService(
     itemThumbnailPathCache.delete(itemId);
   };
 
+  /**
+   * After media attach/replace/delete: bump stamp + enqueue cover (or clear).
+   * `itemCoverChanged` only when the on-disk cover was cleared here (#856).
+   * Successful generateCover emits after applyItemCover — not at enqueue time.
+   */
   const afterMediaPresentationChange = async (itemId: string): Promise<void> => {
     const { vault, path } = await deps.resolveActiveVault();
     invalidateThumbnailPathCache(itemId);
     await touchItemUpdatedAt(deps.getContext(), path, vault.id, itemId);
-    await enqueuePreferredCover(itemId);
-    deps.onVaultPresentationChanged?.({
-      vaultId: vault.id,
-      kind: "itemCoverChanged",
-      itemId,
-      folderPath: folderPathFromItemPath(itemId),
-    });
+    const outcome = await enqueuePreferredCover(itemId);
+    if (outcome === "cleared") {
+      deps.onVaultPresentationChanged?.({
+        vaultId: vault.id,
+        kind: "itemCoverChanged",
+        itemId,
+        folderPath: folderPathFromItemPath(itemId),
+      });
+    }
   };
 
   const listItemMedia = async (itemId: string): Promise<MediaWithPath[]> => {
@@ -145,7 +157,9 @@ export function createMediaCoverService(
     return listItemMediaWithPaths(deps.getContext(), path, itemId);
   };
 
-  const enqueuePreferredCover = async (itemId: string): Promise<void> => {
+  const enqueuePreferredCover = async (
+    itemId: string,
+  ): Promise<"cleared" | "enqueued"> => {
     const { vault, path } = await deps.resolveActiveVault();
     const ctx = deps.getContext();
     const media = await listItemMediaWithPaths(ctx, path, itemId);
@@ -155,7 +169,7 @@ export function createMediaCoverService(
 
     if (!candidate) {
       await clearItemCover(ctx, path, vault.id, itemId);
-      return;
+      return "cleared";
     }
 
     const mediaType = candidate.media_type;
@@ -170,6 +184,7 @@ export function createMediaCoverService(
       filename: candidate.filename,
       mediaType,
     });
+    return "enqueued";
   };
 
   /**
@@ -392,5 +407,6 @@ export function createMediaCoverService(
     attachMediaFiles,
     replaceItemMedia,
     deleteItemMedia,
+    invalidateThumbnailPathCache,
   };
 }

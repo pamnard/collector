@@ -9,6 +9,12 @@ import {
   runCoverPathFlight,
   type CoverFlightSlot,
 } from "../../lib/dashboard-cover-flight";
+import {
+  bumpCoverRefreshGeneration,
+  isCoverRefreshGenerationCurrent,
+  notePendingCoverRefresh,
+  takePendingCoverRefreshesForItems,
+} from "../../lib/dashboard-cover-refresh";
 import { resolveDashboardCoverPathsProgressive } from "../../lib/preload-dashboard-covers";
 import { reportServiceError } from "../../services/runtime-error";
 import {
@@ -60,6 +66,9 @@ export function useDashboardCoverFlight(
   } = list;
 
   const coverFlightRef = useRef<CoverFlightSlot>(null);
+  const coverRefreshGenerationRef = useRef(new Map<string, number>());
+  const pendingCoverRefreshRef = useRef(new Set<string>());
+  const refreshCoverForItemRef = useRef<(itemId: string) => void>(() => {});
 
   const abortCoverFlight = useCallback(() => {
     coverFlightRef.current?.batcher.cancel();
@@ -67,12 +76,105 @@ export function useDashboardCoverFlight(
     coverFlightRef.current = null;
   }, []);
 
+  const refreshCoverForItem = useCallback(
+    (itemId: string) => {
+      const item = itemsByIdRef.current.get(itemId);
+      if (!item) {
+        notePendingCoverRefresh(pendingCoverRefreshRef.current, itemId);
+        return;
+      }
+      const generation = bumpCoverRefreshGeneration(
+        coverRefreshGenerationRef.current,
+        itemId,
+      );
+      const requestVersion = requestVersionRef.current;
+      const cacheKeyForFlight = queryKeyRef.current;
+      void resolveDashboardCoverPathsProgressive([item], {
+        onResolved: (id, path, size) => {
+          if (id !== itemId) {
+            return;
+          }
+          if (requestVersionRef.current !== requestVersion) {
+            return;
+          }
+          if (
+            !isCoverRefreshGenerationCurrent(
+              coverRefreshGenerationRef.current,
+              itemId,
+              generation,
+            )
+          ) {
+            return;
+          }
+          const stamp = itemCoverStamp(item);
+          const nextPaths = new Map(committedThumbnailPathsRef.current);
+          const nextStamps = new Map(committedThumbnailStampsRef.current);
+          const nextSizes = new Map(committedThumbnailSizesRef.current);
+          nextPaths.set(itemId, path);
+          nextStamps.set(itemId, stamp);
+          nextSizes.set(itemId, size);
+          commitDashboardCoverMaps({
+            flightKey: cacheKeyForFlight,
+            flightVersion: requestVersion,
+            queryKeyRef,
+            requestVersionRef,
+            itemIds: itemIdsRef.current,
+            itemsById: itemsByIdRef.current,
+            bodyStamps: bodyStampsRef.current,
+            streamEndOffset: streamEndOffsetRef.current,
+            totalCount: totalCountRef.current,
+            thumbnailPaths: nextPaths,
+            thumbnailStamps: nextStamps,
+            thumbnailSizes: nextSizes,
+            setCommittedThumbnailPaths,
+            setCommittedThumbnailStamps,
+            setCommittedThumbnailSizes,
+            committedThumbnailPathsRef,
+            committedThumbnailStampsRef,
+            committedThumbnailSizesRef,
+          });
+        },
+      });
+    },
+    [
+      bodyStampsRef,
+      committedThumbnailPathsRef,
+      committedThumbnailSizesRef,
+      committedThumbnailStampsRef,
+      itemIdsRef,
+      itemsByIdRef,
+      queryKeyRef,
+      requestVersionRef,
+      setCommittedThumbnailPaths,
+      setCommittedThumbnailSizes,
+      setCommittedThumbnailStamps,
+      streamEndOffsetRef,
+      totalCountRef,
+    ],
+  );
+
+  refreshCoverForItemRef.current = refreshCoverForItem;
+
+  const flushPendingCoverRefreshes = useCallback(
+    (orderedItems: ItemFile[]) => {
+      const ready = takePendingCoverRefreshesForItems(
+        pendingCoverRefreshRef.current,
+        orderedItems.map((item) => item.id),
+      );
+      for (const id of ready) {
+        refreshCoverForItemRef.current(id);
+      }
+    },
+    [],
+  );
+
   const startCoverPathFlight = useCallback<StartCoverPathFlight>(
     (
       requestVersion: number,
       orderedItems: ItemFile[],
       flightOptions?: { blockOnCovers?: boolean },
     ): Promise<void> => {
+      flushPendingCoverRefreshes(orderedItems);
       const blockOnCovers = flightOptions?.blockOnCovers ?? false;
       const cacheKeyForFlight = queryKeyRef.current;
       const ids = itemIdsRef.current;
@@ -137,6 +239,7 @@ export function useDashboardCoverFlight(
       committedThumbnailPathsRef,
       committedThumbnailSizesRef,
       committedThumbnailStampsRef,
+      flushPendingCoverRefreshes,
       itemIdsRef,
       itemsByIdRef,
       queryKeyRef,
@@ -156,6 +259,7 @@ export function useDashboardCoverFlight(
     if (showSkeleton) {
       return;
     }
+    flushPendingCoverRefreshes(committedItems);
     const requestVersion = requestVersionRef.current;
     const ordered = committedItems;
     const needsResolve = ordered.some((item) =>
@@ -179,73 +283,11 @@ export function useDashboardCoverFlight(
     committedThumbnailPaths,
     committedThumbnailStamps,
     committedThumbnailSizes,
+    flushPendingCoverRefreshes,
     requestVersionRef,
     showSkeleton,
     startCoverPathFlight,
   ]);
-
-  const refreshCoverForItem = useCallback(
-    (itemId: string) => {
-      const item = itemsByIdRef.current.get(itemId);
-      if (!item) {
-        return;
-      }
-      const requestVersion = requestVersionRef.current;
-      const cacheKeyForFlight = queryKeyRef.current;
-      void resolveDashboardCoverPathsProgressive([item], {
-        onResolved: (id, path, size) => {
-          if (id !== itemId) {
-            return;
-          }
-          if (requestVersionRef.current !== requestVersion) {
-            return;
-          }
-          const stamp = itemCoverStamp(item);
-          const nextPaths = new Map(committedThumbnailPathsRef.current);
-          const nextStamps = new Map(committedThumbnailStampsRef.current);
-          const nextSizes = new Map(committedThumbnailSizesRef.current);
-          nextPaths.set(itemId, path);
-          nextStamps.set(itemId, stamp);
-          nextSizes.set(itemId, size);
-          commitDashboardCoverMaps({
-            flightKey: cacheKeyForFlight,
-            flightVersion: requestVersion,
-            queryKeyRef,
-            requestVersionRef,
-            itemIds: itemIdsRef.current,
-            itemsById: itemsByIdRef.current,
-            bodyStamps: bodyStampsRef.current,
-            streamEndOffset: streamEndOffsetRef.current,
-            totalCount: totalCountRef.current,
-            thumbnailPaths: nextPaths,
-            thumbnailStamps: nextStamps,
-            thumbnailSizes: nextSizes,
-            setCommittedThumbnailPaths,
-            setCommittedThumbnailStamps,
-            setCommittedThumbnailSizes,
-            committedThumbnailPathsRef,
-            committedThumbnailStampsRef,
-            committedThumbnailSizesRef,
-          });
-        },
-      });
-    },
-    [
-      bodyStampsRef,
-      committedThumbnailPathsRef,
-      committedThumbnailSizesRef,
-      committedThumbnailStampsRef,
-      itemIdsRef,
-      itemsByIdRef,
-      queryKeyRef,
-      requestVersionRef,
-      setCommittedThumbnailPaths,
-      setCommittedThumbnailSizes,
-      setCommittedThumbnailStamps,
-      streamEndOffsetRef,
-      totalCountRef,
-    ],
-  );
 
   return {
     startCoverPathFlight,

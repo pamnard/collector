@@ -356,6 +356,8 @@ export function createServiceDomainRuntime(
     getContext,
     resolveVaultPath: requireActiveVaultPath,
     generateCoverFromMedia,
+    invalidateThumbnailPathCache: (itemId) =>
+      mediaCover.invalidateThumbnailPathCache(itemId),
     onVaultPresentationChanged: (payload) =>
       vaultPresentationChanged.notify(payload),
   });

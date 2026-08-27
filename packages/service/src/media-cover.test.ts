@@ -88,7 +88,10 @@ describe("createMediaCoverService", () => {
   });
 
   function createService(
-    opts?: { readCoverPixelSize?: typeof readCoverPixelSize },
+    opts?: {
+      readCoverPixelSize?: typeof readCoverPixelSize;
+      onVaultPresentationChanged?: ReturnType<typeof vi.fn>;
+    },
   ) {
     return createMediaCoverService({
       resolveActiveVault: async () => ({ vault: vault as never, path: "/vault" }),
@@ -97,6 +100,7 @@ describe("createMediaCoverService", () => {
       waitForCoverJob,
       resolveThumbnailPathsProgressive,
       readCoverPixelSize: opts?.readCoverPixelSize ?? readCoverPixelSize,
+      onVaultPresentationChanged: opts?.onVaultPresentationChanged,
     });
   }
 
@@ -330,9 +334,11 @@ describe("createMediaCoverService", () => {
         absolute_path: "/vault/note.media/a.png",
       },
     ]);
-    const result = await createService().attachMediaFiles("note.md", [
-      { name: "a.png", bytes: new Uint8Array([1]) },
-    ]);
+    const onVaultPresentationChanged = vi.fn();
+    const result = await createService({ onVaultPresentationChanged }).attachMediaFiles(
+      "note.md",
+      [{ name: "a.png", bytes: new Uint8Array([1]) }],
+    );
 
     expect(attachMediaFile).toHaveBeenCalled();
     expect(touchItemUpdatedAt).toHaveBeenCalledWith(
@@ -349,7 +355,62 @@ describe("createMediaCoverService", () => {
       filename: "a.png",
       mediaType: "image",
     });
+    // Cover job not done yet — do not emit itemCoverChanged (#856).
+    expect(onVaultPresentationChanged).not.toHaveBeenCalled();
     expect(result).toEqual([{ id: "m1", filename: "a.png" }]);
+  });
+
+  it("deleteItemMedia emits itemCoverChanged only when cover is cleared (#856)", async () => {
+    deleteMediaFile.mockResolvedValue(undefined);
+    listItemMediaWithPaths.mockResolvedValue([]);
+    const onVaultPresentationChanged = vi.fn();
+    await createService({ onVaultPresentationChanged }).deleteItemMedia(
+      "note.md",
+      "m1",
+    );
+    expect(clearItemCover).toHaveBeenCalled();
+    expect(onVaultPresentationChanged).toHaveBeenCalledWith({
+      vaultId: "v1",
+      kind: "itemCoverChanged",
+      itemId: "note.md",
+      folderPath: "",
+    });
+  });
+
+  it("invalidateThumbnailPathCache drops a sticky null so re-resolve can see cover (#856)", async () => {
+    resolveThumbnailPathsProgressive.mockImplementationOnce(
+      async (_vault, items, options) => {
+        for (const item of items) {
+          options.onResolved({ id: item.id, path: null });
+        }
+      },
+    );
+    resolveThumbnailPathsProgressive.mockImplementationOnce(
+      async (_vault, items, options) => {
+        for (const item of items) {
+          options.onResolved({
+            id: item.id,
+            path: `/vault/media/${item.id}/cover.webp`,
+          });
+        }
+      },
+    );
+
+    const service = createService();
+    const stale = {
+      id: "note.md",
+      thumbnail: null,
+      updated_at: "t1",
+    } as never;
+
+    const first = await service.resolveItemThumbnailPaths([stale]);
+    expect(first.get("note.md")).toBeNull();
+
+    service.invalidateThumbnailPathCache("note.md");
+
+    const second = await service.resolveItemThumbnailPaths([stale]);
+    expect(second.get("note.md")).toBe("/vault/media/note.md/cover.webp");
+    expect(resolveThumbnailPathsProgressive).toHaveBeenCalledTimes(2);
   });
 
   it("attachMediaFiles prefers an existing image over an attached video", async () => {
