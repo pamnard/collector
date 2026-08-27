@@ -8,6 +8,7 @@ import { CliUsageError } from "../types.js";
 import {
   ALL_COMMAND_FLAGS,
   COMMAND_PARSERS,
+  isRegisteredCommand,
   type RegisteredCommandName,
 } from "./registry.js";
 
@@ -56,17 +57,12 @@ export const COMMAND_USAGE = {
 
 const HELP_FLAGS = new Set(["--help", "-h"]);
 
-function isRegisteredCommand(name: string): name is RegisteredCommandName {
-  return Object.prototype.hasOwnProperty.call(COMMAND_PARSERS, name);
-}
-
 export function formatCommandHelp(name: RegisteredCommandName): string {
   return COMMAND_USAGE[name];
 }
 
 export function formatTopLevelHelp(): string {
   const commands = (Object.keys(COMMAND_PARSERS) as RegisteredCommandName[])
-    .slice()
     .sort()
     .map((name) => `  ${COMMAND_USAGE[name].replace(/^Usage: collector-cli /, "")}`)
     .join("\n");
@@ -99,27 +95,20 @@ export function tryParseCliHelp(argv: string[]): string | undefined {
     (arg) => !HELP_FLAGS.has(arg),
   );
 
+  let topic: string | undefined;
   if (positional[0] === "help") {
-    const topic = positional[1];
-    if (topic === undefined) {
-      return formatTopLevelHelp();
-    }
-    if (!isRegisteredCommand(topic)) {
-      throw new CliUsageError(`Unknown command: ${topic}`);
-    }
-    return formatCommandHelp(topic);
+    topic = positional[1];
+  } else if (wantsFlagHelp) {
+    topic = positional[0];
+  } else {
+    return undefined;
   }
 
-  if (wantsFlagHelp) {
-    const topic = positional[0];
-    if (topic === undefined) {
-      return formatTopLevelHelp();
-    }
-    if (!isRegisteredCommand(topic)) {
-      throw new CliUsageError(`Unknown command: ${topic}`);
-    }
-    return formatCommandHelp(topic);
+  if (topic === undefined) {
+    return formatTopLevelHelp();
   }
-
-  return undefined;
+  if (!isRegisteredCommand(topic)) {
+    throw new CliUsageError(`Unknown command: ${topic}`);
+  }
+  return formatCommandHelp(topic);
 }

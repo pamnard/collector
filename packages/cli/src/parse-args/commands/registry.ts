@@ -90,3 +90,16 @@ export const COMMAND_PARSERS = {
 } satisfies Record<string, CommandParser>;
 
 export type RegisteredCommandName = keyof typeof COMMAND_PARSERS;
+
+export function isRegisteredCommand(
+  name: string,
+): name is RegisteredCommandName {
+  return Object.prototype.hasOwnProperty.call(COMMAND_PARSERS, name);
+}
+
+export function getCommandParser(name: string): CommandParser | undefined {
+  if (!isRegisteredCommand(name)) {
+    return undefined;
+  }
+  return COMMAND_PARSERS[name];
+}

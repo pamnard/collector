@@ -5,8 +5,7 @@
 
 import {
   ALL_COMMAND_FLAGS,
-  COMMAND_PARSERS,
-  type RegisteredCommandName,
+  getCommandParser,
 } from "./parse-args/commands/registry.js";
 import {
   readOpt,
@@ -21,13 +20,6 @@ export { CliUsageError } from "./parse-args/types.js";
 function envPath(name: string): string | undefined {
   const raw = process.env[name]?.trim();
   return raw ? raw : undefined;
-}
-
-function commandParser(command: string) {
-  if (!Object.prototype.hasOwnProperty.call(COMMAND_PARSERS, command)) {
-    return undefined;
-  }
-  return COMMAND_PARSERS[command as RegisteredCommandName];
 }
 
 export function parseCliArgs(argv: string[]): ParsedCliArgs {
@@ -57,7 +49,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     );
   }
 
-  const parse = commandParser(command);
+  const parse = getCommandParser(command);
   if (parse === undefined) {
     throw new CliUsageError(`Unknown command: ${command}`);
   }
