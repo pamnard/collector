@@ -134,7 +134,6 @@ export interface TagsFoldersService {
     signal?: AbortSignal,
   ): Subscription;
   listFolderTree(): Promise<FolderTreeNode[]>;
-  /** Exact-folder membership only (#844); empty → []; missing → error. */
   listFolderItems(folderPath: string): Promise<ItemFile[]>;
   createFolder(folderPath: string): Promise<string>;
   renameFolder(oldPath: string, newPath: string): Promise<string>;

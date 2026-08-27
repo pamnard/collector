@@ -1,6 +1,6 @@
 import type { FolderTreeNode, TagWithCount } from "@collector/core";
 import type { ItemFile, VaultMeta } from "@collector/shared";
-import { INBOX_FOLDER_NAME, isInboxFolderName } from "@collector/shared";
+import { INBOX_FOLDER_NAME, isInboxFolderName, normalizeFolderPath } from "@collector/shared";
 import {
   createMockItems,
   createMockTags,
@@ -151,7 +151,7 @@ export const mockStore = {
 
   /** Exact folder_path membership (#844); missing path → error. */
   listFolderItems(folderPath: string): ItemFile[] {
-    const path = folderPath.trim();
+    const path = normalizeFolderPath(folderPath);
     if (!path) {
       throw new Error("Folder path must be non-empty");
     }
