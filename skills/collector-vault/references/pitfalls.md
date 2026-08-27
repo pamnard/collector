@@ -49,3 +49,7 @@ Sidecar directories (`*.media/`) are host-owned. Attach/replace/delete/set-cover
 ## Destructive folder delete
 
 `delete-folder` removes the folder tree and **every item** under that prefix (markdown + media + index rows). Not an empty-directory rmdir.
+
+## List folder items ≠ folder tree
+
+`list-folder-items` / `collector_list_folder_items` lists **items in one folder** (exact `folder_path`). It does not walk children. Use `list-folders` for the tree. Empty folder → `[]`; missing folder fails — do not treat empty as missing.

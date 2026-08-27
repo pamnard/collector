@@ -331,6 +331,12 @@ export interface FoldersPort {
     signal?: AbortSignal,
   ): Subscription;
   listFolderTree(): Promise<FolderTreeNode[]>;
+  /**
+   * Items whose `folder_path` equals `folderPath` exactly (#844).
+   * Does not include child folders. Empty folder → `[]`. Missing folder → error.
+   * Index card fields only (same hydrate surface as search), not full markdown.
+   */
+  listFolderItems(folderPath: string): Promise<ItemFile[]>;
   createFolder(folderPath: string): Promise<string>;
   renameFolder(oldPath: string, newPath: string): Promise<string>;
   deleteFolder(folderPath: string): Promise<void>;

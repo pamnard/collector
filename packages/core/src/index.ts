@@ -191,6 +191,7 @@ export { navFilterFromSetting, navFilterToSetting, isFolderFilter, isTagFilter }
 export {
   createFolder,
   deleteFolder,
+  listFolderItems,
   listFolderTree,
   listFolderTreeFromIndex,
   reconcileFolderTreeFromDisk,

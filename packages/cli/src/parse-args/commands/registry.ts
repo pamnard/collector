@@ -26,6 +26,7 @@ import {
 import {
   parseCreateFolder,
   parseDeleteFolder,
+  parseListFolderItems,
   parseListFolders,
   parseMoveFolder,
   parseRenameFolder,
@@ -75,6 +76,7 @@ export const COMMAND_PARSERS: Record<string, CommandParser> = {
   "delete-tag": parseDeleteTag,
   "create-folder": parseCreateFolder,
   "list-folders": parseListFolders,
+  "list-folder-items": parseListFolderItems,
   "rename-folder": parseRenameFolder,
   "move-folder": parseMoveFolder,
   "delete-folder": parseDeleteFolder,

@@ -7,6 +7,7 @@ const createFolderOnVault = vi.fn();
 const renameFolderOnVault = vi.fn();
 const deleteFolderOnVault = vi.fn();
 const reconcileFolderTreeFromDisk = vi.fn();
+const listFolderItemsOnVault = vi.fn();
 const moveItemToFolder = vi.fn();
 
 vi.mock("@collector/core", async (importOriginal) => {
@@ -20,6 +21,7 @@ vi.mock("@collector/core", async (importOriginal) => {
     deleteFolder: (...args: unknown[]) => deleteFolderOnVault(...args),
     reconcileFolderTreeFromDisk: (...args: unknown[]) =>
       reconcileFolderTreeFromDisk(...args),
+    listFolderItems: (...args: unknown[]) => listFolderItemsOnVault(...args),
     moveItemToFolder: (...args: unknown[]) => moveItemToFolder(...args),
   };
 });
@@ -45,6 +47,7 @@ describe("createTagsFoldersService", () => {
     renameFolderOnVault.mockReset();
     deleteFolderOnVault.mockReset();
     reconcileFolderTreeFromDisk.mockReset();
+    listFolderItemsOnVault.mockReset();
     moveItemToFolder.mockReset();
     kickoff.mockReset();
     onVaultPresentationChanged.mockReset();
@@ -132,6 +135,22 @@ describe("createTagsFoldersService", () => {
       fromFolderPath: "Projects",
       toFolderPath: "Inbox",
     });
+  });
+
+  it("listFolderItems kicks sync and delegates (#844)", async () => {
+    const items = [{ id: "Parent/a.md", folder_path: "Parent", title: "A" }];
+    listFolderItemsOnVault.mockResolvedValue(items);
+
+    const result = await createService().listFolderItems("Parent");
+
+    expect(kickoff).toHaveBeenCalledWith("v1", "/vault");
+    expect(listFolderItemsOnVault).toHaveBeenCalledWith(
+      ctx,
+      "/vault",
+      "v1",
+      "Parent",
+    );
+    expect(result).toEqual(items);
   });
 
   it("emits folderChanged on create/rename/delete folder (#756)", async () => {

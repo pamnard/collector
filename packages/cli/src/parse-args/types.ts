@@ -47,6 +47,7 @@ export type CliCommand =
   | { name: "delete-tag"; tagId: string }
   | { name: "create-folder"; folderPath: string }
   | { name: "list-folders" }
+  | { name: "list-folder-items"; folderPath: string }
   | { name: "rename-folder"; oldPath: string; newPath: string }
   | { name: "move-folder"; oldPath: string; newPath: string }
   | { name: "delete-folder"; folderPath: string }

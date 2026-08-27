@@ -149,6 +149,23 @@ export const mockStore = {
     return buildSyntheticFolderTree();
   },
 
+  /** Exact folder_path membership (#844); missing path → error. */
+  listFolderItems(folderPath: string): ItemFile[] {
+    const path = folderPath.trim();
+    if (!path) {
+      throw new Error("Folder path must be non-empty");
+    }
+    const tree = this.listFolderTree();
+    const exists = (nodes: FolderTreeNode[]): boolean =>
+      nodes.some(
+        (node) => node.path === path || exists(node.children ?? []),
+      );
+    if (!exists(tree)) {
+      throw new Error(`Folder not found: ${path}`);
+    }
+    return items.filter((item) => item.folder_path === path);
+  },
+
   updateItem(
     itemId: string,
     patch: Partial<

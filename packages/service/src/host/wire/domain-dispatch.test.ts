@@ -55,6 +55,7 @@ function stubRuntime(overrides: {
       updateTagRecord: vi.fn(),
       deleteTag: vi.fn(),
       listFolderTree: vi.fn(async () => []),
+      listFolderItems: vi.fn(async () => []),
       createFolder: vi.fn(),
       renameFolder: vi.fn(),
       deleteFolder: vi.fn(),
@@ -212,6 +213,23 @@ describe("createDomainWireRequestHandler (#330)", () => {
     });
     expect(getItemById).toHaveBeenCalledWith("a.md");
     expect(ensureInitialized).toHaveBeenCalledTimes(2);
+  });
+
+  it("listFolderItems forwards folderPath after ensureInitialized (#844)", async () => {
+    const listFolderItems = vi.fn(async () => [
+      { id: "Parent/a.md", folder_path: "Parent" },
+    ]);
+    const { runtime, ensureInitialized } = stubRuntime({});
+    runtime.tagsFolders.listFolderItems = listFolderItems;
+    const dispatch = createDomainWireRequestHandler(runtime);
+
+    await expect(
+      dispatch(M.listFolderItems, { folderPath: "Parent" }),
+    ).resolves.toEqual([{ id: "Parent/a.md", folder_path: "Parent" }]);
+    expect(listFolderItems).toHaveBeenCalledWith("Parent");
+    expect(ensureInitialized).toHaveBeenCalledTimes(1);
+
+    await expectBadRequest(() => dispatch(M.listFolderItems, {}));
   });
 
   it("searchItems forwards optional page (#658)", async () => {

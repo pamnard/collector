@@ -339,6 +339,21 @@ describe("MCP tools over host HTTP (#556)", () => {
       JSON.parse((listed.content as { text: string }[])[0]!.text),
     )).toBe(true);
 
+    const emptyListed = await mcpClient.callTool({
+      name: "collector_list_folder_items",
+      arguments: { folderPath: "Work/Drafts" },
+    });
+    expect(emptyListed.isError).toBeFalsy();
+    expect(
+      JSON.parse((emptyListed.content as { text: string }[])[0]!.text),
+    ).toEqual([]);
+
+    const missingListed = await mcpClient.callTool({
+      name: "collector_list_folder_items",
+      arguments: { folderPath: "DoesNotExist" },
+    });
+    expect(missingListed.isError).toBeTruthy();
+
     const renamed = await mcpClient.callTool({
       name: "collector_rename_folder",
       arguments: { oldPath: "Work/Drafts", newPath: "Work/Ready" },

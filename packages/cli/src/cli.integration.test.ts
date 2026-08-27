@@ -273,6 +273,35 @@ describe("collector CLI HTTP (#172 / #550 G)", () => {
     expect(listCode).toBe(0);
     expect(Array.isArray(JSON.parse(listOut.join("\n")))).toBe(true);
 
+    const listItemsOut: string[] = [];
+    const listItemsCode = await runCollectorCli(
+      cliArgs(host, dataDir, "list-folder-items", "Shelf"),
+      {
+        stdout: (line) => listItemsOut.push(line),
+        stderr: (line) => {
+          throw new Error(line);
+        },
+      },
+    );
+    expect(listItemsCode).toBe(0);
+    const shelfItems = JSON.parse(listItemsOut.join("\n")) as Array<{
+      id: string;
+      folder_path: string;
+    }>;
+    expect(shelfItems.some((item) => item.id === moved.itemId)).toBe(true);
+    expect(shelfItems.every((item) => item.folder_path === "Shelf")).toBe(true);
+
+    const missingItemsErr: string[] = [];
+    const missingItemsCode = await runCollectorCli(
+      cliArgs(host, dataDir, "list-folder-items", "DoesNotExist"),
+      {
+        stdout: () => {},
+        stderr: (line) => missingItemsErr.push(line),
+      },
+    );
+    expect(missingItemsCode).not.toBe(0);
+    expect(missingItemsErr.join("\n")).toMatch(/Folder not found/i);
+
     const renameOut: string[] = [];
     const renameCode = await runCollectorCli(
       cliArgs(host, dataDir, "rename-folder", "Work/Drafts", "Work/Ready"),

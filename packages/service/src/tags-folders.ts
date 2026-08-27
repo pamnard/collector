@@ -17,6 +17,7 @@ import {
   createTag as createTagOnVault,
   deleteFolder as deleteFolderOnVault,
   deleteTag as deleteTagOnVault,
+  listFolderItems as listFolderItemsOnVault,
   listTagsWithCounts,
   moveItemToFolder,
   reconcileFolderTreeFromDisk,
@@ -133,6 +134,8 @@ export interface TagsFoldersService {
     signal?: AbortSignal,
   ): Subscription;
   listFolderTree(): Promise<FolderTreeNode[]>;
+  /** Exact-folder membership only (#844); empty → []; missing → error. */
+  listFolderItems(folderPath: string): Promise<ItemFile[]>;
   createFolder(folderPath: string): Promise<string>;
   renameFolder(oldPath: string, newPath: string): Promise<string>;
   deleteFolder(folderPath: string): Promise<void>;
@@ -237,6 +240,17 @@ export function createTagsFoldersService(
     const { vault, path } = await deps.resolveActiveVault();
     deps.kickoffVaultIndexSync(vault.id, path);
     return reconcileFolderTreeFromDisk(deps.getContext(), path, vault.id);
+  };
+
+  const listFolderItems = async (folderPath: string): Promise<ItemFile[]> => {
+    const { vault, path } = await deps.resolveActiveVault();
+    deps.kickoffVaultIndexSync(vault.id, path);
+    return listFolderItemsOnVault(
+      deps.getContext(),
+      path,
+      vault.id,
+      folderPath,
+    );
   };
 
   const subscribeFolderTree = (
@@ -386,6 +400,7 @@ export function createTagsFoldersService(
     deleteTag,
     subscribeFolderTree,
     listFolderTree,
+    listFolderItems,
     createFolder,
     renameFolder,
     deleteFolder,
