@@ -1,4 +1,13 @@
+import { isItemIdSortDir, isItemIdSortKey } from "@collector/core";
+import { readOpt } from "../helpers.js";
 import { CliUsageError, type CliCommand } from "../types.js";
+
+export const LIST_FOLDER_ITEMS_FLAGS = new Set(["--sort", "--dir"]);
+
+const LIST_FOLDER_ITEMS_USAGE =
+  "Usage: collector-cli list-folder-items <path> " +
+  "[--sort title|created_at|updated_at|content_type|word_count|character_count] " +
+  "[--dir asc|desc]";
 
 export function parseCreateFolder(_argv: string[], rest: string[]): CliCommand {
   const folderPath = rest.join(" ").trim();
@@ -16,14 +25,36 @@ export function parseListFolders(_argv: string[], rest: string[]): CliCommand {
 }
 
 export function parseListFolderItems(
-  _argv: string[],
+  argv: string[],
   rest: string[],
 ): CliCommand {
   const folderPath = rest.join(" ").trim();
+  const sortKey = readOpt(argv, "--sort");
+  const sortDir = readOpt(argv, "--dir");
   if (!folderPath) {
-    throw new CliUsageError("Usage: collector-cli list-folder-items <path>");
+    throw new CliUsageError(LIST_FOLDER_ITEMS_USAGE);
   }
-  return { name: "list-folder-items", folderPath };
+  if (sortKey === undefined && sortDir === undefined) {
+    return { name: "list-folder-items", folderPath };
+  }
+  if (sortKey === undefined || sortDir === undefined) {
+    throw new CliUsageError(
+      `${LIST_FOLDER_ITEMS_USAGE} (--sort and --dir must be used together)`,
+    );
+  }
+  if (!isItemIdSortKey(sortKey)) {
+    throw new CliUsageError(
+      `Invalid --sort ${sortKey}; expected one of title|created_at|updated_at|content_type|word_count|character_count`,
+    );
+  }
+  if (!isItemIdSortDir(sortDir)) {
+    throw new CliUsageError(`Invalid --dir ${sortDir}; expected asc|desc`);
+  }
+  return {
+    name: "list-folder-items",
+    folderPath,
+    sort: { key: sortKey, dir: sortDir },
+  };
 }
 
 export function parseRenameFolder(_argv: string[], rest: string[]): CliCommand {
@@ -56,3 +87,5 @@ export function parseDeleteFolder(_argv: string[], rest: string[]): CliCommand {
   }
   return { name: "delete-folder", folderPath };
 }
+
+export { LIST_FOLDER_ITEMS_USAGE };

@@ -31,7 +31,10 @@ export const COMMAND_USAGE = {
     "Usage: collector-cli wait-derived <item-id> --revision <n> [--timeout-ms <ms>]",
   "create-folder": "Usage: collector-cli create-folder <path>",
   "list-folders": "Usage: collector-cli list-folders",
-  "list-folder-items": "Usage: collector-cli list-folder-items <path>",
+  "list-folder-items":
+    "Usage: collector-cli list-folder-items <path> " +
+    "[--sort title|created_at|updated_at|content_type|word_count|character_count] " +
+    "[--dir asc|desc]",
   "rename-folder":
     "Usage: collector-cli rename-folder <old-path> <new-path>",
   "move-folder":

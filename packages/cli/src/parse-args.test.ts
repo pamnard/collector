@@ -159,6 +159,51 @@ describe("parseCliArgs (#172/#173 / #550 G)", () => {
         ...BASE,
         "--data-dir",
         "/data",
+        "list-folder-items",
+        "Projects/Work",
+        "--sort",
+        "word_count",
+        "--dir",
+        "desc",
+      ]),
+    ).toEqual({
+      command: {
+        name: "list-folder-items",
+        folderPath: "Projects/Work",
+        sort: { key: "word_count", dir: "desc" },
+      },
+      baseUrl: "http://127.0.0.1:9",
+      dataDir: "/data",
+    });
+    expect(() =>
+      parseCliArgs([
+        ...BASE,
+        "--data-dir",
+        "/data",
+        "list-folder-items",
+        "Projects/Work",
+        "--sort",
+        "word_count",
+      ]),
+    ).toThrow(/--sort and --dir must be used together/);
+    expect(() =>
+      parseCliArgs([
+        ...BASE,
+        "--data-dir",
+        "/data",
+        "list-folder-items",
+        "Projects/Work",
+        "--sort",
+        "tags",
+        "--dir",
+        "asc",
+      ]),
+    ).toThrow(/Invalid --sort/);
+    expect(
+      parseCliArgs([
+        ...BASE,
+        "--data-dir",
+        "/data",
         "rename-folder",
         "Work/A",
         "Work/B",

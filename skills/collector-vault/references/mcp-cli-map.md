@@ -18,7 +18,7 @@ CLI always needs dial flags before the subcommand: `--base-url … --data-dir �
 | Move item | `collector_move_item` | `move-item <item-id> --folder …` |
 | Create folder | `collector_create_folder` | `create-folder <path>` |
 | List folders | `collector_list_folders` | `list-folders` |
-| List folder items | `collector_list_folder_items` | `list-folder-items <path>` |
+| List folder items | `collector_list_folder_items` | `list-folder-items <path> [--sort …] [--dir …]` |
 | Rename folder | `collector_rename_folder` | `rename-folder <old> <new>` |
 | Move folder | `collector_move_folder` | `move-folder <old> <new>` |
 | Delete folder | `collector_delete_folder` | `delete-folder <path>` |
@@ -32,8 +32,11 @@ CLI always needs dial flags before the subcommand: `--base-url … --data-dir �
 
 - Create/update type: `--type` (MCP: `content_type`).
 - Folder on create/update/move: `--folder` (MCP: `folder_path` / `folderPath`).
-- Tags on update: `--tags name1,name2` (MCP: `tags` string array). This is how tags enter the catalog — there is no create-tag / delete-tag command (#842).
+- Tags on update: `--tags name1,name2` (MCP: `tags` string array). This is how tags enter the catalog — there is no create-tag / delete-tag command.
 - Attach/replace file: `--file` (MCP: `sourcePath` or `dataBase64`).
 - Source replace body: `--content` holds the full raw markdown document.
+- Folder item list sort: `--sort` + `--dir` together (MCP: `sortKey` + `sortDir`).
+  Keys: `title`, `created_at`, `updated_at`, `content_type`, `word_count`,
+  `character_count`. Dirs: `asc`|`desc`. Omit both → `created_at` desc.
 
 If a command is missing here, trust the installed binary / MCP catalog over this file.

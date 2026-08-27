@@ -18,6 +18,8 @@ const ITEM_ID_SORT_SQL: Readonly<Record<string, string>> = {
   created_at: "i.created_at",
   updated_at: "i.updated_at",
   content_type: "i.content_type",
+  word_count: "i.word_count",
+  character_count: "i.character_count",
 };
 
 export const ITEM_ID_SORT_KEYS: readonly string[] = Object.freeze(
@@ -34,7 +36,12 @@ export function isItemIdSortDir(dir: string): dir is ItemIdSortDir {
 
 /** Primary sort direction when activating a new column in the UI. */
 export function primarySortDirForKey(key: string): ItemIdSortDir {
-  if (key === "created_at" || key === "updated_at") {
+  if (
+    key === "created_at" ||
+    key === "updated_at" ||
+    key === "word_count" ||
+    key === "character_count"
+  ) {
     return "desc";
   }
   return "asc";

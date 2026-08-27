@@ -1,4 +1,5 @@
 import type {
+  DashboardItemSort,
   FolderTreeNode,
   FoldersPort,
   ServiceSubscribeHandlers,
@@ -72,10 +73,14 @@ export function createHostFoldersPort(ctx: HostSessionCtx): FoldersPort {
     },
     listFolderTree: async (): Promise<FolderTreeNode[]> =>
       transport.request("listFolderTree") as Promise<FolderTreeNode[]>,
-    listFolderItems: async (folderPath: string): Promise<ItemFile[]> =>
-      transport.request("listFolderItems", { folderPath }) as Promise<
-        ItemFile[]
-      >,
+    listFolderItems: async (
+      folderPath: string,
+      sort?: DashboardItemSort,
+    ): Promise<ItemFile[]> =>
+      transport.request("listFolderItems", {
+        folderPath,
+        ...(sort === undefined ? {} : { sort }),
+      }) as Promise<ItemFile[]>,
     createFolder: async (folderPath: string): Promise<string> =>
       transport.request("createFolder", { folderPath }) as Promise<string>,
     renameFolder: async (oldPath: string, newPath: string): Promise<string> =>

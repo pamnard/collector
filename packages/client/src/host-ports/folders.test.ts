@@ -153,4 +153,31 @@ describe("createHostFoldersPort.listFolderItems (#844)", () => {
     });
     expect(items).toEqual([{ id: "Parent/a.md", folder_path: "Parent" }]);
   });
+
+  it("forwards optional sort over the host wire (#869)", async () => {
+    const request = vi.fn(async () => []);
+    const transport = {
+      request,
+      onEvent: () => () => {},
+    };
+    const ctx = {
+      transport,
+      cachedSyncStatus: {
+        vaultId: null,
+        status: "idle",
+        progress: null,
+        metadataReady: false,
+        ftsReady: false,
+      },
+    } as unknown as HostSessionCtx;
+
+    await createHostFoldersPort(ctx).listFolderItems("Parent", {
+      key: "character_count",
+      dir: "asc",
+    });
+    expect(request).toHaveBeenCalledWith("listFolderItems", {
+      folderPath: "Parent",
+      sort: { key: "character_count", dir: "asc" },
+    });
+  });
 });

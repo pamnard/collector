@@ -22,10 +22,10 @@ Param-level API truth lives in the product tool catalog (`packages/mcp/src/tools
 
 ## When to use which channel
 
-| Channel | Use when |
-|---------|----------|
+| Channel | Use when                                                                  |
+| ------- | ------------------------------------------------------------------------- |
 | **MCP** | Editor/agent has Collector MCP connected (preferred for interactive work) |
-| **CLI** | Scripts, shell-only sessions, or MCP unavailable |
+| **CLI** | Scripts, shell-only sessions, or MCP unavailable                          |
 
 Same operations, same host, same `itemId` rules. Pick one channel per task; do not mix half-finished state across channels without re-reading ids.
 
@@ -100,11 +100,15 @@ For asset-localisation rules and fallback order, follow [references/import-rules
 List tree → list items in a folder → create / rename / move / delete.
 `list-folder-items` / `collector_list_folder_items` uses **exact** `folder_path`
 membership (no child folders). Empty folder → `[]`; missing folder fails.
+Optional sort (`--sort` / `--dir`, MCP `sortKey` / `sortDir`): keys
+`title`, `created_at`, `updated_at`, `content_type`, `word_count`,
+`character_count`; dirs `asc`|`desc`. Omit both → default `created_at` desc.
+Pass key and direction together.
 **Delete folder is recursive** (tree + all items + media under that prefix). Confirm intent before calling.
 
 ### Tags
 
-Assign tag **names** on an item via structured update (`tags`) or source frontmatter. Aggregated tag lists (sidebar / picker) show only names that currently appear on documents — never create or delete catalog entries independently (#842).
+Assign tag **names** on an item via structured update (`tags`) or source frontmatter. Aggregated tag lists (sidebar / picker) show only names that currently appear on documents — never create or delete catalog entries independently.
 
 ## Anti-patterns
 

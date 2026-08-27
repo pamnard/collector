@@ -4,6 +4,7 @@
  */
 
 import type {
+  DashboardItemSort,
   FolderTreeNode,
   ServiceSubscribeHandlers,
   Subscription,
@@ -125,7 +126,10 @@ export interface TagsFoldersService {
     signal?: AbortSignal,
   ): Subscription;
   listFolderTree(): Promise<FolderTreeNode[]>;
-  listFolderItems(folderPath: string): Promise<ItemFile[]>;
+  listFolderItems(
+    folderPath: string,
+    sort?: DashboardItemSort,
+  ): Promise<ItemFile[]>;
   createFolder(folderPath: string): Promise<string>;
   renameFolder(oldPath: string, newPath: string): Promise<string>;
   deleteFolder(folderPath: string): Promise<void>;
@@ -208,7 +212,10 @@ export function createTagsFoldersService(
     return reconcileFolderTreeFromDisk(deps.getContext(), path, vault.id);
   };
 
-  const listFolderItems = async (folderPath: string): Promise<ItemFile[]> => {
+  const listFolderItems = async (
+    folderPath: string,
+    sort?: DashboardItemSort,
+  ): Promise<ItemFile[]> => {
     const { vault, path } = await deps.resolveActiveVault();
     deps.kickoffVaultIndexSync(vault.id, path);
     return listFolderItemsOnVault(
@@ -216,6 +223,7 @@ export function createTagsFoldersService(
       path,
       vault.id,
       folderPath,
+      sort,
     );
   };
 

@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@collector/client": "*",
+    "@collector/core": "*",
     "@collector/service": "*",
     "@collector/shared": "*"
   },
