@@ -172,10 +172,11 @@ export function useDashboardCoverFlight(
     (
       requestVersion: number,
       orderedItems: ItemFile[],
-      flightOptions?: { blockOnCovers?: boolean },
+      flightOptions?: { blockOnCovers?: boolean; deferUiCommit?: boolean },
     ): Promise<void> => {
       flushPendingCoverRefreshes(orderedItems);
       const blockOnCovers = flightOptions?.blockOnCovers ?? false;
+      const deferUiCommit = flightOptions?.deferUiCommit ?? false;
       const cacheKeyForFlight = queryKeyRef.current;
       const ids = itemIdsRef.current;
       const byId = itemsByIdRef.current;
@@ -188,11 +189,18 @@ export function useDashboardCoverFlight(
         requestVersion,
         getRequestVersion: () => requestVersionRef.current,
         orderedItems,
-        getOrderedIds: () => orderedIds(committedItemsRef.current),
+        // Flight window ids — not committedItemsRef (may be empty while paint is held).
+        getOrderedIds: () => orderedIds(orderedItems),
         getPaths: () => committedThumbnailPathsRef.current,
         getStamps: () => committedThumbnailStampsRef.current,
         getSizes: () => committedThumbnailSizesRef.current,
         commit: (mergedPaths, mergedStamps, mergedSizes) => {
+          committedThumbnailPathsRef.current = mergedPaths;
+          committedThumbnailStampsRef.current = mergedStamps;
+          committedThumbnailSizesRef.current = mergedSizes;
+          if (deferUiCommit) {
+            return;
+          }
           commitDashboardCoverMaps({
             flightKey: cacheKeyForFlight,
             flightVersion: requestVersion,
@@ -219,6 +227,8 @@ export function useDashboardCoverFlight(
           coverFlightRef.current = next;
         },
         resolveProgressive: resolveDashboardCoverPathsProgressive,
+        // One commit at flight end — no rAF drip of cover chrome (#855).
+        scheduleFlush: blockOnCovers ? () => () => {} : undefined,
       });
       const endCoverPerf = () => {
         dashboardPerfEndPhase(perfRunId, "coverFlight");

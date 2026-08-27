@@ -23,6 +23,7 @@ import {
   snapshotToCacheEntry,
   type DashboardListSnapshot,
 } from "../../lib/dashboard-commit";
+import { shouldDeferListPaintUntilCovers } from "../../lib/dashboard-cold-cover-reveal";
 import {
   isDashboardPrefetchWindowReady,
   itemIdsEqual,
@@ -48,6 +49,7 @@ import {
   dashboardPerfEndPhase,
   dashboardPerfNoteItemCount,
 } from "../../lib/dashboard-perf";
+import { reportServiceError } from "../../services/runtime-error";
 import type {
   DashboardListState,
   StartCoverPathFlight,
@@ -319,6 +321,7 @@ export function useDashboardListState(options: {
       }
 
       const blockOnCovers = options?.blockOnCovers ?? false;
+      const deferListPaint = shouldDeferListPaintUntilCovers(blockOnCovers);
 
       const ids = itemIdsRef.current;
       const byId = itemsByIdRef.current;
@@ -357,6 +360,8 @@ export function useDashboardListState(options: {
         nextBodyStamps: bodyStampsRef.current,
       });
 
+      let heldListPaint = false;
+
       if (!skipPaint) {
         const idsMatch = itemIdsEqual(orderedIds(prevItems), nextOrderedIds);
         const itemsUnchanged =
@@ -380,29 +385,40 @@ export function useDashboardListState(options: {
             new Map(),
             nextOrderedIds,
           );
-          const perfRunId = dashboardPerfActiveRunId();
-          dashboardPerfBeginPhase(perfRunId, "commitList");
-          setCommittedItems(ordered);
-          setCommittedTotalCount(nextTotal);
-          setCommittedHasMore(end < nextTotal);
-          setCommittedThumbnailPaths(prunedPaths);
-          setCommittedThumbnailStamps(prunedStamps);
-          setCommittedThumbnailSizes(prunedSizes);
-          committedItemsRef.current = ordered;
-          committedTotalCountRef.current = nextTotal;
+
+          // Seed flight refs; defer React list paint until covers are ready (#855).
           committedThumbnailPathsRef.current = prunedPaths;
           committedThumbnailStampsRef.current = prunedStamps;
           committedThumbnailSizesRef.current = prunedSizes;
-          dashboardPerfEndPhase(perfRunId, "commitList");
-          dashboardPerfNoteItemCount(perfRunId, ordered.length);
+          committedBodyStampsRef.current = bodyStampsForOrderedIds(
+            bodyStampsRef.current,
+            nextOrderedIds,
+          );
+
+          if (deferListPaint) {
+            heldListPaint = true;
+          } else {
+            const perfRunId = dashboardPerfActiveRunId();
+            dashboardPerfBeginPhase(perfRunId, "commitList");
+            setCommittedItems(ordered);
+            setCommittedTotalCount(nextTotal);
+            setCommittedHasMore(end < nextTotal);
+            setCommittedThumbnailPaths(prunedPaths);
+            setCommittedThumbnailStamps(prunedStamps);
+            setCommittedThumbnailSizes(prunedSizes);
+            committedItemsRef.current = ordered;
+            committedTotalCountRef.current = nextTotal;
+            dashboardPerfEndPhase(perfRunId, "commitList");
+            dashboardPerfNoteItemCount(perfRunId, ordered.length);
+            writeQueryCache(ids, byId, end, nextTotal);
+          }
+        } else {
+          committedBodyStampsRef.current = bodyStampsForOrderedIds(
+            bodyStampsRef.current,
+            nextOrderedIds,
+          );
+          writeQueryCache(ids, byId, end, nextTotal);
         }
-
-        committedBodyStampsRef.current = bodyStampsForOrderedIds(
-          bodyStampsRef.current,
-          nextOrderedIds,
-        );
-
-        writeQueryCache(ids, byId, end, nextTotal);
       }
 
       const coversNeedResolve = ordered.some((item) =>
@@ -413,13 +429,45 @@ export function useDashboardListState(options: {
           committedThumbnailSizesRef.current,
         ),
       );
-      if (skipPaint && !coversNeedResolve) {
+      if (skipPaint && !coversNeedResolve && !heldListPaint) {
         return;
       }
 
-      await startCoverPathFlightRef.current(requestVersion, ordered, {
-        blockOnCovers,
-      });
+      if (coversNeedResolve || blockOnCovers) {
+        try {
+          await startCoverPathFlightRef.current(requestVersion, ordered, {
+            blockOnCovers,
+            deferUiCommit: heldListPaint,
+          });
+        } catch (err: unknown) {
+          if (!heldListPaint) {
+            throw err;
+          }
+          reportServiceError(
+            "dashboard cover paths before held list reveal",
+            err,
+          );
+        }
+      }
+
+      if (heldListPaint) {
+        if (requestVersionRef.current !== requestVersion) {
+          return;
+        }
+        const perfRunId = dashboardPerfActiveRunId();
+        dashboardPerfBeginPhase(perfRunId, "commitList");
+        setCommittedItems(ordered);
+        setCommittedTotalCount(nextTotal);
+        setCommittedHasMore(end < nextTotal);
+        setCommittedThumbnailPaths(committedThumbnailPathsRef.current);
+        setCommittedThumbnailStamps(committedThumbnailStampsRef.current);
+        setCommittedThumbnailSizes(committedThumbnailSizesRef.current);
+        committedItemsRef.current = ordered;
+        committedTotalCountRef.current = nextTotal;
+        dashboardPerfEndPhase(perfRunId, "commitList");
+        dashboardPerfNoteItemCount(perfRunId, ordered.length);
+        writeQueryCache(ids, byId, end, nextTotal);
+      }
     },
     [startCoverPathFlightRef, writeQueryCache],
   );

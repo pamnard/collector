@@ -297,7 +297,8 @@ export function useDashboardQueryLifecycle(
         return;
       }
       try {
-        await commitWorkingToDisplay(requestVersion, { blockOnCovers: false });
+        // Cold first window: await covers, then one list+maps paint (#855).
+        await commitWorkingToDisplay(requestVersion, { blockOnCovers: true });
       } catch (err: unknown) {
         if (requestVersionRef.current !== requestVersion) {
           return;
