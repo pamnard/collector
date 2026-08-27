@@ -29,10 +29,9 @@ export const COMMAND_USAGE = {
     "Usage: collector-cli import-folder --path <abs-dir> [--folder <vault-folder>] [--wait]",
   "wait-derived":
     "Usage: collector-cli wait-derived <item-id> --revision <n> [--timeout-ms <ms>]",
-  "create-tag": "Usage: collector-cli create-tag --name <name> [--color <color>]",
-  "delete-tag": "Usage: collector-cli delete-tag <tag-id>",
   "create-folder": "Usage: collector-cli create-folder <path>",
   "list-folders": "Usage: collector-cli list-folders",
+  "list-folder-items": "Usage: collector-cli list-folder-items <path>",
   "rename-folder":
     "Usage: collector-cli rename-folder <old-path> <new-path>",
   "move-folder":
