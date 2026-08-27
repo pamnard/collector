@@ -61,7 +61,7 @@ describe("COLLECTOR_MCP_TOOLS catalog (#273 / #265)", () => {
     expect(getItem!.description).toMatch(/not a bare UUID/i);
   });
 
-  it("documents search as FTS returning paged ItemFile with total (#265 / #354 / #658)", () => {
+  it("documents search as full-text returning paged items with total", () => {
     const search = COLLECTOR_MCP_TOOLS.find(
       (tool) => tool.name === "collector_search",
     );
@@ -69,9 +69,9 @@ describe("COLLECTOR_MCP_TOOLS catalog (#273 / #265)", () => {
     expect(search!.description).toMatch(/full-text|FTS/i);
     expect(search!.description).toMatch(/frontmatter/i);
     expect(search!.description).toMatch(/does not look up by item id/i);
-    expect(search!.description).toMatch(/ItemFile/i);
+    expect(search!.description).toMatch(/\bitems\b/i);
     expect(search!.description).toMatch(/total/i);
-    expect(search!.description).toMatch(/truncat/i);
+    expect(search!.description).toMatch(/more matches|truncat/i);
     const query = search!.params.find((param) => param.name === "query");
     expect(query?.description).toMatch(/not an id or path lookup/i);
     expect(query?.description).toMatch(/frontmatter/i);
@@ -113,12 +113,12 @@ describe("COLLECTOR_MCP_TOOLS catalog (#273 / #265)", () => {
     );
   });
 
-  it("documents move as alias of update folder_path and returns new id (#351 / #354)", () => {
+  it("documents move as same as update folder_path and returns new id", () => {
     const move = COLLECTOR_MCP_TOOLS.find(
       (tool) => tool.name === "collector_move_item",
     );
     expect(move).toBeDefined();
-    expect(move!.description).toMatch(/alias of collector_update_item/i);
+    expect(move!.description).toMatch(/collector_update_item/i);
     expect(move!.description).toMatch(/new.*path|itemId is the \*\*new\*\*/i);
   });
 
@@ -133,9 +133,16 @@ describe("COLLECTOR_MCP_TOOLS catalog (#273 / #265)", () => {
       (tool) => tool.name === "collector_list_folder_items",
     );
     expect(listItems).toBeDefined();
-    expect(listItems!.params.map((p) => p.name)).toEqual(["folderPath"]);
-    expect(listItems!.description).toMatch(/exact folder_path/i);
-    expect(listItems!.description).toMatch(/does not include/i);
+    expect(listItems!.params.map((p) => p.name)).toEqual([
+      "folderPath",
+      "sortKey",
+      "sortDir",
+    ]);
+    expect(listItems!.description).toMatch(/exact path match/i);
+    expect(listItems!.description).toMatch(/not nested child/i);
+    expect(listItems!.description).toMatch(/sortKey/i);
+    expect(listItems!.description).toMatch(/word_count/i);
+    expect(listItems!.description).toMatch(/character_count/i);
 
     const rename = COLLECTOR_MCP_TOOLS.find(
       (tool) => tool.name === "collector_rename_folder",
@@ -147,7 +154,7 @@ describe("COLLECTOR_MCP_TOOLS catalog (#273 / #265)", () => {
       (tool) => tool.name === "collector_move_folder",
     );
     expect(moveFolder).toBeDefined();
-    expect(moveFolder!.description).toMatch(/alias of collector_rename_folder/i);
+    expect(moveFolder!.description).toMatch(/collector_rename_folder/i);
 
     const del = COLLECTOR_MCP_TOOLS.find(
       (tool) => tool.name === "collector_delete_folder",

@@ -507,4 +507,62 @@ describe("folder operations", () => {
       /Folder path must be non-empty/,
     );
   });
+
+  it("listFolderItems respects optional sort including word/character counts (#869)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-list-folder-sort-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const ctx = { fs, index: new SqlVaultIndexStore(db) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    await createFolder(ctx, path, "Shelf");
+    const timestamp = new Date().toISOString();
+    const shortId = `Shelf/${createId()}.md`;
+    const longId = `Shelf/${createId()}.md`;
+    const midId = `Shelf/${createId()}.md`;
+    const baseItem = {
+      vault_id: meta.id,
+      description: "",
+      content_type: "note" as const,
+      source_type: "manual" as const,
+      metadata: {},
+      properties: {},
+      tag_ids: [] as string[],
+      collection_ids: [] as string[],
+      folder_path: "Shelf",
+      content_revision: 1,
+      word_count: 0,
+      character_count: 0,
+      created_at: timestamp,
+      updated_at: timestamp,
+    };
+    // upsertItem recomputes word/character counts from content body.
+    await upsertItem(ctx, path, meta.id, {
+      item: { ...baseItem, id: shortId, title: "Short" },
+      content: "one two",
+    });
+    await upsertItem(ctx, path, meta.id, {
+      item: { ...baseItem, id: longId, title: "Long" },
+      content: "a b c d e f g h i j",
+    });
+    await upsertItem(ctx, path, meta.id, {
+      item: { ...baseItem, id: midId, title: "Mid" },
+      content: "alpha beta gamma delta",
+    });
+
+    const byWords = await listFolderItems(ctx, path, meta.id, "Shelf", {
+      key: "word_count",
+      dir: "desc",
+    });
+    expect(byWords.map((item) => item.id)).toEqual([longId, midId, shortId]);
+    expect(byWords.map((item) => item.word_count)).toEqual([10, 4, 2]);
+
+    const byChars = await listFolderItems(ctx, path, meta.id, "Shelf", {
+      key: "character_count",
+      dir: "asc",
+    });
+    // "one two" (7) < "a b c d e f g h i j" (19) < "alpha beta gamma delta" (22)
+    expect(byChars.map((item) => item.id)).toEqual([shortId, longId, midId]);
+    expect(byChars.map((item) => item.character_count)).toEqual([7, 19, 22]);
+  });
 });

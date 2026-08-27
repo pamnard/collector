@@ -19,6 +19,7 @@ import {
   parseWaitDerived,
 } from "./items.js";
 import {
+  LIST_FOLDER_ITEMS_FLAGS,
   parseCreateFolder,
   parseDeleteFolder,
   parseListFolderItems,
@@ -50,6 +51,7 @@ export const ALL_COMMAND_FLAGS = unionFlagSets(
   MOVE_ITEM_FLAGS,
   IMPORT_FOLDER_FLAGS,
   WAIT_DERIVED_FLAGS,
+  LIST_FOLDER_ITEMS_FLAGS,
   ATTACH_MEDIA_FLAGS,
   REPLACE_MEDIA_FLAGS,
   EXTRACT_ITEM_CANDIDATE_FLAGS,

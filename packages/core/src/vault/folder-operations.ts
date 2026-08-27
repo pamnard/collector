@@ -5,6 +5,7 @@ import {
   normalizeFolderPath,
 } from "@collector/shared";
 import type { VaultContext } from "../adapters/types.js";
+import type { ItemIdSort } from "../index/item-id-sort.js";
 import { nowIso } from "../util/ids.js";
 import { buildFolderTree, renameFolderPath, type FolderTreeNode } from "./folder-tree.js";
 import {
@@ -94,6 +95,7 @@ export async function listFolderItems(
   vaultPath: string,
   vaultId: string,
   folderPath: string,
+  sort?: ItemIdSort,
 ): Promise<ItemFile[]> {
   const normalized = assertFolderPath(folderPath);
   if (!normalized) {
@@ -103,10 +105,14 @@ export async function listFolderItems(
   if (!(await ctx.fs.exists(abs))) {
     throw new Error(`Folder not found: ${normalized}`);
   }
-  const itemIds = await ctx.index.listItemIdsByNavFilter(vaultId, {
-    type: "folder",
-    folderPath: normalized,
-  });
+  const itemIds = await ctx.index.listItemIdsByNavFilter(
+    vaultId,
+    {
+      type: "folder",
+      folderPath: normalized,
+    },
+    sort === undefined ? undefined : { sort },
+  );
   return ctx.index.listItemFilesByIds(vaultId, itemIds);
 }
 

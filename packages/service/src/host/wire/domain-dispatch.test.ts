@@ -236,10 +236,33 @@ describe("createDomainWireRequestHandler (#330)", () => {
     await expect(
       dispatch(M.listFolderItems, { folderPath: "Parent" }),
     ).resolves.toEqual([{ id: "Parent/a.md", folder_path: "Parent" }]);
-    expect(listFolderItems).toHaveBeenCalledWith("Parent");
+    expect(listFolderItems).toHaveBeenCalledWith("Parent", undefined);
     expect(ensureInitialized).toHaveBeenCalledTimes(1);
 
     await expectBadRequest(() => dispatch(M.listFolderItems, {}));
+  });
+
+  it("listFolderItems forwards sort and rejects invalid keys (#869)", async () => {
+    const listFolderItems = vi.fn(async () => []);
+    const { runtime } = stubRuntime({});
+    runtime.tagsFolders.listFolderItems = listFolderItems;
+    const dispatch = createDomainWireRequestHandler(runtime);
+
+    await dispatch(M.listFolderItems, {
+      folderPath: "Parent",
+      sort: { key: "word_count", dir: "desc" },
+    });
+    expect(listFolderItems).toHaveBeenCalledWith("Parent", {
+      key: "word_count",
+      dir: "desc",
+    });
+
+    await expectBadRequest(() =>
+      dispatch(M.listFolderItems, {
+        folderPath: "Parent",
+        sort: { key: "tags", dir: "asc" },
+      }),
+    );
   });
 
   it("searchItems forwards optional page (#658)", async () => {

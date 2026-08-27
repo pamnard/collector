@@ -1,5 +1,9 @@
 import { DOMAIN_WIRE_METHODS } from "../domain-methods.js";
-import { asObject, requireString } from "../handlers/params.js";
+import {
+  asObject,
+  parseDashboardItemSort,
+  requireString,
+} from "../handlers/params.js";
 import type { DomainDispatchGroup } from "./types.js";
 
 const M = DOMAIN_WIRE_METHODS;
@@ -19,8 +23,9 @@ export const FOLDERS_DISPATCH = {
         "folderPath",
         M.listFolderItems,
       );
+      const sort = parseDashboardItemSort(p.sort, M.listFolderItems);
       await runtime.ensureInitialized();
-      return runtime.tagsFolders.listFolderItems(folderPath);
+      return runtime.tagsFolders.listFolderItems(folderPath, sort);
     },
   },
   [M.createFolder]: {

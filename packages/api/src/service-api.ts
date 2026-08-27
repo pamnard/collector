@@ -329,11 +329,17 @@ export interface FoldersPort {
   ): Subscription;
   listFolderTree(): Promise<FolderTreeNode[]>;
   /**
-   * Items whose `folder_path` equals `folderPath` exactly (#844).
+   * Items whose `folder_path` equals `folderPath` exactly.
    * Does not include child folders. Empty folder → `[]`. Missing folder → error.
    * Index card fields only (same hydrate surface as search), not full markdown.
+   * Optional `sort` uses the shared item-id allowlist:
+   * `title`, `created_at`, `updated_at`, `content_type`, `word_count`,
+   * `character_count` with `asc`/`desc`. Omit → default `created_at` desc.
    */
-  listFolderItems(folderPath: string): Promise<ItemFile[]>;
+  listFolderItems(
+    folderPath: string,
+    sort?: DashboardItemSort,
+  ): Promise<ItemFile[]>;
   createFolder(folderPath: string): Promise<string>;
   renameFolder(oldPath: string, newPath: string): Promise<string>;
   deleteFolder(folderPath: string): Promise<void>;

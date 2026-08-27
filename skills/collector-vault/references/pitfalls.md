@@ -5,7 +5,7 @@
 | Kind | Shape | Wrong |
 |------|--------|--------|
 | `itemId` | Vault-relative path ending in `.md` (e.g. `Inbox/….md`) | Bare UUID, stem without folder, path without `.md` |
-| tag name | Display string on item update / frontmatter; catalogs are derived from documents (#842) | Inventing catalog create/delete APIs, treating names as paths |
+| tag name | Display string on item update / frontmatter; catalogs are derived from documents | Inventing catalog create/delete APIs, treating names as paths |
 | `mediaId` | Opaque UUID from list/attach media | Filename, sidecar relative path |
 
 After `move-item` / update-with-folder, the item path changes. Use the **new** `itemId` from the response.
@@ -52,4 +52,4 @@ Sidecar directories (`*.media/`) are host-owned. Attach/replace/delete/set-cover
 
 ## List folder items ≠ folder tree
 
-`list-folder-items` / `collector_list_folder_items` lists **items in one folder** (exact `folder_path`). It does not walk children. Use `list-folders` for the tree. Empty folder → `[]`; missing folder fails — do not treat empty as missing.
+`list-folder-items` / `collector_list_folder_items` lists **items in one folder** (exact `folder_path`). It does not walk children. Use `list-folders` for the tree. Empty folder → `[]`; missing folder fails — do not treat empty as missing. Optional sort (`--sort`/`--dir` or MCP `sortKey`/`sortDir`) reorders that list; omit both for default `created_at` desc — do not invent a client-side sort when the host already supports it.

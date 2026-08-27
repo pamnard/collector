@@ -45,7 +45,11 @@ export type CliCommand =
     }
   | { name: "create-folder"; folderPath: string }
   | { name: "list-folders" }
-  | { name: "list-folder-items"; folderPath: string }
+  | {
+      name: "list-folder-items";
+      folderPath: string;
+      sort?: { key: string; dir: "asc" | "desc" };
+    }
   | { name: "rename-folder"; oldPath: string; newPath: string }
   | { name: "move-folder"; oldPath: string; newPath: string }
   | { name: "delete-folder"; folderPath: string }

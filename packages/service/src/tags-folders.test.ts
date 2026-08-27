@@ -134,8 +134,24 @@ describe("createTagsFoldersService", () => {
       "/vault",
       "v1",
       "Parent",
+      undefined,
     );
     expect(result).toEqual(items);
+  });
+
+  it("listFolderItems forwards optional sort (#869)", async () => {
+    listFolderItemsOnVault.mockResolvedValue([]);
+    const sort = { key: "word_count", dir: "desc" as const };
+
+    await createService().listFolderItems("Parent", sort);
+
+    expect(listFolderItemsOnVault).toHaveBeenCalledWith(
+      ctx,
+      "/vault",
+      "v1",
+      "Parent",
+      sort,
+    );
   });
 
   it("emits folderChanged on create/rename/delete folder (#756)", async () => {

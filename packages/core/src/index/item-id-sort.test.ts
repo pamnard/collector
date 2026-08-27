@@ -11,10 +11,12 @@ import {
 describe("item-id-sort", () => {
   it("exposes allowlisted keys matching registry sortKeys", () => {
     expect([...ITEM_ID_SORT_KEYS].sort()).toEqual([
+      "character_count",
       "content_type",
       "created_at",
       "title",
       "updated_at",
+      "word_count",
     ]);
   });
 
@@ -38,6 +40,12 @@ describe("item-id-sort", () => {
     expect(
       resolveItemIdOrderByClause({ key: "content_type", dir: "asc" }),
     ).toBe("ORDER BY i.content_type ASC, i.id ASC");
+    expect(
+      resolveItemIdOrderByClause({ key: "word_count", dir: "desc" }),
+    ).toBe("ORDER BY i.word_count DESC, i.id ASC");
+    expect(
+      resolveItemIdOrderByClause({ key: "character_count", dir: "asc" }),
+    ).toBe("ORDER BY i.character_count ASC, i.id ASC");
   });
 
   it("rejects unknown keys and dirs", () => {
@@ -62,6 +70,8 @@ describe("item-id-sort", () => {
   it("picks primary UI dir per key", () => {
     expect(primarySortDirForKey("created_at")).toBe("desc");
     expect(primarySortDirForKey("updated_at")).toBe("desc");
+    expect(primarySortDirForKey("word_count")).toBe("desc");
+    expect(primarySortDirForKey("character_count")).toBe("desc");
     expect(primarySortDirForKey("title")).toBe("asc");
     expect(primarySortDirForKey("content_type")).toBe("asc");
   });

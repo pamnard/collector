@@ -177,7 +177,10 @@ export async function runCollectorCli(
       return 0;
     }
     if (cmd.name === "list-folder-items") {
-      const items = await client.folders.listFolderItems(cmd.folderPath);
+      const items = await client.folders.listFolderItems(
+        cmd.folderPath,
+        cmd.sort,
+      );
       io.stdout(JSON.stringify(items, null, 2));
       return 0;
     }

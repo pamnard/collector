@@ -298,8 +298,30 @@ export function createCollectorMcpServer(session: McpHostSession): McpServer {
 
   tool(
     "collector_list_folder_items",
-    (p) => ({ folderPath: p.requiredString("folderPath") }),
-    ({ folderPath }, client) => client.folders.listFolderItems(folderPath),
+    (p) => ({
+      folderPath: p.requiredString("folderPath"),
+      sortKey: p.optionalString("sortKey"),
+      sortDir: p.optionalString("sortDir"),
+    }),
+    async ({ folderPath, sortKey, sortDir }, client) => {
+      if (sortKey === undefined && sortDir === undefined) {
+        return client.folders.listFolderItems(folderPath);
+      }
+      if (sortKey === undefined || sortDir === undefined) {
+        throw new Error(
+          "collector_list_folder_items: sortKey and sortDir must be used together",
+        );
+      }
+      if (sortDir !== "asc" && sortDir !== "desc") {
+        throw new Error(
+          "collector_list_folder_items: sortDir must be asc or desc",
+        );
+      }
+      return client.folders.listFolderItems(folderPath, {
+        key: sortKey,
+        dir: sortDir,
+      });
+    },
   );
 
   tool(

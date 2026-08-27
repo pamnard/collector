@@ -24,7 +24,7 @@ Archives: [GitHub Releases](https://github.com/pamnard/collector/releases/latest
 
 **Items** are vault-relative `.md` paths (path-as-id), not UUID folders. Metadata lives in YAML frontmatter; body is markdown. Per-item media sits in a sibling `note.media/` directory.
 
-**Tags** are derived from document frontmatter names only (#842). Assigning or clearing tag names on an item updates every aggregated list (sidebar, picker, CLI/MCP views). Aggregated lists include only tags that currently appear on documents (`item_count > 0`); orphan catalog rows are omitted. There is no supported API to create, rename, or delete a catalog entry independently of documents, and no list→documents mass rewrite.
+**Tags** are derived from document frontmatter names only. Assigning or clearing tag names on an item updates every aggregated list (sidebar, picker, CLI/MCP views). Aggregated lists include only tags that currently appear on documents (`item_count > 0`); orphan catalog rows are omitted. There is no supported API to create, rename, or delete a catalog entry independently of documents, and no list→documents mass rewrite.
 
 **Collections** are filesystem folders (`folder_path` = dirname of the item). There is no favorite / archive model (legacy settings map to “all”).
 
