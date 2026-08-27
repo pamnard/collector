@@ -5,7 +5,7 @@
 | Kind | Shape | Wrong |
 |------|--------|--------|
 | `itemId` | Vault-relative path ending in `.md` (e.g. `Inbox/….md`) | Bare UUID, stem without folder, path without `.md` |
-| `tagId` | Opaque UUID from create/list tag | Item path, tag display name |
+| tag name | Display string on item update / frontmatter; catalogs are derived from documents (#842) | Inventing catalog create/delete APIs, treating names as paths |
 | `mediaId` | Opaque UUID from list/attach media | Filename, sidecar relative path |
 
 After `move-item` / update-with-folder, the item path changes. Use the **new** `itemId` from the response.

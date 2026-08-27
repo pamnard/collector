@@ -10,7 +10,7 @@ import { SqlVaultIndexStore } from "../index/sql-index.js";
 import { createId } from "../util/ids.js";
 import { createVault } from "../vault/vault-operations.js";
 import { upsertItem } from "../vault/item-operations.js";
-import { createTag } from "../vault/tag-operations.js";
+import { seedTagFromDocumentWritePath } from "../testing/seed-tag.js";
 import { syncVaultIndexFromFilesystem } from "../vault/index-sync.js";
 
 function createNoopVaultIndex(): VaultIndexAdapter {
@@ -76,7 +76,7 @@ describe("syncVaultIndexFromFilesystem", () => {
       isDefault: true,
     });
 
-    const tag = await createTag(diskCtx, path, meta.id, { name: "inbox" });
+    const tag = await seedTagFromDocumentWritePath(diskCtx, path, meta.id, "inbox");
     const itemId = `Inbox/${createId()}.md`;
     await upsertItem(diskCtx, path, meta.id, {
       item: {

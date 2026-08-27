@@ -51,9 +51,6 @@ function stubRuntime(overrides: {
     },
     tagsFolders: {
       listTags: vi.fn(async () => []),
-      createTag: vi.fn(),
-      updateTagRecord: vi.fn(),
-      deleteTag: vi.fn(),
       listFolderTree: vi.fn(async () => []),
       listFolderItems: vi.fn(async () => []),
       createFolder: vi.fn(),
@@ -182,6 +179,19 @@ describe("createDomainWireRequestHandler (#330)", () => {
     const { runtime } = stubRuntime({});
     const dispatch = createDomainWireRequestHandler(runtime);
     expect(await dispatch("noSuchMethod", { a: 1 })).toBeUndefined();
+  });
+
+  it("rejects reverse-direction tag catalog RPCs (#842)", async () => {
+    const { runtime } = stubRuntime({});
+    const dispatch = createDomainWireRequestHandler(runtime);
+    expect(await dispatch("createTag", { name: "x" })).toBeUndefined();
+    expect(await dispatch("deleteTag", { tagId: "t1" })).toBeUndefined();
+    expect(
+      await dispatch("updateTagRecord", { tagId: "t1", input: { name: "y" } }),
+    ).toBeUndefined();
+    expect(M).not.toHaveProperty("createTag");
+    expect(M).not.toHaveProperty("deleteTag");
+    expect(M).not.toHaveProperty("updateTagRecord");
   });
 
   it("rejects bad searchItems params before ensureInitialized", async () => {

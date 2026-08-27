@@ -73,6 +73,19 @@ describe("domain port→wire map (#366)", () => {
     }
   });
 
+  it("TAGS_PORT_KEYS is list/subscribe only (#842)", () => {
+    expect([...TAGS_PORT_KEYS].sort()).toEqual(
+      ["listTags", "subscribeTags"].sort(),
+    );
+    expect(TAGS_PORT_KEYS).not.toContain("createTag");
+    expect(TAGS_PORT_KEYS).not.toContain("deleteTag");
+    expect(TAGS_PORT_KEYS).not.toContain("updateTagRecord");
+    const catalog = new Set(Object.values(DOMAIN_WIRE_METHODS));
+    expect(catalog.has("createTag")).toBe(false);
+    expect(catalog.has("deleteTag")).toBe(false);
+    expect(catalog.has("updateTagRecord")).toBe(false);
+  });
+
   it("snapshot peek/build stay client-orchestrated; I/O + thumbs are host wire (#552)", () => {
     expect(CLIENT_ORCHESTRATED_PORT_METHODS).toContain(
       "peekMatchingDashboardSnapshot",

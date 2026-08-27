@@ -323,6 +323,8 @@ export async function listTagsWithCounts(
   selector: SqlIndexSelector,
   vaultId: string,
 ): Promise<TagWithCount[]> {
+  // Aggregated lists are document-derived (#842): only tags currently linked
+  // to indexed items. Orphan tags.json / index rows stay out of listTags.
   const rows = await selector.select<{
     id: string;
     name: string;
@@ -330,10 +332,10 @@ export async function listTagsWithCounts(
     created_at: string;
     item_count: number;
   }>(
-    `SELECT t.id, t.name, t.color, t.created_at, COUNT(it.item_id) AS item_count
+    `SELECT t.id, t.name, t.color, t.created_at, COUNT(i.id) AS item_count
      FROM tags t
-     LEFT JOIN item_tags it ON it.tag_id = t.id
-     LEFT JOIN items i ON i.id = it.item_id AND i.vault_id = ?
+     INNER JOIN item_tags it ON it.tag_id = t.id
+     INNER JOIN items i ON i.id = it.item_id AND i.vault_id = ?
      WHERE t.vault_id = ?
      GROUP BY t.id
      ORDER BY t.name COLLATE NOCASE`,

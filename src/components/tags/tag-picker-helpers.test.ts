@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
-import type { TagWithCount } from "@collector/core";
+import { fileURLToPath } from "node:url";
 import {
   applyAddTagName,
-  applyTagRecordUpdate,
   buildTagDisplayNames,
   nextSelectionAfterAdd,
-  removeTagFromCatalog,
-  removeTagFromSelection,
-  renameTagInSelection,
   sameTagName,
   toggleTagSelection,
 } from "./tag-picker-helpers.ts";
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 describe("sameTagName", () => {
   it("compares trimmed case-insensitive names", () => {
@@ -87,54 +87,42 @@ describe("applyAddTagName", () => {
   });
 });
 
-describe("removeTagFromSelection / renameTagInSelection", () => {
-  it("filters and renames by sameTagName", () => {
-    assert.deepEqual(removeTagFromSelection(["Foo", "bar"], "foo"), ["bar"]);
-    assert.deepEqual(renameTagInSelection(["Foo", "bar"], "foo", "Baz"), [
-      "Baz",
-      "bar",
-    ]);
-  });
-});
-
-describe("catalog mutations", () => {
-  const tags: TagWithCount[] = [
-    {
-      id: "1",
-      name: "zeta",
-      color: null,
-      created_at: "2026-01-01T00:00:00.000Z",
-      item_count: 2,
-    },
-    {
-      id: "2",
-      name: "alpha",
-      color: "#fff",
-      created_at: "2026-01-02T00:00:00.000Z",
-      item_count: 1,
-    },
-  ];
-
-  it("applyTagRecordUpdate merges fields, preserves item_count, sorts by name", () => {
-    const next = applyTagRecordUpdate(tags, "1", {
-      id: "1",
-      name: "beta",
-      color: "#000",
-      created_at: "2026-01-03T00:00:00.000Z",
-    });
-    assert.deepEqual(
-      next.map((t) => ({ id: t.id, name: t.name, item_count: t.item_count, color: t.color })),
-      [
-        { id: "2", name: "alpha", item_count: 1, color: "#fff" },
-        { id: "1", name: "beta", item_count: 2, color: "#000" },
-      ],
-    );
+describe("derived-only catalog (#842)", () => {
+  it("helpers module has no catalog mutation exports", async () => {
+    const helpers = await import("./tag-picker-helpers.ts");
+    assert.equal("applyTagRecordUpdate" in helpers, false);
+    assert.equal("removeTagFromCatalog" in helpers, false);
+    assert.equal("renameTagInSelection" in helpers, false);
   });
 
-  it("removeTagFromCatalog drops by id", () => {
-    assert.deepEqual(
-      removeTagFromCatalog(tags, "2").map((t) => t.id),
-      ["1"],
-    );
+  it("picker/hook surfaces do not expose catalog delete or rename", () => {
+    const files = [
+      "use-tag-picker.ts",
+      "TagPicker.tsx",
+      "TagPickerChip.tsx",
+      "tag-picker-helpers.ts",
+    ];
+    const banned = [
+      "deleteTag",
+      "updateTagRecord",
+      "pendingDelete",
+      "pendingRename",
+      "handleConfirmDelete",
+      "handleConfirmRename",
+      "openRename",
+      "TagRenameDialog",
+      "onDelete",
+      "onRename",
+    ];
+    for (const file of files) {
+      const src = readFileSync(join(here, file), "utf8");
+      for (const token of banned) {
+        assert.equal(
+          src.includes(token),
+          false,
+          `${file} must not contain ${token}`,
+        );
+      }
+    }
   });
 });

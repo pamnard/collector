@@ -4,7 +4,7 @@
  */
 
 import type { ItemFile, VaultMeta } from "@collector/shared";
-import type { MediaFileMeta, Tag } from "@collector/shared";
+import type { MediaFileMeta } from "@collector/shared";
 import type {
   AttachMediaFileInput,
   CollectorApiError,
@@ -368,15 +368,6 @@ export function createDevMockCollectorService(): CollectorService {
     tags: {
       subscribeTags,
       listTags: mockCollector.listTags,
-      createTag: async (_input: {
-        name: string;
-        color?: string | null;
-      }): Promise<Tag> => refuseUnsupported(),
-      updateTagRecord: async (
-        _tagId: string,
-        _input: { name?: string; color?: string | null },
-      ): Promise<Tag> => refuseUnsupported(),
-      deleteTag: async (_tagId: string) => refuseUnsupported(),
     },
     folders: {
       subscribeFolderTree,

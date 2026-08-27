@@ -5,7 +5,7 @@ import {
 } from "../search/fts-query.js";
 import { createId } from "../util/ids.js";
 import { upsertItem } from "../vault/item-operations.js";
-import { createTag } from "../vault/tag-operations.js";
+import { seedTagFromDocumentWritePath } from "../testing/seed-tag.js";
 import {
   createSqlIndexTestSuite,
   noteItemFields,
@@ -202,7 +202,7 @@ describe("upsertItemMetadata / upsertItemContent", () => {
     const collectionCount = 4;
     const tags = await Promise.all(
       Array.from({ length: tagCount }, (_, i) =>
-        createTag(ctx, path, meta.id, { name: `tag-${i}` }),
+        seedTagFromDocumentWritePath(ctx, path, meta.id, `tag-${i}`),
       ),
     );
     const collectionIds = Array.from({ length: collectionCount }, () => createId());
