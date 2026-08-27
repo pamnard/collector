@@ -13,6 +13,10 @@ import {
 } from "@collector/shared";
 import type { VaultContext } from "../adapters/types.js";
 import {
+  DISK_ITEM_READ_CONCURRENCY,
+  runWithConcurrency,
+} from "../util/concurrency.js";
+import {
   parseDocumentMarkdown,
   partitionDocumentFrontmatter,
   serializeDocumentMarkdown,
@@ -21,10 +25,6 @@ import { attachMediaFile, deleteMediaFile } from "./media-operations.js";
 import { applyItemCover } from "./cover-operations.js";
 import { mediaFilePath } from "./media-io.js";
 import { itemCoverPath } from "./paths.js";
-import {
-  DISK_ITEM_READ_CONCURRENCY,
-  runWithConcurrency,
-} from "../util/concurrency.js";
 import {
   isRemoteHttpUrl,
   normalizeRemoteHttpUrl,

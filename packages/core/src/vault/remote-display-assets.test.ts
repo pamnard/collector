@@ -297,9 +297,12 @@ describe("localizeRemoteDisplayAssets (#739)", () => {
         inFlight += 1;
         peakInFlight = Math.max(peakInFlight, inFlight);
         fetched.push(url);
-        await new Promise((resolve) => setTimeout(resolve, 25));
-        inFlight -= 1;
-        return new Uint8Array([1, 2, 3, 4]);
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          return new Uint8Array([1, 2, 3, 4]);
+        } finally {
+          inFlight -= 1;
+        }
       },
       encodeCoverWebp: async () => ({
         data: new Uint8Array([9]),
@@ -315,7 +318,6 @@ describe("localizeRemoteDisplayAssets (#739)", () => {
     for (const url of urls) {
       expect(result.text).not.toContain(url);
     }
-    // Attach/rewrite order follows uniqueRemoteUrls, not download completion order.
     expect(result.text).toMatch(
       /!\[i0\]\(\/.*a\.png\)[\s\S]*!\[i1\]\(\/.*b\.png\)[\s\S]*!\[i2\]\(\/.*c\.png\)[\s\S]*!\[i3\]\(\/.*d\.png\)[\s\S]*!\[i4\]\(\/.*e\.png\)/,
     );
@@ -348,12 +350,15 @@ describe("localizeRemoteDisplayAssets (#739)", () => {
         fetchBytes: async (url) => {
           inFlight += 1;
           peakInFlight = Math.max(peakInFlight, inFlight);
-          await new Promise((resolve) => setTimeout(resolve, 25));
-          inFlight -= 1;
-          if (url.endsWith("/b.png")) {
-            throw new Error("second failed");
+          try {
+            await new Promise((resolve) => setTimeout(resolve, 25));
+            if (url.endsWith("/b.png")) {
+              throw new Error("second failed");
+            }
+            return new Uint8Array([1, 2, 3]);
+          } finally {
+            inFlight -= 1;
           }
-          return new Uint8Array([1, 2, 3]);
         },
         encodeCoverWebp: async () => ({ data: new Uint8Array([9]), size: { width: 9, height: 9 } }),
       }),
