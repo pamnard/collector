@@ -57,6 +57,7 @@ describe("generateCover job (#636 / #640)", () => {
       }) as const,
   );
   const onVaultPresentationChanged = vi.fn();
+  const invalidateThumbnailPathCache = vi.fn();
 
   beforeEach(() => {
     applyItemCover.mockReset();
@@ -69,6 +70,7 @@ describe("generateCover job (#636 / #640)", () => {
       size: { width: 320, height: 240 },
     });
     onVaultPresentationChanged.mockClear();
+    invalidateThumbnailPathCache.mockClear();
   });
 
   afterEach(async () => {
@@ -83,6 +85,7 @@ describe("generateCover job (#636 / #640)", () => {
       getContext: () => ({ fs: { readBinary } }) as never,
       resolveVaultPath,
       generateCoverFromMedia,
+      invalidateThumbnailPathCache,
       onVaultPresentationChanged,
     });
   }
@@ -111,6 +114,7 @@ describe("generateCover job (#636 / #640)", () => {
       new Uint8Array([9, 9, 9]),
       { width: 320, height: 240 },
     );
+    expect(invalidateThumbnailPathCache).toHaveBeenCalledWith("note.md");
     expect(onVaultPresentationChanged).toHaveBeenCalledWith({
       vaultId: "vault-1",
       kind: "itemCoverChanged",
@@ -135,6 +139,7 @@ describe("generateCover job (#636 / #640)", () => {
       error: "generateCover returned null",
     });
     expect(applyItemCover).not.toHaveBeenCalled();
+    expect(invalidateThumbnailPathCache).not.toHaveBeenCalled();
     expect(onVaultPresentationChanged).not.toHaveBeenCalled();
   });
 

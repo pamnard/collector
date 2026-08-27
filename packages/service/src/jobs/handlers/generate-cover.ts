@@ -20,6 +20,8 @@ export function createGenerateCoverHandler(deps: {
   getContext: () => VaultContext;
   resolveVaultPath: (vaultId: string) => Promise<string>;
   generateCoverFromMedia: GenerateCoverFromMedia;
+  /** Drop host thumbnail path cache after on-disk cover write (#856). */
+  invalidateThumbnailPathCache?: (itemId: string) => void;
   onVaultPresentationChanged?: (
     payload: VaultPresentationChangedPayload,
   ) => void;
@@ -55,6 +57,7 @@ export function createGenerateCoverHandler(deps: {
       cover.data,
       cover.size,
     );
+    deps.invalidateThumbnailPathCache?.(itemId);
     deps.onVaultPresentationChanged?.({
       vaultId,
       kind: "itemCoverChanged",
