@@ -13,6 +13,10 @@ import {
 } from "@collector/shared";
 import type { VaultContext } from "../adapters/types.js";
 import {
+  DISK_ITEM_READ_CONCURRENCY,
+  runWithConcurrency,
+} from "../util/concurrency.js";
+import {
   parseDocumentMarkdown,
   partitionDocumentFrontmatter,
   serializeDocumentMarkdown,
@@ -455,13 +459,16 @@ export async function localizeRemoteDisplayAssets(
     : [];
   const uniqueRemoteUrls = [...new Set(remoteImageRefs.map((r) => r.rawUrl))];
 
-  const downloadedImages = new Map<string, Uint8Array>();
-  for (const remoteUrl of uniqueRemoteUrls) {
-    downloadedImages.set(
-      remoteUrl,
-      await downloadOrThrow(fetchBytes, remoteUrl, "markdown image"),
-    );
-  }
+  const downloadedBytes = await runWithConcurrency(
+    uniqueRemoteUrls.length,
+    DISK_ITEM_READ_CONCURRENCY,
+    (index) =>
+      downloadOrThrow(
+        fetchBytes,
+        uniqueRemoteUrls[index]!,
+        "markdown image",
+      ),
+  );
 
   let fmThumbnailBytes: Uint8Array | null = null;
   if (needsFmThumbnail && fmThumbnail) {
@@ -488,7 +495,9 @@ export async function localizeRemoteDisplayAssets(
   const urlToLocal = new Map<string, string>();
 
   try {
-    for (const [remoteUrl, bytes] of downloadedImages) {
+    for (let i = 0; i < uniqueRemoteUrls.length; i += 1) {
+      const remoteUrl = uniqueRemoteUrls[i]!;
+      const bytes = downloadedBytes[i]!;
       const filename = filenameFromRemoteImageUrl(remoteUrl);
       const media = await attachMediaFile(ctx, vaultPath, itemId, {
         filename,
