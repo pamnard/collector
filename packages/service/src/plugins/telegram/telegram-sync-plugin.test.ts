@@ -18,6 +18,7 @@ import {
   loadTelegramPluginConfig,
   resolveTelegramDestinationFolder,
   saveTelegramPluginConfig,
+  TELEGRAM_CONFIG_DIR,
   TELEGRAM_PLUGIN_ID,
   updateTelegramPluginConfig,
   type TelegramPluginConfig,
@@ -28,7 +29,10 @@ import {
   messageHasImportableContent,
   selectAlbumsToClose,
 } from "./telegram-map.js";
-import { createTelegramSyncPlugin } from "./telegram-sync-plugin.js";
+import {
+  createTelegramSyncPlugin,
+  TELEGRAM_DELETE_CONCURRENCY,
+} from "./telegram-sync-plugin.js";
 
 const dirs: string[] = [];
 
@@ -900,6 +904,27 @@ createCatalog: () => [plugin],
     });
   }
 
+  function trackingDeleteMessage(
+    decide: (messageId: number) => void = () => undefined,
+  ) {
+    let inFlight = 0;
+    let peakInFlight = 0;
+    const deleteMessage = vi.fn(
+      async (_token: string, _chatId: number, messageId: number) => {
+        inFlight += 1;
+        peakInFlight = Math.max(peakInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        inFlight -= 1;
+        decide(messageId);
+        return true as const;
+      },
+    );
+    return {
+      deleteMessage,
+      peak: () => peakInFlight,
+    };
+  }
+
   it("flushAwaitingDeletes is bounded-parallel (peak in-flight > 1)", async () => {
     const dataDir = await tempDataDir();
     const fs = new NodeFileSystemAdapter();
@@ -915,15 +940,7 @@ createCatalog: () => [plugin],
       baseConfig({ awaiting_delete: rows }),
     );
 
-    let inFlight = 0;
-    let peakInFlight = 0;
-    const deleteMessage = vi.fn(async () => {
-      inFlight += 1;
-      peakInFlight = Math.max(peakInFlight, inFlight);
-      await new Promise((resolve) => setTimeout(resolve, 40));
-      inFlight -= 1;
-      return true as const;
-    });
+    const { deleteMessage, peak } = trackingDeleteMessage();
     const plugin = await pluginForFlush(
       dataDir,
       fs,
@@ -936,7 +953,8 @@ createCatalog: () => [plugin],
     await plugin.pull(null);
 
     expect(deleteMessage).toHaveBeenCalledTimes(3);
-    expect(peakInFlight).toBeGreaterThan(1);
+    expect(peak()).toBeGreaterThan(1);
+    expect(peak()).toBeLessThanOrEqual(TELEGRAM_DELETE_CONCURRENCY);
     const cfg = await loadTelegramPluginConfig(fs, dataDir, "v1");
     expect(cfg.awaiting_delete).toEqual([]);
   });
@@ -957,20 +975,11 @@ createCatalog: () => [plugin],
       baseConfig({ awaiting_delete: rows }),
     );
 
-    let inFlight = 0;
-    let peakInFlight = 0;
-    const deleteMessage = vi.fn(
-      async (_token: string, _chatId: number, messageId: number) => {
-        inFlight += 1;
-        peakInFlight = Math.max(peakInFlight, inFlight);
-        await new Promise((resolve) => setTimeout(resolve, 40));
-        inFlight -= 1;
-        if (messageId % 2 === 0) {
-          throw new Error(`delete failed for ${messageId}`);
-        }
-        return true as const;
-      },
-    );
+    const { deleteMessage, peak } = trackingDeleteMessage((messageId) => {
+      if (messageId % 2 === 0) {
+        throw new Error(`delete failed for ${messageId}`);
+      }
+    });
     const plugin = await pluginForFlush(
       dataDir,
       fs,
@@ -982,7 +991,8 @@ createCatalog: () => [plugin],
 
     await plugin.pull(null);
 
-    expect(peakInFlight).toBeGreaterThan(1);
+    expect(peak()).toBeGreaterThan(1);
+    expect(peak()).toBeLessThanOrEqual(TELEGRAM_DELETE_CONCURRENCY);
     const cfg = await loadTelegramPluginConfig(fs, dataDir, "v1");
     expect(cfg.awaiting_delete).toEqual([
       { chat_id: 100, message_id: 2 },
@@ -1004,7 +1014,7 @@ createCatalog: () => [plugin],
       baseConfig({ awaiting_delete: rows }),
     );
 
-    const configPath = join(dataDir, "sync-plugins/telegram", "v1.json");
+    const configPath = join(dataDir, TELEGRAM_CONFIG_DIR, "v1.json");
     const before = await fs.readText(configPath);
     let configWrites = 0;
     const writeText = fs.writeText.bind(fs);

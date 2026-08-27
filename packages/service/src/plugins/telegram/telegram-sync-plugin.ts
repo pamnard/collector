@@ -217,22 +217,25 @@ export function createTelegramSyncPlugin(
       return config;
     }
     const queue = config.awaiting_delete;
-    const outcomes = await runWithConcurrency(
+    const failed = await runWithConcurrency(
       queue.length,
       TELEGRAM_DELETE_CONCURRENCY,
       async (index) => {
-        const row = queue[index]!;
+        const row = queue[index];
+        if (row === undefined) {
+          throw new Error(
+            `telegram: awaiting_delete index out of range (${index})`,
+          );
+        }
         try {
           await api.deleteMessage(token, row.chat_id, row.message_id);
-          return { ok: true as const };
+          return false;
         } catch {
-          return { ok: false as const, row };
+          return true;
         }
       },
     );
-    const remaining = outcomes.flatMap((outcome) =>
-      outcome.ok ? [] : [outcome.row],
-    );
+    const remaining = queue.filter((_, index) => failed[index]);
     if (remaining.length === queue.length) {
       return config;
     }
