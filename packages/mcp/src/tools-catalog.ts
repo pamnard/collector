@@ -185,7 +185,8 @@ export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] = [
         typeLabel: "string[]",
         description:
           "Replace item tags by name (as in vault .md frontmatter). " +
-          "Missing names are created. Omit to leave unchanged; pass [] to clear all tags on the item.",
+          "Missing names are created on this document write — that is the only supported way tags enter the catalog (#842). " +
+          "Omit to leave unchanged; pass [] to clear all tags on the item.",
       },
       {
         name: "folder_path",
@@ -277,42 +278,6 @@ export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] = [
     ],
   },
   {
-    name: "collector_create_tag",
-    description:
-      "Create a tag in the active vault. " +
-      "Returns a tag object whose `id` is a UUID — use that as tagId for delete. " +
-      "tagId is not a vault path and must not be confused with itemId.",
-    params: [
-      {
-        name: "name",
-        required: true,
-        typeLabel: "string",
-        description: "Tag display name (unique within the vault).",
-      },
-      {
-        name: "color",
-        required: false,
-        typeLabel: "string | null",
-        description: "Optional color string, or null. Omit for default/no color.",
-      },
-    ],
-  },
-  {
-    name: "collector_delete_tag",
-    description:
-      "Delete a tag by its opaque UUID primary key from collector_create_tag (or other list/create flows). " +
-      "Not a vault-relative path; not interchangeable with itemId.",
-    params: [
-      {
-        name: "tagId",
-        required: true,
-        typeLabel: "string",
-        description:
-          "Opaque tag primary key (UUID) from createTag / tag list responses. Not an item path.",
-      },
-    ],
-  },
-  {
     name: "collector_create_folder",
     description:
       "Create a folder path in the active vault (no-op if it already exists after normalization). " +
@@ -333,6 +298,23 @@ export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] = [
       "Same listFolderTree service surface as the UI client. " +
       "Use paths from this tree for rename/move/delete folder tools.",
     params: [],
+  },
+  {
+    name: "collector_list_folder_items",
+    description:
+      "List items in one folder by exact folder_path membership (#844). " +
+      "Does not include items in child folders (same rule as the host dashboard folder nav filter). " +
+      "Empty folder returns []. Missing folder fails with Folder not found. " +
+      "Returns index card ItemFile[] (not full markdown) — same hydrate surface as collector_search. " +
+      "Thin client of FoldersPort.listFolderItems (same as CLI list-folder-items).",
+    params: [
+      {
+        name: "folderPath",
+        required: true,
+        typeLabel: "string",
+        description: FOLDER_PATH_CREATE_DESCRIPTION,
+      },
+    ],
   },
   {
     name: "collector_rename_folder",

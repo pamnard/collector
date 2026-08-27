@@ -16,10 +16,9 @@ CLI always needs dial flags before the subcommand: `--base-url … --data-dir �
 | Wait derived (opt-in) | `collector_wait_derived` | `wait-derived <item-id> --revision <n>` |
 | Delete item | `collector_delete_item` | `delete-item <item-id>` |
 | Move item | `collector_move_item` | `move-item <item-id> --folder …` |
-| Create tag | `collector_create_tag` | `create-tag --name …` |
-| Delete tag | `collector_delete_tag` | `delete-tag <tag-id>` |
 | Create folder | `collector_create_folder` | `create-folder <path>` |
 | List folders | `collector_list_folders` | `list-folders` |
+| List folder items | `collector_list_folder_items` | `list-folder-items <path>` |
 | Rename folder | `collector_rename_folder` | `rename-folder <old> <new>` |
 | Move folder | `collector_move_folder` | `move-folder <old> <new>` |
 | Delete folder | `collector_delete_folder` | `delete-folder <path>` |
@@ -33,7 +32,7 @@ CLI always needs dial flags before the subcommand: `--base-url … --data-dir �
 
 - Create/update type: `--type` (MCP: `content_type`).
 - Folder on create/update/move: `--folder` (MCP: `folder_path` / `folderPath`).
-- Tags on update: `--tags name1,name2` (MCP: `tags` string array).
+- Tags on update: `--tags name1,name2` (MCP: `tags` string array). This is how tags enter the catalog — there is no create-tag / delete-tag command (#842).
 - Attach/replace file: `--file` (MCP: `sourcePath` or `dataBase64`).
 - Source replace body: `--content` holds the full raw markdown document.
 

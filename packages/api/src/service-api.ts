@@ -16,7 +16,6 @@ import type {
 } from "./domain.js";
 import type { CollectorApiError } from "./errors.js";
 import type { ExtractCandidate } from "./extract-plugin.js";
-import type { Tag } from "@collector/shared";
 import type { AppSettings, DashboardSnapshot } from "@collector/shared";
 import type { MediaFileMeta } from "@collector/shared";
 
@@ -307,7 +306,11 @@ export interface ItemsPort {
   ): Promise<WaitDerivedResult>;
 }
 
-/** Tags port (#361). */
+/**
+ * Tags port (#361 / #842).
+ * Aggregated lists only — catalog entries are derived from document writes.
+ * Assign tag names on items; do not create/rename/delete catalog rows here.
+ */
 export interface TagsPort {
   subscribeTags(
     onUpdate: (tags: TagWithCount[]) => void,
@@ -315,12 +318,6 @@ export interface TagsPort {
     signal?: AbortSignal,
   ): Subscription;
   listTags(): Promise<TagWithCount[]>;
-  createTag(input: { name: string; color?: string | null }): Promise<Tag>;
-  updateTagRecord(
-    tagId: string,
-    input: { name?: string; color?: string | null },
-  ): Promise<Tag>;
-  deleteTag(tagId: string): Promise<void>;
 }
 
 /** Folders port (#361). */
@@ -331,6 +328,12 @@ export interface FoldersPort {
     signal?: AbortSignal,
   ): Subscription;
   listFolderTree(): Promise<FolderTreeNode[]>;
+  /**
+   * Items whose `folder_path` equals `folderPath` exactly (#844).
+   * Does not include child folders. Empty folder → `[]`. Missing folder → error.
+   * Index card fields only (same hydrate surface as search), not full markdown.
+   */
+  listFolderItems(folderPath: string): Promise<ItemFile[]>;
   createFolder(folderPath: string): Promise<string>;
   renameFolder(oldPath: string, newPath: string): Promise<string>;
   deleteFolder(folderPath: string): Promise<void>;

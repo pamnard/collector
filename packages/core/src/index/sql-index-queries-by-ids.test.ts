@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createId } from "../util/ids.js";
 import { upsertItem } from "../vault/item-operations.js";
-import { createTag } from "../vault/tag-operations.js";
+import { seedTagFromDocumentWritePath } from "../testing/seed-tag.js";
 import {
   createSqlIndexTestSuite,
   noteItemFields,
@@ -62,7 +62,7 @@ describe("listItemFilesByIds", () => {
     const { fs, index, ctx, vault } = await suite.openVaultIndex("collector-list-item-files-");
     const { meta, path } = vault;
 
-    const tag = await createTag(ctx, path, meta.id, { name: "inbox" });
+    const tag = await seedTagFromDocumentWritePath(ctx, path, meta.id, "inbox");
     const collectionId = createId();
     const firstId = `work/${createId()}.md`;
     const secondId = `${createId()}.md`;

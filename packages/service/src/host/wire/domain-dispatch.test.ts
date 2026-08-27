@@ -51,10 +51,8 @@ function stubRuntime(overrides: {
     },
     tagsFolders: {
       listTags: vi.fn(async () => []),
-      createTag: vi.fn(),
-      updateTagRecord: vi.fn(),
-      deleteTag: vi.fn(),
       listFolderTree: vi.fn(async () => []),
+      listFolderItems: vi.fn(async () => []),
       createFolder: vi.fn(),
       renameFolder: vi.fn(),
       deleteFolder: vi.fn(),
@@ -183,6 +181,19 @@ describe("createDomainWireRequestHandler (#330)", () => {
     expect(await dispatch("noSuchMethod", { a: 1 })).toBeUndefined();
   });
 
+  it("rejects reverse-direction tag catalog RPCs (#842)", async () => {
+    const { runtime } = stubRuntime({});
+    const dispatch = createDomainWireRequestHandler(runtime);
+    expect(await dispatch("createTag", { name: "x" })).toBeUndefined();
+    expect(await dispatch("deleteTag", { tagId: "t1" })).toBeUndefined();
+    expect(
+      await dispatch("updateTagRecord", { tagId: "t1", input: { name: "y" } }),
+    ).toBeUndefined();
+    expect(M).not.toHaveProperty("createTag");
+    expect(M).not.toHaveProperty("deleteTag");
+    expect(M).not.toHaveProperty("updateTagRecord");
+  });
+
   it("rejects bad searchItems params before ensureInitialized", async () => {
     const { runtime, ensureInitialized } = stubRuntime({});
     const dispatch = createDomainWireRequestHandler(runtime);
@@ -212,6 +223,23 @@ describe("createDomainWireRequestHandler (#330)", () => {
     });
     expect(getItemById).toHaveBeenCalledWith("a.md");
     expect(ensureInitialized).toHaveBeenCalledTimes(2);
+  });
+
+  it("listFolderItems forwards folderPath after ensureInitialized (#844)", async () => {
+    const listFolderItems = vi.fn(async () => [
+      { id: "Parent/a.md", folder_path: "Parent" },
+    ]);
+    const { runtime, ensureInitialized } = stubRuntime({});
+    runtime.tagsFolders.listFolderItems = listFolderItems;
+    const dispatch = createDomainWireRequestHandler(runtime);
+
+    await expect(
+      dispatch(M.listFolderItems, { folderPath: "Parent" }),
+    ).resolves.toEqual([{ id: "Parent/a.md", folder_path: "Parent" }]);
+    expect(listFolderItems).toHaveBeenCalledWith("Parent");
+    expect(ensureInitialized).toHaveBeenCalledTimes(1);
+
+    await expectBadRequest(() => dispatch(M.listFolderItems, {}));
   });
 
   it("searchItems forwards optional page (#658)", async () => {

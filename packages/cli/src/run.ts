@@ -166,19 +166,6 @@ export async function runCollectorCli(
       io.stdout(JSON.stringify(result, null, 2));
       return result.status === "succeeded" ? 0 : 1;
     }
-    if (cmd.name === "create-tag") {
-      const tag = await client.tags.createTag({
-        name: cmd.tagName,
-        ...(cmd.color === undefined ? {} : { color: cmd.color }),
-      });
-      io.stdout(JSON.stringify(tag, null, 2));
-      return 0;
-    }
-    if (cmd.name === "delete-tag") {
-      await client.tags.deleteTag(cmd.tagId);
-      io.stdout(JSON.stringify({ ok: true, deleted: cmd.tagId }));
-      return 0;
-    }
     if (cmd.name === "create-folder") {
       const path = await client.folders.createFolder(cmd.folderPath);
       io.stdout(JSON.stringify({ ok: true, path }, null, 2));
@@ -187,6 +174,11 @@ export async function runCollectorCli(
     if (cmd.name === "list-folders") {
       const tree = await client.folders.listFolderTree();
       io.stdout(JSON.stringify(tree, null, 2));
+      return 0;
+    }
+    if (cmd.name === "list-folder-items") {
+      const items = await client.folders.listFolderItems(cmd.folderPath);
+      io.stdout(JSON.stringify(items, null, 2));
       return 0;
     }
     if (cmd.name === "rename-folder" || cmd.name === "move-folder") {

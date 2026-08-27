@@ -19,13 +19,9 @@ import {
   parseWaitDerived,
 } from "./items.js";
 import {
-  CREATE_TAG_FLAGS,
-  parseCreateTag,
-  parseDeleteTag,
-} from "./tags.js";
-import {
   parseCreateFolder,
   parseDeleteFolder,
+  parseListFolderItems,
   parseListFolders,
   parseMoveFolder,
   parseRenameFolder,
@@ -51,7 +47,6 @@ export const ALL_COMMAND_FLAGS = unionFlagSets(
   CREATE_ITEM_FLAGS,
   UPDATE_ITEM_FLAGS,
   UPDATE_ITEM_SOURCE_FLAGS,
-  CREATE_TAG_FLAGS,
   MOVE_ITEM_FLAGS,
   IMPORT_FOLDER_FLAGS,
   WAIT_DERIVED_FLAGS,
@@ -72,10 +67,9 @@ export const COMMAND_PARSERS = {
   "delete-item": parseDeleteItem,
   "import-folder": parseImportFolder,
   "wait-derived": parseWaitDerived,
-  "create-tag": parseCreateTag,
-  "delete-tag": parseDeleteTag,
   "create-folder": parseCreateFolder,
   "list-folders": parseListFolders,
+  "list-folder-items": parseListFolderItems,
   "rename-folder": parseRenameFolder,
   "move-folder": parseMoveFolder,
   "delete-folder": parseDeleteFolder,

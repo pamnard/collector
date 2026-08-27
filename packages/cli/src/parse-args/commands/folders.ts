@@ -15,6 +15,17 @@ export function parseListFolders(_argv: string[], rest: string[]): CliCommand {
   return { name: "list-folders" };
 }
 
+export function parseListFolderItems(
+  _argv: string[],
+  rest: string[],
+): CliCommand {
+  const folderPath = rest.join(" ").trim();
+  if (!folderPath) {
+    throw new CliUsageError("Usage: collector-cli list-folder-items <path>");
+  }
+  return { name: "list-folder-items", folderPath };
+}
+
 export function parseRenameFolder(_argv: string[], rest: string[]): CliCommand {
   const oldPath = rest[0];
   const newPath = rest[1];

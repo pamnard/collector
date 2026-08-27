@@ -54,14 +54,12 @@ export const ITEMS_PORT_KEYS = [
 export const TAGS_PORT_KEYS = [
   "subscribeTags",
   "listTags",
-  "createTag",
-  "updateTagRecord",
-  "deleteTag",
 ] as const satisfies readonly (keyof TagsPort)[];
 
 export const FOLDERS_PORT_KEYS = [
   "subscribeFolderTree",
   "listFolderTree",
+  "listFolderItems",
   "createFolder",
   "renameFolder",
   "deleteFolder",

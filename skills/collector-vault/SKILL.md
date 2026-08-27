@@ -45,7 +45,7 @@ collector-cli --base-url http://127.0.0.1:PORT --data-dir /path/to/vault-data <c
 
 - **Item** — one vault-relative `.md` path (path-as-id). Metadata in YAML frontmatter; body is markdown.
 - **Folder** — filesystem folder; empty / omitted create destination → **Inbox**.
-- **Tag** — named label; delete uses opaque **UUID** `tagId`, not a path. Do not confuse with `itemId`.
+- **Tag** — named label that appears because it is assigned on documents (frontmatter / item update). Catalog lists are derived from documents; there is no create/delete tag catalog command. Do not confuse tag names with `itemId`.
 - **Media** — attachments via list/attach/replace/delete/set-cover tools. Cover auto-syncs after attach/delete/replace; set-cover only when picking a specific image/video.
 
 ## Preferred workflows
@@ -97,11 +97,14 @@ For asset-localisation rules and fallback order, follow [references/import-rules
 
 ### Folders
 
-List → create / rename / move / delete. **Delete folder is recursive** (tree + all items + media under that prefix). Confirm intent before calling.
+List tree → list items in a folder → create / rename / move / delete.
+`list-folder-items` / `collector_list_folder_items` uses **exact** `folder_path`
+membership (no child folders). Empty folder → `[]`; missing folder fails.
+**Delete folder is recursive** (tree + all items + media under that prefix). Confirm intent before calling.
 
 ### Tags
 
-`create-tag` returns UUID `id` for `delete-tag`. Assigning tags on an item is done via item update (`tags` names) or source frontmatter — not by inventing tag paths.
+Assign tag **names** on an item via structured update (`tags`) or source frontmatter. Aggregated tag lists (sidebar / picker) show only names that currently appear on documents — never create or delete catalog entries independently (#842).
 
 ## Anti-patterns
 
@@ -109,7 +112,7 @@ List → create / rename / move / delete. **Delete folder is recursive** (tree +
 - Using `search` with a UUID/path expecting id lookup
 - Truncating `Inbox/<uuid>.md` to `<uuid>` or `<uuid>.md`
 - Reusing pre-move `itemId` after a successful move
-- Passing `itemId` where `tagId` / `mediaId` is required (or the reverse)
+- Passing `itemId` where `mediaId` is required (or the reverse)
 - Preferring source rewrite for a single field change
 - Prefacing imported article body with `Source:`, byline, or duplicated original URL (belongs in `url`, or at bottom only if asked)
 - Duplicating the article title as the first line / H1 in `content` when the item `title` already stores it

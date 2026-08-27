@@ -4,6 +4,19 @@ import type { HostSessionCtx } from "../host-session-ctx.js";
 import { createHostTagsPort } from "./tags.js";
 
 describe("createHostTagsPort.subscribeTags (#797)", () => {
+  it("exposes list/subscribe only (#842)", () => {
+    const transport = {
+      request: vi.fn(),
+      onEvent: () => () => {},
+    };
+    const ctx = { transport } as unknown as HostSessionCtx;
+    const port = createHostTagsPort(ctx);
+    expect(Object.keys(port).sort()).toEqual(["listTags", "subscribeTags"]);
+    expect(port).not.toHaveProperty("createTag");
+    expect(port).not.toHaveProperty("deleteTag");
+    expect(port).not.toHaveProperty("updateTagRecord");
+  });
+
   it("forwards listTags failures via onError", async () => {
     const request = vi.fn(async () => {
       throw new Error("list failed");

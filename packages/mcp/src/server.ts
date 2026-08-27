@@ -284,28 +284,6 @@ export function createCollectorMcpServer(session: McpHostSession): McpServer {
   );
 
   tool(
-    "collector_create_tag",
-    (p) => ({
-      name: p.requiredString("name"),
-      color: p.nullableOptionalString("color"),
-    }),
-    (input, client) =>
-      client.tags.createTag({
-        name: input.name,
-        ...(input.color === undefined ? {} : { color: input.color }),
-      }),
-  );
-
-  tool(
-    "collector_delete_tag",
-    (p) => ({ tagId: p.requiredString("tagId") }),
-    async ({ tagId }, client) => {
-      await client.tags.deleteTag(tagId);
-      return { ok: true, deleted: tagId };
-    },
-  );
-
-  tool(
     "collector_create_folder",
     (p) => ({ folderPath: p.requiredString("folderPath") }),
     async ({ folderPath }, client) => {
@@ -316,6 +294,12 @@ export function createCollectorMcpServer(session: McpHostSession): McpServer {
 
   tool("collector_list_folders", () => ({}), (_args, client) =>
     client.folders.listFolderTree(),
+  );
+
+  tool(
+    "collector_list_folder_items",
+    (p) => ({ folderPath: p.requiredString("folderPath") }),
+    ({ folderPath }, client) => client.folders.listFolderItems(folderPath),
   );
 
   tool(

@@ -191,6 +191,7 @@ export { navFilterFromSetting, navFilterToSetting, isFolderFilter, isTagFilter }
 export {
   createFolder,
   deleteFolder,
+  listFolderItems,
   listFolderTree,
   listFolderTreeFromIndex,
   reconcileFolderTreeFromDisk,
@@ -213,11 +214,8 @@ export { resolveDropTitle } from "./vault/resolve-drop-title.js";
 export type { DropImportClass } from "./vault/drop-import-classify.js";
 
 export {
-  createTag,
-  deleteTag,
   listTagsWithCounts,
   syncTagsToIndex,
-  updateTag,
 } from "./vault/tag-operations.js";
 export type { TagWithCount } from "./vault/tag-operations.js";
 export {

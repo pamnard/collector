@@ -12,6 +12,7 @@ import { upsertItem } from "../vault/item-operations.js";
 import {
   createFolder,
   deleteFolder,
+  listFolderItems,
   listFolderTreeFromIndex,
   moveItemToFolder,
   reconcileFolderTreeFromDisk,
@@ -436,5 +437,74 @@ describe("folder operations", () => {
     const moved = await moveItemToFolder(ctx, path, meta.id, itemId, "Archive");
     expect(moved.id).toBe(newId);
     expect(enqueued).toEqual([{ vaultId: meta.id, itemIds: [newId] }]);
+  });
+
+  it("listFolderItems returns exact-folder members only; empty ok; missing fails (#844)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-list-folder-items-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    await createFolder(ctx, path, "Parent");
+    await createFolder(ctx, path, "Parent/Child");
+    await createFolder(ctx, path, "Empty");
+
+    const timestamp = new Date().toISOString();
+    const parentId = `Parent/${createId()}.md`;
+    const childId = `Parent/Child/${createId()}.md`;
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: parentId,
+        vault_id: meta.id,
+        title: "Parent note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "Parent",
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+    });
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: childId,
+        vault_id: meta.id,
+        title: "Child note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "Parent/Child",
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+    });
+
+    const parentItems = await listFolderItems(ctx, path, meta.id, "Parent");
+    expect(parentItems.map((item) => item.id)).toEqual([parentId]);
+    expect(parentItems[0]?.title).toBe("Parent note");
+
+    await expect(listFolderItems(ctx, path, meta.id, "Empty")).resolves.toEqual(
+      [],
+    );
+    await expect(
+      listFolderItems(ctx, path, meta.id, "Missing"),
+    ).rejects.toThrow(/Folder not found: Missing/);
+    await expect(listFolderItems(ctx, path, meta.id, "")).rejects.toThrow(
+      /Folder path must be non-empty/,
+    );
   });
 });

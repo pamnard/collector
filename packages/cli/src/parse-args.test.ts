@@ -128,23 +128,7 @@ describe("parseCliArgs (#172/#173 / #550 G)", () => {
     });
   });
 
-  it("parses tag and folder writes", () => {
-    expect(
-      parseCliArgs([
-        ...BASE,
-        "--data-dir",
-        "/data",
-        "create-tag",
-        "--name",
-        "work",
-        "--color",
-        "#fff",
-      ]),
-    ).toEqual({
-      command: { name: "create-tag", tagName: "work", color: "#fff" },
-      baseUrl: "http://127.0.0.1:9",
-      dataDir: "/data",
-    });
+  it("parses folder writes", () => {
     expect(
       parseCliArgs([...BASE, "--data-dir", "/data", "create-folder", "Inbox/A"]),
     ).toEqual({
@@ -154,6 +138,19 @@ describe("parseCliArgs (#172/#173 / #550 G)", () => {
     });
     expect(parseCliArgs([...BASE, "--data-dir", "/data", "list-folders"])).toEqual({
       command: { name: "list-folders" },
+      baseUrl: "http://127.0.0.1:9",
+      dataDir: "/data",
+    });
+    expect(
+      parseCliArgs([
+        ...BASE,
+        "--data-dir",
+        "/data",
+        "list-folder-items",
+        "Projects/Work",
+      ]),
+    ).toEqual({
+      command: { name: "list-folder-items", folderPath: "Projects/Work" },
       baseUrl: "http://127.0.0.1:9",
       dataDir: "/data",
     });
@@ -323,6 +320,15 @@ describe("parseCliArgs (#172/#173 / #550 G)", () => {
     expect(() =>
       parseCliArgs([...BASE, "--data-dir", "/data", "no-such-command"]),
     ).toThrow(/Unknown command: no-such-command/);
+  });
+
+  it("rejects removed reverse-direction tag catalog commands (#842)", () => {
+    expect(() =>
+      parseCliArgs([...BASE, "--data-dir", "/data", "create-tag", "--name", "x"]),
+    ).toThrow(/Unknown command: create-tag/);
+    expect(() =>
+      parseCliArgs([...BASE, "--data-dir", "/data", "delete-tag", "uuid"]),
+    ).toThrow(/Unknown command: delete-tag/);
   });
 
   it("rejects update-item without field flags", () => {

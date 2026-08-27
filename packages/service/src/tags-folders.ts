@@ -10,18 +10,16 @@ import type {
   TagWithCount,
 } from "@collector/api";
 import { asCollectorApiError, subscriptionFromTeardown } from "@collector/api";
-import type { ItemFile, Tag, VaultMeta } from "@collector/shared";
+import type { ItemFile, VaultMeta } from "@collector/shared";
 import { folderPathFromItemPath } from "@collector/shared";
 import {
   createFolder as createFolderOnVault,
-  createTag as createTagOnVault,
   deleteFolder as deleteFolderOnVault,
-  deleteTag as deleteTagOnVault,
+  listFolderItems as listFolderItemsOnVault,
   listTagsWithCounts,
   moveItemToFolder,
   reconcileFolderTreeFromDisk,
   renameFolder as renameFolderOnVault,
-  updateTag as updateTagOnVault,
   type IndexSyncProgress,
   type VaultContext,
 } from "@collector/core";
@@ -121,18 +119,13 @@ export interface TagsFoldersService {
     signal?: AbortSignal,
   ): Subscription;
   listTags(): Promise<TagWithCount[]>;
-  createTag(input: { name: string; color?: string | null }): Promise<Tag>;
-  updateTagRecord(
-    tagId: string,
-    input: { name?: string; color?: string | null },
-  ): Promise<Tag>;
-  deleteTag(tagId: string): Promise<void>;
   subscribeFolderTree(
     onUpdate: (tree: FolderTreeNode[]) => void,
     handlers?: ServiceSubscribeHandlers,
     signal?: AbortSignal,
   ): Subscription;
   listFolderTree(): Promise<FolderTreeNode[]>;
+  listFolderItems(folderPath: string): Promise<ItemFile[]>;
   createFolder(folderPath: string): Promise<string>;
   renameFolder(oldPath: string, newPath: string): Promise<string>;
   deleteFolder(folderPath: string): Promise<void>;
@@ -209,34 +202,21 @@ export function createTagsFoldersService(
     return subscriptionFromTeardown(linked.unsubscribe);
   };
 
-  const createTag = async (input: {
-    name: string;
-    color?: string | null;
-  }): Promise<Tag> => {
-    const { vault, path } = await deps.resolveActiveVault();
-    deps.kickoffVaultIndexSync(vault.id, path);
-    return createTagOnVault(deps.getContext(), path, vault.id, input);
-  };
-
-  const updateTagRecord = async (
-    tagId: string,
-    input: { name?: string; color?: string | null },
-  ): Promise<Tag> => {
-    const { vault, path } = await deps.resolveActiveVault();
-    deps.kickoffVaultIndexSync(vault.id, path);
-    return updateTagOnVault(deps.getContext(), path, vault.id, tagId, input);
-  };
-
-  const deleteTag = async (tagId: string): Promise<void> => {
-    const { vault, path } = await deps.resolveActiveVault();
-    deps.kickoffVaultIndexSync(vault.id, path);
-    await deleteTagOnVault(deps.getContext(), path, vault.id, tagId);
-  };
-
   const listFolderTree = async (): Promise<FolderTreeNode[]> => {
     const { vault, path } = await deps.resolveActiveVault();
     deps.kickoffVaultIndexSync(vault.id, path);
     return reconcileFolderTreeFromDisk(deps.getContext(), path, vault.id);
+  };
+
+  const listFolderItems = async (folderPath: string): Promise<ItemFile[]> => {
+    const { vault, path } = await deps.resolveActiveVault();
+    deps.kickoffVaultIndexSync(vault.id, path);
+    return listFolderItemsOnVault(
+      deps.getContext(),
+      path,
+      vault.id,
+      folderPath,
+    );
   };
 
   const subscribeFolderTree = (
@@ -381,11 +361,9 @@ export function createTagsFoldersService(
   return {
     subscribeTags,
     listTags,
-    createTag,
-    updateTagRecord,
-    deleteTag,
     subscribeFolderTree,
     listFolderTree,
+    listFolderItems,
     createFolder,
     renameFolder,
     deleteFolder,
