@@ -5,6 +5,7 @@ export type FolderActionId =
   | "new-folder"
   | "rename"
   | "move"
+  | "copy-path"
   | "delete";
 
 export type FolderActionGroup = "create" | "manage" | "modify";
@@ -20,6 +21,7 @@ export const FOLDER_ACTION_ORDER: readonly FolderActionDef[] = [
   { id: "new-note", group: "create", label: "Новая заметка" },
   { id: "new-folder", group: "create", label: "Новая папка" },
   { id: "move", group: "manage", label: "Переместить папку в…" },
+  { id: "copy-path", group: "manage", label: "Копировать путь" },
   { id: "rename", group: "modify", label: "Переименовать" },
   { id: "delete", group: "modify", label: "Удалить" },
 ] as const;

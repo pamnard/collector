@@ -14,12 +14,14 @@ describe("folder-action-catalog", () => {
       "new-note",
       "new-folder",
       "move",
+      "copy-path",
       "rename",
       "delete",
     ]);
     expect(actions.map((action) => action.group)).toEqual([
       "create",
       "create",
+      "manage",
       "manage",
       "modify",
       "modify",
@@ -40,8 +42,10 @@ describe("folder-action-catalog", () => {
     expect(isFolderActionEnabled("new-note", "Inbox")).toBe(true);
     expect(isFolderActionEnabled("new-folder", "Work")).toBe(true);
     expect(isFolderActionEnabled("move", "Inbox")).toBe(true);
+    expect(isFolderActionEnabled("copy-path", "Inbox")).toBe(true);
     expect(isFolderActionEnabled("rename", "Work")).toBe(true);
     expect(FOLDER_ACTION_ORDER.map((action) => action.id).sort()).toEqual([
+      "copy-path",
       "delete",
       "move",
       "new-folder",
@@ -55,6 +59,7 @@ describe("folder-action-catalog", () => {
       { id: "new-note", group: "create", label: "Новая заметка" },
       { id: "new-folder", group: "create", label: "Новая папка" },
       { id: "move", group: "manage", label: "Переместить папку в…" },
+      { id: "copy-path", group: "manage", label: "Копировать путь" },
       { id: "rename", group: "modify", label: "Переименовать" },
       { id: "delete", group: "modify", label: "Удалить" },
     ];
@@ -63,7 +68,10 @@ describe("folder-action-catalog", () => {
         { id: "new-note", group: "create", label: "Новая заметка" },
         { id: "new-folder", group: "create", label: "Новая папка" },
       ],
-      [{ id: "move", group: "manage", label: "Переместить папку в…" }],
+      [
+        { id: "move", group: "manage", label: "Переместить папку в…" },
+        { id: "copy-path", group: "manage", label: "Копировать путь" },
+      ],
       [
         { id: "rename", group: "modify", label: "Переименовать" },
         { id: "delete", group: "modify", label: "Удалить" },

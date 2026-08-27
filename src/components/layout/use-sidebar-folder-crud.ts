@@ -15,6 +15,7 @@ import {
 } from "../../lib/folder-actions";
 import type { NavFilter } from "../../types/ui";
 import {
+  FOLDER_COPY_PATH_ALERT_ID,
   FOLDER_CREATE_BUSY_ID,
   FOLDER_CREATE_ERROR_ID,
   FOLDER_DELETE_BUSY_ID,
@@ -92,6 +93,30 @@ export function useSidebarFolderCrud({
     }
     if (id === "move") {
       setMoveSourcePath(path);
+      return;
+    }
+    if (id === "copy-path") {
+      void (async () => {
+        try {
+          await navigator.clipboard.writeText(path);
+          alerts.upsert(FOLDER_COPY_PATH_ALERT_ID, {
+            tone: "info",
+            message: "Путь скопирован",
+            onDismiss: () => alerts.dismiss(FOLDER_COPY_PATH_ALERT_ID),
+          });
+          window.setTimeout(() => alerts.dismiss(FOLDER_COPY_PATH_ALERT_ID), 2000);
+        } catch (err: unknown) {
+          console.error("Folder path copy failed", {
+            error: err,
+            folderPath: path,
+          });
+          alerts.upsert(FOLDER_COPY_PATH_ALERT_ID, {
+            tone: "danger",
+            message: "Не удалось скопировать путь",
+            onDismiss: () => alerts.dismiss(FOLDER_COPY_PATH_ALERT_ID),
+          });
+        }
+      })();
       return;
     }
     if (id === "delete") {

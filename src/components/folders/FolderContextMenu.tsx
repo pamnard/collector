@@ -1,5 +1,6 @@
 import { type ReactNode } from "react";
 import {
+  Copy,
   FilePlus,
   FolderPen,
   FolderPlus,
@@ -24,6 +25,7 @@ const FOLDER_ACTION_ICONS: Record<FolderActionId, LucideIcon> = {
   "new-note": FilePlus,
   "new-folder": FolderPlus,
   move: FolderTree,
+  "copy-path": Copy,
   rename: FolderPen,
   delete: Trash2,
 };
