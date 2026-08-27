@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   applyAddTagName,
   buildTagDisplayNames,
@@ -7,6 +10,8 @@ import {
   sameTagName,
   toggleTagSelection,
 } from "./tag-picker-helpers.ts";
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 describe("sameTagName", () => {
   it("compares trimmed case-insensitive names", () => {
@@ -88,5 +93,36 @@ describe("derived-only catalog (#842)", () => {
     assert.equal("applyTagRecordUpdate" in helpers, false);
     assert.equal("removeTagFromCatalog" in helpers, false);
     assert.equal("renameTagInSelection" in helpers, false);
+  });
+
+  it("picker/hook surfaces do not expose catalog delete or rename", () => {
+    const files = [
+      "use-tag-picker.ts",
+      "TagPicker.tsx",
+      "TagPickerChip.tsx",
+      "tag-picker-helpers.ts",
+    ];
+    const banned = [
+      "deleteTag",
+      "updateTagRecord",
+      "pendingDelete",
+      "pendingRename",
+      "handleConfirmDelete",
+      "handleConfirmRename",
+      "openRename",
+      "TagRenameDialog",
+      "onDelete",
+      "onRename",
+    ];
+    for (const file of files) {
+      const src = readFileSync(join(here, file), "utf8");
+      for (const token of banned) {
+        assert.equal(
+          src.includes(token),
+          false,
+          `${file} must not contain ${token}`,
+        );
+      }
+    }
   });
 });

@@ -6,6 +6,9 @@
  * (`ensureTagsByName` during item create/update/source). There is no vault
  * API to create, rename, or delete catalog entries independently, and no
  * list→documents mass rewrite.
+ *
+ * `listTagsWithCounts` only returns tags that currently appear on documents
+ * (`item_count > 0`); orphan catalog/index rows are omitted from the list.
  */
 import type { Tag } from "@collector/shared";
 import type { VaultContext } from "../adapters/types.js";

@@ -180,6 +180,19 @@ describe("createDomainWireRequestHandler (#330)", () => {
     expect(await dispatch("noSuchMethod", { a: 1 })).toBeUndefined();
   });
 
+  it("rejects reverse-direction tag catalog RPCs (#842)", async () => {
+    const { runtime } = stubRuntime({});
+    const dispatch = createDomainWireRequestHandler(runtime);
+    expect(await dispatch("createTag", { name: "x" })).toBeUndefined();
+    expect(await dispatch("deleteTag", { tagId: "t1" })).toBeUndefined();
+    expect(
+      await dispatch("updateTagRecord", { tagId: "t1", input: { name: "y" } }),
+    ).toBeUndefined();
+    expect(M).not.toHaveProperty("createTag");
+    expect(M).not.toHaveProperty("deleteTag");
+    expect(M).not.toHaveProperty("updateTagRecord");
+  });
+
   it("rejects bad searchItems params before ensureInitialized", async () => {
     const { runtime, ensureInitialized } = stubRuntime({});
     const dispatch = createDomainWireRequestHandler(runtime);

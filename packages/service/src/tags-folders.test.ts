@@ -82,6 +82,8 @@ describe("createTagsFoldersService", () => {
     expect(service).not.toHaveProperty("createTag");
     expect(service).not.toHaveProperty("deleteTag");
     expect(service).not.toHaveProperty("updateTagRecord");
+    expect(typeof service.listTags).toBe("function");
+    expect(typeof service.subscribeTags).toBe("function");
   });
 
   it("listFolderTree and moveItemToFolderPath delegate", async () => {

@@ -101,7 +101,7 @@ List → create / rename / move / delete. **Delete folder is recursive** (tree +
 
 ### Tags
 
-Assign tag **names** on an item via structured update (`tags`) or source frontmatter. Aggregated tag lists (sidebar / picker) are derived from what appears on documents — never create or delete catalog entries independently (#842).
+Assign tag **names** on an item via structured update (`tags`) or source frontmatter. Aggregated tag lists (sidebar / picker) show only names that currently appear on documents — never create or delete catalog entries independently (#842).
 
 ## Anti-patterns
 
