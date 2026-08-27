@@ -58,6 +58,7 @@ describe("CollectorService / DevMock (#332 / #365 / #369 / #370)", () => {
     );
     expect(typeof service.syncPlugins.syncNow).toBe("function");
     expect(typeof service.folders.listFolderTree).toBe("function");
+    expect(typeof service.folders.listFolderItems).toBe("function");
     expect(service.folders).not.toHaveProperty("loadFolderTree");
     expect(service.items).not.toHaveProperty("listItems");
   });

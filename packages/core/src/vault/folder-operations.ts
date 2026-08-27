@@ -83,6 +83,33 @@ export async function listFolderTree(
   return reconcileFolderTreeFromDisk(ctx, vaultPath, vaultId);
 }
 
+/**
+ * List items whose `folder_path` equals `folderPath` exactly (#844).
+ * Does **not** include items in child folders (same membership as dashboard
+ * nav filter / `listItemIdsByFolder`). Empty folder → `[]`. Missing folder
+ * on disk → `Folder not found`. Returns index card fields (not full markdown).
+ */
+export async function listFolderItems(
+  ctx: VaultContext,
+  vaultPath: string,
+  vaultId: string,
+  folderPath: string,
+): Promise<ItemFile[]> {
+  const normalized = assertFolderPath(folderPath);
+  if (!normalized) {
+    throw new Error("Folder path must be non-empty");
+  }
+  const abs = joinSegments(vaultPath, normalized);
+  if (!(await ctx.fs.exists(abs))) {
+    throw new Error(`Folder not found: ${normalized}`);
+  }
+  const itemIds = await ctx.index.listItemIdsByNavFilter(vaultId, {
+    type: "folder",
+    folderPath: normalized,
+  });
+  return ctx.index.listItemFilesByIds(vaultId, itemIds);
+}
+
 export async function createFolder(
   ctx: VaultContext,
   vaultPath: string,

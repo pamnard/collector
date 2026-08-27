@@ -59,6 +59,7 @@ export const TAGS_PORT_KEYS = [
 export const FOLDERS_PORT_KEYS = [
   "subscribeFolderTree",
   "listFolderTree",
+  "listFolderItems",
   "createFolder",
   "renameFolder",
   "deleteFolder",

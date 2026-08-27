@@ -97,7 +97,10 @@ For asset-localisation rules and fallback order, follow [references/import-rules
 
 ### Folders
 
-List → create / rename / move / delete. **Delete folder is recursive** (tree + all items + media under that prefix). Confirm intent before calling.
+List tree → list items in a folder → create / rename / move / delete.
+`list-folder-items` / `collector_list_folder_items` uses **exact** `folder_path`
+membership (no child folders). Empty folder → `[]`; missing folder fails.
+**Delete folder is recursive** (tree + all items + media under that prefix). Confirm intent before calling.
 
 ### Tags
 

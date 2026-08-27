@@ -321,6 +321,10 @@ describe("CollectorHostServiceClient", () => {
         // Index tree may lag FS until sync; still exercise list RPC.
         expect(Array.isArray(await client.folders.listFolderTree())).toBe(true);
 
+        await expect(
+          client.folders.listFolderItems(createdPath),
+        ).resolves.toEqual([]);
+
         const renamed = await client.folders.renameFolder(createdPath, "host-folder-renamed");
         expect(renamed).toBe("host-folder-renamed");
 
@@ -331,6 +335,12 @@ describe("CollectorHostServiceClient", () => {
         });
         const moved = await client.folders.moveItemToFolderPath(item.id, renamed);
         expect(moved.folder_path).toBe(renamed);
+
+        const listed = await client.folders.listFolderItems(renamed);
+        expect(listed.map((row) => row.id)).toEqual([moved.id]);
+        await expect(
+          client.folders.listFolderItems("missing-folder-xyz"),
+        ).rejects.toThrow(/Folder not found/);
 
         await client.items.deleteItem(moved.id);
         await client.folders.deleteFolder(renamed);

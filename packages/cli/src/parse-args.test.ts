@@ -146,6 +146,19 @@ describe("parseCliArgs (#172/#173 / #550 G)", () => {
         ...BASE,
         "--data-dir",
         "/data",
+        "list-folder-items",
+        "Projects/Work",
+      ]),
+    ).toEqual({
+      command: { name: "list-folder-items", folderPath: "Projects/Work" },
+      baseUrl: "http://127.0.0.1:9",
+      dataDir: "/data",
+    });
+    expect(
+      parseCliArgs([
+        ...BASE,
+        "--data-dir",
+        "/data",
         "rename-folder",
         "Work/A",
         "Work/B",

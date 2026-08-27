@@ -18,6 +18,7 @@ CLI always needs dial flags before the subcommand: `--base-url … --data-dir �
 | Move item | `collector_move_item` | `move-item <item-id> --folder …` |
 | Create folder | `collector_create_folder` | `create-folder <path>` |
 | List folders | `collector_list_folders` | `list-folders` |
+| List folder items | `collector_list_folder_items` | `list-folder-items <path>` |
 | Rename folder | `collector_rename_folder` | `rename-folder <old> <new>` |
 | Move folder | `collector_move_folder` | `move-folder <old> <new>` |
 | Delete folder | `collector_delete_folder` | `delete-folder <path>` |

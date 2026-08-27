@@ -372,6 +372,7 @@ export function createDevMockCollectorService(): CollectorService {
     folders: {
       subscribeFolderTree,
       listFolderTree: mockCollector.listFolderTree,
+      listFolderItems: mockCollector.listFolderItems,
       createFolder: async (_folderPath: string) => refuseUnsupported(),
       renameFolder: async (_oldPath: string, _newPath: string) =>
         refuseUnsupported(),

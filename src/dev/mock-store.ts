@@ -1,6 +1,6 @@
 import type { FolderTreeNode, TagWithCount } from "@collector/core";
 import type { ItemFile, VaultMeta } from "@collector/shared";
-import { INBOX_FOLDER_NAME, isInboxFolderName } from "@collector/shared";
+import { INBOX_FOLDER_NAME, isInboxFolderName, normalizeFolderPath } from "@collector/shared";
 import {
   createMockItems,
   createMockTags,
@@ -147,6 +147,23 @@ export const mockStore = {
       return withInboxFolder(folderTree);
     }
     return buildSyntheticFolderTree();
+  },
+
+  /** Exact folder_path membership (#844); missing path → error. */
+  listFolderItems(folderPath: string): ItemFile[] {
+    const path = normalizeFolderPath(folderPath);
+    if (!path) {
+      throw new Error("Folder path must be non-empty");
+    }
+    const tree = this.listFolderTree();
+    const exists = (nodes: FolderTreeNode[]): boolean =>
+      nodes.some(
+        (node) => node.path === path || exists(node.children ?? []),
+      );
+    if (!exists(tree)) {
+      throw new Error(`Folder not found: ${path}`);
+    }
+    return items.filter((item) => item.folder_path === path);
   },
 
   updateItem(

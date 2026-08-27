@@ -11,6 +11,18 @@ export const FOLDERS_DISPATCH = {
       return runtime.tagsFolders.listFolderTree();
     },
   },
+  [M.listFolderItems]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.listFolderItems);
+      const folderPath = requireString(
+        p.folderPath,
+        "folderPath",
+        M.listFolderItems,
+      );
+      await runtime.ensureInitialized();
+      return runtime.tagsFolders.listFolderItems(folderPath);
+    },
+  },
   [M.createFolder]: {
     handle: async (runtime, params) => {
       const p = asObject(params, M.createFolder);

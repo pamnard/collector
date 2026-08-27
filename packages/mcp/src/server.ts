@@ -297,6 +297,12 @@ export function createCollectorMcpServer(session: McpHostSession): McpServer {
   );
 
   tool(
+    "collector_list_folder_items",
+    (p) => ({ folderPath: p.requiredString("folderPath") }),
+    ({ folderPath }, client) => client.folders.listFolderItems(folderPath),
+  );
+
+  tool(
     "collector_rename_folder",
     (p) => ({
       oldPath: p.requiredString("oldPath"),

@@ -225,6 +225,11 @@ export async function listFolderTree(): Promise<FolderTreeNode[]> {
   return mockStore.listFolderTree();
 }
 
+export async function listFolderItems(folderPath: string): Promise<ItemFile[]> {
+  ensureWarmedUp();
+  return mockStore.listFolderItems(folderPath);
+}
+
 export async function getItemById(
   itemId: string,
 ): Promise<{ item: ItemFile; content: string | null }> {

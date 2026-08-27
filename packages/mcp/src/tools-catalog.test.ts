@@ -17,6 +17,7 @@ const REGISTERED_TOOL_NAMES = [
   "collector_delete_item",
   "collector_create_folder",
   "collector_list_folders",
+  "collector_list_folder_items",
   "collector_rename_folder",
   "collector_move_folder",
   "collector_delete_folder",
@@ -127,6 +128,14 @@ describe("COLLECTOR_MCP_TOOLS catalog (#273 / #265)", () => {
     );
     expect(list).toBeDefined();
     expect(list!.params).toEqual([]);
+
+    const listItems = COLLECTOR_MCP_TOOLS.find(
+      (tool) => tool.name === "collector_list_folder_items",
+    );
+    expect(listItems).toBeDefined();
+    expect(listItems!.params.map((p) => p.name)).toEqual(["folderPath"]);
+    expect(listItems!.description).toMatch(/exact folder_path/i);
+    expect(listItems!.description).toMatch(/does not include/i);
 
     const rename = COLLECTOR_MCP_TOOLS.find(
       (tool) => tool.name === "collector_rename_folder",

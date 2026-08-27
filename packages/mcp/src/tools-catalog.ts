@@ -300,6 +300,23 @@ export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] = [
     params: [],
   },
   {
+    name: "collector_list_folder_items",
+    description:
+      "List items in one folder by exact folder_path membership (#844). " +
+      "Does not include items in child folders (same rule as the host dashboard folder nav filter). " +
+      "Empty folder returns []. Missing folder fails with Folder not found. " +
+      "Returns index card ItemFile[] (not full markdown) — same hydrate surface as collector_search. " +
+      "Thin client of FoldersPort.listFolderItems (same as CLI list-folder-items).",
+    params: [
+      {
+        name: "folderPath",
+        required: true,
+        typeLabel: "string",
+        description: FOLDER_PATH_CREATE_DESCRIPTION,
+      },
+    ],
+  },
+  {
     name: "collector_rename_folder",
     description:
       "Rename or relocate a vault folder by changing its path (FS rename + index id rewrite for items under the old prefix). " +
