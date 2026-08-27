@@ -13,6 +13,7 @@ import {
 } from "@collector/service/host";
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
+import { tryParseCliHelp } from "./parse-args/commands/help.js";
 import { resolveCliHostEndpoint } from "./parse-args/endpoint.js";
 import { CliUsageError, parseCliArgs, type ParsedCliArgs } from "./parse-args.js";
 
@@ -27,6 +28,11 @@ export async function runCollectorCli(
 ): Promise<number> {
   let args: ParsedCliArgs;
   try {
+    const helpText = tryParseCliHelp(argv);
+    if (helpText !== undefined) {
+      io.stdout(helpText);
+      return 0;
+    }
     args = parseCliArgs(argv);
   } catch (error) {
     const message =

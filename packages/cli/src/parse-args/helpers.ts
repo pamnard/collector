@@ -9,7 +9,7 @@ export const ENDPOINT_FLAGS = new Set([
 ]);
 
 /** Flags that take no value (must not consume the next argv slot). */
-export const BOOLEAN_FLAGS = new Set(["--wait"]);
+export const BOOLEAN_FLAGS = new Set(["--wait", "--help", "-h"]);
 
 export function readOpt(argv: string[], name: string): string | undefined {
   const idx = argv.indexOf(name);

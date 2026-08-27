@@ -56,6 +56,20 @@ describe("runCollectorCli unit smoke", () => {
     expect(createHttpHostTransport).not.toHaveBeenCalled();
   });
 
+  it("prints help on stdout with exit 0 without dialing host", async () => {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const code = await runCollectorCli(["--help"], {
+      stdout: (line) => stdout.push(line),
+      stderr: (line) => stderr.push(line),
+    });
+    expect(code).toBe(0);
+    expect(stderr).toEqual([]);
+    expect(stdout.join("\n")).toContain("--base-url");
+    expect(stdout.join("\n")).toContain("health");
+    expect(createHttpHostTransport).not.toHaveBeenCalled();
+  });
+
   it("returns exit 1 with service-not-running message on not_connected", async () => {
     createHttpHostTransport.mockRejectedValue(
       new HostWireError({
