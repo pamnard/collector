@@ -6,6 +6,7 @@ export const FOLDER_CREATE_BUSY_ID = "folder-create-busy";
 export const FOLDER_CREATE_ERROR_ID = "folder-create-error";
 export const FOLDER_DELETE_BUSY_ID = "folder-delete-busy";
 export const FOLDER_DELETE_ERROR_ID = "folder-delete-error";
+export const FOLDER_COPY_PATH_ALERT_ID = "folder-copy-path-feedback";
 
 export const SIDEBAR_FOLDER_ALERT_IDS = [
   FOLDER_MOVE_BUSY_ID,
@@ -16,4 +17,5 @@ export const SIDEBAR_FOLDER_ALERT_IDS = [
   FOLDER_CREATE_ERROR_ID,
   FOLDER_DELETE_BUSY_ID,
   FOLDER_DELETE_ERROR_ID,
+  FOLDER_COPY_PATH_ALERT_ID,
 ] as const;
