@@ -1,6 +1,4 @@
-import { ConfirmDialog } from "../ui/confirm-dialog";
 import { TagPickerChip } from "./TagPickerChip";
-import { TagRenameDialog } from "./TagRenameDialog";
 import { useTagPicker } from "./use-tag-picker";
 
 interface TagPickerProps {
@@ -13,19 +11,8 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
     displayNames,
     newTagName,
     setNewTagName,
-    pendingDelete,
-    setPendingDelete,
-    isDeleting,
-    pendingRename,
-    setPendingRename,
-    renameValue,
-    setRenameValue,
-    isRenaming,
     toggleTag,
     handleAddTagName,
-    handleConfirmDelete,
-    openRename,
-    handleConfirmRename,
     findKnownTag,
     isSelected,
   } = useTagPicker({ selectedTagNames, onChange });
@@ -42,8 +29,6 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
             known={findKnownTag(name)}
             selected={isSelected(name)}
             onToggle={toggleTag}
-            onRename={openRename}
-            onDelete={setPendingDelete}
           />
         ))}
       </div>
@@ -71,34 +56,6 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
           Добавить
         </button>
       </div>
-
-      <ConfirmDialog
-        open={pendingDelete !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setPendingDelete(null);
-          }
-        }}
-        title={pendingDelete?.name.trim() || "Тег"}
-        description="Удалить тег? Он будет снят со всех элементов."
-        busy={isDeleting}
-        onConfirm={handleConfirmDelete}
-      />
-
-      <TagRenameDialog
-        open={pendingRename !== null}
-        tagName={pendingRename?.name ?? ""}
-        renameValue={renameValue}
-        isRenaming={isRenaming}
-        onRenameValueChange={setRenameValue}
-        onOpenChange={(open) => {
-          if (!open) {
-            setPendingRename(null);
-          }
-        }}
-        onConfirm={() => void handleConfirmRename()}
-        onCancel={() => setPendingRename(null)}
-      />
     </div>
   );
 }

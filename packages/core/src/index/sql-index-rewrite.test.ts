@@ -9,7 +9,7 @@ import {
 } from "../embeddings/embedding-store.js";
 import { createId } from "../util/ids.js";
 import { upsertItem } from "../vault/item-operations.js";
-import { createTag } from "../vault/tag-operations.js";
+import { seedTagFromDocumentWritePath } from "../testing/seed-tag.js";
 import {
   SQL_INSERT_CHUNK,
   sqlRowPlaceholders,
@@ -26,7 +26,7 @@ describe("rewriteItemIds", () => {
   it("rewrites item PK and preserves tags, media, and FTS body", async () => {
     const { db, index, ctx, vault } = await suite.openVaultIndex("collector-rewrite-ids-");
     const { meta, path } = vault;
-    const tag = await createTag(ctx, path, meta.id, { name: "keep" });
+    const tag = await seedTagFromDocumentWritePath(ctx, path, meta.id, "keep");
 
     const oldId = `Old/${createId()}.md`;
     const newId = oldId.replace("Old/", "New/");
@@ -88,7 +88,7 @@ describe("rewriteItemIds", () => {
   it("rewrites multiple folder items with shared SQL batches (#662)", async () => {
     const { db, index, ctx, vault } = await suite.openVaultIndex("collector-rewrite-batch-");
     const { meta, path } = vault;
-    const tag = await createTag(ctx, path, meta.id, { name: "batch-tag" });
+    const tag = await seedTagFromDocumentWritePath(ctx, path, meta.id, "batch-tag");
     const timestamp = new Date().toISOString();
     const collectionId = createId();
 

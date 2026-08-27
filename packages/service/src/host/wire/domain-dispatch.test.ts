@@ -51,9 +51,6 @@ function stubRuntime(overrides: {
     },
     tagsFolders: {
       listTags: vi.fn(async () => []),
-      createTag: vi.fn(),
-      updateTagRecord: vi.fn(),
-      deleteTag: vi.fn(),
       listFolderTree: vi.fn(async () => []),
       createFolder: vi.fn(),
       renameFolder: vi.fn(),

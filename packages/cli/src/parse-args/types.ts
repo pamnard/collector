@@ -43,8 +43,6 @@ export type CliCommand =
       contentRevision: number;
       timeoutMs?: number;
     }
-  | { name: "create-tag"; tagName: string; color?: string | null }
-  | { name: "delete-tag"; tagId: string }
   | { name: "create-folder"; folderPath: string }
   | { name: "list-folders" }
   | { name: "rename-folder"; oldPath: string; newPath: string }

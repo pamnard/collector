@@ -19,10 +19,12 @@ Archives: [GitHub Releases](https://github.com/pamnard/collector/releases/latest
 | Domain host | Sole writer for the vault + SQLite index; HTTP RPC, events, media, static UI |
 | Browser UI | Talks to the host (`POST /api/rpc`, `WS /api/events`, `/media/…`) |
 | MCP / CLI | Thin clients of the same host (stdio MCP for editors) |
-| Vault on disk | Source of truth — markdown documents, tags, media sidecars |
+| Vault on disk | Source of truth — markdown documents, media sidecars; tag catalogs are derived from document frontmatter |
 | SQLite index | Disposable cache for search / filters / UI; rebuilt from vault if unhealthy |
 
 **Items** are vault-relative `.md` paths (path-as-id), not UUID folders. Metadata lives in YAML frontmatter; body is markdown. Per-item media sits in a sibling `note.media/` directory.
+
+**Tags** are derived from document frontmatter names only (#842). Assigning or clearing tag names on an item updates every aggregated list (sidebar, picker, CLI/MCP views). There is no supported API to create, rename, or delete a catalog entry independently of documents, and no list→documents mass rewrite.
 
 **Collections** are filesystem folders (`folder_path` = dirname of the item). There is no favorite / archive model (legacy settings map to “all”).
 

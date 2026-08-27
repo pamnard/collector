@@ -147,16 +147,6 @@ describe("collector CLI HTTP (#172 / #550 G)", () => {
     expect(typedCode).toBe(0);
     expect(JSON.parse(typedOut.join("\n")).content_type).toBe("article");
 
-    const tagOut: string[] = [];
-    const tagCode = await runCollectorCli(
-      cliArgs(host, dataDir, "create-tag", "--name", "cli-351"),
-      {
-        stdout: (line) => tagOut.push(line),
-        stderr: (line) => tagOut.push(`ERR:${line}`),
-      },
-    );
-    expect(tagCode).toBe(0);
-
     const taggedOut: string[] = [];
     const taggedCode = await runCollectorCli(
       cliArgs(

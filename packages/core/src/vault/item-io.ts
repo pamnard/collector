@@ -95,7 +95,7 @@ export async function loadTagMaps(
  * Creates new Tag records for missing names (portable import).
  * When `current` already has every name, avoids a disk read (index sync).
  * When creating, re-reads disk first so a stale map cannot clobber tags
- * added concurrently (e.g. createTag).
+ * added concurrently by another document write.
  */
 export async function ensureTagsByName(
   fs: FileSystemAdapter,

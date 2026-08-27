@@ -15,8 +15,6 @@ const REGISTERED_TOOL_NAMES = [
   "collector_update_item_source",
   "collector_wait_derived",
   "collector_delete_item",
-  "collector_create_tag",
-  "collector_delete_tag",
   "collector_create_folder",
   "collector_list_folders",
   "collector_rename_folder",
@@ -78,14 +76,20 @@ describe("COLLECTOR_MCP_TOOLS catalog (#273 / #265)", () => {
     expect(query?.description).toMatch(/frontmatter/i);
   });
 
-  it("documents tagId as UUID distinct from itemId (#265)", () => {
-    const deleteTag = COLLECTOR_MCP_TOOLS.find(
-      (tool) => tool.name === "collector_delete_tag",
+  it("rejects reverse-direction tag catalog tools (#842)", () => {
+    const names = COLLECTOR_MCP_TOOLS.map((tool) => tool.name);
+    expect(names).not.toContain("collector_create_tag");
+    expect(names).not.toContain("collector_delete_tag");
+  });
+
+  it("documents tags on collector_update_item as the create path (#842)", () => {
+    const update = COLLECTOR_MCP_TOOLS.find(
+      (tool) => tool.name === "collector_update_item",
     );
-    expect(deleteTag).toBeDefined();
-    const tagId = deleteTag!.params.find((param) => param.name === "tagId");
-    expect(tagId?.description).toMatch(/UUID/i);
-    expect(tagId?.description).toMatch(/not an item path/i);
+    expect(update).toBeDefined();
+    const tags = update!.params.find((param) => param.name === "tags");
+    expect(tags).toBeDefined();
+    expect(tags!.description).toMatch(/tag/i);
   });
 
   it("exposes full UpdateItemInput on collector_update_item (#351)", () => {

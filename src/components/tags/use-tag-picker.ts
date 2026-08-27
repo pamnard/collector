@@ -8,17 +8,17 @@ import { errorMessage } from "../alerts/alert-store";
 import { getCollectorService } from "../../services/collector-client";
 import {
   applyAddTagName,
-  applyTagRecordUpdate,
   buildTagDisplayNames,
-  removeTagFromCatalog,
-  removeTagFromSelection,
-  renameTagInSelection,
   sameTagName,
   toggleTagSelection,
 } from "./tag-picker-helpers";
 
 export const TAG_PICKER_ERROR_ID = "tag-picker-error";
 
+/**
+ * Tag picker assigns names on the current item only (#842).
+ * Catalog create/rename/delete is not supported — lists come from documents.
+ */
 export function useTagPicker(args: {
   selectedTagNames: string[];
   onChange: (tagNames: string[]) => void;
@@ -28,11 +28,6 @@ export function useTagPicker(args: {
   useDismissAlertsOnUnmount([TAG_PICKER_ERROR_ID]);
   const [tags, setTags] = useState<TagWithCount[]>([]);
   const [newTagName, setNewTagName] = useState("");
-  const [pendingDelete, setPendingDelete] = useState<TagWithCount | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [pendingRename, setPendingRename] = useState<TagWithCount | null>(null);
-  const [renameValue, setRenameValue] = useState("");
-  const [isRenaming, setIsRenaming] = useState(false);
 
   useEffect(() => {
     getCollectorService()
@@ -47,10 +42,11 @@ export function useTagPicker(args: {
   }, [alerts]);
 
   const displayNames = useMemo(
-    () => buildTagDisplayNames(
-      tags.map((tag) => tag.name),
-      selectedTagNames,
-    ),
+    () =>
+      buildTagDisplayNames(
+        tags.map((tag) => tag.name),
+        selectedTagNames,
+      ),
     [tags, selectedTagNames],
   );
 
@@ -61,70 +57,6 @@ export function useTagPicker(args: {
   const handleAddTagName = () => {
     if (applyAddTagName(selectedTagNames, newTagName, onChange)) {
       setNewTagName("");
-    }
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!pendingDelete) {
-      return;
-    }
-
-    setIsDeleting(true);
-    alerts.dismiss(TAG_PICKER_ERROR_ID);
-    try {
-      await getCollectorService().tags.deleteTag(pendingDelete.id);
-      setTags((current) => removeTagFromCatalog(current, pendingDelete.id));
-      onChange(removeTagFromSelection(selectedTagNames, pendingDelete.name));
-    } catch (err: unknown) {
-      alerts.upsert(TAG_PICKER_ERROR_ID, {
-        tone: "danger",
-        message: errorMessage(err),
-      });
-      throw err;
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  const openRename = (tag: TagWithCount) => {
-    setPendingRename(tag);
-    setRenameValue(tag.name);
-  };
-
-  const handleConfirmRename = async () => {
-    if (!pendingRename) {
-      return;
-    }
-
-    const nextName = renameValue.trim();
-    if (!nextName || nextName === pendingRename.name) {
-      setPendingRename(null);
-      return;
-    }
-
-    setIsRenaming(true);
-    alerts.dismiss(TAG_PICKER_ERROR_ID);
-    try {
-      const updated = await getCollectorService().tags.updateTagRecord(
-        pendingRename.id,
-        {
-          name: nextName,
-        },
-      );
-      setTags((current) =>
-        applyTagRecordUpdate(current, pendingRename.id, updated),
-      );
-      onChange(
-        renameTagInSelection(selectedTagNames, pendingRename.name, nextName),
-      );
-      setPendingRename(null);
-    } catch (err: unknown) {
-      alerts.upsert(TAG_PICKER_ERROR_ID, {
-        tone: "danger",
-        message: errorMessage(err),
-      });
-    } finally {
-      setIsRenaming(false);
     }
   };
 
@@ -139,19 +71,8 @@ export function useTagPicker(args: {
     displayNames,
     newTagName,
     setNewTagName,
-    pendingDelete,
-    setPendingDelete,
-    isDeleting,
-    pendingRename,
-    setPendingRename,
-    renameValue,
-    setRenameValue,
-    isRenaming,
     toggleTag,
     handleAddTagName,
-    handleConfirmDelete,
-    openRename,
-    handleConfirmRename,
     findKnownTag,
     isSelected,
   };

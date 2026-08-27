@@ -266,27 +266,40 @@ describe("CollectorHostServiceClient", () => {
     }
   });
 
-  it("tags list/CRUD work over HTTP (#157)", async () => {
+  it("tags list is derived from item writes; reverse catalog RPC absent (#842)", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "collector-host-tags-"));
     dirs.push(dataDir);
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
       const client = await connectCollectorHostService(host.baseUrl, { dataDir });
       try {
-        const created = await client.tags.createTag({ name: "host-tag" });
-        expect(created.name).toBe("host-tag");
+        expect(client.tags).not.toHaveProperty("createTag");
+        expect(client.tags).not.toHaveProperty("deleteTag");
+        expect(client.tags).not.toHaveProperty("updateTagRecord");
 
-        const listed = await client.tags.listTags();
-        expect(listed.some((t) => t.id === created.id)).toBe(true);
-
-        const updated = await client.tags.updateTagRecord(created.id, {
-          name: "host-tag-2",
+        const item = await client.items.createItem({
+          title: "Tagged",
+          content_type: "note",
+          content: "body",
         });
-        expect(updated.name).toBe("host-tag-2");
+        const updated = await client.items.updateItem(item.id, {
+          tags: ["host-tag"],
+        });
+        expect(updated.tag_ids).toHaveLength(1);
 
-        await client.tags.deleteTag(created.id);
-        const after = await client.tags.listTags();
-        expect(after.some((t) => t.id === created.id)).toBe(false);
+        const source = await client.items.getItemSource(item.id);
+        expect(source).toMatch(/host-tag/);
+
+        await vi.waitFor(
+          async () => {
+            const listed = await client.tags.listTags();
+            expect(listed.some((t) => t.name === "host-tag")).toBe(true);
+            expect(listed.find((t) => t.name === "host-tag")?.item_count).toBe(
+              1,
+            );
+          },
+          { timeout: 10_000 },
+        );
       } finally {
         await client.close();
       }
