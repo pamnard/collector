@@ -3,7 +3,10 @@
  * Thin endpoint + command dispatch (#378).
  */
 
-import { ALL_COMMAND_FLAGS, COMMAND_PARSERS } from "./parse-args/commands/registry.js";
+import {
+  ALL_COMMAND_FLAGS,
+  getCommandParser,
+} from "./parse-args/commands/registry.js";
 import {
   readOpt,
   stripKnownOpts,
@@ -46,7 +49,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     );
   }
 
-  const parse = COMMAND_PARSERS[command];
+  const parse = getCommandParser(command);
   if (parse === undefined) {
     throw new CliUsageError(`Unknown command: ${command}`);
   }

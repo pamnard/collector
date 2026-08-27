@@ -55,7 +55,8 @@ export const ALL_COMMAND_FLAGS = unionFlagSets(
   EXTRACT_ITEM_CANDIDATE_FLAGS,
 );
 
-export const COMMAND_PARSERS: Record<string, CommandParser> = {
+/** Literal keys stay aligned with `COMMAND_USAGE` / help output. */
+export const COMMAND_PARSERS = {
   health: parseHealth,
   search: parseSearch,
   "get-item": parseGetItem,
@@ -80,4 +81,19 @@ export const COMMAND_PARSERS: Record<string, CommandParser> = {
   "set-item-cover": parseSetItemCover,
   "discover-extract-candidates": parseDiscoverExtractCandidates,
   "extract-item-candidate": parseExtractItemCandidate,
-};
+} satisfies Record<string, CommandParser>;
+
+export type RegisteredCommandName = keyof typeof COMMAND_PARSERS;
+
+export function isRegisteredCommand(
+  name: string,
+): name is RegisteredCommandName {
+  return Object.prototype.hasOwnProperty.call(COMMAND_PARSERS, name);
+}
+
+export function getCommandParser(name: string): CommandParser | undefined {
+  if (!isRegisteredCommand(name)) {
+    return undefined;
+  }
+  return COMMAND_PARSERS[name];
+}
