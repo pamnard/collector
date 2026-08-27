@@ -16,7 +16,6 @@ import type {
 } from "./domain.js";
 import type { CollectorApiError } from "./errors.js";
 import type { ExtractCandidate } from "./extract-plugin.js";
-import type { Tag } from "@collector/shared";
 import type { AppSettings, DashboardSnapshot } from "@collector/shared";
 import type { MediaFileMeta } from "@collector/shared";
 
@@ -307,7 +306,11 @@ export interface ItemsPort {
   ): Promise<WaitDerivedResult>;
 }
 
-/** Tags port (#361). */
+/**
+ * Tags port (#361 / #842).
+ * Aggregated lists only — catalog entries are derived from document writes.
+ * Assign tag names on items; do not create/rename/delete catalog rows here.
+ */
 export interface TagsPort {
   subscribeTags(
     onUpdate: (tags: TagWithCount[]) => void,
@@ -315,12 +318,6 @@ export interface TagsPort {
     signal?: AbortSignal,
   ): Subscription;
   listTags(): Promise<TagWithCount[]>;
-  createTag(input: { name: string; color?: string | null }): Promise<Tag>;
-  updateTagRecord(
-    tagId: string,
-    input: { name?: string; color?: string | null },
-  ): Promise<Tag>;
-  deleteTag(tagId: string): Promise<void>;
 }
 
 /** Folders port (#361). */

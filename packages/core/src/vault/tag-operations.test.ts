@@ -1,20 +1,38 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { runMigrations } from "@collector/db";
 import { BetterSqliteMigrator } from "../../../db/src/testing/better-sqlite.js";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
-import { MemorySqlAdapter } from "../testing/memory-sql.js";
-import { createId, nowIso } from "../util/ids.js";
-import { readItemFile } from "./item-io.js";
+import { createId } from "../util/ids.js";
+import { upsertItem, writeItemRawMarkdown } from "./item-operations.js";
 import { createVault } from "./vault-operations.js";
-import { upsertItem } from "./item-operations.js";
-import { createTag, deleteTag, listTagsWithCounts } from "./tag-operations.js";
-import { writeTagsFile } from "./tag-io.js";
+import { listTagsWithCounts } from "./tag-operations.js";
+import * as tagOperations from "./tag-operations.js";
 
-describe("tag operations", () => {
+function noteMarkdown(args: {
+  tagsYaml: string;
+  contentRevision: number;
+  createdAt: string;
+}): string {
+  return [
+    "---",
+    "title: Note",
+    "type: note",
+    args.tagsYaml,
+    `content_revision: ${args.contentRevision}`,
+    `created: ${args.createdAt}`,
+    `updated: ${args.createdAt}`,
+    "---",
+    "",
+    "body",
+    "",
+  ].join("\n");
+}
+
+describe("tag operations (#842)", () => {
   let dataDir = "";
   const fs = new NodeFileSystemAdapter();
   let db: BetterSqliteMigrator | null = null;
@@ -28,84 +46,21 @@ describe("tag operations", () => {
     }
   });
 
-  it("deleteTag updates only items with the tag from index", async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "collector-tag-delete-"));
-    const sql = new MemorySqlAdapter();
-    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
-    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
-    const tag = await createTag(ctx, path, meta.id, { name: "Focus" });
-
-    const taggedIds: string[] = [];
-    const untouchedIds: string[] = [];
-    const timestamp = new Date().toISOString();
-
-    for (let i = 0; i < 5; i += 1) {
-      const itemId = `${createId()}.md`;
-      const withTag = i < 3;
-      if (withTag) {
-        taggedIds.push(itemId);
-      } else {
-        untouchedIds.push(itemId);
-      }
-
-      await upsertItem(ctx, path, meta.id, {
-        item: {
-          id: itemId,
-          vault_id: meta.id,
-          title: `Item ${i}`,
-          description: "",
-          content_type: "note",
-          source_type: "manual",
-          metadata: {},
-          properties: {},
-          tag_ids: withTag ? [tag.id] : [],
-          collection_ids: [],
-          folder_path: "",
-          created_at: timestamp,
-          updated_at: timestamp,
-        },
-      });
-    }
-
-    const readDirSpy = vi.spyOn(fs, "readDir");
-    const upsertSpy = vi.spyOn(ctx.index, "upsertItem");
-    await deleteTag(ctx, path, meta.id, tag.id);
-    expect(readDirSpy).not.toHaveBeenCalled();
-    expect(upsertSpy).not.toHaveBeenCalled();
-    readDirSpy.mockRestore();
-    upsertSpy.mockRestore();
-
-    for (const itemId of taggedIds) {
-      const item = await readItemFile(fs, path, itemId, meta.id);
-      expect(item.tag_ids).toEqual([]);
-    }
-
-    for (const itemId of untouchedIds) {
-      const item = await readItemFile(fs, path, itemId, meta.id);
-      expect(item.tag_ids).toEqual([]);
-    }
-
-    expect(await ctx.index.listItemIdsByTag(meta.id, tag.id)).toEqual([]);
+  it("does not export reverse-direction catalog mutators", () => {
+    expect(tagOperations).not.toHaveProperty("createTag");
+    expect(tagOperations).not.toHaveProperty("deleteTag");
+    expect(tagOperations).not.toHaveProperty("updateTag");
   });
 
-  it("listTagsWithCounts reads counts from index without tags.json", async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "collector-tags-"));
+  it("listTagsWithCounts follows document frontmatter assign and clear", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-tags-derived-"));
     db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
     await runMigrations(db);
     const ctx = { fs, index: new SqlVaultIndexStore(db) };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
 
-    const tagId = createId();
-    const tag = {
-      id: tagId,
-      name: "Research",
-      color: null as string | null,
-      created_at: nowIso(),
-    };
-    await writeTagsFile(fs, path, { tags: [tag] });
-    await ctx.index.upsertTag(tag, meta.id);
-
     const itemId = `${createId()}.md`;
+    const createdAt = "2024-01-01T00:00:00.000Z";
     await upsertItem(ctx, path, meta.id, {
       item: {
         id: itemId,
@@ -116,20 +71,69 @@ describe("tag operations", () => {
         source_type: "manual",
         metadata: {},
         properties: {},
-        tag_ids: [tagId],
+        tag_ids: [],
         collection_ids: [],
         folder_path: "",
         content_revision: 1,
-      word_count: 0,
-      character_count: 0,
-      created_at: nowIso(),
-        updated_at: nowIso(),
+        word_count: 0,
+        character_count: 0,
+        created_at: createdAt,
+        updated_at: createdAt,
       },
+      content: "body",
     });
 
-    const tags = await listTagsWithCounts(ctx, meta.id);
-    expect(tags).toHaveLength(1);
-    expect(tags[0]?.name).toBe("Research");
-    expect(tags[0]?.item_count).toBe(1);
+    expect(await listTagsWithCounts(ctx, meta.id)).toEqual([]);
+
+    await writeItemRawMarkdown(
+      ctx,
+      path,
+      meta.id,
+      itemId,
+      noteMarkdown({
+        tagsYaml: "tags:\n  - Research",
+        contentRevision: 2,
+        createdAt,
+      }),
+    );
+
+    const withTag = await listTagsWithCounts(ctx, meta.id);
+    expect(withTag).toHaveLength(1);
+    expect(withTag[0]?.name).toBe("Research");
+    expect(withTag[0]?.item_count).toBe(1);
+
+    await writeItemRawMarkdown(
+      ctx,
+      path,
+      meta.id,
+      itemId,
+      noteMarkdown({
+        tagsYaml: "tags: []",
+        contentRevision: 3,
+        createdAt,
+      }),
+    );
+
+    expect(await listTagsWithCounts(ctx, meta.id)).toEqual([]);
+  });
+
+  it("omits orphan catalog rows with item_count 0 from aggregated list", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-tags-orphan-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const ctx = { fs, index: new SqlVaultIndexStore(db) };
+    const { meta } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    await ctx.index.upsertTag(
+      {
+        id: createId(),
+        name: "Orphan",
+        color: null,
+        created_at: "2024-01-01T00:00:00.000Z",
+      },
+      meta.id,
+    );
+
+    expect(await listTagsWithCounts(ctx, meta.id)).toEqual([]);
   });
 });

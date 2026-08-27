@@ -11,7 +11,7 @@ import {
   isIndexAheadOfSnapshot,
   upsertItemIndexFromVault,
 } from "./item-index-refresh.js";
-import { createTag } from "./tag-operations.js";
+import { seedTagFromDocumentWritePath } from "../testing/seed-tag.js";
 import { createId } from "../util/ids.js";
 
 describe("isIndexAheadOfSnapshot (#766)", () => {
@@ -175,8 +175,8 @@ describe("upsertItemIndexFromVault (#766)", () => {
 
   it("upsertItemIndexFromVault syncs only item tags, not entire vault (#776)", async () => {
     const { ctx, meta, path, itemId, fileMtimeMs } = await seedItem(2);
-    await createTag(ctx, path, meta.id, { name: "unused-a" });
-    await createTag(ctx, path, meta.id, { name: "unused-b" });
+    await seedTagFromDocumentWritePath(ctx, path, meta.id, "unused-a", { syncToIndex: false });
+    await seedTagFromDocumentWritePath(ctx, path, meta.id, "unused-b", { syncToIndex: false });
     await ctx.index.deleteItem(itemId);
 
     const upsertTagSpy = vi.spyOn(ctx.index, "upsertTag");
@@ -426,8 +426,8 @@ describe("refreshItemIndexAfterWrite (#766)", () => {
       },
     };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
-    await createTag(ctx, path, meta.id, { name: "alpha" });
-    await createTag(ctx, path, meta.id, { name: "beta" });
+    await seedTagFromDocumentWritePath(ctx, path, meta.id, "alpha");
+    await seedTagFromDocumentWritePath(ctx, path, meta.id, "beta");
     const itemId = `${createId()}.md`;
     const createdAt = "2024-01-01T00:00:00.000Z";
     await upsertItem(ctx, path, meta.id, {
@@ -477,9 +477,9 @@ describe("refreshItemIndexAfterWrite (#766)", () => {
     const sql = new MemorySqlAdapter();
     const ctx = { fs, index: new SqlVaultIndexStore(sql) };
     const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
-    const alpha = await createTag(ctx, path, meta.id, { name: "alpha" });
-    await createTag(ctx, path, meta.id, { name: "beta" });
-    await createTag(ctx, path, meta.id, { name: "gamma" });
+    const alpha = await seedTagFromDocumentWritePath(ctx, path, meta.id, "alpha");
+    await seedTagFromDocumentWritePath(ctx, path, meta.id, "beta");
+    await seedTagFromDocumentWritePath(ctx, path, meta.id, "gamma");
     const itemId = `${createId()}.md`;
     const createdAt = "2024-01-01T00:00:00.000Z";
     await upsertItem(ctx, path, meta.id, {

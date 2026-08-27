@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Tag } from "@collector/shared";
 
 const listTagsWithCounts = vi.fn();
-const createTagOnVault = vi.fn();
 const createFolderOnVault = vi.fn();
 const renameFolderOnVault = vi.fn();
 const deleteFolderOnVault = vi.fn();
@@ -14,7 +12,6 @@ vi.mock("@collector/core", async (importOriginal) => {
   return {
     ...actual,
     listTagsWithCounts: (...args: unknown[]) => listTagsWithCounts(...args),
-    createTag: (...args: unknown[]) => createTagOnVault(...args),
     createFolder: (...args: unknown[]) => createFolderOnVault(...args),
     renameFolder: (...args: unknown[]) => renameFolderOnVault(...args),
     deleteFolder: (...args: unknown[]) => deleteFolderOnVault(...args),
@@ -40,7 +37,6 @@ describe("createTagsFoldersService", () => {
 
   beforeEach(() => {
     listTagsWithCounts.mockReset();
-    createTagOnVault.mockReset();
     createFolderOnVault.mockReset();
     renameFolderOnVault.mockReset();
     deleteFolderOnVault.mockReset();
@@ -81,24 +77,13 @@ describe("createTagsFoldersService", () => {
     expect(result).toEqual(tags);
   });
 
-  it("createTag kicks sync and delegates to vault op", async () => {
-    const created: Tag = {
-      id: "t1",
-      vault_id: "v1",
-      name: "n",
-      color: null,
-      created_at: "a",
-      updated_at: "a",
-    };
-    createTagOnVault.mockResolvedValue(created);
-
-    const result = await createService().createTag({ name: "n" });
-
-    expect(kickoff).toHaveBeenCalledWith("v1", "/vault");
-    expect(createTagOnVault).toHaveBeenCalledWith(ctx, "/vault", "v1", {
-      name: "n",
-    });
-    expect(result).toEqual(created);
+  it("exposes list-only tags surface (#842)", () => {
+    const service = createService();
+    expect(service).not.toHaveProperty("createTag");
+    expect(service).not.toHaveProperty("deleteTag");
+    expect(service).not.toHaveProperty("updateTagRecord");
+    expect(typeof service.listTags).toBe("function");
+    expect(typeof service.subscribeTags).toBe("function");
   });
 
   it("listFolderTree and moveItemToFolderPath delegate", async () => {
@@ -221,8 +206,6 @@ describe("createTagsFoldersService", () => {
       events.push("kickoff");
     });
     renameFolderOnVault.mockImplementation(async () => {
-      // Concurrent sync (started by an early kickoff) upserts the new PKs
-      // before rewriteItemIds runs — the UNIQUE failure this issue targets.
       if (events.includes("kickoff")) {
         throw new Error("UNIQUE constraint failed: Items.id");
       }
