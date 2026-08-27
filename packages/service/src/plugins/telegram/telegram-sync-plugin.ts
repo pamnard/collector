@@ -12,7 +12,7 @@ import type {
   SyncCursor,
   SyncPlugin,
 } from "@collector/api";
-import type { FileSystemAdapter } from "@collector/core";
+import { runWithConcurrency, type FileSystemAdapter } from "@collector/core";
 import {
   createTelegramBotApi,
   formatTelegramSyncError,
@@ -44,6 +44,9 @@ import {
   parseTelegramCursor,
   selectAlbumsToClose,
 } from "./telegram-map.js";
+
+/** Bounded parallel deletes — flood-friendly; not unlimited. */
+export const TELEGRAM_DELETE_CONCURRENCY = 2;
 
 export interface TelegramSyncPluginDeps {
   credentials: CredentialsPort;
@@ -213,15 +216,27 @@ export function createTelegramSyncPlugin(
     if (config.awaiting_delete.length === 0) {
       return config;
     }
-    const remaining: TelegramAwaitingDelete[] = [];
-    for (const row of config.awaiting_delete) {
-      try {
-        await api.deleteMessage(token, row.chat_id, row.message_id);
-      } catch {
-        remaining.push(row);
-      }
-    }
-    if (remaining.length === config.awaiting_delete.length) {
+    const queue = config.awaiting_delete;
+    const failed = await runWithConcurrency(
+      queue.length,
+      TELEGRAM_DELETE_CONCURRENCY,
+      async (index) => {
+        const row = queue[index];
+        if (row === undefined) {
+          throw new Error(
+            `telegram: awaiting_delete index out of range (${index})`,
+          );
+        }
+        try {
+          await api.deleteMessage(token, row.chat_id, row.message_id);
+          return false;
+        } catch {
+          return true;
+        }
+      },
+    );
+    const remaining = queue.filter((_, index) => failed[index]);
+    if (remaining.length === queue.length) {
       return config;
     }
     const next = { ...config, awaiting_delete: remaining };

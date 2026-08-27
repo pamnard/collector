@@ -163,6 +163,7 @@ export {
   createSingleFlight,
   DISK_ITEM_READ_CONCURRENCY,
   INDEX_SYNC_YIELD_MS,
+  runWithConcurrency,
   yieldToEventLoop,
 } from "./util/concurrency.js";
 
