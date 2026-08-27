@@ -12,7 +12,7 @@ import type { NavFilter } from "../../types/ui";
 export type StartCoverPathFlight = (
   requestVersion: number,
   orderedItems: ItemFile[],
-  options?: { blockOnCovers?: boolean },
+  options?: { blockOnCovers?: boolean; deferUiCommit?: boolean },
 ) => Promise<void>;
 
 export type DashboardListState = {

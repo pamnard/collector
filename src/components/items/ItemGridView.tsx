@@ -4,7 +4,7 @@ import Masonry from "react-masonry-css";
 import type { TagWithCount } from "@collector/core";
 import { ItemGridCard } from "./ItemGridCard";
 import { DashboardGridSkeleton } from "./DashboardListSkeleton";
-import { MASONRY_BREAKPOINTS } from "./masonry-breakpoints";
+import { useMasonryColumnCount } from "./use-masonry-column-count";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
 import { useMainScrollElement } from "../../hooks/useMainScrollElement";
 import { resolveDashboardGridThumbnail } from "../../lib/dashboard-commit";
@@ -50,6 +50,7 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
   const [tags, setTags] = useState<TagWithCount[]>([]);
   const l2ReportedRef = useRef(false);
   const gridVisible = viewMode === "grid";
+  const columnCount = useMasonryColumnCount();
   const sentinelRef = useInfiniteScroll({
     enabled: gridVisible && !dashboard.isLoading,
     hasMore: dashboard.hasMore,
@@ -81,13 +82,6 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
       l2ReportedRef.current = false;
     }
   }, [gridVisible, dashboard.isLoading, dashboard.items]);
-
-  useLayoutEffect(() => {
-    if (!gridVisible) {
-      return;
-    }
-    window.dispatchEvent(new Event("resize"));
-  }, [gridVisible]);
 
   useLayoutEffect(() => {
     if (!gridVisible || dashboard.isLoading || l2ReportedRef.current) {
@@ -145,7 +139,7 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
   return (
     <div ref={gridRootRef}>
       <Masonry
-        breakpointCols={MASONRY_BREAKPOINTS}
+        breakpointCols={columnCount}
         className="my-masonry-grid"
         columnClassName="my-masonry-grid_column"
       >
