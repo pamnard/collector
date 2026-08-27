@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
+import { DISK_ITEM_READ_CONCURRENCY } from "../util/concurrency.js";
 import { createId } from "../util/ids.js";
 import { createVault } from "./vault-operations.js";
 import { upsertItem } from "./item-operations.js";
@@ -269,12 +270,74 @@ describe("localizeRemoteDisplayAssets (#739)", () => {
     expect(result.changed).toBe(false);
   });
 
+  it("downloads multiple markdown images with bounded concurrency (#787)", async () => {
+    const urls = [
+      "https://cdn.example/a.png",
+      "https://cdn.example/b.png",
+      "https://cdn.example/c.png",
+      "https://cdn.example/d.png",
+      "https://cdn.example/e.png",
+    ];
+    const { ctx, path, vaultId, itemId } = await seedNote(
+      "Multi",
+      urls.map((url, i) => `![i${i}](${url})`).join("\n"),
+    );
+
+    let inFlight = 0;
+    let peakInFlight = 0;
+    const fetched: string[] = [];
+
+    const result = await localizeRemoteDisplayAssets({
+      ctx,
+      vaultPath: path,
+      vaultId,
+      itemId,
+      rawMarkdown: await readItemRawMarkdown(fs, path, itemId),
+      fetchBytes: async (url) => {
+        inFlight += 1;
+        peakInFlight = Math.max(peakInFlight, inFlight);
+        fetched.push(url);
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        inFlight -= 1;
+        return new Uint8Array([1, 2, 3, 4]);
+      },
+      encodeCoverWebp: async () => ({
+        data: new Uint8Array([9]),
+        size: { width: 9, height: 9 },
+      }),
+    });
+
+    expect(peakInFlight).toBeGreaterThan(1);
+    expect(peakInFlight).toBeLessThanOrEqual(DISK_ITEM_READ_CONCURRENCY);
+    expect(fetched).toHaveLength(urls.length);
+    expect(new Set(fetched)).toEqual(new Set(urls));
+    expect(result.changed).toBe(true);
+    for (const url of urls) {
+      expect(result.text).not.toContain(url);
+    }
+    // Attach/rewrite order follows uniqueRemoteUrls, not download completion order.
+    expect(result.text).toMatch(
+      /!\[i0\]\(\/.*a\.png\)[\s\S]*!\[i1\]\(\/.*b\.png\)[\s\S]*!\[i2\]\(\/.*c\.png\)[\s\S]*!\[i3\]\(\/.*d\.png\)[\s\S]*!\[i4\]\(\/.*e\.png\)/,
+    );
+    const media = await listMediaFiles(fs, path, itemId);
+    expect(media).toHaveLength(urls.length);
+    expect(new Set(media.map((m) => m.filename))).toEqual(
+      new Set(["a.png", "b.png", "c.png", "d.png", "e.png"]),
+    );
+  });
+
   it("does not leave attached media when a later download fails", async () => {
+    const urls = [
+      "https://cdn.example/a.png",
+      "https://cdn.example/b.png",
+      "https://cdn.example/c.png",
+    ];
     const { ctx, path, vaultId, itemId } = await seedNote(
       "Partial",
-      "![a](https://cdn.example/a.png)\n![b](https://cdn.example/b.png)",
+      urls.map((url, i) => `![i${i}](${url})`).join("\n"),
     );
-    let calls = 0;
+    let inFlight = 0;
+    let peakInFlight = 0;
     await expect(
       localizeRemoteDisplayAssets({
         ctx,
@@ -282,17 +345,22 @@ describe("localizeRemoteDisplayAssets (#739)", () => {
         vaultId,
         itemId,
         rawMarkdown: await readItemRawMarkdown(fs, path, itemId),
-        fetchBytes: async () => {
-          calls += 1;
-          if (calls === 1) {
-            return new Uint8Array([1, 2, 3]);
+        fetchBytes: async (url) => {
+          inFlight += 1;
+          peakInFlight = Math.max(peakInFlight, inFlight);
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          inFlight -= 1;
+          if (url.endsWith("/b.png")) {
+            throw new Error("second failed");
           }
-          throw new Error("second failed");
+          return new Uint8Array([1, 2, 3]);
         },
         encodeCoverWebp: async () => ({ data: new Uint8Array([9]), size: { width: 9, height: 9 } }),
       }),
     ).rejects.toThrow(/second failed/);
 
+    expect(peakInFlight).toBeGreaterThan(1);
+    expect(peakInFlight).toBeLessThanOrEqual(DISK_ITEM_READ_CONCURRENCY);
     expect(await listMediaFiles(fs, path, itemId)).toEqual([]);
     const raw = await readItemRawMarkdown(fs, path, itemId);
     expect(raw).toContain("https://cdn.example/a.png");
