@@ -7,6 +7,7 @@ import {
   readInitialDashboardCacheEntry,
   stateFromDashboardCacheEntry,
 } from "./dashboard-query-load.ts";
+import { coverMapsForPersistence } from "./dashboard-commit.ts";
 
 function stubItem(id: string): ItemFile {
   return {
@@ -50,6 +51,37 @@ describe("buildDashboardQueryCacheEntry", () => {
     const originalIds = ["a"];
     entry.itemIds.push("b");
     assert.deepEqual(originalIds, ["a"]);
+  });
+
+  it("omits null cover paths when persisting via coverMapsForPersistence (#871)", () => {
+    const byId = new Map([["a", stubItem("a")]]);
+    const paths = new Map<string, string | null>([
+      ["a", "/a"],
+      ["b", null],
+    ]);
+    const stamps = new Map([
+      ["a", "ta"],
+      ["b", "tb"],
+    ]);
+    const sizes = new Map([
+      ["a", { width: 10, height: 10 }],
+      ["b", null],
+    ]);
+    const persisted = coverMapsForPersistence(paths, stamps, sizes);
+    const entry = buildDashboardQueryCacheEntry({
+      itemIds: ["a", "b"],
+      itemsById: byId,
+      bodyStamps: new Map(),
+      streamEndOffset: 2,
+      totalCount: 2,
+      thumbnailPaths: persisted.thumbnailPaths,
+      thumbnailStamps: persisted.thumbnailStamps,
+      thumbnailSizes: persisted.thumbnailSizes,
+      now: 1234,
+    });
+    assert.equal(entry.thumbnailPaths.get("a"), "/a");
+    assert.equal(entry.thumbnailPaths.has("b"), false);
+    assert.equal(entry.thumbnailStamps.has("b"), false);
   });
 });
 

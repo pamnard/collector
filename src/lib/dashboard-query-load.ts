@@ -4,6 +4,7 @@
 
 import type { DashboardQueryCacheEntry } from "../services/dashboard-query-cache.ts";
 import type { ItemFile } from "@collector/shared";
+import { coverMapsForPersistence } from "./dashboard-commit.ts";
 import { orderDashboardItems } from "./dashboard-display.ts";
 
 export type BuildDashboardQueryCacheEntryInput = {
@@ -67,6 +68,11 @@ export function stateFromDashboardCacheEntry(
     itemsById,
     entry.streamEndOffset,
   );
+  const covers = coverMapsForPersistence(
+    entry.thumbnailPaths,
+    entry.thumbnailStamps,
+    entry.thumbnailSizes,
+  );
   return {
     itemIds,
     itemsById,
@@ -74,9 +80,9 @@ export function stateFromDashboardCacheEntry(
     streamEndOffset: entry.streamEndOffset,
     totalCount: entry.totalCount,
     ordered,
-    thumbnailPaths: new Map(entry.thumbnailPaths),
-    thumbnailStamps: new Map(entry.thumbnailStamps),
-    thumbnailSizes: new Map(entry.thumbnailSizes),
+    thumbnailPaths: new Map(covers.thumbnailPaths),
+    thumbnailStamps: new Map(covers.thumbnailStamps),
+    thumbnailSizes: new Map(covers.thumbnailSizes),
     hasMore: entry.streamEndOffset < entry.totalCount,
   };
 }

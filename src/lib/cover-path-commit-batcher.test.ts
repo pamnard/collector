@@ -114,4 +114,37 @@ describe("createCoverPathCommitBatcher", () => {
     assert.equal(commits, 0);
     assert.equal(paths.size, 0);
   });
+
+  it("does not enqueue null over an existing cover path (#871)", () => {
+    let paths = new Map<string, string | null>([["a", "/cover"]]);
+    let stamps = new Map<string, string>([["a", "old"]]);
+    let sizes = new Map<string, ItemThumbnailPixelSize | null>([
+      ["a", { width: 10, height: 10 }],
+    ]);
+    let commits = 0;
+
+    const batcher = createCoverPathCommitBatcher({
+      requestVersion: 1,
+      getRequestVersion: () => 1,
+      isAborted: () => false,
+      getOrderedIds: () => ["a"],
+      getPaths: () => paths,
+      getStamps: () => stamps,
+      getSizes: () => sizes,
+      commit: (nextPaths, nextStamps, nextSizes) => {
+        commits += 1;
+        paths = nextPaths;
+        stamps = nextStamps;
+        sizes = nextSizes;
+      },
+      scheduleFlush: () => () => {},
+    });
+
+    batcher.enqueue("a", null, "new", null);
+    batcher.flush();
+    assert.equal(commits, 0);
+    assert.equal(paths.get("a"), "/cover");
+    assert.equal(stamps.get("a"), "old");
+    assert.deepEqual(sizes.get("a"), { width: 10, height: 10 });
+  });
 });

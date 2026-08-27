@@ -11,6 +11,7 @@ import type { DashboardItemSort, ItemThumbnailPixelSize } from "@collector/api";
 import {
   applyDashboardListSnapshot,
   bodyStampsForOrderedIds,
+  coverMapsForPersistence,
   coverNeedsResolve,
   itemsBodiesEqual,
   mergeCommittedThumbnailPaths,
@@ -225,6 +226,11 @@ export function useDashboardListState(options: {
       end: number,
       nextTotal: number,
     ) => {
+      const persisted = coverMapsForPersistence(
+        committedThumbnailPathsRef.current,
+        committedThumbnailStampsRef.current,
+        committedThumbnailSizesRef.current,
+      );
       setDashboardQueryCache(
         queryKeyRef.current,
         buildDashboardQueryCacheEntry({
@@ -233,9 +239,9 @@ export function useDashboardListState(options: {
           bodyStamps: bodyStampsRef.current,
           streamEndOffset: end,
           totalCount: nextTotal,
-          thumbnailPaths: committedThumbnailPathsRef.current,
-          thumbnailStamps: committedThumbnailStampsRef.current,
-          thumbnailSizes: committedThumbnailSizesRef.current,
+          thumbnailPaths: persisted.thumbnailPaths,
+          thumbnailStamps: persisted.thumbnailStamps,
+          thumbnailSizes: persisted.thumbnailSizes,
         }),
       );
     },

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { useDashboardItems } from "../../hooks/useDashboardItems";
 import type { ViewMode } from "../../types/ui";
 import { cn } from "../../lib/utils";
@@ -36,6 +36,7 @@ export function DashboardWarmGridShell({
   const pageRef = useRef<HTMLDivElement>(null);
   const [contentWidth, setContentWidth] = useState<number | null>(null);
   const gridActive = viewMode === "grid";
+  const stickyNullProbeDoneRef = useRef(false);
 
   useLayoutEffect(() => {
     const page = pageRef.current;
@@ -61,6 +62,23 @@ export function DashboardWarmGridShell({
       setDashboardGridWarmActive(false);
     };
   }, [gridActive]);
+
+  // DashboardPage remounts on item→list. Maps can still hold sticky null while
+  // cover.webp exists — one probe per mount upgrades those cards (#871).
+  useEffect(() => {
+    if (dashboard.isLoading || dashboard.items.length === 0) {
+      return;
+    }
+    if (stickyNullProbeDoneRef.current) {
+      return;
+    }
+    stickyNullProbeDoneRef.current = true;
+    for (const item of dashboard.items) {
+      if (dashboard.thumbnailPaths.get(item.id) === null) {
+        dashboard.refreshCoverForItem(item.id);
+      }
+    }
+  }, [dashboard]);
 
   return (
     <div

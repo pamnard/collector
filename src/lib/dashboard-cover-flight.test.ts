@@ -60,6 +60,47 @@ describe("runCoverPathFlight", () => {
     assert.equal(flight, null);
   });
 
+  it("re-opens sticky null holes so disk cover can win (#871)", async () => {
+    const item = stubItem("a", { thumbnail: null });
+    const stamp = itemCoverStamp(item);
+    let paths = new Map<string, string | null>([["a", null]]);
+    let stamps = new Map<string, string>([["a", stamp]]);
+    let sizes = new Map([["a", null]]);
+    let flight: CoverFlightSlot = null;
+
+    await runCoverPathFlight({
+      requestVersion: 1,
+      getRequestVersion: () => 1,
+      orderedItems: [item],
+      getOrderedIds: () => ["a"],
+      getPaths: () => paths,
+      getStamps: () => stamps,
+      getSizes: () => sizes,
+      commit: (nextPaths, nextStamps, nextSizes) => {
+        paths = nextPaths;
+        stamps = nextStamps;
+        sizes = nextSizes;
+      },
+      getFlight: () => flight,
+      setFlight: (next) => {
+        flight = next;
+      },
+      scheduleFlush: (flush) => {
+        queueMicrotask(flush);
+        return () => {};
+      },
+      resolveProgressive: async (items, options) => {
+        assert.equal(items.length, 1);
+        options.onResolved?.("a", "/media/a/cover.webp", {
+          width: 20,
+          height: 10,
+        });
+      },
+    });
+
+    assert.equal(paths.get("a"), "/media/a/cover.webp");
+  });
+
   it("resolves covers and commits via batcher", async () => {
     const item = stubItem("a");
     let paths = new Map<string, string | null>();

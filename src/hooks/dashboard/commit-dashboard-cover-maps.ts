@@ -2,6 +2,7 @@ import type { ItemFile } from "@collector/shared";
 import type { ItemThumbnailPixelSize } from "@collector/api";
 import type { MutableRefObject } from "react";
 import { buildDashboardQueryCacheEntry } from "../../lib/dashboard-query-load";
+import { coverMapsForPersistence } from "../../lib/dashboard-commit";
 import {
   applyDashboardQueryCacheCoverFlightPatch,
   setDashboardQueryCache,
@@ -29,14 +30,19 @@ export function commitDashboardCoverMaps(options: {
   committedThumbnailStampsRef: DashboardListState["committedThumbnailStampsRef"];
   committedThumbnailSizesRef: DashboardListState["committedThumbnailSizesRef"];
 }): boolean {
+  const persisted = coverMapsForPersistence(
+    options.thumbnailPaths,
+    options.thumbnailStamps,
+    options.thumbnailSizes,
+  );
   const result = applyDashboardQueryCacheCoverFlightPatch({
     flightKey: options.flightKey,
     flightVersion: options.flightVersion,
     getLiveKey: () => options.queryKeyRef.current,
     getLiveVersion: () => options.requestVersionRef.current,
-    thumbnailPaths: options.thumbnailPaths,
-    thumbnailStamps: options.thumbnailStamps,
-    thumbnailSizes: options.thumbnailSizes,
+    thumbnailPaths: persisted.thumbnailPaths,
+    thumbnailStamps: persisted.thumbnailStamps,
+    thumbnailSizes: persisted.thumbnailSizes,
     rewriteFull: () => {
       setDashboardQueryCache(
         options.flightKey,
@@ -46,9 +52,9 @@ export function commitDashboardCoverMaps(options: {
           bodyStamps: options.bodyStamps,
           streamEndOffset: options.streamEndOffset,
           totalCount: options.totalCount,
-          thumbnailPaths: options.thumbnailPaths,
-          thumbnailStamps: options.thumbnailStamps,
-          thumbnailSizes: options.thumbnailSizes,
+          thumbnailPaths: persisted.thumbnailPaths,
+          thumbnailStamps: persisted.thumbnailStamps,
+          thumbnailSizes: persisted.thumbnailSizes,
         }),
       );
     },

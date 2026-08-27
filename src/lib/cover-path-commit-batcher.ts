@@ -130,6 +130,14 @@ export function createCoverPathCommitBatcher(
       if (!canApply()) {
         return;
       }
+      // Never queue a null path over an existing cover — would also refresh
+      // stamp/size and leave the card with a stale stamp match (#871).
+      if (path == null) {
+        const previous = options.getPaths().get(id);
+        if (previous != null) {
+          return;
+        }
+      }
       pendingPaths.set(id, path);
       pendingStamps.set(id, stamp);
       pendingSizes.set(id, size);
