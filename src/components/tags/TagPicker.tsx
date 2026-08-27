@@ -13,7 +13,6 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
     setNewTagName,
     toggleTag,
     handleAddTagName,
-    findKnownTag,
     isSelected,
   } = useTagPicker({ selectedTagNames, onChange });
 
@@ -26,7 +25,6 @@ export function TagPicker({ selectedTagNames, onChange }: TagPickerProps) {
           <TagPickerChip
             key={name.toLowerCase()}
             name={name}
-            known={findKnownTag(name)}
             selected={isSelected(name)}
             onToggle={toggleTag}
           />

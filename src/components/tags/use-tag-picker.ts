@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import type { TagWithCount } from "@collector/core";
 import {
   useAlerts,
   useDismissAlertsOnUnmount,
@@ -26,13 +25,13 @@ export function useTagPicker(args: {
   const { selectedTagNames, onChange } = args;
   const alerts = useAlerts();
   useDismissAlertsOnUnmount([TAG_PICKER_ERROR_ID]);
-  const [tags, setTags] = useState<TagWithCount[]>([]);
+  const [catalogNames, setCatalogNames] = useState<string[]>([]);
   const [newTagName, setNewTagName] = useState("");
 
   useEffect(() => {
     getCollectorService()
       .tags.listTags()
-      .then(setTags)
+      .then((tags) => setCatalogNames(tags.map((tag) => tag.name)))
       .catch((err: unknown) => {
         alerts.upsert(TAG_PICKER_ERROR_ID, {
           tone: "danger",
@@ -42,12 +41,8 @@ export function useTagPicker(args: {
   }, [alerts]);
 
   const displayNames = useMemo(
-    () =>
-      buildTagDisplayNames(
-        tags.map((tag) => tag.name),
-        selectedTagNames,
-      ),
-    [tags, selectedTagNames],
+    () => buildTagDisplayNames(catalogNames, selectedTagNames),
+    [catalogNames, selectedTagNames],
   );
 
   const toggleTag = (name: string) => {
@@ -60,20 +55,15 @@ export function useTagPicker(args: {
     }
   };
 
-  const findKnownTag = (name: string): TagWithCount | undefined =>
-    tags.find((tag) => sameTagName(tag.name, name));
-
   const isSelected = (name: string): boolean =>
     selectedTagNames.some((selected) => sameTagName(selected, name));
 
   return {
-    tags,
     displayNames,
     newTagName,
     setNewTagName,
     toggleTag,
     handleAddTagName,
-    findKnownTag,
     isSelected,
   };
 }

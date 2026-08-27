@@ -2,10 +2,7 @@ import type { Tag } from "@collector/shared";
 import type { VaultContext } from "../adapters/types.js";
 import { ensureTagsByName } from "../vault/item-io.js";
 
-/**
- * Seed a catalog tag the same way document writes do (`ensureTagsByName`),
- * then upsert that row into the index (FK-ready for item metadata tests).
- */
+/** Seed a catalog tag via `ensureTagsByName`, then upsert into the index. */
 export async function seedTagFromDocumentWritePath(
   ctx: VaultContext,
   vaultPath: string,
