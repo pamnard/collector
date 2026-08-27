@@ -12,6 +12,26 @@ import { createVault } from "./vault-operations.js";
 import { listTagsWithCounts } from "./tag-operations.js";
 import * as tagOperations from "./tag-operations.js";
 
+function noteMarkdown(args: {
+  tagsYaml: string;
+  contentRevision: number;
+  createdAt: string;
+}): string {
+  return [
+    "---",
+    "title: Note",
+    "type: note",
+    args.tagsYaml,
+    `content_revision: ${args.contentRevision}`,
+    `created: ${args.createdAt}`,
+    `updated: ${args.createdAt}`,
+    "---",
+    "",
+    "body",
+    "",
+  ].join("\n");
+}
+
 describe("tag operations (#842)", () => {
   let dataDir = "";
   const fs = new NodeFileSystemAdapter();
@@ -70,20 +90,11 @@ describe("tag operations (#842)", () => {
       path,
       meta.id,
       itemId,
-      [
-        "---",
-        "title: Note",
-        "type: note",
-        "tags:",
-        "  - Research",
-        "content_revision: 2",
-        `created: ${createdAt}`,
-        `updated: ${createdAt}`,
-        "---",
-        "",
-        "body",
-        "",
-      ].join("\n"),
+      noteMarkdown({
+        tagsYaml: "tags:\n  - Research",
+        contentRevision: 2,
+        createdAt,
+      }),
     );
 
     const withTag = await listTagsWithCounts(ctx, meta.id);
@@ -96,19 +107,11 @@ describe("tag operations (#842)", () => {
       path,
       meta.id,
       itemId,
-      [
-        "---",
-        "title: Note",
-        "type: note",
-        "tags: []",
-        "content_revision: 3",
-        `created: ${createdAt}`,
-        `updated: ${createdAt}`,
-        "---",
-        "",
-        "body",
-        "",
-      ].join("\n"),
+      noteMarkdown({
+        tagsYaml: "tags: []",
+        contentRevision: 3,
+        createdAt,
+      }),
     );
 
     expect(await listTagsWithCounts(ctx, meta.id)).toEqual([]);
@@ -119,15 +122,17 @@ describe("tag operations (#842)", () => {
     db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
     await runMigrations(db);
     const ctx = { fs, index: new SqlVaultIndexStore(db) };
-    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const { meta } = await createVault(ctx, dataDir, { name: "Vault" });
 
-    const orphan = {
-      id: createId(),
-      name: "Orphan",
-      color: null as string | null,
-      created_at: "2024-01-01T00:00:00.000Z",
-    };
-    await ctx.index.upsertTag(orphan, meta.id);
+    await ctx.index.upsertTag(
+      {
+        id: createId(),
+        name: "Orphan",
+        color: null,
+        created_at: "2024-01-01T00:00:00.000Z",
+      },
+      meta.id,
+    );
 
     expect(await listTagsWithCounts(ctx, meta.id)).toEqual([]);
   });
