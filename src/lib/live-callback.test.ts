@@ -1,14 +1,29 @@
-import { describe, expect, it } from "vitest";
-import { liveCallback } from "./live-callback";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { liveCallback } from "./live-callback.ts";
 
 describe("liveCallback", () => {
-  it("invokes the latest target after the target is replaced", () => {
-    let current = () => "before";
-    const wrapped = liveCallback(() => current);
+  it("keeps one stable wrapper that always invokes the latest target with args", () => {
+    const log: Array<{ version: string; args: unknown[] }> = [];
+    let target = (...args: unknown[]) => {
+      log.push({ version: "v1", args });
+      return "v1";
+    };
+    const wrapped = liveCallback(() => target);
+    const stableRef = wrapped;
 
-    expect(wrapped()).toBe("before");
+    assert.equal(stableRef("first", 1), "v1");
 
-    current = () => "after";
-    expect(wrapped()).toBe("after");
+    target = (...args: unknown[]) => {
+      log.push({ version: "v2", args });
+      return "v2";
+    };
+
+    assert.equal(wrapped, stableRef);
+    assert.equal(stableRef("second", 2), "v2");
+    assert.deepEqual(log, [
+      { version: "v1", args: ["first", 1] },
+      { version: "v2", args: ["second", 2] },
+    ]);
   });
 });
