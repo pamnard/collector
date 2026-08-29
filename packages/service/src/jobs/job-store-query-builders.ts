@@ -121,6 +121,30 @@ export function createCancelPending(db: SqlMigrator) {
   };
 }
 
+/**
+ * Cancel all pending jobs whose idempotency key starts with `prefix`.
+ * Used to supersede stale generateCover work for one item (#875).
+ */
+export function createCancelPendingByIdempotencyKeyPrefix(db: SqlMigrator) {
+  return async function cancelPendingByIdempotencyKeyPrefix(
+    prefix: string,
+    nowIso: string,
+  ): Promise<number> {
+    return db.execute(
+      `UPDATE jobs
+       SET status = 'cancelled', updated_at = ?, finished_at = ?
+       WHERE status = 'pending'
+         AND idempotency_key LIKE ? ESCAPE '\\'`,
+      [nowIso, nowIso, `${escapeLikePrefix(prefix)}%`],
+    );
+  };
+}
+
+/** Escape LIKE wildcards so a literal prefix match cannot over-cancel. */
+export function escapeLikePrefix(prefix: string): string {
+  return prefix.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
 export function createJobStatsQuery(db: SqlMigrator) {
   return async function stats(): Promise<JobStats> {
     const rows = await db.select<{

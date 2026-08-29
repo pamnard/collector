@@ -339,6 +339,38 @@ describe("createJobQueue (#628 / #629)", () => {
     await queue.stop();
   });
 
+  it("cancelPendingByIdempotencyKeyPrefix cancels matching pending jobs (#875)", async () => {
+    const dbPath = tempJobsPath();
+    const queue = await createJobQueue({
+      dbPath,
+      registry: createHostJobRegistry(),
+    });
+    const first = await queue.enqueue({
+      type: "__test_noop",
+      delayMs: 60_000,
+      idempotencyKey: "generateCover:v1:note.md:m1",
+    });
+    const second = await queue.enqueue({
+      type: "__test_noop",
+      delayMs: 60_000,
+      idempotencyKey: "generateCover:v1:note.md:m2",
+    });
+    const other = await queue.enqueue({
+      type: "__test_noop",
+      delayMs: 60_000,
+      idempotencyKey: "generateCover:v1:other.md:m1",
+    });
+
+    const cancelled = await queue.cancelPendingByIdempotencyKeyPrefix(
+      "generateCover:v1:note.md:",
+    );
+    expect(cancelled).toBe(2);
+    expect(await queue.getJob(first.id)).toMatchObject({ status: "cancelled" });
+    expect(await queue.getJob(second.id)).toMatchObject({ status: "cancelled" });
+    expect(await queue.getJob(other.id)).toMatchObject({ status: "pending" });
+    await queue.stop();
+  });
+
   it("rejects unknown job type on enqueue (#629)", async () => {
     const dbPath = tempJobsPath();
     const queue = await createJobQueue({

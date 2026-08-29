@@ -17,7 +17,7 @@ import { createTagsFoldersService } from "../../tags-folders.js";
 import { createMediaCoverService } from "../../media-cover.js";
 import { readCoverPixelSize } from "../../cover-pixel-size.js";
 import { createVaultsService } from "../../vaults.js";
-import { enqueueGenerateCover } from "../../jobs/handlers/generate-cover.js";
+import { enqueueGenerateCover, cancelPendingGenerateCoversForItem } from "../../jobs/handlers/generate-cover.js";
 import { waitForJobTerminal } from "../../jobs/job-wait.js";
 import { enqueueItemDerivedRefreshWithFailureReporting } from "./item-derived-refresh-enqueue.js";
 import { enqueueItemExtractAutoWithFailureReporting } from "./item-extract-auto-enqueue.js";
@@ -129,6 +129,8 @@ export function createDomainServices(deps: DomainServicesDeps): DomainServices {
     getContext: deps.getContext,
     enqueueGenerateCover: (input) => enqueueGenerateCover(deps.requireJobs(), input),
     waitForCoverJob: (jobId) => waitForJobTerminal(deps.requireJobs(), jobId),
+    cancelPendingGenerateCoversForItem: (vaultId, itemId) =>
+      cancelPendingGenerateCoversForItem(deps.requireJobs(), vaultId, itemId),
     resolveThumbnailPathsProgressive: (vaultPath, items, options) =>
       resolveItemThumbnailPathsProgressive(
         deps.getContext().fs,

@@ -71,6 +71,14 @@ export interface MediaCoverServiceDeps {
   /** Wait until generateCover leaves pending/running. */
   waitForCoverJob: (jobId: string) => Promise<TerminalJobStatus>;
   /**
+   * Drop pending generateCover jobs for an item when cover is cleared or
+   * preferred cover is about to be replaced (#875).
+   */
+  cancelPendingGenerateCoversForItem: (
+    vaultId: string,
+    itemId: string,
+  ) => Promise<number>;
+  /**
    * Progressive path resolve (#544 / #823). Size reads overlap remaining path
    * work so early ids finish before the last sibling path probe.
    */
@@ -127,9 +135,26 @@ export function createMediaCoverService(
   deps: MediaCoverServiceDeps,
 ): MediaCoverService {
   const itemThumbnailPathCache = new Map<string, ItemThumbnailCacheEntry>();
+  /** Serialize preferred-cover enqueue/clear per item across parallel deletes (#875). */
+  const presentationChangeByItem = new Map<string, Promise<void>>();
 
   const invalidateThumbnailPathCache = (itemId: string): void => {
     itemThumbnailPathCache.delete(itemId);
+  };
+
+  const runSerializedPresentationChange = (
+    itemId: string,
+    work: () => Promise<void>,
+  ): Promise<void> => {
+    const previous = presentationChangeByItem.get(itemId) ?? Promise.resolve();
+    const next = previous.then(work, work);
+    presentationChangeByItem.set(itemId, next);
+    void next.finally(() => {
+      if (presentationChangeByItem.get(itemId) === next) {
+        presentationChangeByItem.delete(itemId);
+      }
+    });
+    return next;
   };
 
   /**
@@ -138,18 +163,20 @@ export function createMediaCoverService(
    * Successful generateCover emits after applyItemCover — not at enqueue time.
    */
   const afterMediaPresentationChange = async (itemId: string): Promise<void> => {
-    const { vault, path } = await deps.resolveActiveVault();
-    invalidateThumbnailPathCache(itemId);
-    await touchItemUpdatedAt(deps.getContext(), path, vault.id, itemId);
-    const outcome = await enqueuePreferredCover(itemId);
-    if (outcome === "cleared") {
-      deps.onVaultPresentationChanged?.({
-        vaultId: vault.id,
-        kind: "itemCoverChanged",
-        itemId,
-        folderPath: folderPathFromItemPath(itemId),
-      });
-    }
+    await runSerializedPresentationChange(itemId, async () => {
+      const { vault, path } = await deps.resolveActiveVault();
+      invalidateThumbnailPathCache(itemId);
+      await touchItemUpdatedAt(deps.getContext(), path, vault.id, itemId);
+      const outcome = await enqueuePreferredCover(itemId);
+      if (outcome === "cleared") {
+        deps.onVaultPresentationChanged?.({
+          vaultId: vault.id,
+          kind: "itemCoverChanged",
+          itemId,
+          folderPath: folderPathFromItemPath(itemId),
+        });
+      }
+    });
   };
 
   const listItemMedia = async (itemId: string): Promise<MediaWithPath[]> => {
@@ -169,6 +196,7 @@ export function createMediaCoverService(
 
     if (!candidate) {
       await clearItemCover(ctx, path, vault.id, itemId);
+      await deps.cancelPendingGenerateCoversForItem(vault.id, itemId);
       return "cleared";
     }
 

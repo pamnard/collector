@@ -1,6 +1,7 @@
 import type { SqlMigrator } from "@collector/db";
 import {
   createCancelPending,
+  createCancelPendingByIdempotencyKeyPrefix,
   createFindActiveByIdempotencyKey,
   createFindByIdempotencyKey,
   createFindLatestByIdempotencyKeyPrefix,
@@ -17,6 +18,8 @@ export function createJobStoreQuery(db: SqlMigrator) {
     insertJob: createInsertJob(db),
     getJob: createGetJob(db),
     cancelPending: createCancelPending(db),
+    cancelPendingByIdempotencyKeyPrefix:
+      createCancelPendingByIdempotencyKeyPrefix(db),
     stats: createJobStatsQuery(db),
   };
 }

@@ -110,16 +110,27 @@ describe("createMediaCoverService", () => {
     waitForCoverJob?: (
       jobId: string,
     ) => Promise<"succeeded" | "failed" | "cancelled">;
+    cancelPendingGenerateCoversForItem?: (
+      vaultId: string,
+      itemId: string,
+    ) => Promise<number>;
     resolveThumbnailPathsProgressive?: typeof resolveItemThumbnailPathsProgressive;
     readCoverPixelSize?: typeof readCoverPixelSize;
     onVaultPresentationChanged?: ReturnType<typeof vi.fn>;
   }) {
     const enqueued: GenerateCoverJobPayload[] = [];
+    const cancelledFor: Array<{ vaultId: string; itemId: string }> = [];
     const enqueueGenerateCover =
       options.enqueueGenerateCover ??
       (async (input: GenerateCoverJobPayload) => {
         enqueued.push(input);
         return { id: `job-${enqueued.length}` };
+      });
+    const cancelPendingGenerateCoversForItem =
+      options.cancelPendingGenerateCoversForItem ??
+      (async (vaultId: string, itemId: string) => {
+        cancelledFor.push({ vaultId, itemId });
+        return 0;
       });
 
     const service = createMediaCoverService({
@@ -131,6 +142,7 @@ describe("createMediaCoverService", () => {
       enqueueGenerateCover,
       waitForCoverJob:
         options.waitForCoverJob ?? (async () => "succeeded" as const),
+      cancelPendingGenerateCoversForItem,
       resolveThumbnailPathsProgressive:
         options.resolveThumbnailPathsProgressive ??
         resolveItemThumbnailPathsProgressive.bind(null, options.ctx.fs),
@@ -138,7 +150,7 @@ describe("createMediaCoverService", () => {
       onVaultPresentationChanged: options.onVaultPresentationChanged,
     });
 
-    return { service, enqueued };
+    return { service, enqueued, cancelledFor };
   }
 
   it("listItemMedia returns media files that exist on disk", async () => {
@@ -219,7 +231,7 @@ describe("createMediaCoverService", () => {
   it("deleteItemMedia clears cover files when no media remains and emits itemCoverChanged (#856)", async () => {
     const { ctx, vault, vaultPath, itemId } = await openVault();
     const onVaultPresentationChanged = vi.fn();
-    const { service } = createService({
+    const { service, cancelledFor } = createService({
       ctx,
       vault,
       vaultPath,
@@ -243,12 +255,35 @@ describe("createMediaCoverService", () => {
     expect(await service.listItemMedia(itemId)).toHaveLength(0);
     expect(await fs.exists(itemCoverPath(vaultPath, itemId))).toBe(false);
     expect(await fs.exists(itemCoverSizePath(vaultPath, itemId))).toBe(false);
+    expect(cancelledFor).toContainEqual({ vaultId: vault.id, itemId });
     expect(onVaultPresentationChanged).toHaveBeenCalledWith({
       vaultId: vault.id,
       kind: "itemCoverChanged",
       itemId,
       folderPath: "",
     });
+  });
+
+  it("serializes concurrent preferred-cover enqueues for one item (#875)", async () => {
+    const { ctx, vault, vaultPath, itemId } = await openVault();
+    const png = await tinyPng();
+    const { service, enqueued } = createService({ ctx, vault, vaultPath });
+    const [first, second, third] = await service.attachMediaFiles(itemId, [
+      { name: "a.png", bytes: png },
+      { name: "b.png", bytes: png },
+      { name: "c.png", bytes: png },
+    ]);
+    enqueued.length = 0;
+
+    await Promise.all([
+      service.deleteItemMedia(itemId, first!.id),
+      service.deleteItemMedia(itemId, second!.id),
+    ]);
+
+    expect(enqueued.length).toBeGreaterThanOrEqual(1);
+    const remaining = await service.listItemMedia(itemId);
+    expect(remaining.map((m) => m.id)).toEqual([third!.id]);
+    expect(enqueued.at(-1)!.mediaId).toBe(third!.id);
   });
 
   it("replaceItemMedia overwrites bytes on disk and enqueues that media", async () => {
