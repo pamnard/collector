@@ -1,5 +1,19 @@
+/**
+ * Embedding reconcile scheduler — real index plan + jobs.db enqueue (#886).
+ * Green only when planEmbeddingReconcileTick + enqueueRefreshEmbeddings succeed.
+ */
+
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EMBEDDING_MODEL_ID } from "@collector/core";
+import { runMigrations } from "@collector/db";
+import { refreshEmbeddingsJobType } from "@collector/shared";
+import { BetterSqliteMigrator } from "../../../db/src/testing/better-sqlite.js";
+import { enqueueRefreshEmbeddings } from "../jobs/handlers/refresh-embeddings.js";
+import { createJobQueue, type JobQueue } from "../jobs/job-queue.js";
+import { createJobRegistry } from "../jobs/job-registry.js";
 import {
   createEmbeddingReconcileScheduler,
   DEFAULT_EMBEDDING_RECONCILE_BATCH_SIZE,
@@ -7,11 +21,76 @@ import {
   DEFAULT_EMBEDDING_RECONCILE_SCAN_LIMIT,
 } from "./embedding-reconcile-scheduler.js";
 
-describe("createEmbeddingReconcileScheduler (#742)", () => {
-  afterEach(() => {
+describe("createEmbeddingReconcileScheduler (#742 / #886)", () => {
+  let dataDir = "";
+  let db: BetterSqliteMigrator | null = null;
+  const queues: JobQueue[] = [];
+
+  afterEach(async () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    await Promise.all(queues.splice(0).map((queue) => queue.stop()));
+    db?.close();
+    db = null;
+    if (dataDir) {
+      await rm(dataDir, { recursive: true, force: true });
+      dataDir = "";
+    }
   });
+
+  async function openIndex(): Promise<BetterSqliteMigrator> {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-emb-reconcile-sched-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "index.db"));
+    await runMigrations(db);
+    await db.execute(
+      `INSERT INTO vaults (id, path, name, description, is_default, created_at, updated_at)
+       VALUES (?, ?, ?, '', 1, ?, ?)`,
+      ["v1", dataDir, "V", "t", "t"],
+    );
+    return db;
+  }
+
+  async function insertItem(options: {
+    id: string;
+    title: string;
+    description?: string;
+    contentRevision?: number;
+  }): Promise<void> {
+    const description = options.description ?? "";
+    await db!.execute(
+      `INSERT INTO items (
+        id, vault_id, title, description, content_type, source_type,
+        metadata_json, properties_json, has_content_file, folder_path,
+        created_at, updated_at, content_revision, word_count, character_count
+      ) VALUES (?, 'v1', ?, ?, 'note', 'manual', '{}', '{}', 0, '', 't', 't', ?, 0, 0)`,
+      [options.id, options.title, description, options.contentRevision ?? 1],
+    );
+    await db!.execute(
+      `INSERT INTO items_fts (item_id, title, description, content)
+       VALUES (?, ?, ?, '')`,
+      [options.id, options.title, description],
+    );
+  }
+
+  async function openQueue(): Promise<JobQueue> {
+    const registry = createJobRegistry([refreshEmbeddingsJobType]);
+    registry.register(refreshEmbeddingsJobType, async () => ({ status: "ok" }));
+    const queue = await createJobQueue({
+      dbPath: join(dataDir, "jobs.db"),
+      registry,
+    });
+    queues.push(queue);
+    return queue;
+  }
+
+  function enqueueRefresh(queue: JobQueue) {
+    return async (
+      vaultId: string,
+      inputs: Parameters<typeof enqueueRefreshEmbeddings>[1]["inputs"],
+    ) => {
+      await enqueueRefreshEmbeddings(queue, { vaultId, inputs });
+    };
+  }
 
   it("documents default interval and batch caps", () => {
     expect(DEFAULT_EMBEDDING_RECONCILE_INTERVAL_MS).toBe(180_000);
@@ -19,107 +98,76 @@ describe("createEmbeddingReconcileScheduler (#742)", () => {
     expect(DEFAULT_EMBEDDING_RECONCILE_SCAN_LIMIT).toBe(200);
   });
 
-  it("runTick enqueues per item and logs scanned/enqueued/skipped/deferred/errors", async () => {
-    const planTick = vi.fn(async () => ({
-      inputs: [
-        {
-          itemId: "a.md",
-          title: "Garden",
-          description: "plants",
-          tagNames: [] as string[],
-          contentRevision: 1,
-        },
-        {
-          itemId: "b.md",
-          title: "Roses",
-          description: "flowers",
-          tagNames: [] as string[],
-          contentRevision: 2,
-        },
-      ],
-      stats: {
-        scanned: 3,
-        skippedNoSignal: 1,
-        deferred: 0,
-        batchFull: false,
-      },
-      nextAfterItemId: "b.md",
-    }));
-    const enqueueRefresh = vi.fn(async (_vaultId: string, inputs: { itemId: string }[]) => {
-      if (inputs[0]?.itemId === "b.md") {
-        throw new Error("enqueue failed");
-      }
+  it("runTick plans missing vectors from index and enqueues refreshEmbeddings in jobs.db", async () => {
+    const sql = await openIndex();
+    await insertItem({
+      id: "a.md",
+      title: "Garden",
+      description: "plants",
     });
+    await insertItem({
+      id: "b.md",
+      title: "Roses",
+      description: "flowers",
+    });
+    const queue = await openQueue();
     const logTick = vi.fn();
-    const getDb = vi.fn(() => ({}) as never);
 
     const scheduler = createEmbeddingReconcileScheduler({
       isHealthy: () => true,
       resolveActiveVaultId: () => "v1",
-      getDb,
+      getDb: () => sql,
       getModelId: () => EMBEDDING_MODEL_ID,
-      enqueueRefresh,
-      planTick,
+      enqueueRefresh: enqueueRefresh(queue),
       logTick,
     });
 
     const log = await scheduler.runTick();
-    expect(planTick).toHaveBeenCalledWith(getDb(), {
-      vaultId: "v1",
-      modelId: EMBEDDING_MODEL_ID,
-      batchSize: DEFAULT_EMBEDDING_RECONCILE_BATCH_SIZE,
-      scanLimit: DEFAULT_EMBEDDING_RECONCILE_SCAN_LIMIT,
-    });
-    expect(enqueueRefresh).toHaveBeenCalledTimes(2);
-    expect(enqueueRefresh).toHaveBeenNthCalledWith(1, "v1", [
-      expect.objectContaining({ itemId: "a.md" }),
-    ]);
     expect(log).toEqual({
       vaultId: "v1",
-      scanned: 3,
-      enqueued: 1,
-      skippedNoSignal: 1,
+      scanned: 2,
+      enqueued: 2,
+      skippedNoSignal: 0,
       deferred: 0,
       batchFull: false,
-      errors: 1,
+      errors: 0,
     });
     expect(logTick).toHaveBeenCalledWith(log);
+
+    const stats = await queue.stats();
+    expect(stats.pending).toBe(2);
+    expect(stats.byType.refreshEmbeddings).toMatchObject({
+      pending: 2,
+      running: 0,
+      succeeded: 0,
+      failed: 0,
+    });
     scheduler.dispose();
   });
 
-  it("default logTick uses console.error when errors > 0", async () => {
+  it("default logTick uses console.error when enqueue errors > 0", async () => {
+    const sql = await openIndex();
+    await insertItem({
+      id: "a.md",
+      title: "Garden",
+      description: "plants",
+    });
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
-    const planTick = vi.fn(async () => ({
-      inputs: [
-        {
-          itemId: "a.md",
-          title: "Garden",
-          description: "plants",
-          tagNames: [] as string[],
-          contentRevision: 1,
-        },
-      ],
-      stats: {
-        scanned: 1,
-        skippedNoSignal: 0,
-        deferred: 0,
-        batchFull: false,
-      },
-      nextAfterItemId: "a.md",
-    }));
+
     const scheduler = createEmbeddingReconcileScheduler({
       isHealthy: () => true,
       resolveActiveVaultId: () => "v1",
-      getDb: () => ({}) as never,
+      getDb: () => sql,
       getModelId: () => EMBEDDING_MODEL_ID,
       enqueueRefresh: async () => {
         throw new Error("enqueue failed");
       },
-      planTick,
     });
 
-    await scheduler.runTick();
+    const log = await scheduler.runTick();
+    expect(log?.errors).toBe(1);
+    expect(log?.enqueued).toBe(0);
     expect(errorSpy).toHaveBeenCalledWith(
       "[collector] embedding reconcile tick",
       expect.objectContaining({ errors: 1 }),
@@ -132,246 +180,164 @@ describe("createEmbeddingReconcileScheduler (#742)", () => {
   });
 
   it("advances keyset cursor across ticks and wraps past the end", async () => {
-    const planTick = vi
-      .fn()
-      .mockResolvedValueOnce({
-        inputs: [
-          {
-            itemId: "a.md",
-            title: "A",
-            description: "a",
-            tagNames: [] as string[],
-            contentRevision: 1,
-          },
-        ],
-        stats: {
-          scanned: 2,
-          skippedNoSignal: 0,
-          deferred: 1,
-          batchFull: true,
-        },
-        nextAfterItemId: "a.md",
-      })
-      .mockResolvedValueOnce({
-        inputs: [
-          {
-            itemId: "b.md",
-            title: "B",
-            description: "b",
-            tagNames: [] as string[],
-            contentRevision: 1,
-          },
-        ],
-        stats: {
-          scanned: 1,
-          skippedNoSignal: 0,
-          deferred: 0,
-          batchFull: false,
-        },
-        nextAfterItemId: "b.md",
-      })
-      .mockResolvedValueOnce({
-        inputs: [],
-        stats: {
-          scanned: 0,
-          skippedNoSignal: 0,
-          deferred: 0,
-          batchFull: false,
-        },
-        nextAfterItemId: null,
-      })
-      .mockResolvedValueOnce({
-        inputs: [
-          {
-            itemId: "a.md",
-            title: "A",
-            description: "a",
-            tagNames: [] as string[],
-            contentRevision: 1,
-          },
-        ],
-        stats: {
-          scanned: 1,
-          skippedNoSignal: 0,
-          deferred: 0,
-          batchFull: false,
-        },
-        nextAfterItemId: "a.md",
-      });
+    const sql = await openIndex();
+    await insertItem({ id: "a.md", title: "A", description: "a" });
+    await insertItem({ id: "b.md", title: "B", description: "b" });
+    const queue = await openQueue();
 
     const scheduler = createEmbeddingReconcileScheduler({
       isHealthy: () => true,
       resolveActiveVaultId: () => "v1",
-      getDb: () => ({}) as never,
+      getDb: () => sql,
       getModelId: () => EMBEDDING_MODEL_ID,
-      enqueueRefresh: async () => undefined,
-      planTick,
+      enqueueRefresh: enqueueRefresh(queue),
+      batchSize: 1,
+      scanLimit: 10,
     });
 
     const first = await scheduler.runTick();
-    expect(first?.batchFull).toBe(true);
-    expect(first?.deferred).toBe(1);
-    expect(planTick).toHaveBeenLastCalledWith(
-      expect.anything(),
-      expect.not.objectContaining({ afterItemId: expect.anything() }),
-    );
+    expect(first).toMatchObject({
+      enqueued: 1,
+      scanned: 2,
+      deferred: 1,
+      batchFull: true,
+      errors: 0,
+    });
+    expect((await queue.stats()).pending).toBe(1);
 
-    await scheduler.runTick();
-    expect(planTick).toHaveBeenLastCalledWith(
-      expect.anything(),
-      expect.objectContaining({ afterItemId: "a.md" }),
-    );
+    const second = await scheduler.runTick();
+    expect(second).toMatchObject({
+      enqueued: 1,
+      deferred: 0,
+      batchFull: false,
+      errors: 0,
+    });
+    expect((await queue.stats()).pending).toBe(2);
 
     // Past end: empty scan with cursor → wrap and rescan from start in same tick.
     const wrapped = await scheduler.runTick();
-    expect(planTick).toHaveBeenCalledTimes(4);
-    expect(planTick.mock.calls[2]?.[1]).toEqual(
-      expect.objectContaining({ afterItemId: "b.md" }),
-    );
-    expect(planTick.mock.calls[3]?.[1]).not.toHaveProperty("afterItemId");
-    expect(wrapped?.enqueued).toBe(1);
+    expect(wrapped).toMatchObject({
+      enqueued: 1,
+      errors: 0,
+    });
+    // Third tick re-enqueues a.md (same digest → dedupe), pending stays 2.
+    expect((await queue.stats()).pending).toBe(2);
     scheduler.dispose();
   });
 
   it("runTick is a no-op when host is unhealthy or vault missing", async () => {
-    const planTick = vi.fn(async () => ({
-      inputs: [],
-      stats: {
-        scanned: 0,
-        skippedNoSignal: 0,
-        deferred: 0,
-        batchFull: false,
-      },
-      nextAfterItemId: null,
-    }));
-    const enqueueRefresh = vi.fn(async () => undefined);
+    const sql = await openIndex();
+    await insertItem({ id: "a.md", title: "A", description: "a" });
+    const queue = await openQueue();
 
     const unhealthy = createEmbeddingReconcileScheduler({
       isHealthy: () => false,
       resolveActiveVaultId: () => "v1",
-      getDb: () => ({}) as never,
+      getDb: () => sql,
       getModelId: () => EMBEDDING_MODEL_ID,
-      enqueueRefresh,
-      planTick,
+      enqueueRefresh: enqueueRefresh(queue),
     });
     expect(await unhealthy.runTick()).toBeNull();
-    expect(planTick).not.toHaveBeenCalled();
+    expect((await queue.stats()).pending).toBe(0);
     unhealthy.dispose();
 
     const noVault = createEmbeddingReconcileScheduler({
       isHealthy: () => true,
       resolveActiveVaultId: () => null,
-      getDb: () => ({}) as never,
+      getDb: () => sql,
       getModelId: () => EMBEDDING_MODEL_ID,
-      enqueueRefresh,
-      planTick,
+      enqueueRefresh: enqueueRefresh(queue),
     });
     expect(await noVault.runTick()).toBeNull();
-    expect(planTick).not.toHaveBeenCalled();
+    expect((await queue.stats()).pending).toBe(0);
     noVault.dispose();
   });
 
   it("start wakes immediately and arms interval; dispose clears it", async () => {
     vi.useFakeTimers();
-    const planTick = vi.fn(async () => ({
-      inputs: [],
-      stats: {
-        scanned: 0,
-        skippedNoSignal: 0,
-        deferred: 0,
-        batchFull: false,
-      },
-      nextAfterItemId: null,
-    }));
-    const logTick = vi.fn();
+    const sql = await openIndex();
+    await insertItem({ id: "a.md", title: "A", description: "a" });
+    const queue = await openQueue();
+    const logs: Array<{ enqueued: number }> = [];
+
     const scheduler = createEmbeddingReconcileScheduler({
       isHealthy: () => true,
       resolveActiveVaultId: () => "v1",
-      getDb: () => ({}) as never,
+      getDb: () => sql,
       getModelId: () => EMBEDDING_MODEL_ID,
-      enqueueRefresh: async () => undefined,
-      planTick,
+      enqueueRefresh: enqueueRefresh(queue),
       intervalMs: 5_000,
-      logTick,
+      logTick: (log) => {
+        logs.push({ enqueued: log.enqueued });
+      },
     });
     scheduler.start();
     await vi.waitFor(() => {
-      expect(planTick).toHaveBeenCalledTimes(1);
+      expect(logs.length).toBe(1);
     });
+    expect((await queue.stats()).pending).toBe(1);
+
     await vi.advanceTimersByTimeAsync(5_000);
     await vi.waitFor(() => {
-      expect(planTick).toHaveBeenCalledTimes(2);
+      expect(logs.length).toBe(2);
     });
+
     scheduler.dispose();
-    planTick.mockClear();
+    const pendingAfterDispose = (await queue.stats()).pending;
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(planTick).not.toHaveBeenCalled();
+    expect(logs.length).toBe(2);
+    expect((await queue.stats()).pending).toBe(pendingAfterDispose);
   });
 
   it("onTickError surfaces planning failures at error severity", async () => {
     vi.useFakeTimers();
+    const sql = await openIndex();
+    const queue = await openQueue();
     const onTickError = vi.fn();
+    sql.close();
+    db = null;
+
     const scheduler = createEmbeddingReconcileScheduler({
       isHealthy: () => true,
       resolveActiveVaultId: () => "v1",
-      getDb: () => ({}) as never,
+      getDb: () => sql,
       getModelId: () => EMBEDDING_MODEL_ID,
-      enqueueRefresh: async () => undefined,
-      planTick: async () => {
-        throw new Error("plan failed");
-      },
+      enqueueRefresh: enqueueRefresh(queue),
       onTickError,
       intervalMs: 1_000,
     });
     scheduler.start();
-    // Immediate wake from start() surfaces the planning failure.
     await vi.waitFor(() => {
       expect(onTickError).toHaveBeenCalled();
     });
-    expect(String(onTickError.mock.calls[0]?.[0])).toContain("plan failed");
+    expect(String(onTickError.mock.calls[0]?.[0])).toMatch(/database|closed|SQLITE/i);
     scheduler.dispose();
   });
 
   it("wake after start re-runs when vault becomes available (boot order)", async () => {
     vi.useFakeTimers();
+    const sql = await openIndex();
+    await insertItem({ id: "a.md", title: "A", description: "a" });
+    const queue = await openQueue();
     let vaultId: string | null = null;
-    let resolveCalls = 0;
-    const planTick = vi.fn(async () => ({
-      inputs: [],
-      stats: {
-        scanned: 0,
-        missing: 0,
-        staleModel: 0,
-        enqueued: 0,
-        skippedNoSignal: 0,
-        deferred: 0,
-        batchFull: false,
-      },
-      nextAfterItemId: null,
-    }));
+
     const scheduler = createEmbeddingReconcileScheduler({
       isHealthy: () => true,
-      resolveActiveVaultId: () => {
-        resolveCalls += 1;
-        return vaultId;
-      },
-      getDb: () => ({}) as never,
+      resolveActiveVaultId: () => vaultId,
+      getDb: () => sql,
       getModelId: () => EMBEDDING_MODEL_ID,
-      enqueueRefresh: async () => undefined,
-      planTick,
+      enqueueRefresh: enqueueRefresh(queue),
       intervalMs: 60_000,
     });
     scheduler.start();
-    // First wake from start() sees no vault and skips planning.
-    await vi.waitFor(() => {
-      expect(resolveCalls).toBeGreaterThan(0);
+    await vi.waitFor(async () => {
+      expect((await queue.stats()).pending).toBe(0);
     });
-    expect(planTick).not.toHaveBeenCalled();
-    // Simulate ensureActiveVault / notifyVaultReady after open().
+
     vaultId = "v1";
     scheduler.wake();
-    await vi.waitFor(() => {
-      expect(planTick).toHaveBeenCalledTimes(1);
+    await vi.waitFor(async () => {
+      expect((await queue.stats()).pending).toBe(1);
     });
     scheduler.dispose();
   });
