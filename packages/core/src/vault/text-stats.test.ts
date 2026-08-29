@@ -5,10 +5,10 @@ import {
   noteItemFields,
 } from "../index/sql-index-test-harness.js";
 import { createId } from "../util/ids.js";
+import { parseDocumentMarkdown } from "./frontmatter.js";
 import { upsertItem } from "./item-operations.js";
 import { itemMarkdownPath } from "./paths.js";
 import { countTextStats } from "./text-stats.js";
-import { parseDocumentMarkdown } from "./frontmatter.js";
 
 describe("countTextStats via upsert + index/disk", () => {
   const suite = createSqlIndexTestSuite();
@@ -32,11 +32,6 @@ describe("countTextStats via upsert + index/disk", () => {
     ];
 
     for (const expected of cases) {
-      expect(countTextStats(expected.body)).toEqual({
-        wordCount: expected.wordCount,
-        characterCount: expected.characterCount,
-      });
-
       const itemId = `${createId()}.md`;
       await upsertItem(ctx, path, meta.id, {
         item: noteItemFields(meta.id, itemId, {
@@ -50,6 +45,7 @@ describe("countTextStats via upsert + index/disk", () => {
       const docPath = itemMarkdownPath(path, itemId);
       expect(await fs.exists(docPath)).toBe(true);
       const { body: diskBody } = parseDocumentMarkdown(await readFile(docPath, "utf8"));
+      expect(diskBody).toBe(expected.body);
       expect(countTextStats(diskBody)).toEqual({
         wordCount: expected.wordCount,
         characterCount: expected.characterCount,
