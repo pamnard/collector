@@ -25,12 +25,12 @@ export type ImageDisplaySlot = {
 };
 
 /**
- * Locked product slot catalog. Hero uses max-w-[900px]; thumbnail default is
- * `h-32 w-full` (~128–256 CSS); grid/related track masonry / related board cells.
+ * Adequacy catalog (typical desktop). Live related board measures cell width;
+ * grid/thumbnail/hero still take catalog width until measured.
  */
 export const ALL_IMAGE_DISPLAY_SLOTS: readonly ImageDisplaySlot[] = [
-  { id: "dashboard-grid", cssWidthPx: 280 },
-  { id: "related-teaser", cssWidthPx: 220 },
+  { id: "dashboard-grid", cssWidthPx: 400 },
+  { id: "related-teaser", cssWidthPx: 400 },
   { id: "thumbnail", cssWidthPx: 128 },
   { id: "detail-hero", cssWidthPx: 900 },
 ] as const;

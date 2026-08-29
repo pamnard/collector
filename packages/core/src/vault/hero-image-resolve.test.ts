@@ -6,12 +6,15 @@ import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import { createId } from "../util/ids.js";
-import { applyItemCover } from "./cover-operations.js";
-import { resolveItemHeroMedia } from "./hero-image-resolve.js";
+import { applyItemCover, writeItemCoverSource } from "./cover-operations.js";
+import {
+  resolveCoverSourceDisplayPath,
+  resolveItemHeroMedia,
+} from "./hero-image-resolve.js";
 import { upsertItem } from "./item-operations.js";
-import { mediaFilePath } from "./media-io.js";
+import { mediaFilePath, mediaStoredFilename } from "./media-io.js";
 import { attachMediaFile } from "./media-operations.js";
-import { itemCoverPath } from "./paths.js";
+import { itemCoverPath, itemMediaRoot } from "./paths.js";
 import { createVault } from "./vault-operations.js";
 
 describe("resolveItemHeroMedia", () => {
@@ -71,7 +74,7 @@ describe("resolveItemHeroMedia", () => {
       itemId,
       new TextEncoder().encode("fake-webp-from-z"),
       { width: 320, height: 240 },
-      { sourceMediaId: coverMedia.id },
+      { sourceMediaId: coverMedia.id, sourceFilename: coverMedia.filename },
     );
 
     const resolved = await resolveItemHeroMedia(fs, path, itemId);
@@ -205,5 +208,130 @@ describe("resolveItemHeroMedia", () => {
   it("returns null when empty", async () => {
     const { path, itemId } = await seedItem("Empty");
     expect(await resolveItemHeroMedia(fs, path, itemId)).toBeNull();
+  });
+});
+
+describe("resolveCoverSourceDisplayPath (#879)", () => {
+  let dataDir = "";
+  const fs = new NodeFileSystemAdapter();
+
+  afterEach(async () => {
+    if (dataDir) {
+      await rm(dataDir, { recursive: true, force: true });
+      dataDir = "";
+    }
+  });
+
+  it("resolves via filename without listing the media dir", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-cover-src-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemId = `${createId()}.md`;
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "O1",
+        description: "",
+        content_type: "image",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    });
+    const photo = await attachMediaFile(ctx, path, itemId, {
+      filename: "full.jpg",
+      data: new TextEncoder().encode("pixels"),
+    });
+    await applyItemCover(
+      ctx,
+      path,
+      meta.id,
+      itemId,
+      new TextEncoder().encode("webp"),
+      { width: 10, height: 10 },
+      { sourceMediaId: photo.id, sourceFilename: photo.filename },
+    );
+
+    const mediaRoot = itemMediaRoot(path, itemId);
+    let readDirCalls = 0;
+    let statCalls = 0;
+    const probingFs: typeof fs = Object.create(fs) as typeof fs;
+    probingFs.readDirEntries = async (dirPath: string) => {
+      readDirCalls += 1;
+      return fs.readDirEntries(dirPath);
+    };
+    probingFs.stat = async (filePath: string) => {
+      statCalls += 1;
+      return fs.stat(filePath);
+    };
+
+    const display = await resolveCoverSourceDisplayPath(probingFs, path, itemId);
+    expect(display).toBe(
+      mediaFilePath(path, itemId, photo.id, photo.filename),
+    );
+    expect(readDirCalls).toBe(0);
+    expect(statCalls).toBe(0);
+    // sanity: media root still has the stored name
+    expect(
+      (await fs.readDirEntries(mediaRoot)).some(
+        (e) => e.name === mediaStoredFilename(photo.id, photo.filename),
+      ),
+    ).toBe(true);
+  });
+
+  it("mediaId-only sidecar finds image without per-file stat", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-cover-src-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemId = `${createId()}.md`;
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Legacy id",
+        description: "",
+        content_type: "image",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    });
+    const photo = await attachMediaFile(ctx, path, itemId, {
+      filename: "shot.png",
+      data: new TextEncoder().encode("pixels"),
+    });
+    await writeItemCoverSource(fs, path, itemId, { mediaId: photo.id });
+
+    let statCalls = 0;
+    const probingFs: typeof fs = Object.create(fs) as typeof fs;
+    probingFs.stat = async (filePath: string) => {
+      statCalls += 1;
+      return fs.stat(filePath);
+    };
+
+    const display = await resolveCoverSourceDisplayPath(probingFs, path, itemId);
+    expect(display).toBe(
+      mediaFilePath(path, itemId, photo.id, photo.filename),
+    );
+    expect(statCalls).toBe(0);
   });
 });

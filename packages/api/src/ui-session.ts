@@ -9,13 +9,18 @@ import type { AppSettings, ItemFile } from "@collector/shared";
 import type { DashboardSnapshotPort } from "./service-api.js";
 import { DASHBOARD_SNAPSHOT_PORT_KEYS } from "./service-compose.js";
 
-/** Pixel size of an on-disk cover when path is non-null (cover.size.json / sharp backfill). */
+/** Positive WxH from cover.webp / cover.size.json (layout reservation). */
 export type ItemThumbnailPixelSize = {
   width: number;
   height: number;
 };
 
-/** Path + size from host thumbnail resolve. */
+/**
+ * Host thumbnail resolve for cover slots (#879).
+ * `path` is the display bitmap for `/media/derive` (cover-source gallery file
+ * when known, else cover.webp). `size` is always from cover.webp / cover.size.json
+ * for masonry reservation — it may not match the display bitmap dimensions.
+ */
 export type ItemThumbnailResolved = {
   path: string | null;
   /** null iff path is null; positive pixels when path is set. */

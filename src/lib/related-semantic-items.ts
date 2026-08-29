@@ -7,7 +7,8 @@ import {
   type RelatedTeaser,
 } from "./related-teaser";
 import type { ProbeCoverImageForm } from "./teaser-layout/probe-cover-image-form";
-import { resolveCoverSrc } from "../utils/item-cover-src";
+import { imageDisplaySlotById } from "./image-slot-fit";
+import { buildDerivedImageAttrs } from "../utils/derived-image-src";
 
 export type RelatedSemanticFindSimilar = (
   itemId: string,
@@ -23,9 +24,14 @@ export type RelatedSemanticResolveThumbnailPaths = (
   items: ItemFile[],
 ) => Promise<Map<string, string | null>>;
 
+/** Form probe only (aspect) — same modest budget as thumbnail catalog slot. */
+const RELATED_FORM_PROBE_SLOT_CSS_PX =
+  imageDisplaySlotById("thumbnail").cssWidthPx;
+
 /**
  * Load ranked semantic teasers for the item detail panel (#414).
  * Returns `null` when there are no hits, hydrate shortfall, or abort.
+ * Cover paths stay absolute vault paths; display uses `/media/derive` (#879).
  */
 export async function loadRelatedSemanticTeasers(options: {
   currentItemId: string;
@@ -75,15 +81,21 @@ export async function loadRelatedSemanticTeasers(options: {
 
   const resolved = ordered.map((item) => ({
     item,
-    thumbnail: resolveCoverSrc(paths.get(item.id) ?? null),
+    thumbnail: paths.get(item.id) ?? null,
   }));
 
   const imageForms = await Promise.all(
-    resolved.map(({ thumbnail }) =>
-      thumbnail === null
-        ? Promise.resolve(null)
-        : options.probeCoverImageForm(thumbnail, options.signal),
-    ),
+    resolved.map(({ thumbnail }) => {
+      if (thumbnail === null) {
+        return Promise.resolve(null);
+      }
+      const probeSrc = buildDerivedImageAttrs({
+        displayPath: thumbnail,
+        slotCssWidthPx: RELATED_FORM_PROBE_SLOT_CSS_PX,
+        devicePixelRatio: 1,
+      }).src;
+      return options.probeCoverImageForm(probeSrc, options.signal);
+    }),
   );
   if (options.signal?.aborted) {
     return null;

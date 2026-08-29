@@ -8,6 +8,7 @@ import {
   boardGridHeightPx,
   relatedBoardGapPx,
   relatedBoardPadXPx,
+  relatedSlotCssWidthPx,
 } from "../../lib/teaser-layout/board-grid-geometry";
 import { boardIdForContainerWidth } from "../../lib/teaser-layout/board-width";
 import {
@@ -305,6 +306,12 @@ export function ItemRelatedPanel({
                         composition={slot.composition}
                         onNavigate={onNavigate}
                         style={slotGridStyle(slot)}
+                        slotCssWidthPx={relatedSlotCssWidthPx({
+                          gridWidthPx,
+                          cols,
+                          gapPx,
+                          colSpan: spanSize(slot.span).w,
+                        })}
                       />
                     );
                   })}

@@ -1,4 +1,17 @@
 import "@testing-library/jest-dom/vitest";
+import { afterEach } from "vitest";
+import {
+  setHostMediaCredentials,
+} from "../utils/asset-src";
+
+/**
+ * Cover slots require host `/media/derive` credentials (#879 / #882).
+ * jsdom UI tests share a fixed stand stub.
+ */
+setHostMediaCredentials("http://127.0.0.1:9", "test-token");
+afterEach(() => {
+  setHostMediaCredentials("http://127.0.0.1:9", "test-token");
+});
 
 /**
  * IntersectionObserver is missing in jsdom; near-viewport cards need it.

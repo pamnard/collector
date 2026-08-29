@@ -77,14 +77,15 @@ describe("derived-image-src (#882)", () => {
     assert.match(first.srcSet, /[?&]v=1000/);
   });
 
-  it("falls back to display asset src without host credentials", () => {
-    const attrs = buildDerivedImageAttrs({
-      displayPath: "/vault/cover.webp",
-      slotCssWidthPx: 128,
-      devicePixelRatio: 1,
-    });
-    assert.equal(attrs.src, "/vault/cover.webp");
-    assert.equal(attrs.srcSet, "/vault/cover.webp");
-    assert.equal(attrs.sizes, "128px");
+  it("fails when host credentials are missing for a vault path", () => {
+    assert.throws(
+      () =>
+        buildDerivedImageAttrs({
+          displayPath: "/vault/cover.webp",
+          slotCssWidthPx: 128,
+          devicePixelRatio: 1,
+        }),
+      /host media credentials required/,
+    );
   });
 });

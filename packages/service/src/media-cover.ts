@@ -20,11 +20,13 @@ import {
   attachMediaFile,
   clearItemCover,
   deleteMediaFile,
+  DISK_ITEM_READ_CONCURRENCY,
   listItemMediaWithPaths,
   readItemCoverSize,
   readItemFile,
   replaceMediaFile,
   resolveItemHeroMedia,
+  resolveCoverSourceDisplayPath,
   touchItemUpdatedAt,
   writeItemCoverSize,
   type VaultContext,
@@ -253,6 +255,23 @@ export function createMediaCoverService(
     const { path: vaultPath } = await deps.resolveActiveVault();
     const resolved = new Map<string, ItemThumbnailResolved>();
     const sizeJobs: Promise<void>[] = [];
+    let inFlight = 0;
+    const waiters: Array<() => void> = [];
+
+    const withDiskSlot = async <T>(fn: () => Promise<T>): Promise<T> => {
+      if (inFlight >= DISK_ITEM_READ_CONCURRENCY) {
+        await new Promise<void>((resolve) => {
+          waiters.push(resolve);
+        });
+      }
+      inFlight += 1;
+      try {
+        return await fn();
+      } finally {
+        inFlight -= 1;
+        waiters.shift()?.();
+      }
+    };
 
     await deps.resolveThumbnailPathsProgressive(
       vaultPath,
@@ -262,8 +281,9 @@ export function createMediaCoverService(
       })),
       {
         onResolved: (row) => {
+          // Overlap size/display with remaining path work (#823); bound fan-out.
           sizeJobs.push(
-            (async () => {
+            withDiskSlot(async () => {
               if (row.path === null) {
                 resolved.set(row.id, { path: null, size: null });
                 return;
@@ -273,8 +293,15 @@ export function createMediaCoverService(
                 row.id,
                 row.path,
               );
-              resolved.set(row.id, { path: row.path, size });
-            })(),
+              // path = display bitmap (#879); size still from cover.webp above.
+              const displayPath =
+                (await resolveCoverSourceDisplayPath(
+                  deps.getContext().fs,
+                  vaultPath,
+                  row.id,
+                )) ?? row.path;
+              resolved.set(row.id, { path: displayPath, size });
+            }),
           );
         },
       },

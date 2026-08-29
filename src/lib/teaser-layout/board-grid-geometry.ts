@@ -24,6 +24,25 @@ export function relatedBoardGapPx(containerWidthPx: number): number {
   return containerWidthPx >= RELATED_BOARD_MD_MIN_PX ? 32 : 16;
 }
 
+function relatedBoardCellWidthPx(options: {
+  gridWidthPx: number;
+  cols: number;
+  gapPx: number;
+}): number {
+  const { gridWidthPx, cols, gapPx } = options;
+  if (!(gridWidthPx > 0) || !(cols > 0)) {
+    throw new Error("board width and cols must be positive");
+  }
+  if (gapPx < 0) {
+    throw new Error("gap must be non-negative");
+  }
+  const cellWidthPx = (gridWidthPx - gapPx * (cols - 1)) / cols;
+  if (!(cellWidthPx > 0)) {
+    throw new Error("board gap leaves no positive cell size");
+  }
+  return cellWidthPx;
+}
+
 /**
  * Board height so each 1×1 track is 4:3 (wider than tall).
  * Span 1×2 stacks two row tracks → taller than wide; 1×1 stays landscape.
@@ -35,17 +54,38 @@ export function boardGridHeightPx(options: {
   gapPx: number;
 }): number {
   const { widthPx, cols, rows, gapPx } = options;
-  if (!(widthPx > 0) || !(cols > 0) || !(rows > 0)) {
-    throw new Error("board width, cols, and rows must be positive");
+  if (!(rows > 0)) {
+    throw new Error("board rows must be positive");
   }
-  if (gapPx < 0) {
-    throw new Error("gap must be non-negative");
-  }
-  const cellWidthPx = (widthPx - gapPx * (cols - 1)) / cols;
-  if (!(cellWidthPx > 0)) {
-    throw new Error("board gap leaves no positive cell size");
-  }
+  const cellWidthPx = relatedBoardCellWidthPx({
+    gridWidthPx: widthPx,
+    cols,
+    gapPx,
+  });
   const cellHeightPx =
     (cellWidthPx * RELATED_SLOT_ASPECT_H) / RELATED_SLOT_ASPECT_W;
   return rows * cellHeightPx + gapPx * (rows - 1);
+}
+
+/**
+ * CSS width of one related board slot (including gaps inside multi-col spans).
+ * Used for `/media/derive` — must match the painted cell, not a catalog guess.
+ */
+export function relatedSlotCssWidthPx(options: {
+  gridWidthPx: number;
+  cols: number;
+  gapPx: number;
+  colSpan: number;
+}): number {
+  const { gridWidthPx, cols, gapPx, colSpan } = options;
+  if (!(colSpan > 0)) {
+    throw new Error("related colSpan must be positive");
+  }
+  if (colSpan > cols) {
+    throw new Error(
+      `related colSpan ${colSpan} cannot exceed board cols ${cols}`,
+    );
+  }
+  const cellWidthPx = relatedBoardCellWidthPx({ gridWidthPx, cols, gapPx });
+  return cellWidthPx * colSpan + gapPx * (colSpan - 1);
 }

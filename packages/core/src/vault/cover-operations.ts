@@ -161,7 +161,7 @@ export async function applyItemCover(
   itemId: string,
   coverData: Uint8Array,
   size: CoverPixelSize,
-  options?: { sourceMediaId?: string },
+  options?: { sourceMediaId?: string; sourceFilename?: string },
 ): Promise<ItemFile> {
   const coverPath = itemCoverPath(vaultPath, itemId);
 
@@ -172,6 +172,9 @@ export async function applyItemCover(
   if (options?.sourceMediaId) {
     await writeItemCoverSource(ctx.fs, vaultPath, itemId, {
       mediaId: options.sourceMediaId,
+      ...(options.sourceFilename
+        ? { filename: options.sourceFilename }
+        : {}),
     });
   } else if (await ctx.fs.exists(sourcePath)) {
     await ctx.fs.remove(sourcePath);

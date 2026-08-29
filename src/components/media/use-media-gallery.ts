@@ -6,12 +6,16 @@ import {
   useDismissAlertsOnUnmount,
 } from "../alerts/AlertBusProvider";
 import { errorMessage } from "../alerts/alert-store";
-import { toDisplayAssetSrc } from "../../utils/asset-src";
+import { imageDisplaySlotById } from "../../lib/image-slot-fit";
+import { buildDerivedImageAttrs } from "../../utils/derived-image-src";
 import {
   getCollectorService,
   getUiSession,
 } from "../../services/collector-client";
 import { partitionMediaFiles } from "./partition-media-files";
+
+const GALLERY_COVER_BADGE_SLOT_CSS_PX =
+  imageDisplaySlotById("thumbnail").cssWidthPx;
 
 export const MEDIA_GALLERY_ERROR_ID = "media-gallery-error";
 
@@ -65,7 +69,12 @@ export function useMediaGallery(args: {
         if (cancelled || !path) {
           return;
         }
-        setCoverSrc(toDisplayAssetSrc(path));
+        setCoverSrc(
+          buildDerivedImageAttrs({
+            displayPath: path,
+            slotCssWidthPx: GALLERY_COVER_BADGE_SLOT_CSS_PX,
+          }).src,
+        );
       });
 
     return () => {
