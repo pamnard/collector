@@ -47,6 +47,7 @@ run(
   "dashboard unit tests",
   "node",
   [
+    "--experimental-strip-types",
     "--test",
     join(root, "src/lib/dashboard-perf.test.ts"),
     join(root, "src/lib/dashboard-commit.test.ts"),
@@ -56,6 +57,7 @@ run(
     join(root, "src/lib/cover-path-commit-batcher.test.ts"),
     join(root, "src/components/items/item-grid-cover-slot.test.ts"),
     join(root, "src/lib/image-slot-fit.test.ts"),
+    join(root, "src/utils/derived-image-src.test.ts"),
   ],
 );
 

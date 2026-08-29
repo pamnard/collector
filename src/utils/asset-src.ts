@@ -6,10 +6,10 @@
  * filesystem paths look like `/home/...` and must use the media endpoint.
  *
  * Remote http(s) display assets are forbidden (#739). Only host `/media/file`
- * URLs (already localized) may be http(s).
+ * and `/media/derive` URLs (already localized) may be http(s).
  */
 
-import { readViteCollectorServiceEnv } from "../services/vite-collector-service-env";
+import { readViteCollectorServiceEnv } from "../services/vite-collector-service-env.ts";
 import { buildHostMediaFileUrl } from "@collector/shared";
 
 export { buildHostMediaFileUrl } from "@collector/shared";
@@ -30,7 +30,11 @@ export function clearHostMediaCredentials(): void {
   runtimeHostMedia = null;
 }
 
-function readHostMediaEnv(): { baseUrl: string; token: string } | null {
+/** Active host dial credentials (runtime override or Vite env). */
+export function getHostMediaCredentials(): {
+  baseUrl: string;
+  token: string;
+} | null {
   if (runtimeHostMedia) {
     return runtimeHostMedia;
   }
@@ -41,9 +45,9 @@ function readHostMediaEnv(): { baseUrl: string; token: string } | null {
   return { baseUrl, token };
 }
 
-/** Host `/media/file` URLs only — caller already knows this is http(s). */
-function isHostMediaFileUrl(pathOrUrl: string): boolean {
-  const host = readHostMediaEnv();
+/** Host `/media/file` or `/media/derive` URLs only — caller already knows this is http(s). */
+function isHostMediaUrl(pathOrUrl: string): boolean {
+  const host = getHostMediaCredentials();
   if (!host) {
     return false;
   }
@@ -59,7 +63,9 @@ function isHostMediaFileUrl(pathOrUrl: string): boolean {
   }
   return (
     parsed.pathname === "/media/file" ||
-    parsed.pathname.endsWith("/media/file")
+    parsed.pathname.endsWith("/media/file") ||
+    parsed.pathname === "/media/derive" ||
+    parsed.pathname.endsWith("/media/derive")
   );
 }
 
@@ -75,9 +81,9 @@ export function toDisplayAssetSrc(pathOrUrl: string): string {
     pathOrUrl.startsWith("http://") ||
     pathOrUrl.startsWith("https://")
   ) {
-    return isHostMediaFileUrl(pathOrUrl) ? pathOrUrl : "";
+    return isHostMediaUrl(pathOrUrl) ? pathOrUrl : "";
   }
-  const host = readHostMediaEnv();
+  const host = getHostMediaCredentials();
   if (host) {
     return buildHostMediaFileUrl(host.baseUrl, host.token, pathOrUrl);
   }

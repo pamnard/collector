@@ -44,6 +44,8 @@ function ItemGridCardInner({
 
   const {
     coverSrc,
+    coverSrcSet,
+    coverSizes,
     coverPixelSize,
     coverPending,
     showCover,
@@ -109,6 +111,8 @@ function ItemGridCardInner({
         <img
           ref={onCoverImgRef}
           src={coverSrc}
+          srcSet={coverSrcSet ?? undefined}
+          sizes={coverSizes ?? undefined}
           alt=""
           aria-hidden
           className="pointer-events-none absolute h-px w-px opacity-0"
@@ -130,6 +134,8 @@ function ItemGridCardInner({
             <img
               ref={onCoverImgRef}
               src={coverSrc}
+              srcSet={coverSrcSet ?? undefined}
+              sizes={coverSizes ?? undefined}
               alt=""
               {...itemGridCoverImgSizeAttrs(slotSize)}
               className={itemGridCoverImgClassName({

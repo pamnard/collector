@@ -10,10 +10,12 @@ export type ViteCollectorServiceEnv = {
 
 /** Trimmed baseUrl (no trailing slash) + token; empty strings when unset. */
 export function readViteCollectorServiceEnv(): ViteCollectorServiceEnv {
-  const env = import.meta.env as Record<string, string | undefined>;
-  const baseUrl = String(env.VITE_COLLECTOR_SERVICE_BASE_URL ?? "")
+  const metaEnv =
+    (import.meta as ImportMeta & { env?: Record<string, string | undefined> })
+      .env ?? {};
+  const baseUrl = String(metaEnv.VITE_COLLECTOR_SERVICE_BASE_URL ?? "")
     .trim()
     .replace(/\/+$/, "");
-  const token = String(env.VITE_COLLECTOR_SERVICE_TOKEN ?? "").trim();
+  const token = String(metaEnv.VITE_COLLECTOR_SERVICE_TOKEN ?? "").trim();
   return { baseUrl, token };
 }

@@ -467,3 +467,187 @@ describe("host HTTP media (#553)", () => {
     }
   });
 });
+
+describe("host HTTP /media/derive (#882)", () => {
+  const dirs: string[] = [];
+
+  afterEach(async () => {
+    for (const dir of dirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  async function start() {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-host-derive-"));
+    dirs.push(dataDir);
+    const host = await startServiceHost({ dataDir, port: 0 });
+    const token = readFileSync(
+      defaultServiceHostTokenPath(dataDir),
+      "utf8",
+    ).trim();
+    return { host, token, dataDir };
+  }
+
+  async function writeVaultPng(
+    dataDir: string,
+    width: number,
+    height: number,
+  ): Promise<string> {
+    const { default: sharp } = await import("sharp");
+    const root = vaultsRoot(dataDir);
+    const vaultIds = readdirSync(root).filter((name) => !name.startsWith("."));
+    expect(vaultIds.length).toBeGreaterThan(0);
+    const mediaDir = join(
+      root,
+      vaultIds[0]!,
+      "media",
+      "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    );
+    mkdirSync(mediaDir, { recursive: true });
+    const filePath = join(mediaDir, "source.png");
+    await sharp({
+      create: {
+        width,
+        height,
+        channels: 3,
+        background: { r: 30, g: 60, b: 90 },
+      },
+    })
+      .png()
+      .toFile(filePath);
+    return filePath;
+  }
+
+  it("rejects /media/derive without auth", async () => {
+    const { host, dataDir } = await start();
+    try {
+      const filePath = await writeVaultPng(dataDir, 400, 200);
+      const res = await fetch(
+        `${host.baseUrl}/media/derive?path=${encodeURIComponent(filePath)}&w=256`,
+      );
+      expect(res.status).toBe(401);
+    } finally {
+      await host.close();
+    }
+  });
+
+  it("rejects unknown whitelist w with 400", async () => {
+    const { host, token, dataDir } = await start();
+    try {
+      const filePath = await writeVaultPng(dataDir, 400, 200);
+      const res = await fetch(
+        `${host.baseUrl}/media/derive?path=${encodeURIComponent(filePath)}&w=123&token=${encodeURIComponent(token)}`,
+      );
+      expect(res.status).toBe(400);
+    } finally {
+      await host.close();
+    }
+  });
+
+  it("rejects path outside vaults root", async () => {
+    const { host, token, dataDir } = await start();
+    try {
+      const outside = join(dataDir, "outside.png");
+      const { default: sharp } = await import("sharp");
+      await sharp({
+        create: {
+          width: 32,
+          height: 32,
+          channels: 3,
+          background: { r: 1, g: 1, b: 1 },
+        },
+      })
+        .png()
+        .toFile(outside);
+      const res = await fetch(
+        `${host.baseUrl}/media/derive?path=${encodeURIComponent(outside)}&w=128&token=${encodeURIComponent(token)}`,
+      );
+      expect(res.status).toBe(403);
+    } finally {
+      await host.close();
+    }
+  });
+
+  it("serves webp at whitelist width without upscale; cache hit skips re-encode", async () => {
+    const { host, token, dataDir } = await start();
+    try {
+      const filePath = await writeVaultPng(dataDir, 200, 100);
+      const url = `${host.baseUrl}/media/derive?path=${encodeURIComponent(filePath)}&w=640&token=${encodeURIComponent(token)}`;
+
+      const first = await fetch(url);
+      expect(first.status).toBe(200);
+      expect(first.headers.get("content-type")).toBe("image/webp");
+      const firstBytes = Buffer.from(await first.arrayBuffer());
+      const { default: sharp } = await import("sharp");
+      const firstMeta = await sharp(firstBytes).metadata();
+      expect(firstMeta.format).toBe("webp");
+      expect(firstMeta.width).toBe(200);
+      expect(firstMeta.height).toBe(100);
+
+      const cacheDir = join(dataDir, "image-derive-cache");
+      const before = readdirSync(cacheDir);
+      expect(before.length).toBe(1);
+
+      const second = await fetch(url);
+      expect(second.status).toBe(200);
+      const secondBytes = Buffer.from(await second.arrayBuffer());
+      expect(Buffer.compare(firstBytes, secondBytes)).toBe(0);
+      expect(readdirSync(cacheDir)).toEqual(before);
+
+      const head = await fetch(url, { method: "HEAD" });
+      expect(head.status).toBe(200);
+      expect(head.headers.get("content-type")).toBe("image/webp");
+      expect((await head.arrayBuffer()).byteLength).toBe(0);
+
+      const withBearer = await fetch(
+        `${host.baseUrl}/media/derive?path=${encodeURIComponent(filePath)}&w=640`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      expect(withBearer.status).toBe(200);
+    } finally {
+      await host.close();
+    }
+  });
+
+  it("downscales wide sources to requested w", async () => {
+    const { host, token, dataDir } = await start();
+    try {
+      const filePath = await writeVaultPng(dataDir, 1600, 800);
+      const res = await fetch(
+        `${host.baseUrl}/media/derive?path=${encodeURIComponent(filePath)}&w=480&token=${encodeURIComponent(token)}`,
+      );
+      expect(res.status).toBe(200);
+      const { default: sharp } = await import("sharp");
+      const meta = await sharp(Buffer.from(await res.arrayBuffer())).metadata();
+      expect(meta.width).toBe(480);
+      expect(meta.height).toBe(240);
+    } finally {
+      await host.close();
+    }
+  });
+
+  it("uses a new cache entry when source mtime changes", async () => {
+    const { host, token, dataDir } = await start();
+    try {
+      const filePath = await writeVaultPng(dataDir, 400, 200);
+      const url = `${host.baseUrl}/media/derive?path=${encodeURIComponent(filePath)}&w=256&token=${encodeURIComponent(token)}`;
+      const first = await fetch(url);
+      expect(first.status).toBe(200);
+      const cacheDir = join(dataDir, "image-derive-cache");
+      const before = readdirSync(cacheDir);
+      expect(before.length).toBe(1);
+
+      const { utimesSync } = await import("node:fs");
+      const next = new Date(Date.now() + 60_000);
+      utimesSync(filePath, next, next);
+
+      const second = await fetch(url);
+      expect(second.status).toBe(200);
+      const after = readdirSync(cacheDir);
+      expect(after.length).toBe(2);
+      expect(after).not.toEqual(before);
+    } finally {
+      await host.close();
+    }
+  });
+});

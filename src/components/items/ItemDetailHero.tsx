@@ -3,8 +3,12 @@ import { useEffect, useState } from "react";
 import type { ItemFile } from "@collector/shared";
 import type { ItemHeroMedia } from "@collector/api";
 import { useDetailHeroExpanded } from "../../hooks/useDetailHeroExpanded";
-import { toDisplayAssetSrc } from "../../utils/asset-src";
+import { imageDisplaySlotById } from "../../lib/image-slot-fit";
 import { getUiSession } from "../../services/collector-client";
+import {
+  buildDerivedImageAttrs,
+  type DerivedImageAttrs,
+} from "../../utils/derived-image-src";
 import { AspectRatio } from "../ui/aspect-ratio";
 import { Button } from "../ui/button";
 import { itemDetailHeroImgClassName } from "./item-detail-hero-media";
@@ -15,6 +19,8 @@ interface ItemDetailHeroProps {
   playError?: string | null;
 }
 
+const HERO_SLOT_CSS_WIDTH_PX = imageDisplaySlotById("detail-hero").cssWidthPx;
+
 /** Cover / first gallery media as detail page header. Renders nothing if none. */
 export function ItemDetailHero({
   item,
@@ -22,17 +28,17 @@ export function ItemDetailHero({
   playError,
 }: ItemDetailHeroProps) {
   const [hero, setHero] = useState<ItemHeroMedia | null>(null);
+  const [displayAttrs, setDisplayAttrs] = useState<DerivedImageAttrs | null>(
+    null,
+  );
   const { expanded, setExpanded } = useDetailHeroExpanded();
   const canPlayLocalVideo =
     Boolean(onPlayLocalVideo) && hero?.kind === "video";
-  const displaySrc =
-    hero?.displayPath !== null && hero?.displayPath !== undefined
-      ? toDisplayAssetSrc(hero.displayPath)
-      : null;
 
   useEffect(() => {
     let cancelled = false;
     setHero(null);
+    setDisplayAttrs(null);
 
     void getUiSession()
       .thumbnails.resolveItemHeroMedia(item)
@@ -42,6 +48,14 @@ export function ItemDetailHero({
           return;
         }
         setHero(media);
+        if (media.displayPath) {
+          setDisplayAttrs(
+            buildDerivedImageAttrs({
+              displayPath: media.displayPath,
+              slotCssWidthPx: HERO_SLOT_CSS_WIDTH_PX,
+            }),
+          );
+        }
       });
 
     return () => {
@@ -49,24 +63,28 @@ export function ItemDetailHero({
     };
   }, [item.id, item.thumbnail, item.updated_at]);
 
-  if (!hero || (!displaySrc && hero.kind !== "video")) {
+  if (!hero || (!displayAttrs?.src && hero.kind !== "video")) {
     return null;
   }
 
   return (
     <div className="min-w-0">
       <div className="group relative mx-auto w-full max-w-[900px]">
-        {displaySrc ? (
+        {displayAttrs?.src ? (
           expanded ? (
             <img
-              src={displaySrc}
+              src={displayAttrs.src}
+              srcSet={displayAttrs.srcSet}
+              sizes={displayAttrs.sizes}
               alt=""
               className={itemDetailHeroImgClassName(true)}
             />
           ) : (
             <AspectRatio ratio={16 / 9}>
               <img
-                src={displaySrc}
+                src={displayAttrs.src}
+                srcSet={displayAttrs.srcSet}
+                sizes={displayAttrs.sizes}
                 alt=""
                 className={itemDetailHeroImgClassName(false)}
               />

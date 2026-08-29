@@ -8,7 +8,8 @@ import {
   isDashboardGridWarmActive,
   subscribeDashboardGridWarm,
 } from "../../lib/dashboard-grid-warm";
-import { resolveCoverSrc } from "../../utils/item-cover-src";
+import { imageDisplaySlotById } from "../../lib/image-slot-fit";
+import { buildDerivedImageAttrs } from "../../utils/derived-image-src";
 import {
   ITEM_GRID_COVER_DECODE_TIMEOUT_MS,
   planItemGridCoverDecode,
@@ -20,12 +21,34 @@ import {
   type ItemGridCoverPixelSize,
 } from "./item-grid-cover-slot";
 
+const GRID_SLOT_CSS_WIDTH_PX = imageDisplaySlotById("dashboard-grid").cssWidthPx;
+
+function derivedCoverAttrs(thumbnailPath: string | null | undefined): {
+  src: string | null;
+  srcSet: string | null;
+  sizes: string | null;
+} {
+  if (thumbnailPath === undefined || thumbnailPath === null) {
+    return { src: null, srcSet: null, sizes: null };
+  }
+  const attrs = buildDerivedImageAttrs({
+    displayPath: thumbnailPath,
+    slotCssWidthPx: GRID_SLOT_CSS_WIDTH_PX,
+  });
+  if (!attrs.src) {
+    return { src: null, srcSet: null, sizes: null };
+  }
+  return { src: attrs.src, srcSet: attrs.srcSet, sizes: attrs.sizes };
+}
+
 export function useItemGridCover(args: {
   thumbnailPath: string | null | undefined;
   /** Near-viewport cards decode; offscreen cards defer until scroll. */
   shouldDecode: boolean;
 }): {
   coverSrc: string | null;
+  coverSrcSet: string | null;
+  coverSizes: string | null;
   coverSettled: boolean;
   coverPixelSize: ItemGridCoverPixelSize | null;
   coverPending: boolean;
@@ -37,6 +60,8 @@ export function useItemGridCover(args: {
 } {
   const { thumbnailPath, shouldDecode } = args;
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
+  const [coverSrcSet, setCoverSrcSet] = useState<string | null>(null);
+  const [coverSizes, setCoverSizes] = useState<string | null>(null);
   const [coverSettled, setCoverSettled] = useState(false);
   const [coverPixelSize, setCoverPixelSize] =
     useState<ItemGridCoverPixelSize | null>(null);
@@ -50,8 +75,7 @@ export function useItemGridCover(args: {
 
   const decodeCovers = shouldDecode || warmDecode;
 
-  const expectedCoverSrc =
-    thumbnailPath === undefined ? null : resolveCoverSrc(thumbnailPath);
+  const expectedCoverSrc = derivedCoverAttrs(thumbnailPath).src;
   const { coverPending, showCover, loadCover } = itemGridCoverSlot({
     expectedCoverSrc,
     coverSrc,
@@ -67,11 +91,10 @@ export function useItemGridCover(args: {
   }, [coverSettled]);
 
   useEffect(() => {
-    const resolvedSrc =
-      thumbnailPath === undefined ? null : resolveCoverSrc(thumbnailPath);
+    const resolved = derivedCoverAttrs(thumbnailPath);
     const plan = planItemGridCoverDecode({
       thumbnailPath,
-      resolvedSrc,
+      resolvedSrc: resolved.src,
       shouldDecode: decodeCovers,
       currentSrc: coverSrcRef.current,
       currentSettled: coverSettledRef.current,
@@ -83,6 +106,8 @@ export function useItemGridCover(args: {
 
     if (plan.kind === "settled-empty") {
       setCoverSrc(null);
+      setCoverSrcSet(null);
+      setCoverSizes(null);
       setCoverSettled(true);
       setCoverPixelSize(null);
       return;
@@ -90,12 +115,16 @@ export function useItemGridCover(args: {
 
     if (plan.kind === "defer") {
       setCoverSrc(null);
+      setCoverSrcSet(null);
+      setCoverSizes(null);
       setCoverSettled(false);
       setCoverPixelSize(null);
       return;
     }
 
     setCoverSrc(plan.src);
+    setCoverSrcSet(resolved.srcSet);
+    setCoverSizes(resolved.sizes);
     setCoverSettled(false);
     setCoverPixelSize(null);
   }, [decodeCovers, thumbnailPath]);
@@ -114,6 +143,8 @@ export function useItemGridCover(args: {
       }
       console.warn("[ItemGridCard] cover decode timed out", { src: coverSrc });
       setCoverSrc(null);
+      setCoverSrcSet(null);
+      setCoverSizes(null);
       setCoverSettled(true);
       setCoverPixelSize(null);
     }, ITEM_GRID_COVER_DECODE_TIMEOUT_MS);
@@ -135,6 +166,8 @@ export function useItemGridCover(args: {
 
   const onCoverImgError = useCallback(() => {
     setCoverSrc(null);
+    setCoverSrcSet(null);
+    setCoverSizes(null);
     setCoverSettled(true);
     setCoverPixelSize(null);
   }, []);
@@ -154,6 +187,8 @@ export function useItemGridCover(args: {
 
   return {
     coverSrc,
+    coverSrcSet,
+    coverSizes,
     coverSettled,
     coverPixelSize,
     coverPending,

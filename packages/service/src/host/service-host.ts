@@ -4,8 +4,8 @@
  *
  * Uses the canonical profile layout (#238).
  *
- * Browser surfaces (#551/#553/#555): always-on POST /api/rpc + WS /api/events +
- * GET/HEAD /media/file with the same host token.
+ * Browser surfaces (#551/#553/#555/#882): always-on POST /api/rpc + WS /api/events +
+ * GET/HEAD /media/file and /media/derive with the same host token.
  * Optional static UI dir + GET /api/ui-bootstrap for packaged browser UI (#555).
  */
 
@@ -37,6 +37,10 @@ import { deriveWsEventsUrl } from "@collector/shared";
 import { isValidBearer } from "./http/bearer.js";
 import { writeCorsPreflight } from "./http/cors.js";
 import { createHostHttpEventsHub } from "./http/events-hub.js";
+import {
+  handleMediaDerive,
+  isMediaDeriveRequest,
+} from "./http/media-derive.js";
 import {
   handleMediaFile,
   isMediaFileRequest,
@@ -234,6 +238,18 @@ export async function startServiceHost(
         await handleMediaFile(req, res, url, {
           expectedToken: hostToken,
           vaultsRootPath,
+          ...(vaultsRootResolved === undefined
+            ? {}
+            : { vaultsRootResolved }),
+        });
+        return;
+      }
+
+      if (isMediaDeriveRequest(req.method, url.pathname)) {
+        await handleMediaDerive(req, res, url, {
+          expectedToken: hostToken,
+          vaultsRootPath,
+          dataDir: layout.dataDir,
           ...(vaultsRootResolved === undefined
             ? {}
             : { vaultsRootResolved }),

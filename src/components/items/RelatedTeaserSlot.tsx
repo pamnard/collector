@@ -1,13 +1,18 @@
 import type { CSSProperties } from "react";
+import { imageDisplaySlotById } from "../../lib/image-slot-fit";
 import type { RelatedTeaser } from "../../lib/related-teaser";
 import type { TeaserComposition } from "../../lib/teaser-layout/composition";
 import { cn } from "../../lib/utils";
+import { buildDerivedImageAttrs } from "../../utils/derived-image-src";
 import { textOnlyTeaserChromeClass } from "./text-only-teaser-chrome";
 import { formatItemDate } from "../../utils/formatItemDate";
 import {
   ContentTypeIcon,
   contentTypeAccentClass,
 } from "./content-type-icon";
+
+const RELATED_SLOT_CSS_WIDTH_PX =
+  imageDisplaySlotById("related-teaser").cssWidthPx;
 
 type RelatedTeaserSlotProps = {
   teaser: RelatedTeaser;
@@ -35,7 +40,13 @@ export function RelatedTeaserSlot({
   onNavigate,
   style,
 }: RelatedTeaserSlotProps) {
-  const coverSrc = composition.hasImage ? teaser.thumbnail : null;
+  const coverAttrs =
+    composition.hasImage && teaser.thumbnail
+      ? buildDerivedImageAttrs({
+          displayPath: teaser.thumbnail,
+          slotCssWidthPx: RELATED_SLOT_CSS_WIDTH_PX,
+        })
+      : null;
   const largeType = composition.span === "2x2" || !composition.hasImage;
 
   return (
@@ -49,10 +60,12 @@ export function RelatedTeaserSlot({
       )}
       onClick={() => onNavigate(teaser.id)}
     >
-      {coverSrc ? (
+      {coverAttrs ? (
         <span className="relative min-h-0 w-full flex-1 overflow-hidden rounded-lg">
           <img
-            src={coverSrc}
+            src={coverAttrs.src}
+            srcSet={coverAttrs.srcSet}
+            sizes={coverAttrs.sizes}
             alt=""
             className="absolute inset-0 h-full w-full object-cover"
             loading="lazy"
