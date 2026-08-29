@@ -87,8 +87,8 @@ class CountingFileSystemAdapter implements FileSystemAdapter {
     return this.inner.stat(path);
   }
 
-  touch(path: string): Promise<void> {
-    return this.inner.touch(path);
+  touch(path: string, mtimeMs?: number): Promise<void> {
+    return this.inner.touch(path, mtimeMs);
   }
 
   remove(path: string, options?: { recursive?: boolean }): Promise<void> {

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import {
   diskMtimeMsFromDocumentMarkdown,
+  ensureFileMtimeAdvanced,
   fileMtimeMsFromUpdatedAt,
   recoverItemDiskMtimeMs,
 } from "./recover-item-mtime.js";
@@ -29,9 +30,9 @@ describe("recoverItemDiskMtimeMs", () => {
 
     const touchCalls: string[] = [];
     const originalTouch = fs.touch.bind(fs);
-    fs.touch = async (path: string) => {
+    fs.touch = async (path: string, mtimeMs?: number) => {
       touchCalls.push(path);
-      return originalTouch(path);
+      return originalTouch(path, mtimeMs);
     };
     try {
       const recovered = await recoverItemDiskMtimeMs(fs, docPath);
@@ -57,10 +58,10 @@ describe("recoverItemDiskMtimeMs", () => {
       }
       return originalStat(path);
     };
-    fs.touch = async (path: string) => {
+    fs.touch = async (path: string, mtimeMs?: number) => {
       touchCount += 1;
       touched = true;
-      return originalTouch(path);
+      return originalTouch(path, mtimeMs);
     };
     try {
       const recovered = await recoverItemDiskMtimeMs(fs, docPath);
@@ -70,6 +71,44 @@ describe("recoverItemDiskMtimeMs", () => {
       fs.stat = originalStat;
       fs.touch = originalTouch;
     }
+  });
+});
+
+describe("ensureFileMtimeAdvanced (#911)", () => {
+  let dir = "";
+  const fs = new NodeFileSystemAdapter();
+
+  afterEach(async () => {
+    if (dir) {
+      await rm(dir, { recursive: true, force: true });
+      dir = "";
+    }
+  });
+
+  it("returns current mtime when write already advanced it", async () => {
+    dir = await mkdtemp(join(tmpdir(), "collector-ensure-mtime-ok-"));
+    const docPath = join(dir, "item.md");
+    await writeFile(docPath, "a", "utf8");
+    const previous = (await fs.stat(docPath)).mtimeMs;
+    expect(previous).not.toBeNull();
+    await fs.touch(docPath, previous! + 10);
+    const advanced = await ensureFileMtimeAdvanced(fs, docPath, previous!);
+    expect(advanced).toBeGreaterThan(previous!);
+  });
+
+  it("forces mtime forward when rapid rewrite keeps the same stamp", async () => {
+    dir = await mkdtemp(join(tmpdir(), "collector-ensure-mtime-stuck-"));
+    const docPath = join(dir, "item.md");
+    await writeFile(docPath, "a", "utf8");
+    const pinned = 1_700_000_000_000;
+    await fs.touch(docPath, pinned);
+    expect((await fs.stat(docPath)).mtimeMs).toBe(pinned);
+    // Rapid rewrite often retains mtime on this FS; pin then rewrite.
+    await writeFile(docPath, "b", "utf8");
+
+    const next = await ensureFileMtimeAdvanced(fs, docPath, pinned);
+    expect(next).toBeGreaterThan(pinned);
+    expect((await fs.stat(docPath)).mtimeMs).toBe(next);
   });
 });
 

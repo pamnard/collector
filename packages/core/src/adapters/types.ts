@@ -43,7 +43,12 @@ export interface FileSystemAdapter {
   /** Like `readDir`, but includes whether each entry is a directory. */
   readDirEntries(path: string): Promise<VaultDirEntry[]>;
   stat(path: string): Promise<{ mtimeMs: number | null }>;
-  touch(path: string): Promise<void>;
+  /**
+   * Bump path atime/mtime to now, or to `mtimeMs` when provided.
+   * Explicit mtime is required so rapid item rewrites can advance past a
+   * stuck FS timestamp (presentation stamps / derived-job keys).
+   */
+  touch(path: string, mtimeMs?: number): Promise<void>;
   remove(path: string, options?: { recursive?: boolean }): Promise<void>;
   /** Move/rename a file or directory (used for folder renames + item moves). */
   rename(from: string, to: string): Promise<void>;

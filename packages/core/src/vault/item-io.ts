@@ -21,6 +21,7 @@ import {
   parseItemDocumentResolved,
   serializeItemDocument,
 } from "./item-document.js";
+import { ensureFileMtimeAdvanced } from "./recover-item-mtime.js";
 import {
   dirname,
   itemMarkdownPath,
@@ -276,7 +277,16 @@ export async function writeItemDocument(
   await ensureParentDir(fs, vaultRootPath, parsed.id);
   const maps = await loadTagMaps(fs, vaultRootPath);
   const markdown = serializeItemDocument(parsed, body, maps.byId);
-  await fs.writeText(itemMarkdownPath(vaultRootPath, parsed.id), markdown);
+  const docPath = itemMarkdownPath(vaultRootPath, parsed.id);
+  let previousMtimeMs: number | null = null;
+  if (await fs.exists(docPath)) {
+    const before = await fs.stat(docPath);
+    previousMtimeMs = before.mtimeMs;
+  }
+  await fs.writeText(docPath, markdown);
+  if (previousMtimeMs !== null) {
+    await ensureFileMtimeAdvanced(fs, docPath, previousMtimeMs);
+  }
   await fs.touch(vaultRootPath);
 }
 
