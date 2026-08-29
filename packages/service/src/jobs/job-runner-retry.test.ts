@@ -1,80 +1,127 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { runJobsMigrations } from "@collector/db";
+import { NodeSqliteExecutor } from "../host/node-sql.js";
 import { createApplyRetry } from "./job-runner-retry.js";
-import type { JobRow } from "./job-store-types.js";
+import { createJobStore, type JobRow, type JobStore } from "./job-store.js";
 
-function jobRow(): JobRow {
-  return {
-    id: "job-1",
-    type: "__test_noop",
-    payload_json: "{}",
-    status: "running",
-    priority: 0,
-    idempotency_key: null,
-    attempts: 2,
-    max_attempts: 3,
-    available_at: "2020-01-01T00:00:00.000Z",
-    started_at: "2020-01-01T00:00:00.000Z",
-    finished_at: null,
-    last_error: null,
-    created_at: "2020-01-01T00:00:00.000Z",
-    updated_at: "2020-01-01T00:00:00.000Z",
-  };
-}
+const FIXED_NOW = new Date("2020-01-01T12:00:00.000Z");
+const FIXED_NOW_ISO = FIXED_NOW.toISOString();
 
 describe("createApplyRetry (#798 / #793 seam)", () => {
-  const now = () => new Date("2020-01-01T12:00:00.000Z");
+  const dirs: string[] = [];
+  const executors: NodeSqliteExecutor[] = [];
 
-  it("reports permanent failure when scheduleRetry settles as failed", async () => {
-    const scheduleRetry = vi.fn(async () => ({
-      status: "failed" as const,
-      attempts: 3,
-    }));
-    const reportPermanentFailure = vi.fn();
-    const applyRetry = createApplyRetry({
-      store: { scheduleRetry } as never,
-      now,
-      reportPermanentFailure,
-    });
-
-    await applyRetry(jobRow(), "boom", {
-      availableAt: "2020-01-01T12:00:00.000Z",
-      burnAttempt: true,
-    });
-
-    expect(scheduleRetry).toHaveBeenCalledWith({
-      id: "job-1",
-      nowIso: "2020-01-01T12:00:00.000Z",
-      availableAt: "2020-01-01T12:00:00.000Z",
-      error: "boom",
-      burnAttempt: true,
-    });
-    expect(reportPermanentFailure).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "job-1" }),
-      "boom",
-      3,
-    );
+  afterEach(async () => {
+    for (const sql of executors.splice(0)) {
+      await sql.close();
+    }
+    for (const dir of dirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
-  it("does not report permanent failure when a retry is scheduled", async () => {
-    const scheduleRetry = vi.fn(async () => ({
-      status: "pending" as const,
-      attempts: 2,
-    }));
-    const reportPermanentFailure = vi.fn();
-    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+  async function openStore(): Promise<JobStore> {
+    const dir = mkdtempSync(join(tmpdir(), "collector-jobs-retry-"));
+    dirs.push(dir);
+    const sql = await NodeSqliteExecutor.open(join(dir, "jobs.db"));
+    executors.push(sql);
+    await runJobsMigrations(sql);
+    return createJobStore(sql);
+  }
+
+  async function insertAndClaim(
+    store: JobStore,
+    overrides: { id?: string; maxAttempts?: number } = {},
+  ): Promise<JobRow> {
+    const id = overrides.id ?? "job-1";
+    await store.insertJob({
+      id,
+      type: "__test_noop",
+      payloadJson: "{}",
+      priority: 0,
+      idempotencyKey: null,
+      maxAttempts: overrides.maxAttempts ?? 3,
+      availableAt: "2020-01-01T00:00:00.000Z",
+      createdAt: "2020-01-01T00:00:00.000Z",
+    });
+    const claimed = await store.claimNext("2020-01-01T00:00:00.000Z");
+    if (!claimed || claimed.id !== id) {
+      throw new Error(`expected claim of ${id}`);
+    }
+    return claimed;
+  }
+
+  it("writes failed row and reports permanent failure when attempts are exhausted", async () => {
+    const store = await openStore();
+    const permanentFailures: Array<{
+      id: string;
+      error: string;
+      attempts: number;
+    }> = [];
     const applyRetry = createApplyRetry({
-      store: { scheduleRetry } as never,
-      now,
-      reportPermanentFailure,
+      store,
+      now: () => FIXED_NOW,
+      reportPermanentFailure: (job, error, attempts) => {
+        permanentFailures.push({ id: job.id, error, attempts });
+      },
     });
 
-    await applyRetry(jobRow(), "transient", {
-      availableAt: "2020-01-01T12:00:05.000Z",
+    const job = await insertAndClaim(store, { maxAttempts: 1 });
+    expect(job.attempts).toBe(0);
+
+    await applyRetry(job, "boom", {
+      availableAt: FIXED_NOW_ISO,
+      burnAttempt: true,
+    });
+
+    const row = await store.getJob(job.id);
+    if (!row) {
+      throw new Error("job missing after applyRetry");
+    }
+    expect(row.status).toBe("failed");
+    expect(row.attempts).toBe(1);
+    expect(row.last_error).toBe("boom");
+    expect(row.finished_at).toBe(FIXED_NOW_ISO);
+    expect(permanentFailures).toEqual([
+      { id: "job-1", error: "boom", attempts: 1 },
+    ]);
+  });
+
+  it("reschedules pending without permanent failure when attempts remain", async () => {
+    const store = await openStore();
+    const permanentFailures: unknown[] = [];
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const applyRetry = createApplyRetry({
+      store,
+      now: () => FIXED_NOW,
+      reportPermanentFailure: (job, error, attempts) => {
+        permanentFailures.push({ id: job.id, error, attempts });
+      },
+    });
+
+    const job = await insertAndClaim(store, { maxAttempts: 3 });
+    const availableAt = "2020-01-01T12:00:05.000Z";
+
+    await applyRetry(job, "transient", {
+      availableAt,
       burnAttempt: false,
       retryAfterMs: 5_000,
     });
 
-    expect(reportPermanentFailure).not.toHaveBeenCalled();
+    const row = await store.getJob(job.id);
+    if (!row) {
+      throw new Error("job missing after applyRetry");
+    }
+    expect(row.status).toBe("pending");
+    expect(row.attempts).toBe(0);
+    expect(row.last_error).toBe("transient");
+    expect(row.available_at).toBe(availableAt);
+    expect(row.started_at).toBeNull();
+    expect(row.finished_at).toBeNull();
+    expect(permanentFailures).toEqual([]);
     expect(info).toHaveBeenCalledWith(
       "[jobs] retry scheduled",
       expect.objectContaining({
@@ -83,5 +130,31 @@ describe("createApplyRetry (#798 / #793 seam)", () => {
       }),
     );
     info.mockRestore();
+  });
+
+  it("burns an attempt on retryable reschedule when burnAttempt is true", async () => {
+    const store = await openStore();
+    const applyRetry = createApplyRetry({
+      store,
+      now: () => FIXED_NOW,
+      reportPermanentFailure: () => {
+        throw new Error("should not permanent-fail");
+      },
+    });
+
+    const job = await insertAndClaim(store, { maxAttempts: 3 });
+    await applyRetry(job, "flaky", {
+      availableAt: "2020-01-01T12:00:05.000Z",
+      burnAttempt: true,
+    });
+
+    const row = await store.getJob(job.id);
+    if (!row) {
+      throw new Error("job missing after applyRetry");
+    }
+    expect(row.status).toBe("pending");
+    expect(row.attempts).toBe(1);
+    expect(row.last_error).toBe("flaky");
+    expect(row.available_at).toBe("2020-01-01T12:00:05.000Z");
   });
 });
