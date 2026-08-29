@@ -1,31 +1,63 @@
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
+import {
+  createSqlIndexTestSuite,
+  noteItemFields,
+} from "../index/sql-index-test-harness.js";
+import { createId } from "../util/ids.js";
+import { upsertItem } from "./item-operations.js";
+import { itemMarkdownPath } from "./paths.js";
 import { countTextStats } from "./text-stats.js";
+import { parseDocumentMarkdown } from "./frontmatter.js";
 
-describe("countTextStats", () => {
-  it("returns zeros for empty body", () => {
-    expect(countTextStats("")).toEqual({ wordCount: 0, characterCount: 0 });
-  });
+describe("countTextStats via upsert + index/disk", () => {
+  const suite = createSqlIndexTestSuite();
+  suite.registerCleanup();
 
-  it("counts characters including spaces", () => {
-    expect(countTextStats("ab cd").characterCount).toBe(5);
-  });
+  it("persists word/character counts from body through disk and BetterSqlite", async () => {
+    const { ctx, fs, vault } = await suite.openVaultIndex("collector-text-stats-");
+    const { meta, path } = vault;
+    const timestamp = new Date().toISOString();
 
-  it("counts unicode words and code points", () => {
-    const stats = countTextStats("привет мир");
-    expect(stats.wordCount).toBe(2);
-    expect(stats.characterCount).toBe(10);
-  });
+    const cases: Array<{ body: string; wordCount: number; characterCount: number }> = [
+      { body: "", wordCount: 0, characterCount: 0 },
+      { body: "ab cd", wordCount: 2, characterCount: 5 },
+      { body: "привет мир", wordCount: 2, characterCount: 10 },
+      { body: "hi 👋", wordCount: 1, characterCount: 4 },
+      {
+        body: "title: not frontmatter\n\nhello world",
+        wordCount: 5,
+        characterCount: Array.from("title: not frontmatter\n\nhello world").length,
+      },
+    ];
 
-  it("counts emoji as code points, not as letter-words", () => {
-    const stats = countTextStats("hi 👋");
-    expect(stats.wordCount).toBe(1);
-    expect(stats.characterCount).toBe(4);
-  });
+    for (const expected of cases) {
+      expect(countTextStats(expected.body)).toEqual({
+        wordCount: expected.wordCount,
+        characterCount: expected.characterCount,
+      });
 
-  it("does not treat YAML-looking lines specially — caller passes body only", () => {
-    const body = "title: not frontmatter\n\nhello world";
-    const stats = countTextStats(body);
-    expect(stats.wordCount).toBe(5);
-    expect(stats.characterCount).toBe(Array.from(body).length);
+      const itemId = `${createId()}.md`;
+      await upsertItem(ctx, path, meta.id, {
+        item: noteItemFields(meta.id, itemId, {
+          title: "Stats",
+          created_at: timestamp,
+          updated_at: timestamp,
+        }),
+        content: expected.body,
+      });
+
+      const docPath = itemMarkdownPath(path, itemId);
+      expect(await fs.exists(docPath)).toBe(true);
+      const { body: diskBody } = parseDocumentMarkdown(await readFile(docPath, "utf8"));
+      expect(countTextStats(diskBody)).toEqual({
+        wordCount: expected.wordCount,
+        characterCount: expected.characterCount,
+      });
+
+      const [row] = await ctx.index.listItemFilesByIds(meta.id, [itemId]);
+      expect(row?.word_count).toBe(expected.wordCount);
+      expect(row?.character_count).toBe(expected.characterCount);
+    }
   });
 });
