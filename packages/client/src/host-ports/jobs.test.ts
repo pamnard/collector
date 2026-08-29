@@ -182,11 +182,8 @@ describe("createHostJobsPort (#630)", () => {
     }
   });
 
-  // Live host boots itemDerivedRefresh / refreshEmbeddings on the same jobs DB.
-  // getJobStats RPC can take hundreds of ms under that contention; default
-  // waitFor (1s) only gets one slow poll and flakes (#912).
-  const liveHostWaitMs = 10_000;
-
+  // Live host boots derived/embedding jobs on the same DB; getJobStats RPC can
+  // take hundreds of ms under that contention, so default waitFor (1s) flakes (#912).
   it(
     "subscribeJobPermanentFailure receives host push after real noop permanent fail",
     { timeout: 20_000 },
@@ -226,7 +223,7 @@ describe("createHostJobsPort (#630)", () => {
               }),
             ]);
           },
-          { timeout: liveHostWaitMs },
+          { timeout: 10_000 },
         );
 
         await vi.waitFor(
@@ -235,7 +232,7 @@ describe("createHostJobsPort (#630)", () => {
             expect(after.failed).toBeGreaterThanOrEqual(before.failed + 1);
             expect(after.byType.__test_noop?.failed).toBeGreaterThanOrEqual(1);
           },
-          { timeout: liveHostWaitMs },
+          { timeout: 10_000 },
         );
 
         sub.unsubscribe();
@@ -249,7 +246,7 @@ describe("createHostJobsPort (#630)", () => {
             const stats = await port.getJobStats();
             expect(stats.byType.__test_noop?.failed).toBeGreaterThanOrEqual(2);
           },
-          { timeout: liveHostWaitMs },
+          { timeout: 10_000 },
         );
         expect(seen).toEqual([]);
       } finally {
