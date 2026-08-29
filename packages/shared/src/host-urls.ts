@@ -22,12 +22,17 @@ export function buildHostMediaFileUrl(
 /**
  * Authenticated `/media/derive` URL for a vault file at a whitelist width (#882).
  * `w` must be on the locked whitelist — unknown widths are rejected by the host.
+ *
+ * When `sourceMtimeMs` is known (file mtime), it is sent as `v` so the browser
+ * URL changes when the vault file at the same path is replaced. Omit `v` when
+ * mtime is unknown — the host then uses short revalidate Cache-Control.
  */
 export function buildHostMediaDeriveUrl(
   baseUrl: string,
   token: string,
   absolutePath: string,
   width: MediaDeriveWidth | number,
+  sourceMtimeMs?: number,
 ): string {
   if (!isMediaDeriveWhitelistWidth(width)) {
     throw new Error(`media derive width must be a whitelist step, got ${width}`);
@@ -36,6 +41,14 @@ export function buildHostMediaDeriveUrl(
   url.searchParams.set("path", absolutePath);
   url.searchParams.set("w", String(width));
   url.searchParams.set("token", token);
+  if (sourceMtimeMs !== undefined) {
+    if (!(sourceMtimeMs >= 0) || !Number.isFinite(sourceMtimeMs)) {
+      throw new Error(
+        `media derive sourceMtimeMs must be a finite non-negative number, got ${sourceMtimeMs}`,
+      );
+    }
+    url.searchParams.set("v", String(Math.trunc(sourceMtimeMs)));
+  }
   return url.toString();
 }
 

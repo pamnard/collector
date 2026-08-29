@@ -52,6 +52,31 @@ describe("derived-image-src (#882)", () => {
     assert.match(attrs.srcSet, /640w/);
   });
 
+  it("includes v in derive URLs when sourceMtimeMs is known", () => {
+    setHostMediaCredentials("http://127.0.0.1:9", "tok");
+    const path = "/data/vaults/v1/media/id/cover.webp";
+    const first = buildDerivedImageAttrs({
+      displayPath: path,
+      slotCssWidthPx: 128,
+      devicePixelRatio: 1,
+      sourceMtimeMs: 1000,
+    });
+    const second = buildDerivedImageAttrs({
+      displayPath: path,
+      slotCssWidthPx: 128,
+      devicePixelRatio: 1,
+      sourceMtimeMs: 2000,
+    });
+    assert.equal(
+      first.src,
+      buildHostMediaDeriveUrl("http://127.0.0.1:9", "tok", path, 128, 1000),
+    );
+    assert.equal(new URL(first.src).searchParams.get("v"), "1000");
+    assert.equal(new URL(second.src).searchParams.get("v"), "2000");
+    assert.notEqual(first.src, second.src);
+    assert.match(first.srcSet, /[?&]v=1000/);
+  });
+
   it("falls back to display asset src without host credentials", () => {
     const attrs = buildDerivedImageAttrs({
       displayPath: "/vault/cover.webp",

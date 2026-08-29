@@ -54,12 +54,15 @@ export function absolutePathForMediaDerive(pathOrUrl: string): string | null {
 /**
  * Build `<img>` src / srcSet / sizes for a display slot.
  * Without host credentials, falls back to {@link toDisplayAssetSrc} (no derive).
+ * Pass `sourceMtimeMs` when known so derive URLs include cache-busting `v`.
  */
 export function buildDerivedImageAttrs(input: {
   displayPath: string;
   slotCssWidthPx: number;
   devicePixelRatio?: number;
   sourceNaturalWidth?: number;
+  /** Vault file mtime (ms); when set, URLs include `v` for browser cache bust. */
+  sourceMtimeMs?: number;
 }): DerivedImageAttrs {
   const dpr = input.devicePixelRatio ?? readDevicePixelRatio();
   const sizes = `${Math.round(input.slotCssWidthPx)}px`;
@@ -81,6 +84,7 @@ export function buildDerivedImageAttrs(input: {
     host.token,
     absolutePath,
     primaryWidth,
+    input.sourceMtimeMs,
   );
   const widths = deriveSrcSetWidthsForSlot({
     slotCssWidthPx: input.slotCssWidthPx,
@@ -89,7 +93,7 @@ export function buildDerivedImageAttrs(input: {
   const srcSet = widths
     .map(
       (width) =>
-        `${buildHostMediaDeriveUrl(host.baseUrl, host.token, absolutePath, width)} ${width}w`,
+        `${buildHostMediaDeriveUrl(host.baseUrl, host.token, absolutePath, width, input.sourceMtimeMs)} ${width}w`,
     )
     .join(", ");
   return { src, srcSet, sizes };

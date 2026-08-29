@@ -577,6 +577,12 @@ describe("host HTTP /media/derive (#882)", () => {
       const first = await fetch(url);
       expect(first.status).toBe(200);
       expect(first.headers.get("content-type")).toBe("image/webp");
+      expect(first.headers.get("cache-control")).toBe(
+        "private, max-age=0, must-revalidate",
+      );
+      expect(first.headers.get("cache-control")).not.toMatch(/immutable/);
+      const etag = first.headers.get("etag");
+      expect(etag).toMatch(/^"[a-f0-9]{64}"$/);
       const firstBytes = Buffer.from(await first.arrayBuffer());
       const { default: sharp } = await import("sharp");
       const firstMeta = await sharp(firstBytes).metadata();
@@ -594,9 +600,16 @@ describe("host HTTP /media/derive (#882)", () => {
       expect(Buffer.compare(firstBytes, secondBytes)).toBe(0);
       expect(readdirSync(cacheDir)).toEqual(before);
 
+      const notModified = await fetch(url, {
+        headers: { "If-None-Match": etag! },
+      });
+      expect(notModified.status).toBe(304);
+      expect((await notModified.arrayBuffer()).byteLength).toBe(0);
+
       const head = await fetch(url, { method: "HEAD" });
       expect(head.status).toBe(200);
       expect(head.headers.get("content-type")).toBe("image/webp");
+      expect(head.headers.get("etag")).toBe(etag);
       expect((await head.arrayBuffer()).byteLength).toBe(0);
 
       const withBearer = await fetch(
@@ -604,6 +617,45 @@ describe("host HTTP /media/derive (#882)", () => {
         { headers: { Authorization: `Bearer ${token}` } },
       );
       expect(withBearer.status).toBe(200);
+    } finally {
+      await host.close();
+    }
+  });
+
+  it("long max-age only when v matches source mtime; never immutable", async () => {
+    const { host, token, dataDir } = await start();
+    try {
+      const filePath = await writeVaultPng(dataDir, 400, 200);
+      const { statSync } = await import("node:fs");
+      const mtimeMs = Math.trunc(statSync(filePath).mtimeMs);
+      const matched = `${host.baseUrl}/media/derive?path=${encodeURIComponent(filePath)}&w=256&v=${mtimeMs}&token=${encodeURIComponent(token)}`;
+      const mismatched = `${host.baseUrl}/media/derive?path=${encodeURIComponent(filePath)}&w=256&v=${mtimeMs + 1}&token=${encodeURIComponent(token)}`;
+
+      const ok = await fetch(matched);
+      expect(ok.status).toBe(200);
+      expect(ok.headers.get("cache-control")).toBe("private, max-age=31536000");
+      expect(ok.headers.get("cache-control")).not.toMatch(/immutable/);
+      expect(ok.headers.get("etag")).toMatch(/^"[a-f0-9]{64}"$/);
+
+      const staleV = await fetch(mismatched);
+      expect(staleV.status).toBe(200);
+      expect(staleV.headers.get("cache-control")).toBe(
+        "private, max-age=0, must-revalidate",
+      );
+      expect(staleV.headers.get("cache-control")).not.toMatch(/immutable/);
+    } finally {
+      await host.close();
+    }
+  });
+
+  it("rejects invalid v query with 400", async () => {
+    const { host, token, dataDir } = await start();
+    try {
+      const filePath = await writeVaultPng(dataDir, 64, 32);
+      const res = await fetch(
+        `${host.baseUrl}/media/derive?path=${encodeURIComponent(filePath)}&w=128&v=nope&token=${encodeURIComponent(token)}`,
+      );
+      expect(res.status).toBe(400);
     } finally {
       await host.close();
     }

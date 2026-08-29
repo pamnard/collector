@@ -86,6 +86,46 @@ export function mediaDeriveCacheKey(input: {
   return `${hash}.webp`;
 }
 
+/** Strong ETag from the disk cache key (hash portion). */
+export function mediaDeriveEtag(cacheFileName: string): string {
+  const hash = cacheFileName.endsWith(".webp")
+    ? cacheFileName.slice(0, -".webp".length)
+    : cacheFileName;
+  return `"${hash}"`;
+}
+
+/**
+ * Browser Cache-Control for `/media/derive`.
+ * Long max-age only when URL `v` matches source mtime (URL changes on replace).
+ * Never `immutable` — stale same-URL responses must remain revalidatable.
+ */
+export function mediaDeriveBrowserCacheControl(
+  urlVersionMatchesSource: boolean,
+): string {
+  if (urlVersionMatchesSource) {
+    return "private, max-age=31536000";
+  }
+  return "private, max-age=0, must-revalidate";
+}
+
+/**
+ * Parse optional `v` query (truncated source mtime ms).
+ * Absent → null (caller uses short revalidate). Invalid → ok:false for 400.
+ */
+export function parseMediaDeriveVersionQuery(
+  raw: string | null,
+):
+  | { ok: true; value: number | null }
+  | { ok: false; message: string } {
+  if (raw === null || raw.length === 0) {
+    return { ok: true, value: null };
+  }
+  if (!/^\d+$/.test(raw)) {
+    return { ok: false, message: "v must be a non-negative integer mtime ms" };
+  }
+  return { ok: true, value: Number(raw) };
+}
+
 export async function encodeDerivedWebpDefault(input: {
   sourcePath: string;
   width: MediaDeriveWidth;
@@ -213,6 +253,20 @@ export async function handleMediaDerive(
   }
   const width: MediaDeriveWidth = widthNum;
 
+  const parsedVersion = parseMediaDeriveVersionQuery(url.searchParams.get("v"));
+  if (!parsedVersion.ok) {
+    writeJson(req, res, 400, {
+      ok: false,
+      error: {
+        layer: "validation",
+        code: "bad_request",
+        message: parsedVersion.message,
+      } satisfies CollectorApiError,
+    });
+    return;
+  }
+  const requestedVersion = parsedVersion.value;
+
   let vaultsRootResolved: string;
   if (options.vaultsRootResolved !== undefined) {
     vaultsRootResolved = options.vaultsRootResolved;
@@ -280,20 +334,46 @@ export async function handleMediaDerive(
     return;
   }
 
+  const quality = MEDIA_DERIVE_WEBP_QUALITY;
+  const cacheFileName = mediaDeriveCacheKey({
+    resolvedPath,
+    mtimeMs: fileStat.mtimeMs,
+    width,
+    quality,
+  });
+  const etag = mediaDeriveEtag(cacheFileName);
+  const urlVersionMatchesSource =
+    requestedVersion !== null &&
+    requestedVersion === Math.trunc(fileStat.mtimeMs);
+  const cacheControl = mediaDeriveBrowserCacheControl(urlVersionMatchesSource);
+  const cors = corsHeadersForRequest(req);
+  const isHead = req.method === "HEAD";
+
+  const ifNoneMatch = req.headers["if-none-match"];
+  if (typeof ifNoneMatch === "string" && ifNoneMatch === etag) {
+    res.writeHead(304, {
+      etag,
+      "cache-control": cacheControl,
+      ...cors,
+    });
+    res.end();
+    return;
+  }
+
   const { bytes } = await readOrCreateDerivedWebp({
     cacheDir: imageDeriveCacheDir(options.dataDir),
     resolvedPath,
     mtimeMs: fileStat.mtimeMs,
     width,
+    quality,
     encodeWebp: options.encodeWebp,
   });
 
-  const cors = corsHeadersForRequest(req);
-  const isHead = req.method === "HEAD";
   const headers: Record<string, string> = {
     "content-type": "image/webp",
     "content-length": String(bytes.byteLength),
-    "cache-control": "private, max-age=31536000, immutable",
+    etag,
+    "cache-control": cacheControl,
     ...cors,
   };
   res.writeHead(200, headers);

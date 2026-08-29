@@ -2,7 +2,7 @@
  * Unit tests for `/media/derive` helpers (#882).
  */
 
-import { mkdtempSync, rmSync, writeFileSync, utimesSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, utimesSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,7 +11,10 @@ import {
   encodeDerivedWebpDefault,
   imageDeriveCacheDir,
   isMediaDeriveRequest,
+  mediaDeriveBrowserCacheControl,
   mediaDeriveCacheKey,
+  mediaDeriveEtag,
+  parseMediaDeriveVersionQuery,
   readOrCreateDerivedWebp,
 } from "./media-derive.js";
 
@@ -52,6 +55,38 @@ describe("media-derive helpers (#882)", () => {
     expect(
       mediaDeriveCacheKey({ ...base, resolvedPath: "/vault/b.webp" }),
     ).not.toBe(a);
+  });
+
+  it("mediaDeriveEtag and Cache-Control never use immutable without URL version", () => {
+    const key = mediaDeriveCacheKey({
+      resolvedPath: "/vault/a.webp",
+      mtimeMs: 100,
+      width: 640,
+      quality: 85,
+    });
+    expect(mediaDeriveEtag(key)).toMatch(/^"[a-f0-9]{64}"$/);
+    expect(mediaDeriveBrowserCacheControl(false)).toBe(
+      "private, max-age=0, must-revalidate",
+    );
+    expect(mediaDeriveBrowserCacheControl(false)).not.toMatch(/immutable/);
+    expect(mediaDeriveBrowserCacheControl(true)).toBe(
+      "private, max-age=31536000",
+    );
+    expect(mediaDeriveBrowserCacheControl(true)).not.toMatch(/immutable/);
+  });
+
+  it("parseMediaDeriveVersionQuery accepts integer v or absence", () => {
+    expect(parseMediaDeriveVersionQuery(null)).toEqual({
+      ok: true,
+      value: null,
+    });
+    expect(parseMediaDeriveVersionQuery("")).toEqual({ ok: true, value: null });
+    expect(parseMediaDeriveVersionQuery("1700")).toEqual({
+      ok: true,
+      value: 1700,
+    });
+    expect(parseMediaDeriveVersionQuery("1.5").ok).toBe(false);
+    expect(parseMediaDeriveVersionQuery("-1").ok).toBe(false);
   });
 
   it("encodeDerivedWebpDefault never upscales and always emits webp", async () => {
@@ -205,7 +240,15 @@ describe("media-derive helpers (#882)", () => {
 
     // Touching the real file mtime must also invalidate via a new key.
     utimesSync(sourcePath, new Date(3_000_000), new Date(3_000_000));
-    const touched = await sharp(sourcePath).metadata();
-    expect(touched.width).toBe(300);
+    const touchedMtimeMs = statSync(sourcePath).mtimeMs;
+    expect(touchedMtimeMs).not.toBe(2000);
+    await readOrCreateDerivedWebp({
+      cacheDir,
+      resolvedPath: sourcePath,
+      mtimeMs: touchedMtimeMs,
+      width: 256,
+      encodeWebp,
+    });
+    expect(encodeWebp).toHaveBeenCalledTimes(3);
   });
 });
