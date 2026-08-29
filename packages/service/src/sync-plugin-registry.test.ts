@@ -84,6 +84,7 @@ describe("createSyncPluginRegistry (#29 / #899)", () => {
       readCoverPixelSize: async () => ({ width: 1, height: 1 }),
     });
 
+    const catalog = options?.catalog;
     const registry = createSyncPluginRegistry({
       fs,
       dataDir,
@@ -91,9 +92,7 @@ describe("createSyncPluginRegistry (#29 / #899)", () => {
       createItem: (input) => crud.createItem(input),
       attachMediaFiles: (itemId, files) => media.attachMediaFiles(itemId, files),
       deleteItem: (itemId) => crud.deleteItem(itemId),
-      ...(options?.catalog !== undefined
-        ? { createCatalog: () => options.catalog! }
-        : {}),
+      createCatalog: catalog !== undefined ? () => catalog : undefined,
     });
 
     return { registry, vaultPath, vaultId };

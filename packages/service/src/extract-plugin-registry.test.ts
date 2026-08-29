@@ -46,41 +46,18 @@ function readFixture(name: string): string {
   return readFileSync(join(FIXTURES, name), "utf8");
 }
 
-function textResponse(
-  body: string,
-  init: { status?: number; headers?: Record<string, string> } = {},
-): Response {
-  return new Response(body, {
-    status: init.status ?? 200,
-    headers: {
-      "content-type": "text/html; charset=utf-8",
-      ...init.headers,
-    },
-  });
-}
-
-function jsonResponse(
-  body: unknown,
-  init: { status?: number; headers?: Record<string, string> } = {},
-): Response {
-  return new Response(JSON.stringify(body), {
-    status: init.status ?? 200,
-    headers: {
-      "content-type": "application/json",
-      ...init.headers,
-    },
-  });
-}
+const SINGLE_EMBED_HTML = readFixture("single-image-embed.html");
 
 /** Fixture-backed Instagram HTTP — no network. */
 function createFixtureFetch(): typeof fetch {
-  const singleEmbed = readFixture("single-image-embed.html");
-
   return async (input) => {
     const url = String(input);
 
     if (url.includes(`/${OK_SHORTCODE}/embed/`)) {
-      return textResponse(singleEmbed);
+      return new Response(SINGLE_EMBED_HTML, {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
     }
     if (url.includes("cdn.instagram.fixture/single.jpg")) {
       return new Response(JPEG, {
@@ -163,22 +140,6 @@ describe("createExtractPluginRegistry (#849 / #899)", () => {
       () => "unused",
     );
 
-    const attachMediaFiles = async (
-      id: string,
-      files: { name: string; bytes: Uint8Array }[],
-    ) => {
-      const out = [];
-      for (const file of files) {
-        out.push(
-          await attachMediaFile(ctx, vaultPath, id, {
-            filename: file.name,
-            data: file.bytes,
-          }),
-        );
-      }
-      return out;
-    };
-
     const mode = input.catalog ?? "instagram";
     let catalog: ExtractorPlugin[] = [];
     if (mode === "instagram") {
@@ -186,12 +147,23 @@ describe("createExtractPluginRegistry (#849 / #899)", () => {
         createInstagramExtractorPlugin({
           getItemById: (id) => crud.getItemById(id),
           updateItem: (id, patch) => crud.updateItem(id, patch),
-          attachMediaFiles,
+          attachMediaFiles: async (id, files) => {
+            const out = [];
+            for (const file of files) {
+              out.push(
+                await attachMediaFile(ctx, vaultPath, id, {
+                  filename: file.name,
+                  data: file.bytes,
+                }),
+              );
+            }
+            return out;
+          },
           fetchImpl: createFixtureFetch(),
         }),
       ];
     } else if (mode === "frontmatter-probe") {
-      // Minimal plugin that uses vault frontmatter url (Instagram ignores it by design).
+      // Instagram ignores frontmatter url by design; probe asserts registry passthrough.
       catalog = [
         {
           id: FRONTMATTER_PROBE_ID,
