@@ -26,13 +26,16 @@ export type SqlIndexTestSuite = {
     tempPrefix: string,
     dbFileName?: string,
   ) => Promise<SqlIndexTestEnv>;
-  openMemoryDataDir: (tempPrefix: string) => Promise<{
-    dataDir: string;
-    fs: NodeFileSystemAdapter;
-  }>;
 };
 
-/** Shared disposable-index suite: temp dir + migrated BetterSqlite + vault. */
+/**
+ * Shared disposable-index suite: temp dir + migrated BetterSqlite + vault (#887).
+ *
+ * Prefer MemorySql for unit-speed FS/vault/service orchestration where SQL shape
+ * does not matter. Use this harness (not MemorySql) whenever the assertion depends
+ * on production SQLite semantics: FTS `MATCH` / rank, multi-table JOINs, `COLLATE`,
+ * or bind-order seams.
+ */
 export function createSqlIndexTestSuite(): SqlIndexTestSuite {
   let dataDir = "";
   let db: BetterSqliteMigrator | null = null;
@@ -65,11 +68,6 @@ export function createSqlIndexTestSuite(): SqlIndexTestSuite {
       const ctx = { fs, index };
       const vault = await createVault(ctx, dataDir, { name: "Vault" });
       return { fs, dataDir, db, index, ctx, vault };
-    },
-
-    async openMemoryDataDir(tempPrefix: string) {
-      dataDir = await mkdtemp(join(tmpdir(), tempPrefix));
-      return { dataDir, fs };
     },
   };
 }

@@ -1,10 +1,12 @@
+/**
+ * BetterSqlite index query seams (#887): nav filters, sort/COLLATE, FTS pagination,
+ * folder-exact FTS, FTS + item_tags JOIN. Do not cover these on MemorySql alone.
+ */
 import { describe, expect, it } from "vitest";
 import { buildFtsMatchQuery } from "../search/fts-query.js";
-import { MemorySqlAdapter } from "../testing/memory-sql.js";
+import { seedTagFromDocumentWritePath } from "../testing/seed-tag.js";
 import { createId } from "../util/ids.js";
 import { upsertItem } from "../vault/item-operations.js";
-import { createVault } from "../vault/vault-operations.js";
-import { SqlVaultIndexStore } from "./sql-index.js";
 import {
   createSqlIndexTestSuite,
   noteItemFields,
@@ -15,11 +17,10 @@ describe("listItemIdsByNavFilter", () => {
   suite.registerCleanup();
 
   it("returns ids for all items under the all filter", async () => {
-    const { dataDir, fs } = await suite.openMemoryDataDir("collector-nav-filter-");
-    const sql = new MemorySqlAdapter();
-    const index = new SqlVaultIndexStore(sql);
-    const ctx = { fs, index };
-    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const { index, ctx, vault } = await suite.openVaultIndex(
+      "collector-nav-filter-",
+    );
+    const { meta, path } = vault;
 
     const firstId = `${createId()}.md`;
     const secondId = `${createId()}.md`;
@@ -34,10 +35,57 @@ describe("listItemIdsByNavFilter", () => {
       });
     }
 
-    expect(await index.listItemIdsByNavFilter(meta.id, "all")).toEqual([
-      firstId,
-      secondId,
+    expect(
+      (await index.listItemIdsByNavFilter(meta.id, "all")).sort(),
+    ).toEqual([firstId, secondId].sort());
+  });
+
+  it("FTS MATCH + item_tags JOIN keeps only tagged hits (#887)", async () => {
+    const { index, ctx, vault } = await suite.openVaultIndex(
+      "collector-fts-tag-join-",
+    );
+    const { meta, path } = vault;
+    const tag = await seedTagFromDocumentWritePath(ctx, path, meta.id, "fts-join");
+    const sharedToken = "FtsTagJoinToken887";
+    const timestamp = new Date().toISOString();
+    const taggedId = `${createId()}.md`;
+    const untaggedId = `${createId()}.md`;
+
+    await upsertItem(ctx, path, meta.id, {
+      item: noteItemFields(meta.id, taggedId, {
+        title: "Tagged hit",
+        tag_ids: [tag.id],
+        created_at: timestamp,
+        updated_at: timestamp,
+      }),
+      content: sharedToken,
+    });
+    await upsertItem(ctx, path, meta.id, {
+      item: noteItemFields(meta.id, untaggedId, {
+        title: "Untagged hit",
+        created_at: timestamp,
+        updated_at: timestamp,
+      }),
+      content: sharedToken,
+    });
+
+    const ftsQuery = buildFtsMatchQuery(sharedToken);
+    expect(ftsQuery).not.toBeNull();
+    const tagFilter = { type: "tag" as const, tagId: tag.id };
+
+    expect(
+      (await index.searchItemIds(meta.id, ftsQuery!, "all")).sort(),
+    ).toEqual([taggedId, untaggedId].sort());
+    expect(await index.searchItemIds(meta.id, ftsQuery!, tagFilter)).toEqual([
+      taggedId,
     ]);
+    expect(await index.countSearchItemIds(meta.id, ftsQuery!, tagFilter)).toBe(
+      1,
+    );
+    expect(await index.listItemIdsByNavFilter(meta.id, tagFilter)).toEqual([
+      taggedId,
+    ]);
+    expect(await index.countItemIdsByNavFilter(meta.id, tagFilter)).toBe(1);
   });
 
   it("folder nav filter lists only direct items, not nested descendants", async () => {
