@@ -182,62 +182,77 @@ describe("createHostJobsPort (#630)", () => {
     }
   });
 
-  it("subscribeJobPermanentFailure receives host push after real noop permanent fail", async () => {
-    const dataDir = tempDataDir("collector-jobs-port-pf-");
-    const { runtime, baseUrl, token, close } =
-      await startJobsHostWithRuntime(dataDir);
-    const transport = await createHttpHostTransport({
-      baseUrl,
-      token,
-      enableEvents: true,
-      connectTimeoutMs: 2_000,
-    });
-    try {
-      const port = createHostJobsPort(createHostSessionCtx(transport));
-      const seen: JobPermanentFailure[] = [];
-      const sub = port.subscribeJobPermanentFailure((failure) => {
-        seen.push(failure);
+  // Live host boots derived/embedding jobs on the same DB; getJobStats RPC can
+  // take hundreds of ms under that contention, so default waitFor (1s) flakes (#912).
+  it(
+    "subscribeJobPermanentFailure receives host push after real noop permanent fail",
+    { timeout: 20_000 },
+    async () => {
+      const dataDir = tempDataDir("collector-jobs-port-pf-");
+      const { runtime, baseUrl, token, close } =
+        await startJobsHostWithRuntime(dataDir);
+      const transport = await createHttpHostTransport({
+        baseUrl,
+        token,
+        enableEvents: true,
+        connectTimeoutMs: 2_000,
       });
+      try {
+        const port = createHostJobsPort(createHostSessionCtx(transport));
+        const seen: JobPermanentFailure[] = [];
+        const sub = port.subscribeJobPermanentFailure((failure) => {
+          seen.push(failure);
+        });
 
-      const before = await port.getJobStats();
-      assertJobStatsShape(before);
+        const before = await port.getJobStats();
+        assertJobStatsShape(before);
 
-      const { id } = await runtime.jobs.enqueue({
-        type: "__test_noop",
-        payload: { fail: "permanent" },
-      });
+        const { id } = await runtime.jobs.enqueue({
+          type: "__test_noop",
+          payload: { fail: "permanent" },
+        });
 
-      await vi.waitFor(() => {
-        expect(seen).toEqual([
-          expect.objectContaining({
-            id,
-            type: "__test_noop",
-            error: "noop permanent fail",
-            attempts: expect.any(Number),
-          }),
-        ]);
-      });
+        await vi.waitFor(
+          () => {
+            expect(seen).toEqual([
+              expect.objectContaining({
+                id,
+                type: "__test_noop",
+                error: "noop permanent fail",
+                attempts: expect.any(Number),
+              }),
+            ]);
+          },
+          { timeout: 10_000 },
+        );
 
-      await vi.waitFor(async () => {
-        const after = await port.getJobStats();
-        expect(after.failed).toBeGreaterThanOrEqual(before.failed + 1);
-        expect(after.byType.__test_noop?.failed).toBeGreaterThanOrEqual(1);
-      });
+        await vi.waitFor(
+          async () => {
+            const after = await port.getJobStats();
+            expect(after.failed).toBeGreaterThanOrEqual(before.failed + 1);
+            expect(after.byType.__test_noop?.failed).toBeGreaterThanOrEqual(1);
+          },
+          { timeout: 10_000 },
+        );
 
-      sub.unsubscribe();
-      seen.length = 0;
-      await runtime.jobs.enqueue({
-        type: "__test_noop",
-        payload: { fail: "permanent" },
-      });
-      await vi.waitFor(async () => {
-        const stats = await port.getJobStats();
-        expect(stats.byType.__test_noop?.failed).toBeGreaterThanOrEqual(2);
-      });
-      expect(seen).toEqual([]);
-    } finally {
-      await transport.close();
-      await close();
-    }
-  });
+        sub.unsubscribe();
+        seen.length = 0;
+        await runtime.jobs.enqueue({
+          type: "__test_noop",
+          payload: { fail: "permanent" },
+        });
+        await vi.waitFor(
+          async () => {
+            const stats = await port.getJobStats();
+            expect(stats.byType.__test_noop?.failed).toBeGreaterThanOrEqual(2);
+          },
+          { timeout: 10_000 },
+        );
+        expect(seen).toEqual([]);
+      } finally {
+        await transport.close();
+        await close();
+      }
+    },
+  );
 });
