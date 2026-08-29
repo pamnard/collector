@@ -272,9 +272,14 @@ export function useDashboardListState(options: {
       }
 
       const prevTotal = committedTotalCountRef.current;
+      const prevOrderedIds = orderedIds(prevItems);
       const nextOrderedIds = orderedIds(ordered);
+      // Folder / filter id-set change must not publish empty maps while the new
+      // list is already on screen (#913) — same held paint as cold blockOnCovers.
+      const orderedIdsChanged = !itemIdsEqual(prevOrderedIds, nextOrderedIds);
+      const holdForCovers = blockOnCovers || orderedIdsChanged;
       const skipPaint = shouldSkipCommitPaint({
-        prevOrderedIds: orderedIds(prevItems),
+        prevOrderedIds,
         nextOrderedIds,
         prevTotalCount: prevTotal,
         nextTotalCount: nextTotal,
@@ -285,24 +290,23 @@ export function useDashboardListState(options: {
       let heldListPaint = false;
 
       if (!skipPaint) {
-        const idsMatch = itemIdsEqual(orderedIds(prevItems), nextOrderedIds);
         const itemsUnchanged =
-          idsMatch &&
+          !orderedIdsChanged &&
           prevTotal === nextTotal &&
           itemsBodiesEqual(prevItems, ordered);
 
         if (!itemsUnchanged) {
-          // Seed flight maps; defer React list paint until covers are ready (#855).
+          // Seed flight maps; defer React list paint until covers are ready (#855 / #913).
           covers.intersect(nextOrderedIds, {
-            deferPublish: blockOnCovers,
-            requestVersion: blockOnCovers ? requestVersion : undefined,
+            deferPublish: holdForCovers,
+            requestVersion: holdForCovers ? requestVersion : undefined,
           });
           committedBodyStampsRef.current = bodyStampsForOrderedIds(
             bodyStampsRef.current,
             nextOrderedIds,
           );
 
-          if (blockOnCovers) {
+          if (holdForCovers) {
             heldListPaint = true;
           } else {
             const perfRunId = dashboardPerfActiveRunId();
@@ -333,10 +337,10 @@ export function useDashboardListState(options: {
         return;
       }
 
-      if (coversNeedResolve || blockOnCovers) {
+      if (coversNeedResolve || holdForCovers) {
         try {
           await startCoverPathFlightRef.current(requestVersion, ordered, {
-            blockOnCovers,
+            blockOnCovers: holdForCovers,
             deferUiCommit: heldListPaint,
           });
         } catch (err: unknown) {

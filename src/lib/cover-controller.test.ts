@@ -386,4 +386,53 @@ describe("CoverController SoT orchestration (#874 / #871)", () => {
     published.paths.set("a", "/mutated");
     assert.equal(controller.getMaps().paths.get("a"), "/a");
   });
+
+  it("abort after warm replaceMaps does not strip the new folder covers (#913)", async () => {
+    const itemA = stubItem("a", { thumbnail: "a.webp" });
+    const itemB = stubItem("b", { thumbnail: "b.webp" });
+    const stampB = itemCoverStamp(itemB);
+    let releaseResolve!: () => void;
+    const holdResolve = new Promise<void>((resolve) => {
+      releaseResolve = resolve;
+    });
+    let resolveEntered = false;
+
+    const controller = createCoverController({
+      resolveProgressive: async (items, options) => {
+        resolveEntered = true;
+        for (const row of items) {
+          options.onResolved?.(row.id, "/old-a", { width: 3, height: 3 });
+        }
+        await holdResolve;
+      },
+      getRequestVersion: () => 1,
+      getQueryKey: () => "k",
+      getItem: (id) => (id === "a" ? itemA : id === "b" ? itemB : undefined),
+    });
+
+    const flight = controller.beginFlight(1, [itemA], { blockOnCovers: true });
+    for (let i = 0; i < 20 && !resolveEntered; i += 1) {
+      await Promise.resolve();
+    }
+    assert.equal(resolveEntered, true);
+
+    const warmB = coverMapsFromTriple(
+      new Map([["b", "/warm-b"]]),
+      new Map([["b", stampB]]),
+      new Map([["b", { width: 40, height: 30 }]]),
+    );
+    controller.replaceMaps(warmB);
+    assert.equal(controller.getPublishedMaps().paths.get("b"), "/warm-b");
+
+    controller.abort();
+    releaseResolve();
+    await flight;
+
+    assert.equal(controller.getPublishedMaps().paths.get("b"), "/warm-b");
+    assert.deepEqual(controller.getPublishedMaps().sizes.get("b"), {
+      width: 40,
+      height: 30,
+    });
+    assert.equal(controller.getPublishedMaps().paths.has("a"), false);
+  });
 });

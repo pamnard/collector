@@ -1,9 +1,10 @@
 import type { ItemFile } from "@collector/shared";
 import { flushSync } from "react-dom";
 import { intersectCommittedWithPageIdsHoldPaint } from "../../lib/dashboard-commit";
-import { emptyCoverMaps } from "../../lib/cover-maps";
+import { emptyCoverMaps, orderedIds } from "../../lib/cover-maps";
 import { revealHeldListPaint } from "../../lib/dashboard-cold-reveal";
 import { applyDashboardIndexPage } from "../../lib/dashboard-stream";
+import { itemIdsEqual } from "../../lib/dashboard-display";
 import { DASHBOARD_PREFETCH_SIZE } from "../../services/collector-client";
 import {
   dashboardPerfActiveRunId,
@@ -88,9 +89,10 @@ export async function applyIndexPageAgainstListState(
       list.setItemsById(kept);
     },
     intersectCommittedWithPage: (pageItemIds) => {
-      const prevCommittedLen = list.committedItemsRef.current.length;
+      const prevCommitted = list.committedItemsRef.current;
+      const prevCommittedLen = prevCommitted.length;
       const nextCommitted = intersectCommittedWithPageIdsHoldPaint(
-        list.committedItemsRef.current,
+        prevCommitted,
         pageItemIds,
       );
       if (nextCommitted === null) {
@@ -102,9 +104,13 @@ export async function applyIndexPageAgainstListState(
         prevCommittedLen > 0 && nextCommitted.length === 0,
       );
       const nextCommittedIds = nextCommitted.map((item) => item.id);
-      // Defer cover publish until applyListSnapshot so items+covers paint once
-      // (same #855 hazard: useSyncExternalStore vs useState — flushSync).
+      // Defer cover publish until reveal / tryCommit (#855).
       list.covers.intersect(nextCommittedIds, { deferPublish: true });
+      // Folder switch (id-set change, often empty ∩): do not flush stripped
+      // maps onto the painted list — tryCommit held paint reveals once (#913).
+      if (!itemIdsEqual(orderedIds(prevCommitted), nextCommittedIds)) {
+        return;
+      }
       revealHeldListPaint({
         requestVersion,
         getCurrentVersion: () => list.requestVersionRef.current,

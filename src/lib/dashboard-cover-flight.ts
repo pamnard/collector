@@ -83,8 +83,9 @@ export async function runCoverPathFlight(
       continue;
     }
 
-    existingFlight?.batcher.cancel();
+    // Abort first so cancel's flush no-ops if maps already changed (#913).
     existingFlight?.controller.abort();
+    existingFlight?.batcher.cancel();
 
     const coverController = new AbortController();
     const stampById = new Map(

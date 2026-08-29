@@ -130,11 +130,28 @@ export function itemGridCoverSlotAspectStyle(
 /**
  * Cover `<img>` layout classes.
  * Settled covers fill the reserved aspect slot (not `h-auto` alone).
- * In-flight decode uses opacity-0 over the reserved slot.
+ * In-flight decode uses opacity-0 over the reserved slot; settle fades in
+ * (opacity only — layout / masonry height must not change).
  */
 export function itemGridCoverImgClassName(args: { loadCover: boolean }): string {
+  const base =
+    "absolute inset-0 h-full w-full transition-opacity duration-200 ease-out motion-reduce:transition-none";
   if (args.loadCover) {
-    return "absolute inset-0 h-full w-full opacity-0";
+    return `${base} opacity-0`;
   }
-  return "absolute inset-0 h-full w-full";
+  return `${base} opacity-100`;
+}
+
+/**
+ * Skeleton overlay in the same reserved slot as the cover `<img>`.
+ * Fades out when the image settles (crossfade); no animate-pulse once hidden
+ * so paint oracles can treat "no .animate-pulse" as painted.
+ */
+export function itemGridCoverPulseClassName(args: { visible: boolean }): string {
+  const base =
+    "absolute inset-0 bg-neutral-100 dark:bg-neutral-700 transition-opacity duration-200 ease-out motion-reduce:transition-none";
+  if (args.visible) {
+    return `${base} animate-pulse opacity-100`;
+  }
+  return `${base} pointer-events-none opacity-0`;
 }

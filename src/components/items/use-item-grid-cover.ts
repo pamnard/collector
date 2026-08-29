@@ -38,8 +38,28 @@ function derivedCoverAttrs(thumbnailPath: string | null | undefined): {
   return { src: attrs.src, srcSet: attrs.srcSet, sizes: attrs.sizes };
 }
 
+function clearCoverDecodeState(setters: {
+  setCoverSrc: (v: string | null) => void;
+  setCoverSrcSet: (v: string | null) => void;
+  setCoverSizes: (v: string | null) => void;
+  setCoverSettled: (v: boolean) => void;
+  setCoverPixelSize: (v: ItemGridCoverPixelSize | null) => void;
+  settled: boolean;
+}): void {
+  setters.setCoverSrc(null);
+  setters.setCoverSrcSet(null);
+  setters.setCoverSizes(null);
+  setters.setCoverSettled(setters.settled);
+  setters.setCoverPixelSize(null);
+}
+
 export function useItemGridCover(args: {
   thumbnailPath: string | null | undefined;
+  /**
+   * Host-reserved WxH from cover maps. Decode must not start without it (#913)
+   * — otherwise the card paints a 1px img and grows when natural size arrives.
+   */
+  reservedPixelSize: ItemGridCoverPixelSize | null;
   /** Near-viewport cards decode; offscreen cards defer until scroll. */
   shouldDecode: boolean;
 }): {
@@ -55,7 +75,7 @@ export function useItemGridCover(args: {
   onCoverImgError: () => void;
   onCoverImgRef: (img: HTMLImageElement | null) => void;
 } {
-  const { thumbnailPath, shouldDecode } = args;
+  const { thumbnailPath, reservedPixelSize, shouldDecode } = args;
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
   const [coverSrcSet, setCoverSrcSet] = useState<string | null>(null);
   const [coverSizes, setCoverSizes] = useState<string | null>(null);
@@ -70,7 +90,12 @@ export function useItemGridCover(args: {
   const coverSrcRef = useRef(coverSrc);
   const coverSettledRef = useRef(coverSettled);
 
-  const decodeCovers = shouldDecode || warmDecode;
+  const hasReservedSlot =
+    reservedPixelSize != null &&
+    reservedPixelSize.width > 0 &&
+    reservedPixelSize.height > 0;
+  // Near-viewport / warm decode only inside an already-reserved slot (#913).
+  const decodeCovers = (shouldDecode || warmDecode) && hasReservedSlot;
 
   const expectedAttrs = useMemo(
     () => derivedCoverAttrs(thumbnailPath),
@@ -91,6 +116,24 @@ export function useItemGridCover(args: {
   }, [coverSettled]);
 
   useEffect(() => {
+    // Maps collapsed / path unresolved.
+    // If the host still reserves WxH (latched), keep decode state — clearing
+    // kills painted covers and leaves perpetual pulse while maps flicker (#913/#877).
+    // Only clear when there is no reserved slot (would paint <img> without aspect).
+    if (thumbnailPath === undefined) {
+      if (!hasReservedSlot) {
+        clearCoverDecodeState({
+          setCoverSrc,
+          setCoverSrcSet,
+          setCoverSizes,
+          setCoverSettled,
+          setCoverPixelSize,
+          settled: false,
+        });
+      }
+      return;
+    }
+
     const plan = planItemGridCoverDecode({
       thumbnailPath,
       resolvedSrc: expectedAttrs.src,
@@ -104,20 +147,30 @@ export function useItemGridCover(args: {
     }
 
     if (plan.kind === "settled-empty") {
-      setCoverSrc(null);
-      setCoverSrcSet(null);
-      setCoverSizes(null);
-      setCoverSettled(true);
-      setCoverPixelSize(null);
+      clearCoverDecodeState({
+        setCoverSrc,
+        setCoverSrcSet,
+        setCoverSizes,
+        setCoverSettled,
+        setCoverPixelSize,
+        settled: true,
+      });
       return;
     }
 
     if (plan.kind === "defer") {
-      setCoverSrc(null);
-      setCoverSrcSet(null);
-      setCoverSizes(null);
-      setCoverSettled(false);
-      setCoverPixelSize(null);
+      // Offscreen: do not start decode. Avoid setState thrash when already idle —
+      // clearing on every remount raced the observer and wiped the next decode.
+      if (coverSrcRef.current != null || coverSettledRef.current) {
+        clearCoverDecodeState({
+          setCoverSrc,
+          setCoverSrcSet,
+          setCoverSizes,
+          setCoverSettled,
+          setCoverPixelSize,
+          settled: false,
+        });
+      }
       return;
     }
 
@@ -141,11 +194,14 @@ export function useItemGridCover(args: {
         return;
       }
       console.warn("[ItemGridCard] cover decode timed out", { src: coverSrc });
-      setCoverSrc(null);
-      setCoverSrcSet(null);
-      setCoverSizes(null);
-      setCoverSettled(true);
-      setCoverPixelSize(null);
+      clearCoverDecodeState({
+        setCoverSrc,
+        setCoverSrcSet,
+        setCoverSizes,
+        setCoverSettled,
+        setCoverPixelSize,
+        settled: true,
+      });
     }, ITEM_GRID_COVER_DECODE_TIMEOUT_MS);
 
     return () => {
@@ -164,11 +220,14 @@ export function useItemGridCover(args: {
   }, []);
 
   const onCoverImgError = useCallback(() => {
-    setCoverSrc(null);
-    setCoverSrcSet(null);
-    setCoverSizes(null);
-    setCoverSettled(true);
-    setCoverPixelSize(null);
+    clearCoverDecodeState({
+      setCoverSrc,
+      setCoverSrcSet,
+      setCoverSizes,
+      setCoverSettled,
+      setCoverPixelSize,
+      settled: true,
+    });
   }, []);
 
   const onCoverImgRef = useCallback(
