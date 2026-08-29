@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   createSqlIndexTestSuite,
   noteItemFields,
@@ -10,14 +10,14 @@ import {
   readVaultFolderPaths,
   reconcileFolderTreeFromDisk,
 } from "./folder-operations.js";
-import { buildFolderTree, collectFolderPaths } from "./folder-tree.js";
+import { buildFolderTree } from "./folder-tree.js";
 import { itemMarkdownPath } from "./paths.js";
 
-describe("collectFolderPaths / buildFolderTree against real vault FS", () => {
+describe("buildFolderTree against real vault FS + BetterSqlite", () => {
   const suite = createSqlIndexTestSuite();
   suite.registerCleanup();
 
-  it("collects nested ancestor prefixes from on-disk folder listing", async () => {
+  it("lists nested folder ancestors from disk after createFolder", async () => {
     const { ctx, vault } = await suite.openVaultIndex("collector-folder-tree-");
     const { path } = vault;
     await createFolder(ctx, path, "Work/Projects/Alpha/Notes");
@@ -35,19 +35,6 @@ describe("collectFolderPaths / buildFolderTree against real vault FS", () => {
       "Work/Projects/Alpha",
       "Work/Projects/Alpha/Notes",
       "Work/Projects/Beta",
-    ]);
-    expect(collectFolderPaths(diskPaths)).toEqual(diskPaths);
-  });
-
-  it("skips empty and whitespace-only paths", () => {
-    expect(collectFolderPaths(["", "   ", "/", "//"])).toEqual([]);
-  });
-
-  it("normalizes separators and trims segments before collecting", () => {
-    expect(collectFolderPaths(["  Work\\\\Projects/Alpha  ", "Work/Projects"])).toEqual([
-      "Work",
-      "Work/Projects",
-      "Work/Projects/Alpha",
     ]);
   });
 

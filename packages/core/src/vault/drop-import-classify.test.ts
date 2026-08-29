@@ -1,28 +1,51 @@
-import { mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
+import { describe, expect, it } from "vitest";
+import type { ContentType } from "@collector/shared";
+import type { NodeFileSystemAdapter } from "../adapters/node-fs.js";
+import {
+  createSqlIndexTestSuite,
+  noteItemFields,
+} from "../index/sql-index-test-harness.js";
+import { createId } from "../util/ids.js";
 import {
   classifyDropFilename,
   titleStemFromFilename,
 } from "./drop-import-classify.js";
-import { resolveDropTitle } from "./resolve-drop-title.js";
+import { upsertItem } from "./item-operations.js";
 import { joinSegments } from "./paths.js";
+import { resolveDropTitle } from "./resolve-drop-title.js";
 
-describe("drop-import-classify against temp drop folder", () => {
-  let dropRoot = "";
-  const fs = new NodeFileSystemAdapter();
-
-  afterEach(async () => {
-    if (dropRoot) {
-      await rm(dropRoot, { recursive: true, force: true });
-      dropRoot = "";
+/** All file paths under a drop root, relative, posix, sorted. */
+async function listDropRelativeFiles(
+  fs: NodeFileSystemAdapter,
+  dropRoot: string,
+  relDir = "",
+): Promise<string[]> {
+  const absDir = relDir ? joinSegments(dropRoot, relDir) : dropRoot;
+  const out: string[] = [];
+  for (const entry of await fs.readDirEntries(absDir)) {
+    const rel = relDir ? `${relDir}/${entry.name}` : entry.name;
+    if (entry.isDirectory) {
+      out.push(...(await listDropRelativeFiles(fs, dropRoot, rel)));
+      continue;
     }
-  });
+    out.push(rel);
+  }
+  return out.sort((a, b) => a.localeCompare(b));
+}
 
-  it("classifies real filenames from disk; skips unsupported", async () => {
-    dropRoot = await mkdtemp(join(tmpdir(), "collector-drop-classify-"));
+describe("drop-import-classify against temp drop folder + vault index", () => {
+  const suite = createSqlIndexTestSuite();
+  suite.registerCleanup();
+
+  it("imports classified disk files into the index; skips unsupported", async () => {
+    const { ctx, fs, vault, dataDir } = await suite.openVaultIndex(
+      "collector-drop-classify-",
+    );
+    const { meta, path } = vault;
+    const dropRoot = join(dataDir, "drop");
+    await mkdir(dropRoot, { recursive: true });
 
     const files: Array<{ rel: string; bytes?: Uint8Array; text?: string }> = [
       { rel: "a.png", bytes: Uint8Array.from([1]) },
@@ -31,8 +54,20 @@ describe("drop-import-classify against temp drop folder", () => {
       { rel: "track.mp3", bytes: Uint8Array.from([4]) },
       { rel: "note.md", text: "# note\n" },
       { rel: "Trip/nested/x.MD", text: "# nested\n" },
+      { rel: "with-title.md", text: "---\ntitle: From FM\n---\n\nBody\n" },
+      {
+        rel: "foreign.md",
+        text: `---
+title: From FM
+type: agentic-pattern
+content_type: not-a-real-type
+---
+Body
+`,
+      },
       { rel: "virus.exe", bytes: Uint8Array.from([5]) },
       { rel: "readme.txt", text: "plain\n" },
+      { rel: "shot.webp", bytes: Uint8Array.from([9]) },
     ];
 
     for (const file of files) {
@@ -45,65 +80,135 @@ describe("drop-import-classify against temp drop folder", () => {
       }
     }
 
-    const topNames = (await fs.readDirEntries(dropRoot)).map((e) => e.name).sort();
-    expect(topNames).toEqual(
-      ["Trip", "a.png", "clip.mp4", "doc.pdf", "note.md", "readme.txt", "track.mp3", "virus.exe"].sort(),
+    const discovered = await listDropRelativeFiles(fs, dropRoot);
+    expect(discovered).toEqual(
+      [
+        "Trip/nested/x.MD",
+        "a.png",
+        "clip.mp4",
+        "doc.pdf",
+        "foreign.md",
+        "note.md",
+        "readme.txt",
+        "shot.webp",
+        "track.mp3",
+        "virus.exe",
+        "with-title.md",
+      ].sort((a, b) => a.localeCompare(b)),
     );
 
-    const expected: Record<string, ReturnType<typeof classifyDropFilename>> = {
-      "a.png": { kind: "media", contentType: "image", mediaType: "image" },
-      "clip.mp4": { kind: "media", contentType: "video", mediaType: "video" },
-      "doc.pdf": { kind: "media", contentType: "pdf", mediaType: "pdf" },
-      "track.mp3": { kind: "media", contentType: "audio", mediaType: "audio" },
-      "note.md": { kind: "note" },
-      "Trip/nested/x.MD": { kind: "note" },
-      "virus.exe": { kind: "skip" },
-      "readme.txt": { kind: "skip" },
-    };
+    const timestamp = new Date().toISOString();
+    const imported: Array<{
+      rel: string;
+      itemId: string;
+      contentType: ContentType;
+      title: string;
+    }> = [];
+    const skipped: string[] = [];
 
-    for (const file of files) {
-      expect(await fs.exists(joinSegments(dropRoot, file.rel))).toBe(true);
-      expect(classifyDropFilename(file.rel)).toEqual(expected[file.rel]);
+    for (const rel of discovered) {
+      expect(await fs.exists(joinSegments(dropRoot, rel))).toBe(true);
+      const classified = classifyDropFilename(rel);
+      if (classified.kind === "skip") {
+        skipped.push(rel);
+        continue;
+      }
+
+      const itemId = `Inbox/${createId()}.md`;
+      let title: string;
+      let contentType: ContentType;
+      let content = "";
+
+      if (classified.kind === "note") {
+        const raw = await fs.readText(joinSegments(dropRoot, rel));
+        title = resolveDropTitle(rel, raw);
+        contentType = "note";
+        content = raw;
+      } else {
+        title = titleStemFromFilename(rel);
+        contentType = classified.contentType;
+      }
+
+      await upsertItem(ctx, path, meta.id, {
+        item: noteItemFields(meta.id, itemId, {
+          title,
+          content_type: contentType,
+          source_type: "import",
+          folder_path: "Inbox",
+          created_at: timestamp,
+          updated_at: timestamp,
+        }),
+        content,
+      });
+      imported.push({ rel, itemId, contentType, title });
     }
-  });
 
-  it("titleStemFromFilename strips extension from basenames on disk", async () => {
-    dropRoot = await mkdtemp(join(tmpdir(), "collector-drop-stem-"));
-    await writeFile(join(dropRoot, "photo.png"), Uint8Array.from([1]));
-    await mkdir(join(dropRoot, "Trip"), { recursive: true });
-    await writeFile(join(dropRoot, "Trip", "a.b.md"), "# x\n", "utf8");
-
-    expect(titleStemFromFilename("photo.png")).toBe("photo");
-    expect(titleStemFromFilename("Trip/a.b.md")).toBe("a.b");
-    expect(await fs.exists(join(dropRoot, "photo.png"))).toBe(true);
-    expect(await fs.exists(join(dropRoot, "Trip", "a.b.md"))).toBe(true);
-  });
-
-  it("resolveDropTitle reads markdown title from disk contents", async () => {
-    dropRoot = await mkdtemp(join(tmpdir(), "collector-drop-title-"));
-    const withTitle = join(dropRoot, "ignored.md");
-    const foreign = join(dropRoot, "foreign.md");
-    const noTitle = join(dropRoot, "my-note.md");
-    const shot = join(dropRoot, "shot.webp");
-
-    await writeFile(withTitle, "---\ntitle: From FM\n---\n\nBody\n", "utf8");
-    await writeFile(
-      foreign,
-      `---
-title: From FM
-type: agentic-pattern
-content_type: not-a-real-type
----
-Body
-`,
-      "utf8",
+    const byRelPath = (a: string, b: string) => a.localeCompare(b);
+    expect(skipped.sort(byRelPath)).toEqual(["readme.txt", "virus.exe"]);
+    expect(imported.map((row) => row.rel).sort(byRelPath)).toEqual(
+      [
+        "Trip/nested/x.MD",
+        "a.png",
+        "clip.mp4",
+        "doc.pdf",
+        "foreign.md",
+        "note.md",
+        "shot.webp",
+        "track.mp3",
+        "with-title.md",
+      ].sort(byRelPath),
     );
-    await writeFile(noTitle, "# Hello\n", "utf8");
-    await writeFile(shot, Uint8Array.from([9]));
 
-    expect(resolveDropTitle("ignored.md", await readFile(withTitle, "utf8"))).toBe("From FM");
-    expect(resolveDropTitle("foreign.md", await readFile(foreign, "utf8"))).toBe("From FM");
-    expect(resolveDropTitle("my-note.md", await readFile(noTitle, "utf8"))).toBe("my-note");
-    expect(resolveDropTitle("shot.webp")).toBe("shot");
+    const byRel = new Map(imported.map((row) => [row.rel, row]));
+    expect(byRel.get("a.png")).toMatchObject({
+      contentType: "image",
+      title: "a",
+    });
+    expect(byRel.get("clip.mp4")).toMatchObject({
+      contentType: "video",
+      title: "clip",
+    });
+    expect(byRel.get("doc.pdf")).toMatchObject({
+      contentType: "pdf",
+      title: "doc",
+    });
+    expect(byRel.get("track.mp3")).toMatchObject({
+      contentType: "audio",
+      title: "track",
+    });
+    expect(byRel.get("shot.webp")).toMatchObject({
+      contentType: "image",
+      title: "shot",
+    });
+    expect(byRel.get("note.md")).toMatchObject({
+      contentType: "note",
+      title: "note",
+    });
+    expect(byRel.get("Trip/nested/x.MD")).toMatchObject({
+      contentType: "note",
+      title: "x",
+    });
+    expect(byRel.get("with-title.md")).toMatchObject({
+      contentType: "note",
+      title: "From FM",
+    });
+    expect(byRel.get("foreign.md")).toMatchObject({
+      contentType: "note",
+      title: "From FM",
+    });
+
+    const rows = await ctx.index.listItemFilesByIds(
+      meta.id,
+      imported.map((row) => row.itemId),
+    );
+    expect(rows).toHaveLength(imported.length);
+    for (const expected of imported) {
+      const row = rows.find((r) => r.id === expected.itemId);
+      expect(row?.title).toBe(expected.title);
+      expect(row?.content_type).toBe(expected.contentType);
+      expect(row?.source_type).toBe("import");
+    }
+
+    expect(await ctx.index.listVaultItemIds(meta.id)).toHaveLength(imported.length);
   });
 });
