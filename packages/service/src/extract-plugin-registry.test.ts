@@ -1,120 +1,311 @@
-import { describe, expect, it, vi } from "vitest";
-import type { GetItemResult } from "@collector/api";
-import { createExtractPluginRegistry } from "./extract-plugin-registry.js";
-import {
-  createMockExtractorPlugin,
-  MOCK_EXTRACT_MARKER_URL,
-  MOCK_EXTRACTOR_ID,
-} from "./extract-plugin-mock.js";
+/**
+ * Extract plugin registry — real vault notes + Instagram fixture HTTP
+ * (not discoverCalls / extractCalls theater). Assert candidates + vault writes.
+ */
 
-function fakeNote(input: {
-  id?: string;
-  body: string;
-  url?: string | null;
-}): GetItemResult {
-  const id = input.id ?? "Inbox/note.md";
-  return {
-    item: {
-      id,
-      vault_id: "vault-1",
-      title: "Note",
-      description: "",
-      url: input.url ?? null,
-      content_type: "note",
-      source_type: "manual",
-      metadata: {},
-      properties: {},
-      thumbnail: null,
-      tag_ids: [],
-      collection_ids: [],
-      folder_path: "Inbox",
-      content_revision: 1,
-      word_count: 0,
-      character_count: 0,
-      created_at: "2020-01-01T00:00:00.000Z",
-      updated_at: "2020-01-01T00:00:00.000Z",
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterEach, describe, expect, it } from "vitest";
+import type { ExtractorPlugin } from "@collector/api";
+import {
+  SqlVaultIndexStore,
+  attachMediaFile,
+  createVault,
+  listItemMediaWithPaths,
+  readItemFile,
+  readItemRawMarkdown,
+  resolveOrCreateInboxFolder,
+  upsertItem,
+  type VaultContext,
+} from "@collector/core";
+import { NodeFileSystemAdapter } from "@collector/core/node";
+import { MemorySqlAdapter } from "../../core/src/testing/memory-sql.js";
+import {
+  INSTAGRAM_PLUGIN_ID,
+  createInstagramExtractorPlugin,
+} from "./extract/instagram/instagram-extractor-plugin.js";
+import { createExtractPluginRegistry } from "./extract-plugin-registry.js";
+import { createItemsCrud } from "./items-crud.js";
+
+const FRONTMATTER_PROBE_ID = "frontmatter-probe";
+const FRONTMATTER_PROBE_URL = "https://probe.example/from-frontmatter";
+
+const FIXTURES = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "extract/instagram/fixtures",
+);
+
+const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+
+const OK_SHORTCODE = "CxImage01ab";
+const OK_URL = `https://www.instagram.com/p/${OK_SHORTCODE}/`;
+
+function readFixture(name: string): string {
+  return readFileSync(join(FIXTURES, name), "utf8");
+}
+
+function textResponse(
+  body: string,
+  init: { status?: number; headers?: Record<string, string> } = {},
+): Response {
+  return new Response(body, {
+    status: init.status ?? 200,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      ...init.headers,
     },
-    content: input.body,
+  });
+}
+
+function jsonResponse(
+  body: unknown,
+  init: { status?: number; headers?: Record<string, string> } = {},
+): Response {
+  return new Response(JSON.stringify(body), {
+    status: init.status ?? 200,
+    headers: {
+      "content-type": "application/json",
+      ...init.headers,
+    },
+  });
+}
+
+/** Fixture-backed Instagram HTTP — no network. */
+function createFixtureFetch(): typeof fetch {
+  const singleEmbed = readFixture("single-image-embed.html");
+
+  return async (input) => {
+    const url = String(input);
+
+    if (url.includes(`/${OK_SHORTCODE}/embed/`)) {
+      return textResponse(singleEmbed);
+    }
+    if (url.includes("cdn.instagram.fixture/single.jpg")) {
+      return new Response(JPEG, {
+        status: 200,
+        headers: { "content-type": "image/jpeg" },
+      });
+    }
+
+    throw new Error(
+      `unexpected URL in extract-plugin-registry fixture fetch: ${url}`,
+    );
   };
 }
 
-describe("createExtractPluginRegistry (#849)", () => {
-  it("default catalog is empty", async () => {
-    const getItemById = vi.fn(async () =>
-      fakeNote({ body: `see ${MOCK_EXTRACT_MARKER_URL}` }),
-    );
-    const registry = createExtractPluginRegistry({ getItemById });
-    await expect(
-      registry.discoverExtractCandidates("Inbox/note.md"),
-    ).resolves.toEqual([]);
-    expect(getItemById).toHaveBeenCalledWith("Inbox/note.md");
+describe("createExtractPluginRegistry (#849 / #899)", () => {
+  const dirs: string[] = [];
+  const fs = new NodeFileSystemAdapter();
+
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
-  it("discover merges mock candidates from body", async () => {
-    const mock = createMockExtractorPlugin();
-    const registry = createExtractPluginRegistry({
-      getItemById: async () =>
-        fakeNote({ body: `link ${MOCK_EXTRACT_MARKER_URL} here` }),
-      createCatalog: () => [mock],
+  async function openHarness(input: {
+    body: string;
+    url?: string | null;
+    catalog?: "instagram" | "empty" | "frontmatter-probe";
+  }): Promise<{
+    registry: ReturnType<typeof createExtractPluginRegistry>;
+    itemId: string;
+    vaultPath: string;
+    vaultId: string;
+    ctx: VaultContext;
+  }> {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-extract-reg-"));
+    dirs.push(dataDir);
+    const sql = new MemorySqlAdapter();
+    const index = new SqlVaultIndexStore(sql);
+    const ctx: VaultContext = { fs, index };
+    const { meta: vault, path: vaultPath } = await createVault(ctx, dataDir, {
+      name: "Vault",
+    });
+    const folderPath = await resolveOrCreateInboxFolder(ctx, vaultPath);
+    const itemId = `${folderPath}/${crypto.randomUUID()}.md`;
+    const now = new Date().toISOString();
+
+    await upsertItem(ctx, vaultPath, vault.id, {
+      item: {
+        id: itemId,
+        vault_id: vault.id,
+        title: "Capture",
+        description: "",
+        url: input.url ?? null,
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: folderPath,
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: now,
+        updated_at: now,
+      },
+      content: input.body,
     });
 
-    const candidates = await registry.discoverExtractCandidates("Inbox/a.md");
+    const crud = createItemsCrud(
+      {
+        resolveActiveVault: async () => ({ path: vaultPath, vault }),
+        getContext: () => ctx,
+        getIndex: () => index,
+        normalizeMarkdown: (raw: string) => ({ text: raw, changed: false }),
+        enqueueItemDerivedRefresh: async () => undefined,
+        enqueueItemExtractAuto: async () => undefined,
+      } as never,
+      () => "unused",
+    );
+
+    const attachMediaFiles = async (
+      id: string,
+      files: { name: string; bytes: Uint8Array }[],
+    ) => {
+      const out = [];
+      for (const file of files) {
+        out.push(
+          await attachMediaFile(ctx, vaultPath, id, {
+            filename: file.name,
+            data: file.bytes,
+          }),
+        );
+      }
+      return out;
+    };
+
+    const mode = input.catalog ?? "instagram";
+    let catalog: ExtractorPlugin[] = [];
+    if (mode === "instagram") {
+      catalog = [
+        createInstagramExtractorPlugin({
+          getItemById: (id) => crud.getItemById(id),
+          updateItem: (id, patch) => crud.updateItem(id, patch),
+          attachMediaFiles,
+          fetchImpl: createFixtureFetch(),
+        }),
+      ];
+    } else if (mode === "frontmatter-probe") {
+      // Minimal plugin that uses vault frontmatter url (Instagram ignores it by design).
+      catalog = [
+        {
+          id: FRONTMATTER_PROBE_ID,
+          discover({ frontmatterUrl }) {
+            if (frontmatterUrl !== FRONTMATTER_PROBE_URL) {
+              return [];
+            }
+            return [
+              {
+                extractorId: FRONTMATTER_PROBE_ID,
+                url: FRONTMATTER_PROBE_URL,
+                meta: { source: "frontmatter" },
+              },
+            ];
+          },
+          async extract({ itemId: id }) {
+            await crud.updateItem(id, { title: "probed-from-frontmatter" });
+          },
+        },
+      ];
+    }
+
+    const registry = createExtractPluginRegistry({
+      getItemById: (id) => crud.getItemById(id),
+      createCatalog: () => catalog,
+    });
+
+    return {
+      registry,
+      itemId,
+      vaultPath,
+      vaultId: vault.id,
+      ctx,
+    };
+  }
+
+  it("default catalog is empty", async () => {
+    const h = await openHarness({
+      body: `see ${OK_URL}\n`,
+      catalog: "empty",
+    });
+
+    await expect(
+      h.registry.discoverExtractCandidates(h.itemId),
+    ).resolves.toEqual([]);
+  });
+
+  it("discover merges Instagram candidates from vault body", async () => {
+    const h = await openHarness({
+      body: `link ${OK_URL} here\n`,
+    });
+
+    const candidates = await h.registry.discoverExtractCandidates(h.itemId);
     expect(candidates).toEqual([
       {
-        extractorId: MOCK_EXTRACTOR_ID,
-        url: MOCK_EXTRACT_MARKER_URL,
-        meta: { source: "body" },
+        extractorId: INSTAGRAM_PLUGIN_ID,
+        url: OK_URL,
+        meta: { shortcode: OK_SHORTCODE },
       },
     ]);
-    expect(mock.discoverCalls).toHaveLength(1);
   });
 
-  it("discover uses frontmatter url when present", async () => {
-    const mock = createMockExtractorPlugin();
-    const registry = createExtractPluginRegistry({
-      getItemById: async () =>
-        fakeNote({
-          body: "no marker in body",
-          url: MOCK_EXTRACT_MARKER_URL,
-        }),
-      createCatalog: () => [mock],
+  it("discover passes vault frontmatter url into catalog plugins", async () => {
+    const h = await openHarness({
+      body: "no probe URL in body\n",
+      url: FRONTMATTER_PROBE_URL,
+      catalog: "frontmatter-probe",
     });
 
-    const candidates = await registry.discoverExtractCandidates("Inbox/a.md");
+    const candidates = await h.registry.discoverExtractCandidates(h.itemId);
     expect(candidates).toEqual([
       {
-        extractorId: MOCK_EXTRACTOR_ID,
-        url: MOCK_EXTRACT_MARKER_URL,
+        extractorId: FRONTMATTER_PROBE_ID,
+        url: FRONTMATTER_PROBE_URL,
         meta: { source: "frontmatter" },
       },
     ]);
+
+    await h.registry.extractItemCandidate(h.itemId, candidates[0]!);
+    const item = await readItemFile(fs, h.vaultPath, h.itemId, h.vaultId);
+    expect(item.title).toBe("probed-from-frontmatter");
   });
 
-  it("extract invokes matching mock plugin", async () => {
-    const mock = createMockExtractorPlugin();
-    const registry = createExtractPluginRegistry({
-      getItemById: vi.fn(),
-      createCatalog: () => [mock],
+  it("extract writes Instagram fixture into vault note + media", async () => {
+    const h = await openHarness({
+      body: `Keep preamble\n\n${OK_URL}\n`,
     });
-    const candidate = {
-      extractorId: MOCK_EXTRACTOR_ID,
-      url: MOCK_EXTRACT_MARKER_URL,
-    };
+    const candidates = await h.registry.discoverExtractCandidates(h.itemId);
+    expect(candidates).toHaveLength(1);
 
-    await registry.extractItemCandidate("Inbox/a.md", candidate);
-    expect(mock.extractCalls).toEqual([
-      { itemId: "Inbox/a.md", candidate },
-    ]);
+    await h.registry.extractItemCandidate(h.itemId, candidates[0]!);
+
+    const item = await readItemFile(fs, h.vaultPath, h.itemId, h.vaultId);
+    expect(item.title).toBe("Morning ride");
+    expect(item.url).toBe(OK_URL);
+
+    const raw = await readItemRawMarkdown(fs, h.vaultPath, h.itemId);
+    expect(raw).toContain("Keep preamble");
+    expect(raw).toContain("Morning ride");
+    const body = raw.replace(/^---[\s\S]*?---\n/, "");
+    expect(body).not.toContain(OK_URL);
+
+    const media = await listItemMediaWithPaths(h.ctx, h.vaultPath, h.itemId);
+    expect(media).toHaveLength(1);
+    expect(media[0]!.filename).toBe(`${OK_SHORTCODE}.jpg`);
+    expect(await fs.exists(media[0]!.absolute_path)).toBe(true);
+    expect(await fs.readBinary(media[0]!.absolute_path)).toEqual(JPEG);
   });
 
   it("unknown extractorId fails loudly", async () => {
-    const registry = createExtractPluginRegistry({
-      getItemById: vi.fn(),
-      createCatalog: () => [createMockExtractorPlugin()],
-    });
+    const h = await openHarness({ body: "plain\n" });
 
     await expect(
-      registry.extractItemCandidate("Inbox/a.md", {
+      h.registry.extractItemCandidate(h.itemId, {
         extractorId: "nope",
         url: "https://example.com/x",
       }),
