@@ -1,3 +1,7 @@
+/**
+ * BetterSqlite index write/sync seams (#887): phased metadata/content FTS upserts,
+ * frontmatter-only FTS tokens, batch relation binds. Not a MemorySql suite.
+ */
 import { describe, expect, it } from "vitest";
 import {
   buildFtsMatchQuery,

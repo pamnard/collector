@@ -1,3 +1,7 @@
+/**
+ * BetterSqlite index query seams (#887): nav filters, sort/COLLATE, FTS pagination,
+ * folder-exact FTS, FTS + item_tags JOIN. Do not cover these on MemorySql alone.
+ */
 import { describe, expect, it } from "vitest";
 import { buildFtsMatchQuery } from "../search/fts-query.js";
 import { seedTagFromDocumentWritePath } from "../testing/seed-tag.js";

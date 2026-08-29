@@ -29,8 +29,12 @@ export type SqlIndexTestSuite = {
 };
 
 /**
- * Shared disposable-index suite: temp dir + migrated BetterSqlite + vault.
- * When to use vs MemorySql: `../testing/sql-adapter-coverage.md` (#887).
+ * Shared disposable-index suite: temp dir + migrated BetterSqlite + vault (#887).
+ *
+ * Prefer MemorySql for unit-speed FS/vault/service orchestration where SQL shape
+ * does not matter. Use this harness (not MemorySql) whenever the assertion depends
+ * on production SQLite semantics: FTS `MATCH` / rank, multi-table JOINs, `COLLATE`,
+ * or bind-order seams.
  */
 export function createSqlIndexTestSuite(): SqlIndexTestSuite {
   let dataDir = "";
