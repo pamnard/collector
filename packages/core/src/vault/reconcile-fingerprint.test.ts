@@ -5,6 +5,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runMigrations } from "@collector/db";
 import { BetterSqliteMigrator } from "../../../db/src/testing/better-sqlite.js";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
+import {
+  createSqlIndexTestSuite,
+  noteItemFields,
+} from "../index/sql-index-test-harness.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
 import { createId } from "../util/ids.js";
 import { createVault } from "./vault-operations.js";
@@ -29,25 +33,27 @@ class CountingFileSystemAdapter extends NodeFileSystemAdapter {
 }
 
 describe("reconcile fingerprint against real vault FS + BetterSqlite", () => {
-  let dataDir = "";
-  let db: BetterSqliteMigrator | null = null;
+  const suite = createSqlIndexTestSuite();
+  suite.registerCleanup();
+
+  let extraDataDir = "";
+  let extraDb: BetterSqliteMigrator | null = null;
 
   afterEach(async () => {
-    db?.close();
-    db = null;
-    if (dataDir) {
-      await rm(dataDir, { recursive: true, force: true });
-      dataDir = "";
+    extraDb?.close();
+    extraDb = null;
+    if (extraDataDir) {
+      await rm(extraDataDir, { recursive: true, force: true });
+      extraDataDir = "";
     }
   });
 
   async function seedIndexedVault(itemCount: number) {
-    dataDir = await mkdtemp(join(tmpdir(), "collector-reconcile-fp-"));
-    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
-    await runMigrations(db);
+    const env = await suite.openVaultIndex("collector-reconcile-fp-");
+    // Replace suite fs with counting adapter for fast-path stat assertions.
     const fs = new CountingFileSystemAdapter();
-    const ctx = { fs, index: new SqlVaultIndexStore(db) };
-    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const ctx = { fs, index: env.index };
+    const { meta, path } = env.vault;
     const timestamp = new Date().toISOString();
     const itemIds: string[] = [];
 
@@ -55,31 +61,18 @@ describe("reconcile fingerprint against real vault FS + BetterSqlite", () => {
       const itemId = `${createId()}.md`;
       itemIds.push(itemId);
       await upsertItem(ctx, path, meta.id, {
-        item: {
-          id: itemId,
-          vault_id: meta.id,
+        item: noteItemFields(meta.id, itemId, {
           title: `Note ${i}`,
-          description: "",
-          content_type: "note",
-          source_type: "manual",
-          metadata: {},
-          properties: {},
-          tag_ids: [],
-          collection_ids: [],
-          folder_path: "",
-          content_revision: 1,
-          word_count: 0,
-          character_count: 0,
           created_at: timestamp,
           updated_at: timestamp,
-        },
+        }),
         content: "body",
       });
     }
 
     const warmup = await syncIndexFromFilesystem(ctx, path, meta.id);
     expect(warmup.errors).toHaveLength(0);
-    return { ctx, meta, path, itemIds, fs };
+    return { ctx, meta, path, itemIds, fs, db: env.db };
   }
 
   it("reads fingerprint from vault root mtime + on-disk item count", async () => {
@@ -146,41 +139,25 @@ describe("reconcile fingerprint against real vault FS + BetterSqlite", () => {
 
   it("rejects fast path when index is empty but disk has items", async () => {
     const diskFs = new NodeFileSystemAdapter();
-    dataDir = await mkdtemp(join(tmpdir(), "collector-reconcile-empty-"));
-    const diskDb = BetterSqliteMigrator.open(join(dataDir, "disk.db"));
-    await runMigrations(diskDb);
-    const diskCtx = { fs: diskFs, index: new SqlVaultIndexStore(diskDb) };
-    const { meta, path } = await createVault(diskCtx, dataDir, { name: "Vault" });
+    extraDataDir = await mkdtemp(join(tmpdir(), "collector-reconcile-empty-"));
+    extraDb = BetterSqliteMigrator.open(join(extraDataDir, "disk.db"));
+    await runMigrations(extraDb);
+    const diskCtx = { fs: diskFs, index: new SqlVaultIndexStore(extraDb) };
+    const { meta, path } = await createVault(diskCtx, extraDataDir, { name: "Vault" });
 
     await upsertItem(diskCtx, path, meta.id, {
-      item: {
-        id: `${createId()}.md`,
-        vault_id: meta.id,
+      item: noteItemFields(meta.id, `${createId()}.md`, {
         title: "On disk",
-        description: "",
-        content_type: "note",
-        source_type: "manual",
-        metadata: {},
-        properties: {},
-        tag_ids: [],
-        collection_ids: [],
-        folder_path: "",
-        content_revision: 1,
-        word_count: 0,
-        character_count: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
+      }),
       content: "body",
     });
     await syncIndexFromFilesystem(diskCtx, path, meta.id);
     const storedFp = await diskCtx.index.getReconcileFingerprint(meta.id);
     expect(storedFp).not.toBeNull();
 
-    db = BetterSqliteMigrator.open(join(dataDir, "empty.db"));
-    await runMigrations(db);
-    const emptyCtx = { fs: diskFs, index: new SqlVaultIndexStore(db) };
-    await emptyCtx.index.upsertVault(meta, path);
+    const emptyEnv = await suite.openVaultIndex("collector-reconcile-empty-idx-");
+    await emptyEnv.index.upsertVault(meta, path);
+    const emptyCtx = { fs: diskFs, index: emptyEnv.index };
 
     const diskIds = new Set(await listItemRelativePaths(diskFs, path));
     const indexedIds = new Set(await emptyCtx.index.listVaultItemIds(meta.id));
@@ -202,15 +179,10 @@ describe("reconcile fingerprint against real vault FS + BetterSqlite", () => {
     expect(report.skipped).toBe(0);
     expect(await emptyCtx.index.listVaultItemIds(meta.id)).toHaveLength(1);
     expect(await emptyCtx.index.getReconcileFingerprint(meta.id)).not.toBeNull();
-
-    diskDb.close();
   });
 
   it("rejects fast path when there is no stored fingerprint", async () => {
-    const { ctx, meta, path } = await seedIndexedVault(0);
-    if (!db) {
-      throw new Error("db required");
-    }
+    const { ctx, meta, path, db } = await seedIndexedVault(0);
     await db.execute(`UPDATE vaults SET reconcile_fingerprint_json = NULL WHERE id = ?`, [
       meta.id,
     ]);

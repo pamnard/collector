@@ -23,8 +23,6 @@ describe("drop-import-classify against temp drop folder", () => {
 
   it("classifies real filenames from disk; skips unsupported", async () => {
     dropRoot = await mkdtemp(join(tmpdir(), "collector-drop-classify-"));
-    const nested = joinSegments(dropRoot, "Trip", "nested");
-    await mkdir(nested, { recursive: true });
 
     const files: Array<{ rel: string; bytes?: Uint8Array; text?: string }> = [
       { rel: "a.png", bytes: Uint8Array.from([1]) },
@@ -47,45 +45,26 @@ describe("drop-import-classify against temp drop folder", () => {
       }
     }
 
-    const entries = await fs.readDirEntries(dropRoot);
-    const topNames = entries.map((e) => e.name).sort();
+    const topNames = (await fs.readDirEntries(dropRoot)).map((e) => e.name).sort();
     expect(topNames).toEqual(
       ["Trip", "a.png", "clip.mp4", "doc.pdf", "note.md", "readme.txt", "track.mp3", "virus.exe"].sort(),
     );
 
-    expect(classifyDropFilename("a.png")).toEqual({
-      kind: "media",
-      contentType: "image",
-      mediaType: "image",
-    });
-    expect(classifyDropFilename("clip.mp4")).toEqual({
-      kind: "media",
-      contentType: "video",
-      mediaType: "video",
-    });
-    expect(classifyDropFilename("doc.pdf")).toEqual({
-      kind: "media",
-      contentType: "pdf",
-      mediaType: "pdf",
-    });
-    expect(classifyDropFilename("track.mp3")).toEqual({
-      kind: "media",
-      contentType: "audio",
-      mediaType: "audio",
-    });
-    expect(classifyDropFilename("note.md")).toEqual({ kind: "note" });
-    expect(classifyDropFilename("Trip/nested/x.MD")).toEqual({ kind: "note" });
-    expect(classifyDropFilename("virus.exe")).toEqual({ kind: "skip" });
-    expect(classifyDropFilename("readme.txt")).toEqual({ kind: "skip" });
+    const expected: Record<string, ReturnType<typeof classifyDropFilename>> = {
+      "a.png": { kind: "media", contentType: "image", mediaType: "image" },
+      "clip.mp4": { kind: "media", contentType: "video", mediaType: "video" },
+      "doc.pdf": { kind: "media", contentType: "pdf", mediaType: "pdf" },
+      "track.mp3": { kind: "media", contentType: "audio", mediaType: "audio" },
+      "note.md": { kind: "note" },
+      "Trip/nested/x.MD": { kind: "note" },
+      "virus.exe": { kind: "skip" },
+      "readme.txt": { kind: "skip" },
+    };
 
-    // Inverting media→skip would leave importable files classified wrong relative to disk.
-    const importable = files.filter((f) => classifyDropFilename(f.rel).kind !== "skip");
-    for (const file of importable) {
+    for (const file of files) {
       expect(await fs.exists(joinSegments(dropRoot, file.rel))).toBe(true);
+      expect(classifyDropFilename(file.rel)).toEqual(expected[file.rel]);
     }
-    expect(importable.map((f) => f.rel).sort()).toEqual(
-      ["a.png", "clip.mp4", "doc.pdf", "track.mp3", "note.md", "Trip/nested/x.MD"].sort(),
-    );
   });
 
   it("titleStemFromFilename strips extension from basenames on disk", async () => {
