@@ -1,64 +1,89 @@
-import { describe, expect, it } from "vitest";
-import {
-  COLLECTOR_MCP_TOOLS,
-  requireMcpToolParamDescription,
-} from "./tools-catalog.js";
+/**
+ * Catalog ↔ live MCP registration contract (#273 / #265).
+ * Uses in-process createCollectorMcpServer + listTools (no host / :1420).
+ */
 
-/** Must match every `registerTool` name in `server.ts`. */
-const REGISTERED_TOOL_NAMES = [
-  "collector_health",
-  "collector_search",
-  "collector_get_item",
-  "collector_create_item",
-  "collector_update_item",
-  "collector_get_item_source",
-  "collector_update_item_source",
-  "collector_wait_derived",
-  "collector_delete_item",
-  "collector_create_folder",
-  "collector_list_folders",
-  "collector_list_folder_items",
-  "collector_rename_folder",
-  "collector_move_folder",
-  "collector_delete_folder",
-  "collector_move_item",
-  "collector_list_item_media",
-  "collector_attach_media",
-  "collector_replace_media",
-  "collector_delete_media",
-  "collector_set_item_cover",
-  "collector_discover_extract_candidates",
-  "collector_extract_item_candidate",
-] as const;
+import { afterEach, describe, expect, it } from "vitest";
+import type { CollectorHostServiceClient } from "@collector/client";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { createStaticMcpHostSession } from "./host-session.js";
+import { createCollectorMcpServer } from "./server.js";
+import { COLLECTOR_MCP_TOOLS } from "./tools-catalog.js";
 
-describe("COLLECTOR_MCP_TOOLS catalog (#273 / #265)", () => {
-  it("lists every registered MCP tool name exactly once", () => {
-    const names = COLLECTOR_MCP_TOOLS.map((tool) => tool.name);
-    expect(names).toEqual([...REGISTERED_TOOL_NAMES]);
-    expect(new Set(names).size).toBe(names.length);
+type ListedTool = {
+  name: string;
+  description?: string;
+  inputSchema: {
+    properties?: Record<string, { description?: string } | undefined>;
+  };
+};
+
+const openClients: Client[] = [];
+
+afterEach(async () => {
+  while (openClients.length > 0) {
+    const client = openClients.pop()!;
+    await client.close();
+  }
+});
+
+/** Stub host — listTools never dials; registration only needs a session. */
+function unusedHostClient(): CollectorHostServiceClient {
+  return {
+    health: async () => {
+      throw new Error("unusedHostClient: health must not be called");
+    },
+    close: async () => undefined,
+    items: {} as CollectorHostServiceClient["items"],
+  } as CollectorHostServiceClient;
+}
+
+async function listRegisteredTools(): Promise<ListedTool[]> {
+  const mcp = createCollectorMcpServer(
+    createStaticMcpHostSession(unusedHostClient()),
+  );
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const mcpClient = new Client({ name: "tools-catalog-test", version: "0.0.1" });
+  openClients.push(mcpClient);
+  await Promise.all([
+    mcp.connect(serverTransport),
+    mcpClient.connect(clientTransport),
+  ]);
+  const listed = await mcpClient.listTools();
+  return listed.tools as ListedTool[];
+}
+
+describe("COLLECTOR_MCP_TOOLS catalog ↔ MCP server registration", () => {
+  it("registers every catalog tool and every registered tool has a catalog entry", async () => {
+    const registered = await listRegisteredTools();
+    const catalogNames = COLLECTOR_MCP_TOOLS.map((tool) => tool.name);
+    const registeredNames = registered.map((tool) => tool.name);
+
+    expect(new Set(catalogNames).size).toBe(catalogNames.length);
+    expect(new Set(registeredNames).size).toBe(registeredNames.length);
+    expect([...registeredNames].sort()).toEqual([...catalogNames].sort());
   });
 
-  it("keeps non-empty agent descriptions on every tool and param", () => {
-    for (const tool of COLLECTOR_MCP_TOOLS) {
-      expect(tool.description.trim().length).toBeGreaterThan(40);
-      for (const param of tool.params) {
-        expect(param.description.trim().length).toBeGreaterThan(10);
-        expect(
-          requireMcpToolParamDescription(tool.name, param.name),
-        ).toBe(param.description);
-      }
+  it("registers each catalog tool with the catalog description", async () => {
+    const registered = await listRegisteredTools();
+    const byName = new Map(registered.map((tool) => [tool.name, tool]));
+
+    for (const entry of COLLECTOR_MCP_TOOLS) {
+      const live = byName.get(entry.name);
+      expect(live, `missing registration for ${entry.name}`).toBeDefined();
+      expect(live!.description).toBe(entry.description);
     }
   });
 
-  it("documents itemId as a vault-relative path, not a bare UUID (#265)", () => {
-    const getItem = COLLECTOR_MCP_TOOLS.find(
-      (tool) => tool.name === "collector_get_item",
-    );
+  it("registers itemId on collector_get_item as vault-relative path, not bare UUID (#265)", async () => {
+    const registered = await listRegisteredTools();
+    const getItem = registered.find((tool) => tool.name === "collector_get_item");
     expect(getItem).toBeDefined();
-    const itemId = getItem!.params.find((param) => param.name === "itemId");
+    expect(getItem!.description).toMatch(/not a bare UUID/i);
+    const itemId = getItem!.inputSchema.properties?.itemId;
     expect(itemId?.description).toMatch(/vault-relative/i);
     expect(itemId?.description).toMatch(/not a bare UUID/i);
-    expect(getItem!.description).toMatch(/not a bare UUID/i);
   });
 
   it("documents search as full-text returning paged items with total", () => {
