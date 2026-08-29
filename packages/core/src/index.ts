@@ -237,9 +237,11 @@ export {
   applyItemCover,
   clearItemCover,
   readItemCoverSize,
+  readItemCoverSource,
   resolveItemThumbnailAbsolutePath,
   touchItemUpdatedAt,
   writeItemCoverSize,
+  writeItemCoverSource,
 } from "./vault/cover-operations.js";
 export {
   resolveItemThumbnailPathsBatch,

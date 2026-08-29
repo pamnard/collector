@@ -89,6 +89,7 @@ export function createGenerateCoverHandler(deps: {
       itemId,
       cover.data,
       cover.size,
+      { sourceMediaId: mediaId },
     );
     deps.invalidateThumbnailPathCache?.(itemId);
     deps.onVaultPresentationChanged?.({

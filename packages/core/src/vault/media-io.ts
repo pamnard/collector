@@ -22,6 +22,7 @@ const SKIP_MEDIA_DIR_NAMES = new Set<string>([
   ITEM_FILES.source,
   ITEM_FILES.cover,
   ITEM_FILES.coverSize,
+  ITEM_FILES.coverSource,
   ITEM_FILES.mediaManifest,
 ]);
 

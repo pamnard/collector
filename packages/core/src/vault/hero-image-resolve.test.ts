@@ -54,13 +54,13 @@ describe("resolveItemHeroMedia", () => {
     return { ctx, path, vaultId: meta.id, itemId };
   }
 
-  it("prefers cover.webp over gallery so hero matches dashboard preview", async () => {
+  it("keeps cover identity but displays full cover-source media (not lex-min gallery)", async () => {
     const { ctx, path, vaultId, itemId } = await seedItem("Both");
     await attachMediaFile(ctx, path, itemId, {
       filename: "a-first.png",
       data: new TextEncoder().encode("full-res-a"),
     });
-    await attachMediaFile(ctx, path, itemId, {
+    const coverMedia = await attachMediaFile(ctx, path, itemId, {
       filename: "z-cover-source.png",
       data: new TextEncoder().encode("full-res-z"),
     });
@@ -71,6 +71,40 @@ describe("resolveItemHeroMedia", () => {
       itemId,
       new TextEncoder().encode("fake-webp-from-z"),
       { width: 320, height: 240 },
+      { sourceMediaId: coverMedia.id },
+    );
+
+    const resolved = await resolveItemHeroMedia(fs, path, itemId);
+
+    expect(resolved).toEqual({
+      kind: "image",
+      filePath: itemCoverPath(path, itemId),
+      displayPath: mediaFilePath(
+        path,
+        itemId,
+        coverMedia.id,
+        coverMedia.filename,
+      ),
+    });
+  });
+
+  it("falls back to cover.webp display when cover.source sidecar is missing (legacy)", async () => {
+    const { ctx, path, vaultId, itemId } = await seedItem("Legacy");
+    await attachMediaFile(ctx, path, itemId, {
+      filename: "a-first.png",
+      data: new TextEncoder().encode("full-res-a"),
+    });
+    await attachMediaFile(ctx, path, itemId, {
+      filename: "z-second.png",
+      data: new TextEncoder().encode("full-res-z"),
+    });
+    await applyItemCover(
+      ctx,
+      path,
+      vaultId,
+      itemId,
+      new TextEncoder().encode("fake-webp"),
+      { width: 320, height: 240 },
     );
 
     const resolved = await resolveItemHeroMedia(fs, path, itemId);
@@ -79,6 +113,30 @@ describe("resolveItemHeroMedia", () => {
       kind: "image",
       filePath: itemCoverPath(path, itemId),
       displayPath: itemCoverPath(path, itemId),
+    });
+  });
+
+  it("legacy sole gallery image is used for display without cover.source", async () => {
+    const { ctx, path, vaultId, itemId } = await seedItem("Sole");
+    const only = await attachMediaFile(ctx, path, itemId, {
+      filename: "only.png",
+      data: new TextEncoder().encode("full-res"),
+    });
+    await applyItemCover(
+      ctx,
+      path,
+      vaultId,
+      itemId,
+      new TextEncoder().encode("fake-webp"),
+      { width: 320, height: 240 },
+    );
+
+    const resolved = await resolveItemHeroMedia(fs, path, itemId);
+
+    expect(resolved).toEqual({
+      kind: "image",
+      filePath: itemCoverPath(path, itemId),
+      displayPath: mediaFilePath(path, itemId, only.id, only.filename),
     });
   });
 
@@ -96,6 +154,7 @@ describe("resolveItemHeroMedia", () => {
       itemId,
       new TextEncoder().encode("fake-webp"),
       { width: 320, height: 240 },
+      { sourceMediaId: video.id },
     );
 
     const resolved = await resolveItemHeroMedia(fs, path, itemId);

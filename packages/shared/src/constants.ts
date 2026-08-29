@@ -56,10 +56,22 @@ export const ITEM_FILES = {
   cover: "cover.webp",
   /** Pixel size sidecar next to cover.webp (#822). */
   coverSize: "cover.size.json",
+  /**
+   * Gallery mediaId that produced cover.webp — detail hero displays that full
+   * file so sharpness from #741 returns without gallery-first lex-min mismatch
+   * (regression from f00fe67 showing teaser cover.webp in the hero).
+   */
+  coverSource: "cover.source.json",
   /** Legacy only — migration reads these. */
   legacyMeta: "item.json",
   legacyContent: "content.md",
 } as const;
+
+/**
+ * Longest edge of generated `cover.webp` (#255). Teaser/grid slots must stay
+ * at or below this CSS size when displaying cover.webp, or the asset upscales.
+ */
+export const COVER_WEBP_MAX_EDGE = 480;
 
 export const VAULT_FILES = {
   meta: "vault.meta.json",

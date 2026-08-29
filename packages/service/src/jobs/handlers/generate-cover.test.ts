@@ -141,6 +141,7 @@ describe("generateCover job (#636 / #640)", () => {
       "note.md",
       new Uint8Array([9, 9, 9]),
       { width: 320, height: 240 },
+      { sourceMediaId: "m1" },
     );
     expect(invalidateThumbnailPathCache).toHaveBeenCalledWith("note.md");
     expect(onVaultPresentationChanged).toHaveBeenCalledWith({

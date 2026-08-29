@@ -18,12 +18,12 @@ import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { GeneratedCover, MediaType } from "@collector/shared";
-import { coverPixelSizeSchema } from "@collector/shared";
+import { COVER_WEBP_MAX_EDGE, coverPixelSizeSchema } from "@collector/shared";
 import sharp from "sharp";
 
 const execFileAsync = promisify(execFile);
 
-const COVER_MAX_EDGE = 480;
+const COVER_MAX_EDGE = COVER_WEBP_MAX_EDGE;
 const COVER_WEBP_QUALITY = 85;
 
 const DURATION_RE = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/;
