@@ -1,282 +1,555 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import sharp from "sharp";
+import {
+  applyItemCover,
+  createVault,
+  itemCoverPath,
+  itemCoverSizePath,
+  readItemFile,
+  resolveItemThumbnailPathsProgressive,
+  SqlVaultIndexStore,
+  upsertItem,
+  type VaultContext,
+} from "@collector/core";
+import { NodeFileSystemAdapter } from "@collector/core/node";
+import type { GenerateCoverJobPayload, ItemFile, VaultMeta } from "@collector/shared";
+import { MemorySqlAdapter } from "../../core/src/testing/memory-sql.js";
+import { readCoverPixelSize } from "./cover-pixel-size.js";
+import {
+  createMediaCoverService,
+  stubReadCoverPixelSizeUnavailable,
+} from "./media-cover.js";
 
-const listItemMediaWithPaths = vi.fn();
-const attachMediaFile = vi.fn();
-const replaceMediaFile = vi.fn();
-const deleteMediaFile = vi.fn();
-const clearItemCover = vi.fn();
-const readItemFile = vi.fn();
-const touchItemUpdatedAt = vi.fn();
-const readItemCoverSize = vi.fn();
-const writeItemCoverSize = vi.fn();
+async function tinyPng(width = 64, height = 48): Promise<Uint8Array> {
+  return new Uint8Array(
+    await sharp({
+      create: {
+        width,
+        height,
+        channels: 3,
+        background: { r: 20, g: 40, b: 60 },
+      },
+    })
+      .png()
+      .toBuffer(),
+  );
+}
 
-vi.mock("@collector/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@collector/core")>();
-  return {
-    ...actual,
-    listItemMediaWithPaths: (...args: unknown[]) =>
-      listItemMediaWithPaths(...args),
-    attachMediaFile: (...args: unknown[]) => attachMediaFile(...args),
-    replaceMediaFile: (...args: unknown[]) => replaceMediaFile(...args),
-    deleteMediaFile: (...args: unknown[]) => deleteMediaFile(...args),
-    clearItemCover: (...args: unknown[]) => clearItemCover(...args),
-    readItemFile: (...args: unknown[]) => readItemFile(...args),
-    touchItemUpdatedAt: (...args: unknown[]) => touchItemUpdatedAt(...args),
-    readItemCoverSize: (...args: unknown[]) => readItemCoverSize(...args),
-    writeItemCoverSize: (...args: unknown[]) => writeItemCoverSize(...args),
-  };
-});
-
-import { createMediaCoverService, stubReadCoverPixelSizeUnavailable } from "./media-cover.js";
+async function tinyWebp(width = 32, height = 24): Promise<Uint8Array> {
+  return new Uint8Array(
+    await sharp({
+      create: {
+        width,
+        height,
+        channels: 3,
+        background: { r: 90, g: 10, b: 30 },
+      },
+    })
+      .webp()
+      .toBuffer(),
+  );
+}
 
 describe("createMediaCoverService", () => {
-  const vault = {
-    id: "v1",
-    name: "Vault",
-    is_default: true,
-    created_at: "a",
-    updated_at: "a",
-  };
-  const readBinary = vi.fn(async () => new Uint8Array([1, 2, 3]));
-  const ctx = { fs: { readBinary } } as never;
-  const enqueueGenerateCover = vi.fn(async () => ({ id: "job-1" }));
-  const waitForCoverJob = vi.fn(async () => "succeeded" as const);
-  const resolveThumbnailPathsProgressive = vi.fn(
-    async (
-      _vaultPath: string,
-      items: Array<{ id: string }>,
-      options: {
-        onResolved: (result: { id: string; path: string | null }) => void;
-      },
-    ) => {
-      for (const item of items) {
-        options.onResolved({ id: item.id, path: `/thumb/${item.id}` });
-      }
-    },
-  );
-  const readCoverPixelSize = vi.fn(async (absolutePath: string) => {
-    if (absolutePath.includes("null")) {
-      throw new Error("unexpected size read");
+  let dataDir = "";
+  const fs = new NodeFileSystemAdapter();
+
+  afterEach(async () => {
+    if (dataDir) {
+      await rm(dataDir, { recursive: true, force: true });
+      dataDir = "";
     }
-    return { width: 320, height: 240 };
   });
 
-  beforeEach(() => {
-    listItemMediaWithPaths.mockReset();
-    attachMediaFile.mockReset();
-    replaceMediaFile.mockReset();
-    deleteMediaFile.mockReset();
-    clearItemCover.mockReset();
-    readItemFile.mockReset();
-    touchItemUpdatedAt.mockReset();
-    readItemCoverSize.mockReset();
-    writeItemCoverSize.mockReset();
-    readBinary.mockClear();
-    enqueueGenerateCover.mockClear();
-    waitForCoverJob.mockClear();
-    resolveThumbnailPathsProgressive.mockClear();
-    readCoverPixelSize.mockClear();
-    enqueueGenerateCover.mockResolvedValue({ id: "job-1" });
-    waitForCoverJob.mockResolvedValue("succeeded");
-    readItemCoverSize.mockResolvedValue(null);
-    writeItemCoverSize.mockResolvedValue(undefined);
-    touchItemUpdatedAt.mockResolvedValue({
-      id: "note.md",
-      thumbnail: null,
-      updated_at: "t2",
+  async function openVault(): Promise<{
+    ctx: VaultContext;
+    vault: VaultMeta;
+    vaultPath: string;
+    itemId: string;
+  }> {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-media-cover-svc-"));
+    const sql = new MemorySqlAdapter();
+    const ctx: VaultContext = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta: vault, path: vaultPath } = await createVault(ctx, dataDir, {
+      name: "Vault",
     });
-  });
-
-  function createService(
-    opts?: {
-      readCoverPixelSize?: typeof readCoverPixelSize;
-      onVaultPresentationChanged?: ReturnType<typeof vi.fn>;
-    },
-  ) {
-    return createMediaCoverService({
-      resolveActiveVault: async () => ({ vault: vault as never, path: "/vault" }),
-      getContext: () => ctx,
-      enqueueGenerateCover,
-      waitForCoverJob,
-      resolveThumbnailPathsProgressive,
-      readCoverPixelSize: opts?.readCoverPixelSize ?? readCoverPixelSize,
-      onVaultPresentationChanged: opts?.onVaultPresentationChanged,
+    const itemId = `${crypto.randomUUID()}.md`;
+    await upsertItem(ctx, vaultPath, vault.id, {
+      item: {
+        id: itemId,
+        vault_id: vault.id,
+        title: "Note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
     });
+    return { ctx, vault, vaultPath, itemId };
   }
 
-  it("listItemMedia delegates to core", async () => {
-    listItemMediaWithPaths.mockResolvedValue([{ id: "m1" }]);
-    const result = await createService().listItemMedia("note.md");
-    expect(listItemMediaWithPaths).toHaveBeenCalledWith(ctx, "/vault", "note.md");
-    expect(result).toEqual([{ id: "m1" }]);
+  function createService(options: {
+    ctx: VaultContext;
+    vault: VaultMeta;
+    vaultPath: string;
+    enqueueGenerateCover?: (
+      input: GenerateCoverJobPayload,
+    ) => Promise<{ id: string }>;
+    waitForCoverJob?: (
+      jobId: string,
+    ) => Promise<"succeeded" | "failed" | "cancelled">;
+    resolveThumbnailPathsProgressive?: typeof resolveItemThumbnailPathsProgressive;
+    readCoverPixelSize?: typeof readCoverPixelSize;
+    onVaultPresentationChanged?: ReturnType<typeof vi.fn>;
+  }) {
+    const enqueued: GenerateCoverJobPayload[] = [];
+    const enqueueGenerateCover =
+      options.enqueueGenerateCover ??
+      (async (input: GenerateCoverJobPayload) => {
+        enqueued.push(input);
+        return { id: `job-${enqueued.length}` };
+      });
+
+    const service = createMediaCoverService({
+      resolveActiveVault: async () => ({
+        vault: options.vault,
+        path: options.vaultPath,
+      }),
+      getContext: () => options.ctx,
+      enqueueGenerateCover,
+      waitForCoverJob:
+        options.waitForCoverJob ?? (async () => "succeeded" as const),
+      resolveThumbnailPathsProgressive:
+        options.resolveThumbnailPathsProgressive ??
+        resolveItemThumbnailPathsProgressive.bind(null, options.ctx.fs),
+      readCoverPixelSize: options.readCoverPixelSize ?? readCoverPixelSize,
+      onVaultPresentationChanged: options.onVaultPresentationChanged,
+    });
+
+    return { service, enqueued };
+  }
+
+  it("listItemMedia returns media files that exist on disk", async () => {
+    const { ctx, vault, vaultPath, itemId } = await openVault();
+    const { service } = createService({ ctx, vault, vaultPath });
+    const png = await tinyPng();
+
+    const attached = await service.attachMediaFiles(itemId, [
+      { name: "shot.png", bytes: png },
+    ]);
+    expect(attached).toHaveLength(1);
+
+    const listed = await service.listItemMedia(itemId);
+    expect(listed).toHaveLength(1);
+    expect(listed[0]!.filename).toBe("shot.png");
+    expect(listed[0]!.media_type).toBe("image");
+    expect(await fs.exists(listed[0]!.absolute_path)).toBe(true);
+    expect(await fs.readBinary(listed[0]!.absolute_path)).toEqual(png);
   });
 
-  it("resolveItemThumbnailPaths caches by thumbnail+updated_at", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const service = createService();
-    const item = {
-      id: "note.md",
-      thumbnail: "cover.webp",
-      updated_at: "t1",
-    } as never;
+  it("attachMediaFiles writes media, bumps updated_at, and enqueues that image path", async () => {
+    const { ctx, vault, vaultPath, itemId } = await openVault();
+    const before = await readItemFile(fs, vaultPath, itemId, vault.id);
+    const onVaultPresentationChanged = vi.fn();
+    const { service, enqueued } = createService({
+      ctx,
+      vault,
+      vaultPath,
+      onVaultPresentationChanged,
+    });
+    const png = await tinyPng();
 
-    const first = await service.resolveItemThumbnailPaths([item]);
-    const second = await service.resolveItemThumbnailPaths([item]);
+    const attached = await service.attachMediaFiles(itemId, [
+      { name: "a.png", bytes: png },
+    ]);
 
-    expect(first.get("note.md")).toBe("/thumb/note.md");
-    expect(second.get("note.md")).toBe("/thumb/note.md");
-    expect(resolveThumbnailPathsProgressive).toHaveBeenCalledTimes(1);
-    // Missing sidecar → one-time sharp backfill (#822).
-    expect(readCoverPixelSize).toHaveBeenCalledTimes(1);
-    expect(writeItemCoverSize).toHaveBeenCalledTimes(1);
-    warn.mockRestore();
+    const after = await readItemFile(fs, vaultPath, itemId, vault.id);
+    expect(after.updated_at > before.updated_at).toBe(true);
+    expect(attached[0]!.filename).toBe("a.png");
+
+    const listed = await service.listItemMedia(itemId);
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0]).toEqual({
+      vaultId: vault.id,
+      itemId,
+      mediaId: listed[0]!.id,
+      absolutePath: listed[0]!.absolute_path,
+      filename: "a.png",
+      mediaType: "image",
+    });
+    expect(await fs.exists(enqueued[0]!.absolutePath)).toBe(true);
+    // Cover job not done yet — do not emit itemCoverChanged (#856).
+    expect(onVaultPresentationChanged).not.toHaveBeenCalled();
   });
 
-  it("resolveItemThumbnailEntries returns path + size when host injects reader", async () => {
+  it("attachMediaFiles prefers an existing image over an attached video", async () => {
+    const { ctx, vault, vaultPath, itemId } = await openVault();
+    const { service, enqueued } = createService({ ctx, vault, vaultPath });
+    const png = await tinyPng();
+
+    await service.attachMediaFiles(itemId, [{ name: "photo.png", bytes: png }]);
+    enqueued.length = 0;
+
+    await service.attachMediaFiles(itemId, [
+      { name: "clip.mp4", bytes: new Uint8Array([0, 1, 2, 3]) },
+    ]);
+
+    const listed = await service.listItemMedia(itemId);
+    const image = listed.find((m) => m.media_type === "image");
+    expect(image).toBeDefined();
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0]!.mediaId).toBe(image!.id);
+    expect(enqueued[0]!.filename).toBe("photo.png");
+    expect(enqueued[0]!.mediaType).toBe("image");
+    expect(await fs.exists(enqueued[0]!.absolutePath)).toBe(true);
+  });
+
+  it("deleteItemMedia clears cover files when no media remains and emits itemCoverChanged (#856)", async () => {
+    const { ctx, vault, vaultPath, itemId } = await openVault();
+    const onVaultPresentationChanged = vi.fn();
+    const { service } = createService({
+      ctx,
+      vault,
+      vaultPath,
+      onVaultPresentationChanged,
+    });
+    const png = await tinyPng();
+    const [media] = await service.attachMediaFiles(itemId, [
+      { name: "a.png", bytes: png },
+    ]);
+
+    const coverBytes = await tinyWebp(40, 30);
+    await applyItemCover(ctx, vaultPath, vault.id, itemId, coverBytes, {
+      width: 40,
+      height: 30,
+    });
+    expect(await fs.exists(itemCoverPath(vaultPath, itemId))).toBe(true);
+    expect(await fs.exists(itemCoverSizePath(vaultPath, itemId))).toBe(true);
+
+    await service.deleteItemMedia(itemId, media!.id);
+
+    expect(await service.listItemMedia(itemId)).toHaveLength(0);
+    expect(await fs.exists(itemCoverPath(vaultPath, itemId))).toBe(false);
+    expect(await fs.exists(itemCoverSizePath(vaultPath, itemId))).toBe(false);
+    expect(onVaultPresentationChanged).toHaveBeenCalledWith({
+      vaultId: vault.id,
+      kind: "itemCoverChanged",
+      itemId,
+      folderPath: "",
+    });
+  });
+
+  it("replaceItemMedia overwrites bytes on disk and enqueues that media", async () => {
+    const { ctx, vault, vaultPath, itemId } = await openVault();
+    const { service, enqueued } = createService({ ctx, vault, vaultPath });
+    const first = await tinyPng(32, 32);
+    const second = await tinyPng(48, 48);
+    const [media] = await service.attachMediaFiles(itemId, [
+      { name: "a.png", bytes: first },
+    ]);
+    enqueued.length = 0;
+
+    const replaced = await service.replaceItemMedia(itemId, media!.id, {
+      name: "b.png",
+      bytes: second,
+    });
+
+    expect(replaced.filename).toBe("b.png");
+    const listed = await service.listItemMedia(itemId);
+    expect(listed).toHaveLength(1);
+    expect(await fs.readBinary(listed[0]!.absolute_path)).toEqual(second);
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0]!.mediaId).toBe(listed[0]!.id);
+    expect(enqueued[0]!.absolutePath).toBe(listed[0]!.absolute_path);
+    expect(enqueued[0]!.filename).toBe("b.png");
+  });
+
+  it("setItemCoverFromMedia waits for job, writes cover.webp + size, returns item (#639)", async () => {
+    const { ctx, vault, vaultPath, itemId } = await openVault();
+    let lastJob: GenerateCoverJobPayload | undefined;
+    const coverBytes = await tinyWebp(36, 28);
+    const coverSize = { width: 36, height: 28 };
+
+    const { service } = createService({
+      ctx,
+      vault,
+      vaultPath,
+      enqueueGenerateCover: async (input) => {
+        lastJob = input;
+        return { id: "job-cover-1" };
+      },
+      waitForCoverJob: async (jobId) => {
+        expect(jobId).toBe("job-cover-1");
+        expect(lastJob).toBeDefined();
+        await applyItemCover(
+          ctx,
+          vaultPath,
+          vault.id,
+          lastJob!.itemId,
+          coverBytes,
+          coverSize,
+          { sourceMediaId: lastJob!.mediaId },
+        );
+        return "succeeded";
+      },
+    });
+
+    const png = await tinyPng();
+    const [media] = await service.attachMediaFiles(itemId, [
+      { name: "a.png", bytes: png },
+    ]);
+
+    const result = await service.setItemCoverFromMedia(itemId, media!.id);
+
+    expect(result.id).toBe(itemId);
+    expect(await fs.exists(itemCoverPath(vaultPath, itemId))).toBe(true);
+    expect(await fs.readBinary(itemCoverPath(vaultPath, itemId))).toEqual(
+      coverBytes,
+    );
+    expect(
+      JSON.parse(await fs.readText(itemCoverSizePath(vaultPath, itemId))),
+    ).toEqual(coverSize);
+    expect(lastJob).toMatchObject({
+      vaultId: vault.id,
+      itemId,
+      mediaId: media!.id,
+      filename: "a.png",
+      mediaType: "image",
+    });
+    expect(await fs.exists(lastJob!.absolutePath)).toBe(true);
+  });
+
+  it("setItemCoverFromMedia throws when cover job fails and leaves no cover (#639)", async () => {
+    const { ctx, vault, vaultPath, itemId } = await openVault();
+    const { service } = createService({
+      ctx,
+      vault,
+      vaultPath,
+      waitForCoverJob: async () => "failed",
+    });
+    const [media] = await service.attachMediaFiles(itemId, [
+      { name: "a.png", bytes: await tinyPng() },
+    ]);
+
+    await expect(
+      service.setItemCoverFromMedia(itemId, media!.id),
+    ).rejects.toThrow(/generateCover .+ finished as failed/);
+    expect(await fs.exists(itemCoverPath(vaultPath, itemId))).toBe(false);
+  });
+
+  it("setItemCoverFromMedia rejects missing media", async () => {
+    const { ctx, vault, vaultPath, itemId } = await openVault();
+    const { service } = createService({ ctx, vault, vaultPath });
+
+    await expect(
+      service.setItemCoverFromMedia(itemId, "missing-media-id"),
+    ).rejects.toThrow(/Media not found/);
+  });
+
+  it("resolveItemThumbnailEntries reads cover.size.json without sharp backfill (#822)", async () => {
+    const { ctx, vault, vaultPath, itemId } = await openVault();
+    const coverBytes = await tinyWebp(64, 48);
+    await applyItemCover(ctx, vaultPath, vault.id, itemId, coverBytes, {
+      width: 64,
+      height: 48,
+    });
+    const item = await readItemFile(fs, vaultPath, itemId, vault.id);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const service = createService();
-    const item = {
-      id: "note.md",
-      thumbnail: "cover.webp",
-      updated_at: "t1",
-    } as never;
+    const readSharp = vi.fn(readCoverPixelSize);
+    const { service } = createService({
+      ctx,
+      vault,
+      vaultPath,
+      readCoverPixelSize: readSharp,
+    });
 
     const entries = await service.resolveItemThumbnailEntries([item]);
-    expect(entries.get("note.md")).toEqual({
-      path: "/thumb/note.md",
-      size: { width: 320, height: 240 },
-    });
-    warn.mockRestore();
-  });
 
-  it("warm resolve reads cover.size.json and skips sharp.metadata (#822)", async () => {
-    readItemCoverSize.mockResolvedValue({ width: 640, height: 480 });
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const service = createService();
-    const item = {
-      id: "note.md",
-      thumbnail: "cover.webp",
-      updated_at: "t1",
-    } as never;
-
-    const entries = await service.resolveItemThumbnailEntries([item]);
-    expect(entries.get("note.md")).toEqual({
-      path: "/thumb/note.md",
-      size: { width: 640, height: 480 },
+    expect(entries.get(itemId)).toEqual({
+      path: itemCoverPath(vaultPath, itemId),
+      size: { width: 64, height: 48 },
     });
-    expect(readItemCoverSize).toHaveBeenCalledWith(ctx.fs, "/vault", "note.md");
-    expect(readCoverPixelSize).not.toHaveBeenCalled();
-    expect(writeItemCoverSize).not.toHaveBeenCalled();
+    expect(readSharp).not.toHaveBeenCalled();
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
   });
 
-  it("missing cover size sidecar backfills once via sharp and logs (#822)", async () => {
-    readItemCoverSize.mockResolvedValue(null);
+  it("resolveItemThumbnailEntries backfills missing cover.size.json via sharp (#822)", async () => {
+    const { ctx, vault, vaultPath, itemId } = await openVault();
+    const coverBytes = await tinyWebp(50, 40);
+    await applyItemCover(ctx, vaultPath, vault.id, itemId, coverBytes, {
+      width: 50,
+      height: 40,
+    });
+    await fs.remove(itemCoverSizePath(vaultPath, itemId));
+    expect(await fs.exists(itemCoverSizePath(vaultPath, itemId))).toBe(false);
+
+    const item = await readItemFile(fs, vaultPath, itemId, vault.id);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const service = createService();
-    const item = {
-      id: "note.md",
-      thumbnail: "cover.webp",
-      updated_at: "t1",
-    } as never;
+    const { service } = createService({ ctx, vault, vaultPath });
 
     const entries = await service.resolveItemThumbnailEntries([item]);
-    expect(entries.get("note.md")).toEqual({
-      path: "/thumb/note.md",
-      size: { width: 320, height: 240 },
-    });
-    expect(readCoverPixelSize).toHaveBeenCalledTimes(1);
-    expect(readCoverPixelSize).toHaveBeenCalledWith("/thumb/note.md");
-    expect(writeItemCoverSize).toHaveBeenCalledWith(
-      ctx.fs,
-      "/vault",
-      "note.md",
-      { width: 320, height: 240 },
-    );
+
+    expect(entries.get(itemId)?.path).toBe(itemCoverPath(vaultPath, itemId));
+    expect(entries.get(itemId)?.size).toEqual({ width: 50, height: 40 });
+    expect(
+      JSON.parse(await fs.readText(itemCoverSizePath(vaultPath, itemId))),
+    ).toEqual({ width: 50, height: 40 });
     expect(warn).toHaveBeenCalledWith(
       "[media-cover] cover size sidecar missing; backfilling via sharp.metadata",
-      { itemId: "note.md", absoluteCoverPath: "/thumb/note.md" },
+      {
+        itemId,
+        absoluteCoverPath: itemCoverPath(vaultPath, itemId),
+      },
     );
+    warn.mockRestore();
+  });
+
+  it("resolveItemThumbnailPaths caches by thumbnail+updated_at", async () => {
+    const { ctx, vault, vaultPath, itemId } = await openVault();
+    const coverBytes = await tinyWebp();
+    await applyItemCover(ctx, vaultPath, vault.id, itemId, coverBytes, {
+      width: 32,
+      height: 24,
+    });
+    const item = await readItemFile(fs, vaultPath, itemId, vault.id);
+
+    let progressiveCalls = 0;
+    const { service } = createService({
+      ctx,
+      vault,
+      vaultPath,
+      resolveThumbnailPathsProgressive: async (vp, items, options) => {
+        progressiveCalls += 1;
+        await resolveItemThumbnailPathsProgressive(fs, vp, items, options);
+      },
+    });
+
+    const first = await service.resolveItemThumbnailPaths([item]);
+    const second = await service.resolveItemThumbnailPaths([item]);
+
+    expect(first.get(itemId)).toBe(itemCoverPath(vaultPath, itemId));
+    expect(second.get(itemId)).toBe(itemCoverPath(vaultPath, itemId));
+    expect(progressiveCalls).toBe(1);
+  });
+
+  it("invalidateThumbnailPathCache drops a sticky null so re-resolve can see cover (#856)", async () => {
+    const { ctx, vault, vaultPath, itemId } = await openVault();
+    const stale = await readItemFile(fs, vaultPath, itemId, vault.id);
+    const { service } = createService({ ctx, vault, vaultPath });
+
+    const first = await service.resolveItemThumbnailPaths([stale]);
+    expect(first.get(itemId)).toBeNull();
+
+    const coverBytes = await tinyWebp();
+    await applyItemCover(ctx, vaultPath, vault.id, itemId, coverBytes, {
+      width: 32,
+      height: 24,
+    });
+
+    // Same cache key as `stale` → would stick on null without invalidate.
+    const stillStale: ItemFile = { ...stale };
+    const cached = await service.resolveItemThumbnailPaths([stillStale]);
+    expect(cached.get(itemId)).toBeNull();
+
+    service.invalidateThumbnailPathCache(itemId);
+    const second = await service.resolveItemThumbnailPaths([stillStale]);
+    expect(second.get(itemId)).toBe(itemCoverPath(vaultPath, itemId));
+  });
+
+  it("attach invalidates stale null thumbnail cache after updated_at bump (#720)", async () => {
+    const { ctx, vault, vaultPath, itemId } = await openVault();
+    const before = await readItemFile(fs, vaultPath, itemId, vault.id);
+    const { service } = createService({ ctx, vault, vaultPath });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const first = await service.resolveItemThumbnailPaths([before]);
+    expect(first.get(itemId)).toBeNull();
+
+    await service.attachMediaFiles(itemId, [
+      { name: "shot.png", bytes: await tinyPng() },
+    ]);
+    const after = await readItemFile(fs, vaultPath, itemId, vault.id);
+    expect(after.updated_at > before.updated_at).toBe(true);
+
+    const second = await service.resolveItemThumbnailPaths([after]);
+    const listed = await service.listItemMedia(itemId);
+    expect(second.get(itemId)).toBe(listed[0]!.absolute_path);
+    expect(await fs.exists(second.get(itemId)!)).toBe(true);
     warn.mockRestore();
   });
 
   it("cold resolve with unavailable stub fails instead of null-filled size", async () => {
-    const service = createService({
+    const { ctx, vault, vaultPath, itemId } = await openVault();
+    const coverBytes = await tinyWebp();
+    await applyItemCover(ctx, vaultPath, vault.id, itemId, coverBytes, {
+      width: 32,
+      height: 24,
+    });
+    await fs.remove(itemCoverSizePath(vaultPath, itemId));
+    const item = await readItemFile(fs, vaultPath, itemId, vault.id);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { service } = createService({
+      ctx,
+      vault,
+      vaultPath,
       readCoverPixelSize: stubReadCoverPixelSizeUnavailable,
     });
-    const item = {
-      id: "note.md",
-      thumbnail: "cover.webp",
-      updated_at: "t1",
-    } as never;
 
     await expect(service.resolveItemThumbnailEntries([item])).rejects.toThrow(
       /readCoverPixelSize unavailable outside Node host/,
     );
-  });
-
-  it("attach invalidates stale null thumbnail cache after updated_at bump (#720)", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    resolveThumbnailPathsProgressive
-      .mockImplementationOnce(async (_vault, items, options) => {
-        for (const item of items) {
-          options.onResolved({ id: item.id, path: null });
-        }
-      })
-      .mockImplementationOnce(async (_vault, items, options) => {
-        for (const item of items) {
-          options.onResolved({
-            id: item.id,
-            path: "/vault/media/note/cover.webp",
-          });
-        }
-      });
-
-    const service = createService();
-    const before = {
-      id: "note.md",
-      thumbnail: null,
-      updated_at: "t1",
-    } as never;
-
-    const first = await service.resolveItemThumbnailPaths([before]);
-    expect(first.get("note.md")).toBeNull();
-    expect(resolveThumbnailPathsProgressive).toHaveBeenCalledTimes(1);
-
-    attachMediaFile.mockResolvedValue({ id: "m1", filename: "a.png" });
-    listItemMediaWithPaths.mockResolvedValue([
-      {
-        id: "m1",
-        media_type: "image",
-        filename: "a.png",
-        absolute_path: "/vault/note.media/a.png",
-      },
-    ]);
-
-    await service.attachMediaFiles("note.md", [
-      { name: "a.png", bytes: new Uint8Array([1]) },
-    ]);
-
-    expect(touchItemUpdatedAt).toHaveBeenCalledWith(
-      ctx,
-      "/vault",
-      "v1",
-      "note.md",
-    );
-
-    const after = {
-      id: "note.md",
-      thumbnail: null,
-      updated_at: "t2",
-    } as never;
-    const second = await service.resolveItemThumbnailPaths([after]);
-    expect(second.get("note.md")).toBe("/vault/media/note/cover.webp");
-    expect(resolveThumbnailPathsProgressive).toHaveBeenCalledTimes(2);
     warn.mockRestore();
   });
-
   it("starts size read for a fast id before the last path resolve finishes (#823)", async () => {
+    const { ctx, vault, vaultPath } = await openVault();
+    const slowId = `${crypto.randomUUID()}.md`;
+    const fastId = `${crypto.randomUUID()}.md`;
+    for (const id of [slowId, fastId]) {
+      await upsertItem(ctx, vaultPath, vault.id, {
+        item: {
+          id,
+          vault_id: vault.id,
+          title: id,
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          properties: {},
+          tag_ids: [],
+          collection_ids: [],
+          folder_path: "",
+          content_revision: 1,
+          word_count: 0,
+          character_count: 0,
+          created_at: new Date().toISOString(),
+          updated_at: "2026-01-01T00:00:00.000Z",
+        },
+      });
+      await applyItemCover(
+        ctx,
+        vaultPath,
+        vault.id,
+        id,
+        await tinyWebp(16, 16),
+        { width: 16, height: 16 },
+      );
+      await fs.remove(itemCoverSizePath(vaultPath, id));
+    }
+
     let releaseSlow: (() => void) | undefined;
     const slowGate = new Promise<void>((resolve) => {
       releaseSlow = resolve;
@@ -284,249 +557,90 @@ describe("createMediaCoverService", () => {
     let slowStarted = false;
     const sizeStartedFor: string[] = [];
 
-    resolveThumbnailPathsProgressive.mockImplementationOnce(
-      async (_vault, items, options) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { service } = createService({
+      ctx,
+      vault,
+      vaultPath,
+      resolveThumbnailPathsProgressive: async (_vp, items, options) => {
         await Promise.all(
           items.map(async (item) => {
-            if (item.id === "slow.md") {
+            if (item.id === slowId) {
               slowStarted = true;
               await slowGate;
             }
             options.onResolved({
               id: item.id,
-              path: `/thumb/${item.id}`,
+              path: itemCoverPath(vaultPath, item.id),
             });
           }),
         );
       },
-    );
-
-    readCoverPixelSize.mockImplementation(async (absolutePath: string) => {
-      const id = absolutePath.replace("/thumb/", "");
-      sizeStartedFor.push(id);
-      if (id === "fast.md") {
-        expect(slowStarted).toBe(true);
-        releaseSlow?.();
-      }
-      return { width: 10, height: 10 };
+      readCoverPixelSize: async (absolutePath) => {
+        const id =
+          absolutePath === itemCoverPath(vaultPath, fastId) ? fastId : slowId;
+        sizeStartedFor.push(id);
+        if (id === fastId) {
+          expect(slowStarted).toBe(true);
+          releaseSlow?.();
+        }
+        return readCoverPixelSize(absolutePath);
+      },
     });
 
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const service = createService();
     const entries = await service.resolveItemThumbnailEntries([
-      { id: "slow.md", thumbnail: null, updated_at: "t1" } as never,
-      { id: "fast.md", thumbnail: null, updated_at: "t1" } as never,
+      {
+        id: slowId,
+        thumbnail: null,
+        updated_at: "2026-01-01T00:00:00.000Z",
+      } as ItemFile,
+      {
+        id: fastId,
+        thumbnail: null,
+        updated_at: "2026-01-01T00:00:00.000Z",
+      } as ItemFile,
     ]);
 
-    expect(sizeStartedFor[0]).toBe("fast.md");
-    expect(entries.get("fast.md")?.size).toEqual({ width: 10, height: 10 });
-    expect(entries.get("slow.md")?.size).toEqual({ width: 10, height: 10 });
+    expect(sizeStartedFor[0]).toBe(fastId);
+    expect(entries.get(fastId)?.size).toEqual({ width: 16, height: 16 });
+    expect(entries.get(slowId)?.size).toEqual({ width: 16, height: 16 });
+    expect(
+      JSON.parse(await fs.readText(itemCoverSizePath(vaultPath, fastId))),
+    ).toEqual({ width: 16, height: 16 });
     warn.mockRestore();
   });
 
-  it("attachMediaFiles enqueues the preferred current cover candidate", async () => {
-    attachMediaFile.mockResolvedValue({ id: "m1", filename: "a.png" });
-    listItemMediaWithPaths.mockResolvedValue([
-      {
-        id: "m1",
-        media_type: "image",
-        filename: "a.png",
-        absolute_path: "/vault/note.media/a.png",
-      },
-    ]);
+  it("setItemCoverFromMedia emits itemCoverChanged after successful apply", async () => {
+    const { ctx, vault, vaultPath, itemId } = await openVault();
     const onVaultPresentationChanged = vi.fn();
-    const result = await createService({ onVaultPresentationChanged }).attachMediaFiles(
-      "note.md",
-      [{ name: "a.png", bytes: new Uint8Array([1]) }],
-    );
-
-    expect(attachMediaFile).toHaveBeenCalled();
-    expect(touchItemUpdatedAt).toHaveBeenCalledWith(
+    const coverBytes = await tinyWebp();
+    const { service } = createService({
       ctx,
-      "/vault",
-      "v1",
-      "note.md",
-    );
-    expect(enqueueGenerateCover).toHaveBeenCalledWith({
-      vaultId: "v1",
-      itemId: "note.md",
-      mediaId: "m1",
-      absolutePath: "/vault/note.media/a.png",
-      filename: "a.png",
-      mediaType: "image",
+      vault,
+      vaultPath,
+      onVaultPresentationChanged,
+      enqueueGenerateCover: async (input) => ({ id: `job-${input.mediaId}` }),
+      waitForCoverJob: async () => {
+        await applyItemCover(ctx, vaultPath, vault.id, itemId, coverBytes, {
+          width: 32,
+          height: 24,
+        });
+        return "succeeded";
+      },
     });
-    // Cover job not done yet — do not emit itemCoverChanged (#856).
-    expect(onVaultPresentationChanged).not.toHaveBeenCalled();
-    expect(result).toEqual([{ id: "m1", filename: "a.png" }]);
-  });
+    const [media] = await service.attachMediaFiles(itemId, [
+      { name: "a.png", bytes: await tinyPng() },
+    ]);
+    onVaultPresentationChanged.mockClear();
 
-  it("deleteItemMedia emits itemCoverChanged only when cover is cleared (#856)", async () => {
-    deleteMediaFile.mockResolvedValue(undefined);
-    listItemMediaWithPaths.mockResolvedValue([]);
-    const onVaultPresentationChanged = vi.fn();
-    await createService({ onVaultPresentationChanged }).deleteItemMedia(
-      "note.md",
-      "m1",
-    );
-    expect(clearItemCover).toHaveBeenCalled();
+    await service.setItemCoverFromMedia(itemId, media!.id);
+
     expect(onVaultPresentationChanged).toHaveBeenCalledWith({
-      vaultId: "v1",
+      vaultId: vault.id,
       kind: "itemCoverChanged",
-      itemId: "note.md",
+      itemId,
       folderPath: "",
     });
-  });
-
-  it("invalidateThumbnailPathCache drops a sticky null so re-resolve can see cover (#856)", async () => {
-    resolveThumbnailPathsProgressive.mockImplementationOnce(
-      async (_vault, items, options) => {
-        for (const item of items) {
-          options.onResolved({ id: item.id, path: null });
-        }
-      },
-    );
-    resolveThumbnailPathsProgressive.mockImplementationOnce(
-      async (_vault, items, options) => {
-        for (const item of items) {
-          options.onResolved({
-            id: item.id,
-            path: `/vault/media/${item.id}/cover.webp`,
-          });
-        }
-      },
-    );
-
-    const service = createService();
-    const stale = {
-      id: "note.md",
-      thumbnail: null,
-      updated_at: "t1",
-    } as never;
-
-    const first = await service.resolveItemThumbnailPaths([stale]);
-    expect(first.get("note.md")).toBeNull();
-
-    service.invalidateThumbnailPathCache("note.md");
-
-    const second = await service.resolveItemThumbnailPaths([stale]);
-    expect(second.get("note.md")).toBe("/vault/media/note.md/cover.webp");
-    expect(resolveThumbnailPathsProgressive).toHaveBeenCalledTimes(2);
-  });
-
-  it("attachMediaFiles prefers an existing image over an attached video", async () => {
-    attachMediaFile.mockResolvedValue({ id: "m1", filename: "clip.mp4" });
-    listItemMediaWithPaths.mockResolvedValue([
-      {
-        id: "existing-image",
-        media_type: "image",
-        filename: "photo.png",
-        absolute_path: "/vault/note.media/photo.png",
-      },
-      {
-        id: "m1",
-        media_type: "video",
-        filename: "clip.mp4",
-        absolute_path: "/vault/note.media/clip.mp4",
-      },
-    ]);
-    const result = await createService().attachMediaFiles("note.md", [
-      { name: "clip.mp4", bytes: new Uint8Array([1]) },
-    ]);
-
-    expect(enqueueGenerateCover).toHaveBeenCalledWith({
-      vaultId: "v1",
-      itemId: "note.md",
-      mediaId: "existing-image",
-      absolutePath: "/vault/note.media/photo.png",
-      filename: "photo.png",
-      mediaType: "image",
-    });
-    expect(readBinary).not.toHaveBeenCalled();
-    expect(result).toEqual([{ id: "m1", filename: "clip.mp4" }]);
-  });
-
-  it("setItemCoverFromMedia enqueues generateCover and re-reads item (#639)", async () => {
-    listItemMediaWithPaths.mockResolvedValue([
-      {
-        id: "m1",
-        media_type: "image",
-        filename: "a.png",
-        absolute_path: "/vault/note.media/a.png",
-      },
-    ]);
-    const item = { id: "note.md", title: "Note" };
-    readItemFile.mockResolvedValue(item);
-
-    const result = await createService().setItemCoverFromMedia("note.md", "m1");
-
-    expect(enqueueGenerateCover).toHaveBeenCalledWith({
-      vaultId: "v1",
-      itemId: "note.md",
-      mediaId: "m1",
-      absolutePath: "/vault/note.media/a.png",
-      filename: "a.png",
-      mediaType: "image",
-    });
-    expect(waitForCoverJob).toHaveBeenCalledWith("job-1");
-    expect(readBinary).not.toHaveBeenCalled();
-    expect(readItemFile).toHaveBeenCalledWith(ctx.fs, "/vault", "note.md", "v1");
-    expect(result).toEqual(item);
-  });
-
-  it("setItemCoverFromMedia throws when cover job fails (#639)", async () => {
-    listItemMediaWithPaths.mockResolvedValue([
-      {
-        id: "m1",
-        media_type: "image",
-        filename: "a.png",
-        absolute_path: "/vault/note.media/a.png",
-      },
-    ]);
-    waitForCoverJob.mockResolvedValueOnce("failed");
-
-    await expect(
-      createService().setItemCoverFromMedia("note.md", "m1"),
-    ).rejects.toThrow(/generateCover job-1 finished as failed/);
-    expect(readItemFile).not.toHaveBeenCalled();
-  });
-
-  it("setItemCoverFromMedia rejects missing media", async () => {
-    listItemMediaWithPaths.mockResolvedValue([]);
-    await expect(
-      createService().setItemCoverFromMedia("note.md", "missing"),
-    ).rejects.toThrow(/Media not found/);
-  });
-
-  it("replaceItemMedia enqueues cover generation after replacing", async () => {
-    replaceMediaFile.mockResolvedValue({ id: "m1", filename: "b.png" });
-    listItemMediaWithPaths.mockResolvedValue([
-      {
-        id: "m1",
-        media_type: "image",
-        filename: "b.png",
-        absolute_path: "/vault/note.media/b.png",
-      },
-    ]);
-    const result = await createService().replaceItemMedia("note.md", "m1", {
-      name: "b.png",
-      bytes: new Uint8Array([2]),
-    });
-
-    expect(replaceMediaFile).toHaveBeenCalledWith(
-      ctx,
-      "/vault",
-      "note.md",
-      "m1",
-      { filename: "b.png", data: new Uint8Array([2]) },
-    );
-    expect(enqueueGenerateCover).toHaveBeenCalledWith({
-      vaultId: "v1",
-      itemId: "note.md",
-      mediaId: "m1",
-      absolutePath: "/vault/note.media/b.png",
-      filename: "b.png",
-      mediaType: "image",
-    });
-    expect(result).toEqual({ id: "m1", filename: "b.png" });
+    expect(await fs.exists(itemCoverPath(vaultPath, itemId))).toBe(true);
   });
 });

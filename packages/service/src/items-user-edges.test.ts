@@ -1,54 +1,78 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import {
+  createSqlIndexTestSuite,
+  noteItemFields,
+  type SqlIndexTestEnv,
+} from "../../core/src/index/sql-index-test-harness.js";
+import { createId } from "../../core/src/util/ids.js";
 import { createItemsCrud } from "./items-crud.js";
-import type { ItemsSearchServiceDeps } from "./items-search.js";
 
-function createDeps(
-  indexOverrides: Partial<ItemsSearchServiceDeps["getIndex"] extends () => infer T ? T : never> = {},
-): ItemsSearchServiceDeps {
-  const index = {
-    listItemIdTitles: vi.fn(async () => []),
-    listItemFtsBodies: vi.fn(async () => []),
-    vaultItemsContentGeneration: vi.fn(async () => 0),
-    listItemFilesByIds: vi.fn(async () => []),
-    getAdjacentItems: vi.fn(async () => ({ prev: null, next: null })),
-    addUserEdge: vi.fn(async () => {}),
-    removeUserEdge: vi.fn(async () => {}),
-    listUserEdges: vi.fn(async () => []),
-    ...indexOverrides,
-  };
-  return {
-    resolveActiveVault: vi.fn(async () => ({
-      vault: { id: "vault-1", path: "/vault", name: "Vault" },
-      path: "/vault",
-    })),
-    getContext: vi.fn(() => ({
-      fs: {} as never,
-      index: index as never,
-    })),
-    getIndex: () => index as never,
-    kickoffVaultIndexSync: vi.fn(),
-    buildSearchFtsQuery: vi.fn(() => null),
-    addVaultSyncListener: vi.fn(() => () => {}),
-    findSimilarItems: vi.fn(async () => []),
-    normalizeMarkdown: (raw) => ({ text: raw, changed: false }),
-    enqueueItemDerivedRefresh: async () => undefined,
-        enqueueItemExtractAuto: async () => undefined,
-  };
+const suite = createSqlIndexTestSuite();
+suite.registerCleanup();
+
+function createCrud(env: SqlIndexTestEnv): ReturnType<typeof createItemsCrud> {
+  const { index, vault, ctx } = env;
+  const { meta, path } = vault;
+  return createItemsCrud(
+    {
+      resolveActiveVault: async () => ({ vault: meta, path }),
+      getContext: () => ctx as never,
+      getIndex: () => index as never,
+      normalizeMarkdown: (raw: string) => ({ text: raw, changed: false }),
+      enqueueItemDerivedRefresh: async () => undefined,
+      enqueueItemExtractAuto: async () => undefined,
+    } as never,
+    () => createId(),
+  );
 }
 
-describe("user edges RPC (#407)", () => {
-  it("addUserEdge delegates to index with vault id", async () => {
-    const addUserEdge = vi.fn(async () => {});
-    const crud = createItemsCrud(createDeps({ addUserEdge }), () => "id");
-    await crud.addUserEdge("a.md", "b.md");
-    expect(addUserEdge).toHaveBeenCalledWith("vault-1", "a.md", "b.md");
-  });
+describe("user edges RPC (#407) against real SQL index", () => {
+  it("add/list/remove user edges through service over BetterSqlite", async () => {
+    const env = await suite.openVaultIndex(
+      "collector-svc-user-edges-",
+      "user-edges.db",
+    );
+    const { index, vault } = env;
+    const { meta } = vault;
+    const timestamp = new Date().toISOString();
+    const itemA = `${createId()}.md`;
+    const itemB = `${createId()}.md`;
 
-  it("listUserEdges returns index neighbors", async () => {
-    const listUserEdges = vi.fn(async () => [{ id: "b.md", title: "Beta" }]);
-    const crud = createItemsCrud(createDeps({ listUserEdges }), () => "id");
-    await expect(crud.listUserEdges("a.md")).resolves.toEqual([
-      { id: "b.md", title: "Beta" },
+    for (const [itemId, title] of [
+      [itemA, "Alpha"] as const,
+      [itemB, "Beta"] as const,
+    ]) {
+      await index.upsertItemMetadata(
+        {
+          item: noteItemFields(meta.id, itemId, {
+            title,
+            created_at: timestamp,
+            updated_at: timestamp,
+          }),
+          fileMtimeMs: 1,
+        },
+        meta.id,
+      );
+    }
+
+    const crud = createCrud(env);
+
+    await crud.addUserEdge(itemA, itemB);
+
+    expect(await crud.listUserEdges(itemA)).toEqual([
+      { id: itemB, title: "Beta" },
     ]);
+    expect(await crud.listUserEdges(itemB)).toEqual([
+      { id: itemA, title: "Alpha" },
+    ]);
+    expect(await index.listUserEdges(meta.id, itemA)).toEqual([
+      { id: itemB, title: "Beta" },
+    ]);
+
+    await crud.removeUserEdge(itemA, itemB);
+
+    expect(await crud.listUserEdges(itemA)).toEqual([]);
+    expect(await crud.listUserEdges(itemB)).toEqual([]);
+    expect(await index.listUserEdges(meta.id, itemA)).toEqual([]);
   });
 });

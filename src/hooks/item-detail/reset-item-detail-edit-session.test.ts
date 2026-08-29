@@ -1,14 +1,66 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import type { Dispatch, SetStateAction } from "react";
+import type { ItemFile } from "@collector/shared";
+import type { ItemDetailMode } from "../../components/layout/item-chrome";
 import {
   applyItemDetailIdentityChange,
   resetItemDetailEditSession,
 } from "./reset-item-detail-edit-session";
 
+type EditSessionOutcome = {
+  item: ItemFile | null;
+  mode: ItemDetailMode;
+  sourceText: string | null;
+  sourceBaseline: string | null;
+};
+
+function captureEditSession(initial: {
+  item: ItemFile | null;
+  mode: ItemDetailMode;
+  sourceText: string | null;
+  sourceBaseline: string | null;
+}): {
+  outcome: EditSessionOutcome;
+  setItem: Dispatch<SetStateAction<ItemFile | null>>;
+  setMode: Dispatch<SetStateAction<ItemDetailMode>>;
+  setSourceText: Dispatch<SetStateAction<string | null>>;
+  setSourceBaseline: Dispatch<SetStateAction<string | null>>;
+} {
+  const outcome: EditSessionOutcome = { ...initial };
+
+  return {
+    outcome,
+    setItem: (value) => {
+      outcome.item =
+        typeof value === "function" ? value(outcome.item) : value;
+    },
+    setMode: (value) => {
+      outcome.mode =
+        typeof value === "function" ? value(outcome.mode) : value;
+    },
+    setSourceText: (value) => {
+      outcome.sourceText =
+        typeof value === "function" ? value(outcome.sourceText) : value;
+    },
+    setSourceBaseline: (value) => {
+      outcome.sourceBaseline =
+        typeof value === "function"
+          ? value(outcome.sourceBaseline)
+          : value;
+    },
+  };
+}
+
 describe("resetItemDetailEditSession", () => {
-  it("forces view and clears source edit buffers", () => {
-    const setMode = vi.fn();
-    const setSourceText = vi.fn();
-    const setSourceBaseline = vi.fn();
+  it("after reset: mode is view and both source buffers are null", () => {
+    const stub = { id: "kept/item.md" } as ItemFile;
+    const { outcome, setMode, setSourceText, setSourceBaseline } =
+      captureEditSession({
+        item: stub,
+        mode: "source",
+        sourceText: "draft markdown",
+        sourceBaseline: "saved markdown",
+      });
 
     resetItemDetailEditSession({
       setMode,
@@ -16,18 +68,25 @@ describe("resetItemDetailEditSession", () => {
       setSourceBaseline,
     });
 
-    expect(setMode).toHaveBeenCalledWith("view");
-    expect(setSourceText).toHaveBeenCalledWith(null);
-    expect(setSourceBaseline).toHaveBeenCalledWith(null);
+    expect(outcome).toEqual({
+      item: stub,
+      mode: "view",
+      sourceText: null,
+      sourceBaseline: null,
+    });
   });
 });
 
 describe("applyItemDetailIdentityChange", () => {
-  it("resets item and edit session when id changes", () => {
-    const setItem = vi.fn();
-    const setMode = vi.fn();
-    const setSourceText = vi.fn();
-    const setSourceBaseline = vi.fn();
+  it("when id changes: item cleared, mode view, source buffers null", () => {
+    const stub = { id: "old/note.md" } as ItemFile;
+    const { outcome, setItem, setMode, setSourceText, setSourceBaseline } =
+      captureEditSession({
+        item: stub,
+        mode: "form",
+        sourceText: "unsaved draft",
+        sourceBaseline: "previous baseline",
+      });
 
     const changed = applyItemDetailIdentityChange({
       previousId: "old/note.md",
@@ -39,17 +98,23 @@ describe("applyItemDetailIdentityChange", () => {
     });
 
     expect(changed).toBe(true);
-    expect(setItem).toHaveBeenCalledWith(null);
-    expect(setMode).toHaveBeenCalledWith("view");
-    expect(setSourceText).toHaveBeenCalledWith(null);
-    expect(setSourceBaseline).toHaveBeenCalledWith(null);
+    expect(outcome).toEqual({
+      item: null,
+      mode: "view",
+      sourceText: null,
+      sourceBaseline: null,
+    });
   });
 
-  it("does not reset edit session when id is unchanged", () => {
-    const setItem = vi.fn();
-    const setMode = vi.fn();
-    const setSourceText = vi.fn();
-    const setSourceBaseline = vi.fn();
+  it("when id is unchanged: edit session state stays put", () => {
+    const stub = { id: "same/note.md" } as ItemFile;
+    const { outcome, setItem, setMode, setSourceText, setSourceBaseline } =
+      captureEditSession({
+        item: stub,
+        mode: "source",
+        sourceText: "kept draft",
+        sourceBaseline: "kept baseline",
+      });
 
     const changed = applyItemDetailIdentityChange({
       previousId: "same/note.md",
@@ -61,17 +126,22 @@ describe("applyItemDetailIdentityChange", () => {
     });
 
     expect(changed).toBe(false);
-    expect(setItem).not.toHaveBeenCalled();
-    expect(setMode).not.toHaveBeenCalled();
-    expect(setSourceText).not.toHaveBeenCalled();
-    expect(setSourceBaseline).not.toHaveBeenCalled();
+    expect(outcome).toEqual({
+      item: stub,
+      mode: "source",
+      sourceText: "kept draft",
+      sourceBaseline: "kept baseline",
+    });
   });
 
-  it("treats first load as identity change", () => {
-    const setItem = vi.fn();
-    const setMode = vi.fn();
-    const setSourceText = vi.fn();
-    const setSourceBaseline = vi.fn();
+  it("on first load: item cleared and edit session reset to view", () => {
+    const { outcome, setItem, setMode, setSourceText, setSourceBaseline } =
+      captureEditSession({
+        item: { id: "stale" } as ItemFile,
+        mode: "form",
+        sourceText: "leftover",
+        sourceBaseline: "leftover baseline",
+      });
 
     const changed = applyItemDetailIdentityChange({
       previousId: undefined,
@@ -83,7 +153,11 @@ describe("applyItemDetailIdentityChange", () => {
     });
 
     expect(changed).toBe(true);
-    expect(setItem).toHaveBeenCalledWith(null);
-    expect(setMode).toHaveBeenCalledWith("view");
+    expect(outcome).toEqual({
+      item: null,
+      mode: "view",
+      sourceText: null,
+      sourceBaseline: null,
+    });
   });
 });

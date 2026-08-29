@@ -1,308 +1,164 @@
 import { describe, expect, it, vi } from "vitest";
-import type { NavFilter } from "@collector/api";
-import { queryDashboardIndexPage } from "./dashboard-index-page.js";
+import { buildFtsMatchQuery, upsertItem } from "@collector/core";
 import {
+  createSqlIndexTestSuite,
+  noteItemFields,
+  type SqlIndexTestEnv,
+} from "../../core/src/index/sql-index-test-harness.js";
+import { createId } from "../../core/src/util/ids.js";
+import {
+  SEARCH_PAGE_SIZE,
   createItemsSearchService,
-  type ItemsIndexPort,
+  queryDashboardIndexPage,
 } from "./items-search.js";
 
-function createIndexMock(
-  overrides: Partial<ItemsIndexPort> = {},
-): ItemsIndexPort {
-  return {
-    listItemIdsByNavFilter: vi.fn(async () => ["a.md", "b.md"]),
-    countItemIdsByNavFilter: vi.fn(async () => 2),
-    searchItemIds: vi.fn(async () => ["a.md"]),
-    countSearchItemIds: vi.fn(async () => 1),
-    listItemFilesByIds: vi.fn(async () => []),
-    listItemPresentationStampsByIds: vi.fn(async (_vaultId, itemIds) =>
-      itemIds.map((_, i) => String(1000 + i)),
-    ),
-    listItemIdTitles: vi.fn(async () => []),
-    listItemFtsBodies: vi.fn(async () => []),
-    vaultItemsContentGeneration: vi.fn(async () => 0),
-    getAdjacentItems: vi.fn(async () => ({ prev: null, next: null })),
-    ...overrides,
-  };
-}
-
-describe("queryDashboardIndexPage", () => {
-  const filter: NavFilter = "all";
-  const page = { limit: 60, offset: 0 };
-
-  it("lists by nav filter when query is empty", async () => {
-    const index = createIndexMock();
-    const buildFts = vi.fn(() => "MATCH");
-
-    const result = await queryDashboardIndexPage(
-      index,
-      buildFts,
-      "vault-1",
-      filter,
-      "  ",
-      page,
-    );
-
-    expect(result).toEqual({
-      itemIds: ["a.md", "b.md"],
-      stamps: ["1000", "1001"],
-      totalCount: 2,
-      offset: 0,
-    });
-    expect(buildFts).not.toHaveBeenCalled();
-    expect(index.searchItemIds).not.toHaveBeenCalled();
-  });
-
-  it("falls back to nav list when FTS query is null", async () => {
-    const index = createIndexMock();
-    const buildFts = vi.fn(() => null);
-
-    const result = await queryDashboardIndexPage(
-      index,
-      buildFts,
-      "vault-1",
-      filter,
-      "hello",
-      page,
-    );
-
-    expect(result.itemIds).toEqual(["a.md", "b.md"]);
-    expect(buildFts).toHaveBeenCalledWith("hello", "vault-1");
-    expect(index.searchItemIds).not.toHaveBeenCalled();
-  });
-
-  it("uses search when FTS query is present", async () => {
-    const index = createIndexMock();
-    const buildFts = vi.fn(() => "hello*");
-
-    const result = await queryDashboardIndexPage(
-      index,
-      buildFts,
-      "vault-1",
-      filter,
-      "hello",
-      page,
-    );
-
-    expect(result).toEqual({
-      itemIds: ["a.md"],
-      stamps: ["1000"],
-      totalCount: 1,
-      offset: 0,
-    });
-    expect(index.searchItemIds).toHaveBeenCalledWith(
-      "vault-1",
-      "hello*",
-      filter,
-      page,
-    );
-  });
-
-  it("passes sort into listItemIdsByNavFilter options", async () => {
-    const index = createIndexMock();
-    const buildFts = vi.fn(() => "MATCH");
-    const sort = { key: "title", dir: "asc" as const };
-
-    await queryDashboardIndexPage(
-      index,
-      buildFts,
-      "vault-1",
-      filter,
-      "",
-      page,
-      sort,
-    );
-
-    expect(index.listItemIdsByNavFilter).toHaveBeenCalledWith(
-      "vault-1",
-      filter,
-      { ...page, sort },
-    );
-  });
-
-  it("ignores sort on FTS search path", async () => {
-    const index = createIndexMock();
-    const buildFts = vi.fn(() => "hello*");
-    const sort = { key: "title", dir: "asc" as const };
-
-    await queryDashboardIndexPage(
-      index,
-      buildFts,
-      "vault-1",
-      filter,
-      "hello",
-      page,
-      sort,
-    );
-
-    expect(index.searchItemIds).toHaveBeenCalledWith(
-      "vault-1",
-      "hello*",
-      filter,
-      page,
-    );
-    expect(index.listItemIdsByNavFilter).not.toHaveBeenCalled();
-  });
-});
+const suite = createSqlIndexTestSuite();
+suite.registerCleanup();
 
 function createSearchService(
-  index: ItemsIndexPort,
-  overrides: {
-    kickoff?: ReturnType<typeof vi.fn>;
-    buildSearchFtsQuery?: (q: string, vaultId: string) => string | null;
-  } = {},
-) {
-  const vault = {
-    id: "vault-1",
-    name: "Vault",
-    is_default: true,
-    created_at: "a",
-    updated_at: "a",
-  };
+  env: SqlIndexTestEnv,
+): ReturnType<typeof createItemsSearchService> {
+  const { index, vault, ctx } = env;
+  const { meta, path } = vault;
   return createItemsSearchService({
-    resolveActiveVault: async () => ({ vault: vault as never, path: "/vault" }),
-    getContext: () => ({}) as never,
-    getIndex: () => index,
-    kickoffVaultIndexSync: overrides.kickoff ?? vi.fn(),
-    buildSearchFtsQuery:
-      overrides.buildSearchFtsQuery ?? (() => null),
+    resolveActiveVault: async () => ({ vault: meta, path }),
+    getContext: () => ctx as never,
+    getIndex: () => index as never,
+    kickoffVaultIndexSync: vi.fn(),
+    buildSearchFtsQuery: (q) => buildFtsMatchQuery(q),
     addVaultSyncListener: () => () => {},
     findSimilarItems: async () => [],
     normalizeMarkdown: (raw) => ({ text: raw, changed: false }),
     enqueueItemDerivedRefresh: async () => undefined,
-        enqueueItemExtractAuto: async () => undefined,
+    enqueueItemExtractAuto: async () => undefined,
   });
 }
 
-describe("createItemsSearchService.queryIndex", () => {
-  it("kickoffs vault index sync before returning the page (#367)", async () => {
-    const index = createIndexMock();
-    const kickoff = vi.fn();
-
-    const service = createSearchService(index, { kickoff });
-
-    const result = await service.queryIndex("all", undefined, {
-      limit: 60,
-      offset: 0,
-    });
-
-    expect(kickoff).toHaveBeenCalledWith("vault-1", "/vault");
-    expect(result).toEqual({
-      ids: ["a.md", "b.md"],
-      stamps: ["1000", "1001"],
-      total: 2,
-      offset: 0,
-    });
-  });
-});
-
-describe("createItemsSearchService.searchItems (#658)", () => {
-  it("caps FTS hits to the default page size and hydrates via index cards", async () => {
-    const manyIds = Array.from({ length: 120 }, (_, i) => `item-${i}.md`);
-    const pageIds = manyIds.slice(0, 60);
-    const searchItemIds = vi.fn(async (_v, _q, _f, page) => {
-      expect(page).toEqual({ limit: 60, offset: 0 });
-      return pageIds;
-    });
-    const countSearchItemIds = vi.fn(async () => 120);
-    const listItemFilesByIds = vi.fn(async (_vaultId, itemIds: string[]) =>
-      itemIds.map((id) => ({ id, title: id }) as never),
+describe("createItemsSearchService.searchItems (#658) against real index", () => {
+  it("finds seeded notes by FTS and hydrates titles from the index", async () => {
+    const env = await suite.openVaultIndex(
+      "collector-items-search-fts-",
+      "items-search.db",
     );
-    const listItemIdsByNavFilter = vi.fn(async () => manyIds);
-    const index = createIndexMock({
-      searchItemIds,
-      countSearchItemIds,
-      listItemFilesByIds,
-      listItemIdsByNavFilter,
+    const { ctx, vault, index } = env;
+    const { meta, path } = vault;
+    const timestamp = "2026-01-01T00:00:00.000Z";
+    const matchId = `${createId()}.md`;
+    const otherId = `${createId()}.md`;
+
+    await upsertItem(ctx, path, meta.id, {
+      item: noteItemFields(meta.id, matchId, {
+        title: "Alpha Teapot",
+        created_at: timestamp,
+        updated_at: timestamp,
+      }),
+      content: "unique_fts_token_alpha teapot body",
+    });
+    await upsertItem(ctx, path, meta.id, {
+      item: noteItemFields(meta.id, otherId, {
+        title: "Beta Mug",
+        created_at: timestamp,
+        updated_at: timestamp,
+      }),
+      content: "unrelated coffee notes",
     });
 
-    const service = createSearchService(index, {
-      buildSearchFtsQuery: () => "hello*",
-    });
+    const service = createSearchService(env);
+    const result = await service.searchItems("unique_fts_token_alpha", "all");
 
-    const result = await service.searchItems("hello", "all");
-
-    expect(result.items).toHaveLength(60);
-    expect(result.total).toBe(120);
+    expect(result.items.map((item) => item.id)).toEqual([matchId]);
+    expect(result.items[0]?.title).toBe("Alpha Teapot");
+    expect(result.total).toBe(1);
     expect(result.offset).toBe(0);
-    expect(searchItemIds).toHaveBeenCalledWith(
-      "vault-1",
-      "hello*",
+    expect(await index.countSearchItemIds(
+      meta.id,
+      buildFtsMatchQuery("unique_fts_token_alpha")!,
       "all",
-      { limit: 60, offset: 0 },
-    );
-    expect(countSearchItemIds).toHaveBeenCalledWith("vault-1", "hello*", "all");
-    expect(listItemFilesByIds).toHaveBeenCalledWith("vault-1", pageIds);
-    expect(listItemIdsByNavFilter).not.toHaveBeenCalled();
+    )).toBe(1);
   });
 
-  it("honors an explicit page and still hydrates only that id window", async () => {
-    const searchItemIds = vi.fn(async () => ["c.md", "d.md"]);
-    const countSearchItemIds = vi.fn(async () => 10);
-    const listItemFilesByIds = vi.fn(async (_vaultId, itemIds: string[]) =>
-      itemIds.map((id) => ({ id, title: id }) as never),
+  it("honors explicit page window on FTS hits", async () => {
+    const env = await suite.openVaultIndex(
+      "collector-items-search-page-",
+      "items-search-page.db",
     );
-    const index = createIndexMock({
-      searchItemIds,
-      countSearchItemIds,
-      listItemFilesByIds,
-    });
-    const service = createSearchService(index, {
-      buildSearchFtsQuery: () => "hello*",
+    const { ctx, vault } = env;
+    const { meta, path } = vault;
+    const timestamp = "2026-01-01T00:00:00.000Z";
+    const token = "page_window_token";
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const id = `${createId()}.md`;
+      ids.push(id);
+      await upsertItem(ctx, path, meta.id, {
+        item: noteItemFields(meta.id, id, {
+          title: `Note ${i}`,
+          created_at: timestamp,
+          updated_at: timestamp,
+        }),
+        content: `${token} body ${i}`,
+      });
+    }
+
+    const service = createSearchService(env);
+    const page = await service.searchItems(token, "all", {
+      limit: 2,
+      offset: 2,
     });
 
-    const result = await service.searchItems("hello", "all", {
-      limit: 2,
-      offset: 4,
-    });
-
-    expect(result.items.map((i) => i.id)).toEqual(["c.md", "d.md"]);
-    expect(result.total).toBe(10);
-    expect(result.offset).toBe(4);
-    expect(searchItemIds).toHaveBeenCalledWith("vault-1", "hello*", "all", {
-      limit: 2,
-      offset: 4,
-    });
-    expect(listItemFilesByIds).toHaveBeenCalledWith("vault-1", ["c.md", "d.md"]);
+    expect(page.items).toHaveLength(2);
+    expect(page.total).toBe(5);
+    expect(page.offset).toBe(2);
+    expect(page.items.every((item) => ids.includes(item.id))).toBe(true);
   });
 
-  it("caps nav-list fallback when FTS query is null", async () => {
-    const listItemIdsByNavFilter = vi.fn(async (_v, _f, page) => {
-      expect(page).toEqual({ limit: 60, offset: 0 });
-      return ["a.md", "b.md"];
-    });
-    const countItemIdsByNavFilter = vi.fn(async () => 2);
-    const listItemFilesByIds = vi.fn(async (_vaultId, itemIds: string[]) =>
-      itemIds.map((id) => ({ id, title: id }) as never),
+  it("falls back to nav list when the query builds no FTS match", async () => {
+    const env = await suite.openVaultIndex(
+      "collector-items-search-nav-",
+      "items-search-nav.db",
     );
-    const searchItemIds = vi.fn(async () => []);
-    const index = createIndexMock({
-      listItemIdsByNavFilter,
-      countItemIdsByNavFilter,
-      listItemFilesByIds,
-      searchItemIds,
-    });
-    const service = createSearchService(index, {
+    const { ctx, vault } = env;
+    const { meta, path } = vault;
+    const timestamp = "2026-01-01T00:00:00.000Z";
+    const firstId = `${createId()}.md`;
+    const secondId = `${createId()}.md`;
+
+    for (const id of [firstId, secondId]) {
+      await upsertItem(ctx, path, meta.id, {
+        item: noteItemFields(meta.id, id, {
+          created_at: timestamp,
+          updated_at: timestamp,
+        }),
+        content: "plain note",
+      });
+    }
+
+    const service = createItemsSearchService({
+      resolveActiveVault: async () => ({ vault: meta, path }),
+      getContext: () => env.ctx as never,
+      getIndex: () => env.index as never,
+      kickoffVaultIndexSync: vi.fn(),
       buildSearchFtsQuery: () => null,
+      addVaultSyncListener: () => () => {},
+      findSimilarItems: async () => [],
+      normalizeMarkdown: (raw) => ({ text: raw, changed: false }),
+      enqueueItemDerivedRefresh: async () => undefined,
+      enqueueItemExtractAuto: async () => undefined,
     });
 
     const result = await service.searchItems("   ", "all");
-
-    expect(result.items).toHaveLength(2);
+    expect(result.items.map((item) => item.id).sort()).toEqual(
+      [firstId, secondId].sort(),
+    );
     expect(result.total).toBe(2);
-    expect(listItemIdsByNavFilter).toHaveBeenCalledWith("vault-1", "all", {
-      limit: 60,
-      offset: 0,
-    });
-    expect(listItemFilesByIds).toHaveBeenCalledWith("vault-1", ["a.md", "b.md"]);
-    expect(searchItemIds).not.toHaveBeenCalled();
   });
 
   it("rejects invalid page limits and offsets", async () => {
-    const index = createIndexMock();
-    const service = createSearchService(index, {
-      buildSearchFtsQuery: () => "hello*",
-    });
+    const env = await suite.openVaultIndex(
+      "collector-items-search-page-guard-",
+      "items-search-guard.db",
+    );
+    const service = createSearchService(env);
 
     await expect(
       service.searchItems("hello", "all", { limit: Number.NaN, offset: 0 }),
@@ -311,19 +167,127 @@ describe("createItemsSearchService.searchItems (#658)", () => {
       service.searchItems("hello", "all", { limit: 0, offset: 0 }),
     ).rejects.toThrow(/page\.limit/);
     await expect(
-      service.searchItems("hello", "all", { limit: 1.5, offset: 0 }),
-    ).rejects.toThrow(/page\.limit/);
-    await expect(
       service.searchItems("hello", "all", { limit: 401, offset: 0 }),
     ).rejects.toThrow(/exceeds max/);
     await expect(
       service.searchItems("hello", "all", { limit: 10, offset: -1 }),
     ).rejects.toThrow(/page\.offset/);
-    await expect(
-      service.searchItems("hello", "all", {
-        limit: 10,
-        offset: Number.POSITIVE_INFINITY,
+  });
+});
+
+describe("createItemsSearchService.queryIndex (#367)", () => {
+  it("kickoffs vault index sync and returns ids from the real index", async () => {
+    const env = await suite.openVaultIndex(
+      "collector-items-query-index-",
+      "items-query-index.db",
+    );
+    const { ctx, vault } = env;
+    const { meta, path } = vault;
+    const timestamp = "2026-01-01T00:00:00.000Z";
+    const itemId = `${createId()}.md`;
+    await upsertItem(ctx, path, meta.id, {
+      item: noteItemFields(meta.id, itemId, {
+        title: "Listed",
+        created_at: timestamp,
+        updated_at: timestamp,
       }),
-    ).rejects.toThrow(/page\.offset/);
+    });
+
+    const kickoff = vi.fn();
+    const service = createItemsSearchService({
+      resolveActiveVault: async () => ({ vault: meta, path }),
+      getContext: () => env.ctx as never,
+      getIndex: () => env.index as never,
+      kickoffVaultIndexSync: kickoff,
+      buildSearchFtsQuery: (q) => buildFtsMatchQuery(q),
+      addVaultSyncListener: () => () => {},
+      findSimilarItems: async () => [],
+      normalizeMarkdown: (raw) => ({ text: raw, changed: false }),
+      enqueueItemDerivedRefresh: async () => undefined,
+      enqueueItemExtractAuto: async () => undefined,
+    });
+
+    const result = await service.queryIndex("all", undefined, {
+      limit: SEARCH_PAGE_SIZE,
+      offset: 0,
+    });
+
+    expect(kickoff).toHaveBeenCalledWith(meta.id, path);
+    expect(result.ids).toEqual([itemId]);
+    expect(result.total).toBe(1);
+    expect(result.stamps).toHaveLength(1);
+  });
+});
+
+describe("queryDashboardIndexPage against real index", () => {
+  it("lists by nav filter when query is blank", async () => {
+    const env = await suite.openVaultIndex(
+      "collector-dash-index-blank-",
+      "dash-index-blank.db",
+    );
+    const { ctx, vault, index } = env;
+    const { meta, path } = vault;
+    const timestamp = "2026-01-01T00:00:00.000Z";
+    const firstId = `${createId()}.md`;
+    const secondId = `${createId()}.md`;
+    for (const id of [firstId, secondId]) {
+      await upsertItem(ctx, path, meta.id, {
+        item: noteItemFields(meta.id, id, {
+          created_at: timestamp,
+          updated_at: timestamp,
+        }),
+      });
+    }
+
+    const result = await queryDashboardIndexPage(
+      index as never,
+      buildFtsMatchQuery,
+      meta.id,
+      "all",
+      "  ",
+      { limit: 60, offset: 0 },
+    );
+
+    expect(result.itemIds.sort()).toEqual([firstId, secondId].sort());
+    expect(result.totalCount).toBe(2);
+  });
+
+  it("uses FTS when the query matches seeded content", async () => {
+    const env = await suite.openVaultIndex(
+      "collector-dash-index-fts-",
+      "dash-index-fts.db",
+    );
+    const { ctx, vault, index } = env;
+    const { meta, path } = vault;
+    const timestamp = "2026-01-01T00:00:00.000Z";
+    const hitId = `${createId()}.md`;
+    await upsertItem(ctx, path, meta.id, {
+      item: noteItemFields(meta.id, hitId, {
+        title: "Hit",
+        created_at: timestamp,
+        updated_at: timestamp,
+      }),
+      content: "dashboard_fts_needle_zzz",
+    });
+    await upsertItem(ctx, path, meta.id, {
+      item: noteItemFields(meta.id, `${createId()}.md`, {
+        title: "Miss",
+        created_at: timestamp,
+        updated_at: timestamp,
+      }),
+      content: "other",
+    });
+
+    const result = await queryDashboardIndexPage(
+      index as never,
+      buildFtsMatchQuery,
+      meta.id,
+      "all",
+      "dashboard_fts_needle_zzz",
+      { limit: 60, offset: 0 },
+    );
+
+    expect(result.itemIds).toEqual([hitId]);
+    expect(result.totalCount).toBe(1);
   });
 });

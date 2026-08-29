@@ -1,92 +1,115 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const upsertItem = vi.fn();
-const readItemRawMarkdown = vi.fn();
-const readItemFile = vi.fn();
-const writeItemRawMarkdown = vi.fn();
-
-vi.mock("@collector/core", async () => {
-  const actual = await vi.importActual<typeof import("@collector/core")>(
-    "@collector/core",
-  );
-  return {
-    ...actual,
-    upsertItem: (...args: unknown[]) => upsertItem(...args),
-    readItemRawMarkdown: (...args: unknown[]) => readItemRawMarkdown(...args),
-    readItemFile: (...args: unknown[]) => readItemFile(...args),
-    writeItemRawMarkdown: (...args: unknown[]) => writeItemRawMarkdown(...args),
-    resolveOrCreateInboxFolder: vi.fn(async () => "Inbox"),
-    createFolder: vi.fn(async () => undefined),
-  };
-});
-
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  SqlVaultIndexStore,
+  createVault,
+  itemMarkdownPath,
+  readItemFile,
+  readItemRawMarkdown,
+} from "@collector/core";
+import { NodeFileSystemAdapter } from "@collector/core/node";
+import {
+  itemDerivedRefreshIdempotencyKeyPrefix,
+  itemDerivedRefreshJobType,
+} from "@collector/shared";
+import { MemorySqlAdapter } from "../../core/src/testing/memory-sql.js";
 import { createItemsCrud } from "./items-crud.js";
+import { enqueueItemDerivedRefresh } from "./jobs/handlers/item-derived-refresh.js";
+import { createJobQueue, type JobQueue } from "./jobs/job-queue.js";
+import { createJobRegistry } from "./jobs/job-registry.js";
 
 describe("createItemsCrud single derived enqueue (#776)", () => {
-  beforeEach(() => {
-    upsertItem.mockReset();
-    readItemRawMarkdown.mockReset();
-    readItemFile.mockReset();
-    writeItemRawMarkdown.mockReset();
-    upsertItem.mockResolvedValue({
-      id: "Inbox/n.md",
-      url: null,
-      content_revision: 1,
-      folder_path: "Inbox",
-    });
-    readItemRawMarkdown.mockResolvedValue(
-      "![x](https://cdn.example/x.png)\n",
-    );
-    readItemFile.mockResolvedValue({
-      id: "Inbox/n.md",
-      folder_path: "Inbox",
-      content_revision: 1,
-    });
-    writeItemRawMarkdown.mockResolvedValue({
-      id: "Inbox/n.md",
-      folder_path: "Inbox",
-      content_revision: 1,
-    });
+  let dataDir = "";
+  const fs = new NodeFileSystemAdapter();
+  const queues: JobQueue[] = [];
+
+  afterEach(async () => {
+    await Promise.all(queues.splice(0).map((queue) => queue.stop()));
+    if (dataDir) {
+      await rm(dataDir, { recursive: true, force: true });
+      dataDir = "";
+    }
   });
 
-  it("create with remote assets enqueues at most one derived refresh", async () => {
-    const enqueueItemDerivedRefresh = vi.fn(async () => undefined);
+  it("create with remote assets writes vault item and enqueues one itemDerivedRefresh in jobs.db", async () => {
+    dataDir = await mkdtemp(
+      join(tmpdir(), "collector-create-single-enqueue-"),
+    );
+    const sql = new MemorySqlAdapter();
+    const index = new SqlVaultIndexStore(sql);
+    const ctx = { fs, index };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    const registry = createJobRegistry([itemDerivedRefreshJobType]);
+    registry.register(itemDerivedRefreshJobType, async () => ({
+      status: "ok",
+    }));
+    const queue = await createJobQueue({
+      dbPath: join(dataDir, "jobs.db"),
+      registry,
+    });
+    queues.push(queue);
+
     const crud = createItemsCrud(
       {
-        resolveActiveVault: async () => ({
-          path: "/vault",
-          vault: { id: "vault-1" },
-        }),
-        getContext: () => ({
-          fs: {
-            exists: async () => true,
-            stat: async () => ({ mtimeMs: 123 }),
-          },
-          index: {},
-          itemDerivedRefreshJobs: {
-            enqueue: enqueueItemDerivedRefresh,
-          },
-        }),
-        getIndex: () => ({}),
+        resolveActiveVault: async () => ({ path, vault: meta }),
+        getContext: () => ctx,
+        getIndex: () => index,
         normalizeMarkdown: (raw) => ({ text: raw, changed: false }),
-        enqueueItemDerivedRefresh,
+        enqueueItemDerivedRefresh: async (input) => {
+          await enqueueItemDerivedRefresh(queue, input);
+        },
         enqueueItemExtractAuto: async () => undefined,
       } as never,
-      () => "n",
+      () => crypto.randomUUID(),
     );
 
-    await crud.createItem({
+    const remoteBody = "![x](https://cdn.example/x.png)\n";
+    const created = await crud.createItem({
       title: "Remote",
       content_type: "note",
-      content: "![x](https://cdn.example/x.png)\n",
+      content: remoteBody,
     });
 
-    expect(upsertItem).toHaveBeenCalledWith(
-      expect.anything(),
-      "/vault",
-      "vault-1",
-      expect.objectContaining({ deferIndexRefresh: true }),
+    const fromDisk = await readItemFile(fs, path, created.id, meta.id);
+    expect(fromDisk.id).toBe(created.id);
+    expect(fromDisk.title).toBe("Remote");
+    const raw = await readItemRawMarkdown(fs, path, created.id);
+    expect(raw).toContain("https://cdn.example/x.png");
+
+    const docStat = await fs.stat(itemMarkdownPath(path, created.id));
+    if (docStat.mtimeMs === null) {
+      throw new Error(`missing mtime for ${created.id}`);
+    }
+
+    const stats = await queue.stats();
+    expect(stats.pending).toBe(1);
+    expect(stats.byType.itemDerivedRefresh).toMatchObject({
+      pending: 1,
+      running: 0,
+      succeeded: 0,
+      failed: 0,
+    });
+
+    const job = await queue.findLatestByIdempotencyKeyPrefix(
+      itemDerivedRefreshIdempotencyKeyPrefix({
+        vaultId: meta.id,
+        itemId: created.id,
+        contentRevision: created.content_revision,
+      }),
     );
-    expect(enqueueItemDerivedRefresh).toHaveBeenCalledTimes(1);
+    expect(job).not.toBeNull();
+    expect(job!.type).toBe(itemDerivedRefreshJobType.id);
+    expect(job!.status).toBe("pending");
+    expect(JSON.parse(job!.payload_json)).toEqual({
+      vaultId: meta.id,
+      vaultPath: path,
+      itemId: created.id,
+      contentRevision: created.content_revision,
+      fileMtimeMs: docStat.mtimeMs,
+      itemUrl: null,
+    });
   });
 });

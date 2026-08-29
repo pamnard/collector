@@ -1,7 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { GetItemResult, SearchItemsResult } from "@collector/api";
+import type { ItemFile } from "@collector/shared";
+import { selfContainedCollectorProfileLayout } from "@collector/shared";
 import { isHostWireError } from "./errors.js";
 import { DOMAIN_WIRE_METHODS as M } from "./domain-methods.js";
-import type { ServiceDomainRuntime } from "../domain-runtime.js";
+import {
+  createServiceDomainRuntime,
+  type ServiceDomainRuntime,
+} from "../domain-runtime.js";
 import {
   createDomainWireDispatcher,
   createDomainWireRequestHandler,
@@ -175,6 +184,18 @@ describe("createDomainWireDispatcher", () => {
 });
 
 describe("createDomainWireRequestHandler (#330)", () => {
+  const liveRuntimeDirs: string[] = [];
+  const liveRuntimes: ServiceDomainRuntime[] = [];
+
+  afterEach(async () => {
+    for (const runtime of liveRuntimes.splice(0)) {
+      await runtime.close();
+    }
+    for (const dir of liveRuntimeDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("returns undefined for unknown methods", async () => {
     const { runtime } = stubRuntime({});
     const dispatch = createDomainWireRequestHandler(runtime);
@@ -201,28 +222,55 @@ describe("createDomainWireRequestHandler (#330)", () => {
     expect(ensureInitialized).not.toHaveBeenCalled();
   });
 
-  it("searchItems and getItemById forward after ensureInitialized", async () => {
-    const searchItems = vi.fn(async () => ({
-      items: [{ id: "a.md" }],
-      total: 1,
-      offset: 0,
-    }));
-    const getItemById = vi.fn(async () => ({ id: "a.md" }));
-    const { runtime, ensureInitialized } = stubRuntime({
-      itemsSearch: { searchItems, getItemById },
-    });
+  it("searchItems and getItemById return live domain results via dispatch", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-domain-dispatch-"));
+    liveRuntimeDirs.push(dataDir);
+    const runtime = createServiceDomainRuntime(
+      selfContainedCollectorProfileLayout(dataDir),
+    );
+    liveRuntimes.push(runtime);
+    await runtime.open();
+    await runtime.ensureInitialized();
+    await runtime.vaults.ensureActiveVault();
     const dispatch = createDomainWireRequestHandler(runtime);
 
-    await expect(
-      dispatch(M.searchItems, { query: "hello", filter: "all" }),
-    ).resolves.toEqual({ items: [{ id: "a.md" }], total: 1, offset: 0 });
-    expect(searchItems).toHaveBeenCalledWith("hello", "all", undefined);
+    const marker = `UniqueWireProbe${Date.now()}`;
+    const created = (await dispatch(M.createItem, {
+      title: marker,
+      content_type: "note",
+      content: `body ${marker}`,
+    })) as ItemFile;
+    expect(created.id).toMatch(/\.md$/);
+    expect(created.title).toBe(marker);
 
-    await expect(dispatch(M.getItemById, { itemId: "a.md" })).resolves.toEqual({
-      id: "a.md",
-    });
-    expect(getItemById).toHaveBeenCalledWith("a.md");
-    expect(ensureInitialized).toHaveBeenCalledTimes(2);
+    const got = (await dispatch(M.getItemById, {
+      itemId: created.id,
+    })) as GetItemResult;
+    expect(got.item.id).toBe(created.id);
+    expect(got.item.title).toBe(marker);
+    expect(got.content).toContain(marker);
+
+    await expect(
+      dispatch(M.getItemById, { itemId: "Inbox/missing-wire-dispatch.md" }),
+    ).rejects.toThrow(/Item not found/);
+
+    // createItem defers index refresh; search kicks vault sync — wait for FTS.
+    let search: SearchItemsResult | undefined;
+    await vi.waitFor(
+      async () => {
+        search = (await dispatch(M.searchItems, {
+          query: marker,
+          filter: "all",
+        })) as SearchItemsResult;
+        expect(search.items.some((item) => item.id === created.id)).toBe(true);
+      },
+      { timeout: 15_000, interval: 100 },
+    );
+    expect(search!.total).toBeGreaterThanOrEqual(1);
+    expect(search!.offset).toBe(0);
+    expect(
+      search!.items.find((item) => item.id === created.id)?.title,
+    ).toBe(marker);
   });
 
   it("listFolderItems forwards folderPath after ensureInitialized (#844)", async () => {

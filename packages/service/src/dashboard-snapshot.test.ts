@@ -1,110 +1,188 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+/**
+ * createDashboardSnapshotService against real core snapshot IO on a temp config dir.
+ * No core/DevMock mocks — assert fields written to dashboard-snapshot.json on disk.
+ */
 
-const readDashboardSnapshot = vi.fn();
-const writeDashboardSnapshot = vi.fn();
-const clearDashboardSnapshotFile = vi.fn();
-
-vi.mock("@collector/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@collector/core")>();
-  return {
-    ...actual,
-    readDashboardSnapshot: (...args: unknown[]) =>
-      readDashboardSnapshot(...args),
-    writeDashboardSnapshot: (...args: unknown[]) =>
-      writeDashboardSnapshot(...args),
-    clearDashboardSnapshot: (...args: unknown[]) =>
-      clearDashboardSnapshotFile(...args),
-  };
-});
-
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { NodeFileSystemAdapter } from "@collector/core/node";
+import {
+  DASHBOARD_SNAPSHOT_FILE,
+  DASHBOARD_SNAPSHOT_VERSION,
+  type DashboardSnapshot,
+} from "@collector/shared";
 import { createDashboardSnapshotService } from "./dashboard-snapshot.js";
 
+const VAULT_ID = "11111111-1111-4111-8111-111111111111";
+const ITEM_ID = "Inbox/welcome-note.md";
+const NOW = "2026-01-01T00:00:00.000Z";
+
+const dirs: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
+  );
+});
+
+async function tempConfigDir(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "collector-svc-dash-snap-"));
+  dirs.push(dir);
+  return dir;
+}
+
+function snapshotOnDiskPath(configDir: string): string {
+  return join(configDir, DASHBOARD_SNAPSHOT_FILE);
+}
+
+async function readSnapshotJsonFromDisk(
+  configDir: string,
+): Promise<DashboardSnapshot> {
+  const raw = await readFile(snapshotOnDiskPath(configDir), "utf8");
+  return JSON.parse(raw) as DashboardSnapshot;
+}
+
+function createService(configDir: string, onSnapshotLoaded?: (s: DashboardSnapshot) => void) {
+  const fs = new NodeFileSystemAdapter();
+  return createDashboardSnapshotService({
+    fs,
+    ensureConfigDir: async () => configDir,
+    isDevMock: () => false,
+    readDevMockSnapshot: () => {
+      throw new Error("DevMock snapshot read must not run");
+    },
+    writeDevMockSnapshot: () => {
+      throw new Error("DevMock snapshot write must not run");
+    },
+    onSnapshotLoaded,
+  });
+}
+
 describe("createDashboardSnapshotService", () => {
-  const fs = {} as never;
-  const ensureConfigDir = vi.fn(async () => "/config");
-  const readDevMockSnapshot = vi.fn(() => null);
-  const writeDevMockSnapshot = vi.fn();
-  const onSnapshotLoaded = vi.fn();
-
-  beforeEach(() => {
-    readDashboardSnapshot.mockReset();
-    writeDashboardSnapshot.mockReset();
-    clearDashboardSnapshotFile.mockReset();
-    ensureConfigDir.mockClear();
-    readDevMockSnapshot.mockReset();
-    writeDevMockSnapshot.mockReset();
-    onSnapshotLoaded.mockReset();
-  });
-
-  function createService() {
-    return createDashboardSnapshotService({
-      fs,
-      ensureConfigDir,
-      isDevMock: () => false,
-      readDevMockSnapshot,
-      writeDevMockSnapshot,
-      onSnapshotLoaded,
-    });
-  }
-
-  it("loads snapshot and seeds query cache once", async () => {
-    const snapshot = {
-      schema_version: 2,
-      vault_id: "v1",
-      nav_filter: "all",
+  it("persist writes snapshot fields to disk JSON", async () => {
+    const configDir = await tempConfigDir();
+    const service = createService(configDir);
+    const snapshot = service.buildDashboardSnapshot({
+      vaultId: VAULT_ID,
+      filter: "all",
       search: "",
-      item_ids: ["a.md"],
-      items: [],
-      total_count: 1,
-      stream_end_offset: 0,
-      cover_paths: {},
-      saved_at: "t",
-    };
-    readDashboardSnapshot.mockResolvedValue(snapshot);
+      itemIds: [ITEM_ID],
+      items: [
+        {
+          id: ITEM_ID,
+          vault_id: VAULT_ID,
+          title: "Service snapshot IO item",
+          description: "",
+          content_type: "bookmark",
+          source_type: "manual",
+          metadata: {},
+          properties: {},
+          tag_ids: [],
+          collection_ids: [],
+          folder_path: "Inbox",
+          content_revision: 1,
+          word_count: 0,
+          character_count: 0,
+          created_at: NOW,
+          updated_at: NOW,
+        },
+      ],
+      totalCount: 1,
+      streamEndOffset: 1,
+      bodyStamps: { [ITEM_ID]: "1000" },
+      coverPaths: {
+        [ITEM_ID]: { path: "/tmp/cover.webp", stamp: `:${NOW}` },
+      },
+    });
 
-    const service = createService();
-    expect(await service.ensureDashboardSnapshot()).toEqual(snapshot);
-    expect(await service.ensureDashboardSnapshot()).toEqual(snapshot);
-    expect(readDashboardSnapshot).toHaveBeenCalledTimes(1);
-    expect(onSnapshotLoaded).toHaveBeenCalledWith(snapshot);
+    await service.persistDashboardSnapshot(snapshot);
+
+    const onDisk = await readSnapshotJsonFromDisk(configDir);
+    expect(onDisk.schema_version).toBe(DASHBOARD_SNAPSHOT_VERSION);
+    expect(onDisk.vault_id).toBe(VAULT_ID);
+    expect(onDisk.nav_filter).toBe("all");
+    expect(onDisk.search).toBe("");
+    expect(onDisk.sort_key).toBe("created_at");
+    expect(onDisk.sort_dir).toBe("desc");
+    expect(onDisk.item_ids).toEqual([ITEM_ID]);
+    expect(onDisk.items).toHaveLength(1);
+    expect(onDisk.items[0]?.id).toBe(ITEM_ID);
+    expect(onDisk.items[0]?.title).toBe("Service snapshot IO item");
+    expect(onDisk.body_stamps).toEqual({ [ITEM_ID]: "1000" });
+    expect(onDisk.total_count).toBe(1);
+    expect(onDisk.stream_end_offset).toBe(1);
+    expect(onDisk.cover_paths).toEqual({
+      [ITEM_ID]: { path: "/tmp/cover.webp", stamp: `:${NOW}` },
+    });
+    expect(onDisk.saved_at).toBe(snapshot.saved_at);
   });
 
-  it("peekMatchingDashboardSnapshot requires matching vault/filter/search", async () => {
-    const snapshot = {
-      schema_version: 2,
-      vault_id: "v1",
-      nav_filter: "all",
-      search: "x",
-      sort_key: "created_at",
-      sort_dir: "desc",
-      item_ids: [],
+  it("ensure loads snapshot from disk once and seeds query cache", async () => {
+    const configDir = await tempConfigDir();
+    const writer = createService(configDir);
+    const snapshot = writer.buildDashboardSnapshot({
+      vaultId: VAULT_ID,
+      filter: "all",
+      search: "notes",
+      itemIds: [ITEM_ID],
       items: [],
-      total_count: 0,
-      stream_end_offset: 0,
-      cover_paths: {},
-      saved_at: "t",
-    };
-    readDashboardSnapshot.mockResolvedValue(snapshot);
-    const service = createService();
+      totalCount: 1,
+      streamEndOffset: 0,
+    });
+    await writer.persistDashboardSnapshot(snapshot);
+
+    const loaded: DashboardSnapshot[] = [];
+    const reader = createService(configDir, (s) => {
+      loaded.push(s);
+    });
+
+    expect(await reader.ensureDashboardSnapshot()).toEqual(
+      await readSnapshotJsonFromDisk(configDir),
+    );
+    expect(await reader.ensureDashboardSnapshot()).toEqual(
+      await readSnapshotJsonFromDisk(configDir),
+    );
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0]?.vault_id).toBe(VAULT_ID);
+    expect(loaded[0]?.search).toBe("notes");
+    expect(loaded[0]?.item_ids).toEqual([ITEM_ID]);
+  });
+
+  it("peekMatchingDashboardSnapshot requires matching vault/filter/search/sort", async () => {
+    const configDir = await tempConfigDir();
+    const service = createService(configDir);
+    const snapshot = service.buildDashboardSnapshot({
+      vaultId: VAULT_ID,
+      filter: "all",
+      search: "x",
+      sort: { key: "created_at", dir: "desc" },
+      itemIds: [],
+      items: [],
+      totalCount: 0,
+      streamEndOffset: 0,
+    });
+    await service.persistDashboardSnapshot(snapshot);
     await service.ensureDashboardSnapshot();
 
     expect(
       service.peekMatchingDashboardSnapshot({
-        vaultId: "v1",
+        vaultId: VAULT_ID,
         filter: "all",
         search: "x",
       }),
     ).toEqual(snapshot);
     expect(
       service.peekMatchingDashboardSnapshot({
-        vaultId: "v1",
+        vaultId: VAULT_ID,
         filter: "all",
         search: "other",
       }),
     ).toBeNull();
     expect(
       service.peekMatchingDashboardSnapshot({
-        vaultId: "v1",
+        vaultId: VAULT_ID,
         filter: "all",
         search: "x",
         sort: { key: "title", dir: "asc" },
@@ -112,11 +190,31 @@ describe("createDashboardSnapshotService", () => {
     ).toBeNull();
   });
 
-  it("clearDashboardSnapshot clears cache and disk", async () => {
-    const service = createService();
+  it("clearDashboardSnapshot removes disk file and keeps cache empty", async () => {
+    const configDir = await tempConfigDir();
+    const service = createService(configDir);
+    const snapshot = service.buildDashboardSnapshot({
+      vaultId: VAULT_ID,
+      filter: "all",
+      search: "",
+      itemIds: [],
+      items: [],
+      totalCount: 0,
+      streamEndOffset: 0,
+    });
+    await service.persistDashboardSnapshot(snapshot);
+    expect(await readSnapshotJsonFromDisk(configDir)).toMatchObject({
+      vault_id: VAULT_ID,
+    });
+
     await service.clearDashboardSnapshot();
-    expect(clearDashboardSnapshotFile).toHaveBeenCalled();
+
+    await expect(readFile(snapshotOnDiskPath(configDir), "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
     expect(await service.ensureDashboardSnapshot()).toBeNull();
-    expect(readDashboardSnapshot).not.toHaveBeenCalled();
+
+    const fresh = createService(configDir);
+    expect(await fresh.ensureDashboardSnapshot()).toBeNull();
   });
 });

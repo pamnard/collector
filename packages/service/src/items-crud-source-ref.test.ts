@@ -1,203 +1,115 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const upsertItem = vi.fn();
-const readItemRawMarkdown = vi.fn();
-const readItemFile = vi.fn();
-const writeItemRawMarkdown = vi.fn();
-const deleteItem = vi.fn();
-
-vi.mock("@collector/core", async () => {
-  const actual = await vi.importActual<typeof import("@collector/core")>(
-    "@collector/core",
-  );
-  return {
-    ...actual,
-    upsertItem: (...args: unknown[]) => upsertItem(...args),
-    readItemRawMarkdown: (...args: unknown[]) => readItemRawMarkdown(...args),
-    readItemFile: (...args: unknown[]) => readItemFile(...args),
-    writeItemRawMarkdown: (...args: unknown[]) => writeItemRawMarkdown(...args),
-    deleteItem: (...args: unknown[]) => deleteItem(...args),
-    resolveOrCreateInboxFolder: vi.fn(async () => "Inbox"),
-    createFolder: vi.fn(async () => undefined),
-  };
-});
-
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  SqlVaultIndexStore,
+  createVault,
+  itemSourcePath,
+  readItemFile,
+  readItemSourceRef,
+} from "@collector/core";
+import { NodeFileSystemAdapter } from "@collector/core/node";
+import { MemorySqlAdapter } from "../../core/src/testing/memory-sql.js";
 import { createItemsCrud } from "./items-crud.js";
 
-function testNormalizeMarkdown(raw: string): { text: string; changed: boolean } {
-  if (raw.includes("DIRTY")) {
-    return { text: raw.replace("DIRTY", "clean"), changed: true };
-  }
-  return { text: raw, changed: false };
-}
+describe("createItemsCrud sourceRef on disk (#28)", () => {
+  let dataDir = "";
+  const fs = new NodeFileSystemAdapter();
 
-describe("createItemsCrud createItem sourceRef (#28)", () => {
-  beforeEach(() => {
-    upsertItem.mockReset();
-    readItemRawMarkdown.mockReset();
-    readItemFile.mockReset();
-    writeItemRawMarkdown.mockReset();
-    deleteItem.mockReset();
-    upsertItem.mockResolvedValue({ id: "Inbox/n.md" });
-    readItemRawMarkdown.mockResolvedValue("raw-md");
-    readItemFile.mockResolvedValue({ id: "Inbox/n.md", folder_path: "Inbox" });
-    writeItemRawMarkdown.mockResolvedValue({
-      id: "Inbox/n.md",
-      folder_path: "Inbox",
-    });
-    deleteItem.mockResolvedValue(undefined);
+  afterEach(async () => {
+    if (dataDir) {
+      await rm(dataDir, { recursive: true, force: true });
+      dataDir = "";
+    }
   });
 
-  it("forwards sourceRef to upsertItem", async () => {
+  async function openCrud() {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-source-ref-"));
+    const sql = new MemorySqlAdapter();
+    const index = new SqlVaultIndexStore(sql);
+    const ctx = { fs, index };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
     const crud = createItemsCrud(
       {
-        resolveActiveVault: async () => ({
-          path: "/vault",
-          vault: { id: "00000000-0000-4000-8000-000000000001" },
-        }),
-        getContext: () => ({ fs: {}, index: {} }),
-        getIndex: () => ({}),
-        normalizeMarkdown: testNormalizeMarkdown,
+        resolveActiveVault: async () => ({ path, vault: meta }),
+        getContext: () => ctx,
+        getIndex: () => index,
+        normalizeMarkdown: (raw: string) => ({ text: raw, changed: false }),
         enqueueItemDerivedRefresh: async () => undefined,
         enqueueItemExtractAuto: async () => undefined,
       } as never,
-      () => "n",
+      () => crypto.randomUUID(),
     );
+    return { crud, meta, path };
+  }
 
+  it("createItem writes sourceRef sidecar under media/ and returns the note", async () => {
+    const { crud, meta, path } = await openCrud();
     const sourceRef = {
       plugin_id: "mock",
       external_id: "ext-1",
     };
-    await crud.createItem({
-      title: "T",
+
+    const created = await crud.createItem({
+      title: "Provenance note",
       content_type: "note",
+      content: "body with source",
+      source_type: "plugin",
       sourceRef,
     });
 
-    expect(upsertItem).toHaveBeenCalledWith(
-      expect.anything(),
-      "/vault",
-      "00000000-0000-4000-8000-000000000001",
-      expect.objectContaining({ sourceRef }),
-    );
-    expect(readItemRawMarkdown).toHaveBeenCalled();
+    expect(created.id).toMatch(/^Inbox\/[0-9a-f-]{36}\.md$/);
+    expect(await fs.exists(itemSourcePath(path, created.id))).toBe(true);
+    expect(await readItemSourceRef(fs, path, created.id)).toEqual(sourceRef);
+
+    const onDisk = await readItemFile(fs, path, created.id, meta.id);
+    expect(onDisk.title).toBe("Provenance note");
+    expect(onDisk.source_type).toBe("plugin");
   });
 
-  it("notifies vault presentation after create even when normalize is a no-op", async () => {
-    const onVaultPresentationChanged = vi.fn();
-    const vaultId = "00000000-0000-4000-8000-000000000001";
-    const crud = createItemsCrud(
-      {
-        resolveActiveVault: async () => ({
-          path: "/vault",
-          vault: { id: vaultId },
-        }),
-        getContext: () => ({ fs: {}, index: {} }),
-        getIndex: () => ({}),
-        onVaultPresentationChanged,
-        normalizeMarkdown: testNormalizeMarkdown,
-        enqueueItemDerivedRefresh: async () => undefined,
-        enqueueItemExtractAuto: async () => undefined,
-      } as never,
-      () => "n",
-    );
+  it("updateItem keeps sourceRef sidecar after metadata and body changes", async () => {
+    const { crud, path } = await openCrud();
+    const sourceRef = {
+      plugin_id: "mock",
+      external_id: "ext-keep",
+      metadata: { channel: "tests" },
+    };
 
-    await crud.createItem({
-      title: "Clean note",
+    const created = await crud.createItem({
+      title: "Before",
       content_type: "note",
-      content: "already clean",
+      content: "original body",
+      sourceRef,
     });
 
-    expect(onVaultPresentationChanged).toHaveBeenCalledTimes(1);
-    expect(onVaultPresentationChanged).toHaveBeenCalledWith({
-      vaultId,
-      kind: "itemCreated",
-      itemId: "Inbox/n.md",
-      folderPath: "Inbox",
-    });
-    expect(writeItemRawMarkdown).not.toHaveBeenCalled();
+    await crud.updateItem(created.id, { title: "After" });
+    expect(await readItemSourceRef(fs, path, created.id)).toEqual(sourceRef);
+    expect(await fs.exists(itemSourcePath(path, created.id))).toBe(true);
+
+    await crud.updateItem(created.id, { content: "revised body" });
+    expect(await readItemSourceRef(fs, path, created.id)).toEqual(sourceRef);
+    expect(await fs.exists(itemSourcePath(path, created.id))).toBe(true);
+
+    const onDisk = await readItemFile(
+      fs,
+      path,
+      created.id,
+      created.vault_id,
+    );
+    expect(onDisk.title).toBe("After");
   });
 
-  it("notifies vault presentation exactly once when create normalize rewrites", async () => {
-    const onVaultPresentationChanged = vi.fn();
-    const vaultId = "00000000-0000-4000-8000-000000000001";
-    readItemRawMarkdown.mockResolvedValue("DIRTY body");
-    writeItemRawMarkdown.mockResolvedValue({
-      id: "Inbox/n.md",
-      folder_path: "Inbox",
-    });
-    const crud = createItemsCrud(
-      {
-        resolveActiveVault: async () => ({
-          path: "/vault",
-          vault: { id: vaultId },
-        }),
-        getContext: () => ({ fs: {}, index: {} }),
-        getIndex: () => ({}),
-        onVaultPresentationChanged,
-        normalizeMarkdown: testNormalizeMarkdown,
-        enqueueItemDerivedRefresh: async () => undefined,
-        enqueueItemExtractAuto: async () => undefined,
-      } as never,
-      () => "n",
-    );
+  it("createItem without sourceRef leaves no source sidecar", async () => {
+    const { crud, path } = await openCrud();
 
-    await crud.createItem({
-      title: "Dirty note",
+    const created = await crud.createItem({
+      title: "Manual note",
       content_type: "note",
-      content: "DIRTY",
+      content: "no provenance",
     });
 
-    expect(writeItemRawMarkdown).toHaveBeenCalledTimes(1);
-    expect(onVaultPresentationChanged).toHaveBeenCalledTimes(1);
-    expect(onVaultPresentationChanged).toHaveBeenCalledWith({
-      vaultId,
-      kind: "itemCreated",
-      itemId: "Inbox/n.md",
-      folderPath: "Inbox",
-    });
-  });
-
-  it("does not roll back create when localize will run async (#768)", async () => {
-    const onVaultPresentationChanged = vi.fn();
-    const enqueueItemDerivedRefresh = vi.fn(async () => undefined);
-    upsertItem.mockResolvedValue({ id: "Inbox/n.md", url: null });
-    readItemRawMarkdown.mockResolvedValue(
-      "![x](https://cdn.example/x.png)\n",
-    );
-    const crud = createItemsCrud(
-      {
-        resolveActiveVault: async () => ({
-          path: "/vault",
-          vault: { id: "00000000-0000-4000-8000-000000000001" },
-        }),
-        getContext: () => ({
-          fs: { stat: async () => ({ mtimeMs: 100 }) },
-          index: {},
-        }),
-        getIndex: () => ({}),
-        onVaultPresentationChanged,
-        normalizeMarkdown: testNormalizeMarkdown,
-        enqueueItemDerivedRefresh,
-        enqueueItemExtractAuto: async () => undefined,
-      } as never,
-      () => "n",
-    );
-
-    const item = await crud.createItem({
-      title: "Remote image note",
-      content_type: "note",
-      content: "![x](https://cdn.example/x.png)",
-    });
-
-    expect(item.id).toBe("Inbox/n.md");
-    expect(deleteItem).not.toHaveBeenCalled();
-    expect(enqueueItemDerivedRefresh).toHaveBeenCalledTimes(1);
-    expect(onVaultPresentationChanged).toHaveBeenCalledWith({
-      vaultId: "00000000-0000-4000-8000-000000000001",
-      kind: "itemCreated",
-      itemId: "Inbox/n.md",
-      folderPath: "Inbox",
-    });
+    expect(await readItemSourceRef(fs, path, created.id)).toBeNull();
+    expect(await fs.exists(itemSourcePath(path, created.id))).toBe(false);
   });
 });

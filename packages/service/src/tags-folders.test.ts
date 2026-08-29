@@ -1,87 +1,96 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const listTagsWithCounts = vi.fn();
-const createFolderOnVault = vi.fn();
-const renameFolderOnVault = vi.fn();
-const deleteFolderOnVault = vi.fn();
-const reconcileFolderTreeFromDisk = vi.fn();
-const listFolderItemsOnVault = vi.fn();
-const moveItemToFolder = vi.fn();
-
-vi.mock("@collector/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@collector/core")>();
-  return {
-    ...actual,
-    listTagsWithCounts: (...args: unknown[]) => listTagsWithCounts(...args),
-    createFolder: (...args: unknown[]) => createFolderOnVault(...args),
-    renameFolder: (...args: unknown[]) => renameFolderOnVault(...args),
-    deleteFolder: (...args: unknown[]) => deleteFolderOnVault(...args),
-    reconcileFolderTreeFromDisk: (...args: unknown[]) =>
-      reconcileFolderTreeFromDisk(...args),
-    listFolderItems: (...args: unknown[]) => listFolderItemsOnVault(...args),
-    moveItemToFolder: (...args: unknown[]) => moveItemToFolder(...args),
-  };
-});
-
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  SqlVaultIndexStore,
+  createVault,
+  joinSegments,
+  readItemFile,
+  upsertItem,
+  writeItemRawMarkdown,
+  type VaultContext,
+} from "@collector/core";
+import { NodeFileSystemAdapter } from "@collector/core/node";
+import { runMigrations } from "@collector/db";
+import type { VaultMeta } from "@collector/shared";
+import { BetterSqliteMigrator } from "../../db/src/testing/better-sqlite.js";
 import { createTagsFoldersService } from "./tags-folders.js";
 
-describe("createTagsFoldersService", () => {
-  const vault = {
-    id: "v1",
-    name: "Vault",
-    is_default: true,
-    created_at: "a",
-    updated_at: "a",
-  };
-  const ctx = { fs: {}, index: {} } as never;
-  const kickoff = vi.fn();
-  const onVaultPresentationChanged = vi.fn();
+function noteMarkdown(args: {
+  tagsYaml: string;
+  contentRevision: number;
+  createdAt: string;
+}): string {
+  return [
+    "---",
+    "title: Note",
+    "type: note",
+    args.tagsYaml,
+    `content_revision: ${args.contentRevision}`,
+    `created: ${args.createdAt}`,
+    `updated: ${args.createdAt}`,
+    "---",
+    "",
+    "body",
+    "",
+  ].join("\n");
+}
 
-  beforeEach(() => {
-    listTagsWithCounts.mockReset();
-    createFolderOnVault.mockReset();
-    renameFolderOnVault.mockReset();
-    deleteFolderOnVault.mockReset();
-    reconcileFolderTreeFromDisk.mockReset();
-    listFolderItemsOnVault.mockReset();
-    moveItemToFolder.mockReset();
-    kickoff.mockReset();
-    onVaultPresentationChanged.mockReset();
+describe("createTagsFoldersService", () => {
+  let dataDir = "";
+  const fs = new NodeFileSystemAdapter();
+  let db: BetterSqliteMigrator | null = null;
+
+  afterEach(async () => {
+    db?.close();
+    db = null;
+    if (dataDir) {
+      await rm(dataDir, { recursive: true, force: true });
+      dataDir = "";
+    }
   });
 
-  function createService() {
-    return createTagsFoldersService({
-      resolveActiveVault: async () => ({ vault: vault as never, path: "/vault" }),
-      getContext: () => ctx,
+  async function openVault(): Promise<{
+    ctx: VaultContext;
+    meta: VaultMeta;
+    path: string;
+  }> {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-tags-folders-svc-"));
+    db = BetterSqliteMigrator.open(join(dataDir, "collector.db"));
+    await runMigrations(db);
+    const ctx = { fs, index: new SqlVaultIndexStore(db) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    return { ctx, meta, path };
+  }
+
+  function createService(args: {
+    meta: VaultMeta;
+    path: string;
+    ctx: VaultContext;
+    kickoff?: ReturnType<typeof vi.fn>;
+    onVaultPresentationChanged?: ReturnType<typeof vi.fn>;
+  }) {
+    const kickoff = args.kickoff ?? vi.fn();
+    const onVaultPresentationChanged =
+      args.onVaultPresentationChanged ?? vi.fn();
+    const service = createTagsFoldersService({
+      resolveActiveVault: async () => ({
+        vault: args.meta,
+        path: args.path,
+      }),
+      getContext: () => args.ctx,
       kickoffVaultIndexSync: kickoff,
       addVaultSyncListener: () => () => {},
       onVaultPresentationChanged,
     });
+    return { service, kickoff, onVaultPresentationChanged };
   }
 
-  it("listTags kicks sync and returns tag counts", async () => {
-    const tags = [
-      {
-        id: "t1",
-        vault_id: "v1",
-        name: "x",
-        color: null,
-        created_at: "a",
-        updated_at: "a",
-        item_count: 2,
-      },
-    ];
-    listTagsWithCounts.mockResolvedValue(tags);
+  it("exposes list-only tags surface (#842)", async () => {
+    const { ctx, meta, path } = await openVault();
+    const { service } = createService({ ctx, meta, path });
 
-    const result = await createService().listTags();
-
-    expect(kickoff).toHaveBeenCalledWith("v1", "/vault");
-    expect(listTagsWithCounts).toHaveBeenCalledWith(ctx, "v1");
-    expect(result).toEqual(tags);
-  });
-
-  it("exposes list-only tags surface (#842)", () => {
-    const service = createService();
     expect(service).not.toHaveProperty("createTag");
     expect(service).not.toHaveProperty("deleteTag");
     expect(service).not.toHaveProperty("updateTagRecord");
@@ -89,169 +98,243 @@ describe("createTagsFoldersService", () => {
     expect(typeof service.subscribeTags).toBe("function");
   });
 
-  it("listFolderTree and moveItemToFolderPath delegate", async () => {
-    reconcileFolderTreeFromDisk.mockResolvedValue([
-      { name: "Inbox", path: "Inbox", item_count: 1, children: [] },
+  it("listTags returns derived tag counts from the vault index and kicks sync", async () => {
+    const { ctx, meta, path } = await openVault();
+    const { service, kickoff } = createService({ ctx, meta, path });
+
+    const itemId = `${crypto.randomUUID()}.md`;
+    const createdAt = "2024-01-01T00:00:00.000Z";
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: createdAt,
+        updated_at: createdAt,
+      },
+      content: "body",
+    });
+
+    expect(await service.listTags()).toEqual([]);
+    expect(kickoff).toHaveBeenCalledWith(meta.id, path);
+
+    await writeItemRawMarkdown(
+      ctx,
+      path,
+      meta.id,
+      itemId,
+      noteMarkdown({
+        tagsYaml: "tags:\n  - Research",
+        contentRevision: 2,
+        createdAt,
+      }),
+    );
+
+    kickoff.mockClear();
+    const tags = await service.listTags();
+    expect(kickoff).toHaveBeenCalledWith(meta.id, path);
+    expect(tags).toHaveLength(1);
+    expect(tags[0]?.name).toBe("Research");
+    expect(tags[0]?.item_count).toBe(1);
+  });
+
+  it("create/rename/delete folder persist on disk + index and emit after kickoff (#756/#758)", async () => {
+    const { ctx, meta, path } = await openVault();
+    const events: string[] = [];
+    const kickoff = vi.fn(() => {
+      events.push("kickoff");
+    });
+    const onVaultPresentationChanged = vi.fn(
+      (payload: { kind: string; folderPath?: string }) => {
+        events.push(`presentation:${payload.kind}:${payload.folderPath ?? ""}`);
+      },
+    );
+    const { service } = createService({
+      ctx,
+      meta,
+      path,
+      kickoff,
+      onVaultPresentationChanged,
+    });
+
+    const created = await service.createFolder("Projects/New");
+    expect(created).toBe("Projects/New");
+    expect(await fs.exists(joinSegments(path, "Projects/New"))).toBe(true);
+    expect(events).toEqual([
+      "kickoff",
+      "presentation:folderChanged:Projects/New",
     ]);
-    moveItemToFolder.mockResolvedValue({ id: "Inbox/a.md", folder_path: "Inbox" });
 
-    const service = createService();
-    const tree = await service.listFolderTree();
-    const moved = await service.moveItemToFolderPath("Projects/a.md", "Inbox");
+    events.length = 0;
+    const renamed = await service.renameFolder("Projects/New", "Projects/Renamed");
+    expect(renamed).toBe("Projects/Renamed");
+    expect(await fs.exists(joinSegments(path, "Projects/Renamed"))).toBe(true);
+    expect(await fs.exists(joinSegments(path, "Projects/New"))).toBe(false);
+    const treeAfterRename = await service.listFolderTree();
+    const projects = treeAfterRename.find((node) => node.path === "Projects");
+    expect(
+      projects?.children.some((child) => child.path === "Projects/Renamed"),
+    ).toBe(true);
+    expect(events[0]).toBe("kickoff");
+    expect(events).toContain("presentation:folderChanged:Projects/Renamed");
 
-    expect(reconcileFolderTreeFromDisk).toHaveBeenCalledWith(
-      ctx,
-      "/vault",
-      "v1",
-    );
-    expect(tree[0]?.path).toBe("Inbox");
-    expect(moveItemToFolder).toHaveBeenCalledWith(
-      ctx,
-      "/vault",
-      "v1",
-      "Projects/a.md",
-      "Inbox",
-    );
-    expect(moved).toEqual({ id: "Inbox/a.md", folder_path: "Inbox" });
-    expect(onVaultPresentationChanged).toHaveBeenCalledWith({
-      vaultId: "v1",
-      kind: "itemMoved",
-      itemId: "Inbox/a.md",
-      fromFolderPath: "Projects",
-      toFolderPath: "Inbox",
-    });
-  });
-
-  it("listFolderItems kicks sync and delegates (#844)", async () => {
-    const items = [{ id: "Parent/a.md", folder_path: "Parent", title: "A" }];
-    listFolderItemsOnVault.mockResolvedValue(items);
-
-    const result = await createService().listFolderItems("Parent");
-
-    expect(kickoff).toHaveBeenCalledWith("v1", "/vault");
-    expect(listFolderItemsOnVault).toHaveBeenCalledWith(
-      ctx,
-      "/vault",
-      "v1",
-      "Parent",
-      undefined,
-    );
-    expect(result).toEqual(items);
-  });
-
-  it("listFolderItems forwards optional sort (#869)", async () => {
-    listFolderItemsOnVault.mockResolvedValue([]);
-    const sort = { key: "word_count", dir: "desc" as const };
-
-    await createService().listFolderItems("Parent", sort);
-
-    expect(listFolderItemsOnVault).toHaveBeenCalledWith(
-      ctx,
-      "/vault",
-      "v1",
-      "Parent",
-      sort,
-    );
-  });
-
-  it("emits folderChanged on create/rename/delete folder (#756)", async () => {
-    createFolderOnVault.mockResolvedValue("Projects/New");
-    renameFolderOnVault.mockResolvedValue("Projects/Renamed");
-    deleteFolderOnVault.mockResolvedValue(undefined);
-
-    const service = createService();
-    await service.createFolder("Projects/New");
-    await service.renameFolder("Projects/New", "Projects/Renamed");
+    events.length = 0;
     await service.deleteFolder("Projects/Renamed");
-
-    expect(onVaultPresentationChanged).toHaveBeenNthCalledWith(1, {
-      vaultId: "v1",
-      kind: "folderChanged",
-      folderPath: "Projects/New",
-    });
-    expect(onVaultPresentationChanged).toHaveBeenNthCalledWith(2, {
-      vaultId: "v1",
-      kind: "folderChanged",
-      folderPath: "Projects/Renamed",
-    });
-    expect(onVaultPresentationChanged).toHaveBeenNthCalledWith(3, {
-      vaultId: "v1",
-      kind: "folderChanged",
-      folderPath: "Projects/Renamed",
-    });
+    expect(await fs.exists(joinSegments(path, "Projects/Renamed"))).toBe(false);
+    expect(events[0]).toBe("kickoff");
+    expect(events).toContain("presentation:folderChanged:Projects/Renamed");
   });
 
-  it("kicks index sync only after folder mutators finish (#758)", async () => {
-    createFolderOnVault.mockResolvedValue("Projects/New");
-    renameFolderOnVault.mockResolvedValue("Projects/Renamed");
-    deleteFolderOnVault.mockResolvedValue(undefined);
-    moveItemToFolder.mockResolvedValue({
-      id: "Inbox/a.md",
-      folder_path: "Inbox",
+  it("listFolderTree, listFolderItems, and moveItemToFolderPath exercise FS + index", async () => {
+    const { ctx, meta, path } = await openVault();
+    const { service, kickoff, onVaultPresentationChanged } = createService({
+      ctx,
+      meta,
+      path,
     });
 
-    const service = createService();
+    await service.createFolder("Projects");
+    await service.createFolder("Inbox");
 
-    await service.renameFolder("Projects/Old", "Projects/Renamed");
-    expect(renameFolderOnVault).toHaveBeenCalledTimes(1);
-    expect(kickoff).toHaveBeenCalledTimes(1);
-    expect(kickoff.mock.invocationCallOrder[0]).toBeGreaterThan(
-      renameFolderOnVault.mock.invocationCallOrder[0]!,
+    const timestamp = new Date().toISOString();
+    const uuid = crypto.randomUUID();
+    const itemId = `Projects/${uuid}.md`;
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Movable",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "Projects",
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      content: "body",
+    });
+
+    kickoff.mockClear();
+    const tree = await service.listFolderTree();
+    expect(kickoff).toHaveBeenCalledWith(meta.id, path);
+    expect(tree.map((node) => node.path)).toEqual(
+      expect.arrayContaining(["Inbox", "Projects"]),
     );
-    expect(onVaultPresentationChanged.mock.invocationCallOrder[0]).toBeGreaterThan(
-      kickoff.mock.invocationCallOrder[0]!,
-    );
+
+    kickoff.mockClear();
+    const projectItems = await service.listFolderItems("Projects");
+    expect(kickoff).toHaveBeenCalledWith(meta.id, path);
+    expect(projectItems.map((item) => item.id)).toEqual([itemId]);
 
     kickoff.mockClear();
     onVaultPresentationChanged.mockClear();
-    await service.createFolder("Projects/New");
-    expect(kickoff.mock.invocationCallOrder[0]).toBeGreaterThan(
-      createFolderOnVault.mock.invocationCallOrder[0]!,
-    );
+    const moved = await service.moveItemToFolderPath(itemId, "Inbox");
+    expect(moved.id).toBe(`Inbox/${uuid}.md`);
+    expect(moved.folder_path).toBe("Inbox");
+    expect(await fs.exists(joinSegments(path, `Inbox/${uuid}.md`))).toBe(true);
+    expect(await fs.exists(joinSegments(path, itemId))).toBe(false);
+    expect(
+      (await readItemFile(fs, path, moved.id, meta.id)).folder_path,
+    ).toBe("Inbox");
+    expect(
+      await ctx.index.listItemIdsByFolderPrefix(meta.id, "Inbox"),
+    ).toEqual([moved.id]);
+    expect(kickoff).toHaveBeenCalledWith(meta.id, path);
+    expect(onVaultPresentationChanged).toHaveBeenCalledWith({
+      vaultId: meta.id,
+      kind: "itemMoved",
+      itemId: moved.id,
+      fromFolderPath: "Projects",
+      toFolderPath: "Inbox",
+    });
 
-    kickoff.mockClear();
-    await service.deleteFolder("Projects/New");
-    expect(kickoff.mock.invocationCallOrder[0]).toBeGreaterThan(
-      deleteFolderOnVault.mock.invocationCallOrder[0]!,
-    );
-
-    kickoff.mockClear();
-    await service.moveItemToFolderPath("Projects/a.md", "Inbox");
-    expect(kickoff.mock.invocationCallOrder[0]).toBeGreaterThan(
-      moveItemToFolder.mock.invocationCallOrder[0]!,
-    );
+    const inboxItems = await service.listFolderItems("Inbox");
+    expect(inboxItems.map((item) => item.id)).toEqual([moved.id]);
   });
 
-  it("does not kick sync when renameFolder fails before rewrite completes (#758)", async () => {
-    renameFolderOnVault.mockRejectedValue(
-      new Error("UNIQUE constraint failed: Items.id"),
-    );
+  it("listFolderItems forwards optional sort through the live index (#869)", async () => {
+    const { ctx, meta, path } = await openVault();
+    const { service } = createService({ ctx, meta, path });
 
-    await expect(
-      createService().renameFolder("Projects/Old", "Projects/New"),
-    ).rejects.toThrow("UNIQUE constraint failed: Items.id");
+    await service.createFolder("Shelf");
+    const timestamp = new Date().toISOString();
+    const shortId = `Shelf/${crypto.randomUUID()}.md`;
+    const longId = `Shelf/${crypto.randomUUID()}.md`;
+    const midId = `Shelf/${crypto.randomUUID()}.md`;
+    const base = {
+      vault_id: meta.id,
+      description: "",
+      content_type: "note" as const,
+      source_type: "manual" as const,
+      metadata: {},
+      properties: {},
+      tag_ids: [] as string[],
+      collection_ids: [] as string[],
+      folder_path: "Shelf",
+      content_revision: 1,
+      word_count: 0,
+      character_count: 0,
+      created_at: timestamp,
+      updated_at: timestamp,
+    };
+
+    await upsertItem(ctx, path, meta.id, {
+      item: { ...base, id: shortId, title: "Short" },
+      content: "one two",
+    });
+    await upsertItem(ctx, path, meta.id, {
+      item: { ...base, id: longId, title: "Long" },
+      content: "a b c d e f g h i j",
+    });
+    await upsertItem(ctx, path, meta.id, {
+      item: { ...base, id: midId, title: "Mid" },
+      content: "alpha beta gamma delta",
+    });
+
+    const byWords = await service.listFolderItems("Shelf", {
+      key: "word_count",
+      dir: "desc",
+    });
+    expect(byWords.map((item) => item.id)).toEqual([longId, midId, shortId]);
+    expect(byWords.map((item) => item.word_count)).toEqual([10, 4, 2]);
+  });
+
+  it("does not kick sync or emit when renameFolder fails before rewrite (#758)", async () => {
+    const { ctx, meta, path } = await openVault();
+    const { service, kickoff, onVaultPresentationChanged } = createService({
+      ctx,
+      meta,
+      path,
+    });
+
+    await service.createFolder("A/B");
+    kickoff.mockClear();
+    onVaultPresentationChanged.mockClear();
+
+    await expect(service.renameFolder("A", "A/B/A")).rejects.toThrow(
+      /itself or a descendant/i,
+    );
 
     expect(kickoff).not.toHaveBeenCalled();
     expect(onVaultPresentationChanged).not.toHaveBeenCalled();
-  });
-
-  it("renameFolder race repro: pre-mutation kickoff would collide with rewrite (#758)", async () => {
-    const events: string[] = [];
-    kickoff.mockImplementation(() => {
-      events.push("kickoff");
-    });
-    renameFolderOnVault.mockImplementation(async () => {
-      if (events.includes("kickoff")) {
-        throw new Error("UNIQUE constraint failed: Items.id");
-      }
-      events.push("rename");
-      return "Projects/Renamed";
-    });
-
-    await expect(
-      createService().renameFolder("Projects/Old", "Projects/Renamed"),
-    ).resolves.toBe("Projects/Renamed");
-
-    expect(events).toEqual(["rename", "kickoff"]);
+    expect(await fs.exists(joinSegments(path, "A/B"))).toBe(true);
   });
 });
