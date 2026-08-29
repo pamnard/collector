@@ -1,8 +1,12 @@
 import { ImageIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ItemFile } from "@collector/shared";
-import { resolveCoverSrc } from "../../utils/item-cover-src";
+import { imageDisplaySlotById } from "../../lib/image-slot-fit";
 import { getUiSession } from "../../services/collector-client";
+import {
+  buildDerivedImageAttrs,
+  type DerivedImageAttrs,
+} from "../../utils/derived-image-src";
 
 interface ItemThumbnailProps {
   item: ItemFile;
@@ -12,19 +16,22 @@ interface ItemThumbnailProps {
   loadingClassName?: string;
 }
 
+const THUMBNAIL_SLOT_CSS_WIDTH_PX =
+  imageDisplaySlotById("thumbnail").cssWidthPx;
+
 export function ItemThumbnail({
   item,
   className = "h-32 w-full object-cover",
   showLoadingPlaceholder = true,
   loadingClassName = "flex h-32 w-full items-center justify-center bg-neutral-100/20 dark:bg-neutral-700/20 text-neutral-500 dark:text-neutral-400",
 }: ItemThumbnailProps) {
-  const [src, setSrc] = useState<string | null>(null);
+  const [attrs, setAttrs] = useState<DerivedImageAttrs | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setSrc(null);
+    setAttrs(null);
 
     void (async () => {
       const path = await getUiSession()
@@ -34,9 +41,13 @@ export function ItemThumbnail({
         return;
       }
 
-      const cover = resolveCoverSrc(path);
-      if (cover) {
-        setSrc(cover);
+      if (path) {
+        setAttrs(
+          buildDerivedImageAttrs({
+            displayPath: path,
+            slotCssWidthPx: THUMBNAIL_SLOT_CSS_WIDTH_PX,
+          }),
+        );
       }
     })().finally(() => {
       if (!cancelled) {
@@ -60,13 +71,15 @@ export function ItemThumbnail({
     );
   }
 
-  if (!src) {
+  if (!attrs?.src) {
     return null;
   }
 
   return (
     <img
-      src={src}
+      src={attrs.src}
+      srcSet={attrs.srcSet}
+      sizes={attrs.sizes}
       alt=""
       className={className}
       loading="lazy"

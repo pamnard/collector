@@ -7,4 +7,5 @@ export * from "./tags.js";
 export * from "./folders.js";
 export * from "./media.js";
 export * from "./host-urls.js";
+export * from "./media-derive.js";
 export * from "./job-types.js";
