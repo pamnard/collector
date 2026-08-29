@@ -11,14 +11,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import type { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
   defaultServiceHostTokenPath,
   startServiceHost,
 } from "@collector/service/host";
 import { runCollectorMcp } from "./run.js";
 
-/** Client half of the stdio substitute; set when runCollectorMcp constructs transport. */
 const stdioBridge: { client: InMemoryTransport | null } = { client: null };
 
 vi.mock("@modelcontextprotocol/sdk/server/stdio.js", async () => {
@@ -63,6 +62,14 @@ function silenceIo() {
       },
     },
   };
+}
+
+function mcpText(result: { content: unknown }): string {
+  const block = (result.content as { text?: string }[])[0];
+  if (block?.text === undefined) {
+    throw new Error("expected MCP text content block");
+  }
+  return block.text;
 }
 
 describe("runCollectorMcp (#556 / #888 / #900)", () => {
@@ -132,16 +139,17 @@ describe("runCollectorMcp (#556 / #888 / #900)", () => {
       expect(code).toBe(0);
       expect(stderr).toEqual([]);
 
-      const clientTransport = stdioBridge.client;
-      expect(clientTransport).not.toBeNull();
-      await mcpClient.connect(clientTransport!);
+      if (stdioBridge.client === null) {
+        throw new Error(
+          "expected StdioServerTransport bridge client after successful run",
+        );
+      }
+      await mcpClient.connect(stdioBridge.client);
 
       const listed = await mcpClient.listTools();
-      expect(listed.tools.some((t) => t.name === "collector_health")).toBe(
-        true,
-      );
-      expect(listed.tools.some((t) => t.name === "collector_create_item")).toBe(
-        true,
+      const toolNames = listed.tools.map((t) => t.name);
+      expect(toolNames).toEqual(
+        expect.arrayContaining(["collector_health", "collector_create_item"]),
       );
 
       const health = await mcpClient.callTool({
@@ -149,9 +157,7 @@ describe("runCollectorMcp (#556 / #888 / #900)", () => {
         arguments: {},
       });
       expect(health.isError).toBeFalsy();
-      const healthText =
-        (health.content as { type: string; text: string }[])[0]?.text ?? "";
-      expect(healthText).toMatch(/"ok"\s*:\s*true/);
+      expect(mcpText(health)).toMatch(/"ok"\s*:\s*true/);
 
       const created = await mcpClient.callTool({
         name: "collector_create_item",
@@ -162,9 +168,10 @@ describe("runCollectorMcp (#556 / #888 / #900)", () => {
         },
       });
       expect(created.isError).toBeFalsy();
-      const createdBody = JSON.parse(
-        (created.content as { text: string }[])[0]!.text,
-      ) as { id: string; title: string };
+      const createdBody = JSON.parse(mcpText(created)) as {
+        id: string;
+        title: string;
+      };
       expect(createdBody.title).toBe("run.test wire");
       expect(createdBody.id.length).toBeGreaterThan(0);
     } finally {
