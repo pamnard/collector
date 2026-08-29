@@ -278,14 +278,10 @@ export async function writeItemDocument(
   const maps = await loadTagMaps(fs, vaultRootPath);
   const markdown = serializeItemDocument(parsed, body, maps.byId);
   const docPath = itemMarkdownPath(vaultRootPath, parsed.id);
-  let previousMtimeMs: number | null = null;
-  if (await fs.exists(docPath)) {
-    const before = await fs.stat(docPath);
-    previousMtimeMs = before.mtimeMs;
-  }
+  const before = await fs.stat(docPath);
   await fs.writeText(docPath, markdown);
-  if (previousMtimeMs !== null) {
-    await ensureFileMtimeAdvanced(fs, docPath, previousMtimeMs);
+  if (before.mtimeMs !== null) {
+    await ensureFileMtimeAdvanced(fs, docPath, before.mtimeMs);
   }
   await fs.touch(vaultRootPath);
 }

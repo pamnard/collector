@@ -32,10 +32,7 @@ export async function ensureFileMtimeAdvanced(
   previousMtimeMs: number,
 ): Promise<number> {
   const afterWrite = await fs.stat(docPath);
-  if (
-    afterWrite.mtimeMs !== null &&
-    afterWrite.mtimeMs > previousMtimeMs
-  ) {
+  if (afterWrite.mtimeMs !== null && afterWrite.mtimeMs > previousMtimeMs) {
     return afterWrite.mtimeMs;
   }
   const nextMtimeMs = Math.max(Date.now(), previousMtimeMs + 1);
