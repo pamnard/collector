@@ -1,5 +1,5 @@
-import type { CoverPixelSize, ItemFile } from "@collector/shared";
-import { coverPixelSizeSchema, VAULT_DIRS } from "@collector/shared";
+import type { CoverPixelSize, CoverSource, ItemFile } from "@collector/shared";
+import { coverPixelSizeSchema, coverSourceSchema, VAULT_DIRS } from "@collector/shared";
 import type { FileSystemAdapter, VaultContext } from "../adapters/types.js";
 import { nowIso } from "../util/ids.js";
 import { ftsFieldsFromDocumentMarkdown } from "./frontmatter.js";
@@ -12,6 +12,7 @@ import {
   dirname,
   itemCoverPath,
   itemCoverSizePath,
+  itemCoverSourcePath,
   itemMarkdownPath,
   itemMediaRoot,
   joinSegments,
@@ -125,6 +126,34 @@ export async function readItemCoverSize(
   return coverPixelSizeSchema.parse(JSON.parse(raw));
 }
 
+export async function writeItemCoverSource(
+  fs: FileSystemAdapter,
+  vaultPath: string,
+  itemId: string,
+  source: CoverSource,
+): Promise<void> {
+  const parsed = coverSourceSchema.parse(source);
+  const sourcePath = itemCoverSourcePath(vaultPath, itemId);
+  await fs.writeText(sourcePath, `${JSON.stringify(parsed)}\n`);
+}
+
+/**
+ * MediaId that produced cover.webp. Null when sidecar missing (legacy covers).
+ * Invalid JSON/schema fails fast.
+ */
+export async function readItemCoverSource(
+  fs: FileSystemAdapter,
+  vaultPath: string,
+  itemId: string,
+): Promise<CoverSource | null> {
+  const sourcePath = itemCoverSourcePath(vaultPath, itemId);
+  if (!(await fs.exists(sourcePath))) {
+    return null;
+  }
+  const raw = await fs.readText(sourcePath);
+  return coverSourceSchema.parse(JSON.parse(raw));
+}
+
 export async function applyItemCover(
   ctx: VaultContext,
   vaultPath: string,
@@ -132,12 +161,21 @@ export async function applyItemCover(
   itemId: string,
   coverData: Uint8Array,
   size: CoverPixelSize,
+  options?: { sourceMediaId?: string },
 ): Promise<ItemFile> {
   const coverPath = itemCoverPath(vaultPath, itemId);
 
   await ctx.fs.mkdir(itemMediaRoot(vaultPath, itemId));
   await ctx.fs.writeBinary(coverPath, coverData);
   await writeItemCoverSize(ctx.fs, vaultPath, itemId, size);
+  const sourcePath = itemCoverSourcePath(vaultPath, itemId);
+  if (options?.sourceMediaId) {
+    await writeItemCoverSource(ctx.fs, vaultPath, itemId, {
+      mediaId: options.sourceMediaId,
+    });
+  } else if (await ctx.fs.exists(sourcePath)) {
+    await ctx.fs.remove(sourcePath);
+  }
 
   // Cover SoT is the file on disk (#276); do not store vault image paths in FM.
   // Always bump updated_at so preview stamps/caches cannot stick on null (#720).
@@ -153,12 +191,16 @@ export async function clearItemCover(
 ): Promise<ItemFile> {
   const coverPath = itemCoverPath(vaultPath, itemId);
   const sizePath = itemCoverSizePath(vaultPath, itemId);
+  const sourcePath = itemCoverSourcePath(vaultPath, itemId);
 
   if (await ctx.fs.exists(coverPath)) {
     await ctx.fs.remove(coverPath);
   }
   if (await ctx.fs.exists(sizePath)) {
     await ctx.fs.remove(sizePath);
+  }
+  if (await ctx.fs.exists(sourcePath)) {
+    await ctx.fs.remove(sourcePath);
   }
 
   // Drop leftover FM image paths from pre-#279 sidecars; always bump stamp (#720).

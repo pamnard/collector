@@ -89,12 +89,18 @@ export const coverPixelSizeSchema = z.object({
   height: z.number().positive().finite(),
 });
 
+/** Gallery mediaId that built cover.webp (hero full-res display). */
+export const coverSourceSchema = z.object({
+  mediaId: z.string().min(1),
+});
+
 export type ItemFile = z.infer<typeof itemFileSchema>;
 export type DocumentFrontmatter = z.infer<typeof documentFrontmatterSchema>;
 export type VaultMeta = z.infer<typeof vaultMetaSchema>;
 export type SourceRef = z.infer<typeof sourceRefSchema>;
 export type MediaFileMeta = z.infer<typeof mediaFileMetaSchema>;
 export type CoverPixelSize = z.infer<typeof coverPixelSizeSchema>;
+export type CoverSource = z.infer<typeof coverSourceSchema>;
 
 /** Encoded cover.webp bytes plus true output WxH from generateCover. */
 export type GeneratedCover = {
