@@ -1,4 +1,6 @@
+import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
+import type { SafeParseReturnType } from "zod";
 import {
   coverPixelSizeSchema,
   documentFrontmatterSchema,
@@ -9,10 +11,13 @@ const SYNTHETIC_VAULT_ID = "11111111-1111-4111-8111-111111111111";
 const SYNTHETIC_TAG_ID = "22222222-2222-4222-8222-222222222222";
 const SYNTHETIC_ISO = "2026-01-15T12:00:00.000Z";
 
-function issuePaths(
-  error: { issues: ReadonlyArray<{ path: ReadonlyArray<PropertyKey> }> },
+function failedIssuePaths<T>(
+  result: SafeParseReturnType<unknown, T>,
 ): string[] {
-  return error.issues.map((issue) => issue.path.map(String).join("."));
+  if (result.success) {
+    assert.fail("expected Zod parse to fail");
+  }
+  return result.error.issues.map((issue) => issue.path.map(String).join("."));
 }
 
 describe("itemFileSchema (#889)", () => {
@@ -69,22 +74,18 @@ describe("itemFileSchema (#889)", () => {
   });
 
   it("rejects invalid fields with stable issue paths", () => {
-    const result = itemFileSchema.safeParse({
-      ...minimalValid,
-      title: "",
-      vault_id: "not-a-uuid",
-      content_type: "not-a-content-type",
-      tag_ids: ["not-a-uuid"],
-      word_count: -1,
-      created_at: "yesterday",
-    });
+    const paths = failedIssuePaths(
+      itemFileSchema.safeParse({
+        ...minimalValid,
+        title: "",
+        vault_id: "not-a-uuid",
+        content_type: "not-a-content-type",
+        tag_ids: ["not-a-uuid"],
+        word_count: -1,
+        created_at: "yesterday",
+      }),
+    );
 
-    expect(result.success).toBe(false);
-    if (result.success) {
-      throw new Error("expected itemFileSchema parse to fail");
-    }
-
-    const paths = issuePaths(result.error);
     expect(paths).toContain("title");
     expect(paths).toContain("vault_id");
     expect(paths).toContain("content_type");
@@ -95,24 +96,24 @@ describe("itemFileSchema (#889)", () => {
 });
 
 describe("documentFrontmatterSchema (#889)", () => {
-  it("parses empty and sparse frontmatter without inventing required fields", () => {
+  it("parses empty frontmatter as an empty object", () => {
     expect(documentFrontmatterSchema.parse({})).toEqual({});
+  });
 
-    const sparse = documentFrontmatterSchema.parse({
+  it("parses sparse frontmatter without inventing omitted fields", () => {
+    expect(
+      documentFrontmatterSchema.parse({
+        title: "Synthetic frontmatter",
+        tags: ["alpha", "beta"],
+        content_type: "note",
+        source_type: "manual",
+      }),
+    ).toEqual({
       title: "Synthetic frontmatter",
       tags: ["alpha", "beta"],
       content_type: "note",
       source_type: "manual",
     });
-
-    expect(sparse).toEqual({
-      title: "Synthetic frontmatter",
-      tags: ["alpha", "beta"],
-      content_type: "note",
-      source_type: "manual",
-    });
-    expect("description" in sparse).toBe(false);
-    expect("url" in sparse).toBe(false);
   });
 
   it("accepts date aliases as ISO strings and Date values", () => {
@@ -156,21 +157,17 @@ describe("documentFrontmatterSchema (#889)", () => {
   });
 
   it("rejects invalid fields with stable issue paths", () => {
-    const result = documentFrontmatterSchema.safeParse({
-      title: "",
-      url: "not-a-url",
-      content_type: "bogus",
-      source_type: "bogus",
-      tags: [""],
-      content_revision: 1.5,
-    });
+    const paths = failedIssuePaths(
+      documentFrontmatterSchema.safeParse({
+        title: "",
+        url: "not-a-url",
+        content_type: "bogus",
+        source_type: "bogus",
+        tags: [""],
+        content_revision: 1.5,
+      }),
+    );
 
-    expect(result.success).toBe(false);
-    if (result.success) {
-      throw new Error("expected documentFrontmatterSchema parse to fail");
-    }
-
-    const paths = issuePaths(result.error);
     expect(paths).toContain("title");
     expect(paths).toContain("url");
     expect(paths).toContain("content_type");
@@ -195,32 +192,16 @@ describe("coverPixelSizeSchema (#889)", () => {
     expect(again).toEqual(size);
   });
 
-  it("rejects non-positive or non-finite dimensions with stable issue paths", () => {
-    const zero = coverPixelSizeSchema.safeParse({ width: 0, height: 720 });
-    expect(zero.success).toBe(false);
-    if (zero.success) {
-      throw new Error("expected coverPixelSizeSchema to reject width 0");
-    }
-    expect(issuePaths(zero.error)).toContain("width");
-
-    const negative = coverPixelSizeSchema.safeParse({
-      width: 100,
-      height: -1,
-    });
-    expect(negative.success).toBe(false);
-    if (negative.success) {
-      throw new Error("expected coverPixelSizeSchema to reject height -1");
-    }
-    expect(issuePaths(negative.error)).toContain("height");
-
-    const infinite = coverPixelSizeSchema.safeParse({
-      width: Number.POSITIVE_INFINITY,
-      height: 10,
-    });
-    expect(infinite.success).toBe(false);
-    if (infinite.success) {
-      throw new Error("expected coverPixelSizeSchema to reject Infinity");
-    }
-    expect(issuePaths(infinite.error)).toContain("width");
-  });
+  it.each([
+    [{ width: 0, height: 720 }, "width"],
+    [{ width: 100, height: -1 }, "height"],
+    [{ width: Number.POSITIVE_INFINITY, height: 10 }, "width"],
+  ] as const)(
+    "rejects invalid dimensions %j at path %s",
+    (input, path) => {
+      expect(failedIssuePaths(coverPixelSizeSchema.safeParse(input))).toContain(
+        path,
+      );
+    },
+  );
 });
