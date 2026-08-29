@@ -83,20 +83,6 @@ function SequentialPruneShell(): ReactElement {
   );
 }
 
-/**
- * Applies prune to painted rows. A second fire for an already-removed id
- * inserts a visible corruption marker so identity-churn bugs fail DOM asserts.
- */
-function applyPruneOnce(previous: Row[], itemId: string): Row[] {
-  if (!previous.some((row) => row.id === itemId)) {
-    return [
-      ...previous,
-      { id: "double-fire.md", title: "Double Fire" },
-    ];
-  }
-  return filterOutItemId(previous, itemId);
-}
-
 describe("useItemPruneEffect paint sequencing (#885)", () => {
   it("prune signal removes the item from the clickable list", () => {
     const signal = nextItemPruneSignal(null, "gone.md");
@@ -155,7 +141,16 @@ describe("useItemPruneEffect paint sequencing (#885)", () => {
       ]);
       const onPrune = useCallback(
         (itemId: string) => {
-          setRows((previous) => applyPruneOnce(previous, itemId));
+          setRows((previous) => {
+            // Second fire for an already-removed id paints a corruption marker.
+            if (!previous.some((row) => row.id === itemId)) {
+              return [
+                ...previous,
+                { id: "double-fire.md", title: "Double Fire" },
+              ];
+            }
+            return filterOutItemId(previous, itemId);
+          });
         },
         [props.pruneKey],
       );
@@ -163,22 +158,24 @@ describe("useItemPruneEffect paint sequencing (#885)", () => {
       return <PaintRows rows={rows} />;
     }
 
+    function expectStablePrunedPaint(): void {
+      expect(
+        screen.queryByRole("button", { name: "Alpha" }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Beta" })).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Double Fire" }),
+      ).not.toBeInTheDocument();
+    }
+
     const { rerender } = render(<Harness pruneKey={1} />);
-    expect(screen.queryByRole("button", { name: "Alpha" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Beta" })).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Double Fire" }),
-    ).not.toBeInTheDocument();
+    expectStablePrunedPaint();
 
     act(() => {
       rerender(<Harness pruneKey={2} />);
     });
 
     // Ref-held updater: identity churn must not re-fire the same signal.
-    expect(screen.queryByRole("button", { name: "Alpha" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Beta" })).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Double Fire" }),
-    ).not.toBeInTheDocument();
+    expectStablePrunedPaint();
   });
 });
