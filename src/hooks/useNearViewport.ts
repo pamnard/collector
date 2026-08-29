@@ -15,11 +15,15 @@ export function useNearViewport(
     rootMargin = NEAR_VIEWPORT_ROOT_MARGIN,
   }: UseNearViewportOptions = {},
 ): boolean {
-  const [near, setNear] = useState(false);
+  // Optimistic true: folder remounts start decode before IntersectionObserver
+  // fires. Starting false raced cover defer/clear vs maps publish (Heisenbug:
+  // debug fetch delays hid it; every ~5th switch showed empty reserved slots).
+  const [near, setNear] = useState(true);
 
   useEffect(() => {
     if (!node) {
-      setNear(false);
+      // Do not flip to false while the ref is not attached yet — that recreated
+      // the first-frame defer/clear race on every card mount.
       return;
     }
 

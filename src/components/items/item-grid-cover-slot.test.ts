@@ -6,6 +6,7 @@ import {
   itemGridCoverLayoutPhase,
   itemGridCoverOverlayLayout,
   itemGridCoverPixelSizeFromImg,
+  itemGridCoverPulseClassName,
   itemGridCoverSlot,
   itemGridCoverSlotAspectStyle,
   itemGridCoverSlotPending,
@@ -135,6 +136,7 @@ describe("itemGridCoverImgClassName", () => {
     const classes = itemGridCoverImgClassName({ loadCover: true });
     assert.match(classes, /\babsolute\b/);
     assert.match(classes, /\bopacity-0\b/);
+    assert.match(classes, /\btransition-opacity\b/);
     assert.doesNotMatch(classes, /\bh-auto\b/);
   });
 
@@ -144,7 +146,24 @@ describe("itemGridCoverImgClassName", () => {
     assert.match(classes, /\binset-0\b/);
     assert.match(classes, /\bh-full\b/);
     assert.match(classes, /\bw-full\b/);
+    assert.match(classes, /\bopacity-100\b/);
+    assert.match(classes, /\btransition-opacity\b/);
     assert.doesNotMatch(classes, /\bh-auto\b/);
+  });
+});
+
+describe("itemGridCoverPulseClassName", () => {
+  it("pulses while the cover is not yet painted", () => {
+    const classes = itemGridCoverPulseClassName({ visible: true });
+    assert.match(classes, /\banimate-pulse\b/);
+    assert.match(classes, /\bopacity-100\b/);
+    assert.match(classes, /\btransition-opacity\b/);
+  });
+
+  it("fades out without pulse once the cover is painted", () => {
+    const classes = itemGridCoverPulseClassName({ visible: false });
+    assert.match(classes, /\bopacity-0\b/);
+    assert.doesNotMatch(classes, /\banimate-pulse\b/);
   });
 });
 

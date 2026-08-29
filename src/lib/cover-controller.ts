@@ -148,9 +148,16 @@ export function createCoverController(
   }
 
   function abort(): void {
-    flight?.batcher.cancel();
-    flight?.controller.abort();
+    // Abort the signal first so batcher.cancel()'s flush no-ops. Flushing with
+    // the old flight's orderedIds after warm replaceMaps would intersect away
+    // the new folder's covers and publish empty maps (#913).
+    const current = flight;
     flight = null;
+    if (!current) {
+      return;
+    }
+    current.controller.abort();
+    current.batcher.cancel();
   }
 
   function flushPending(orderedItems: ItemFile[]): void {

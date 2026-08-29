@@ -7,9 +7,7 @@ import {
 } from "react";
 import type { DashboardItemSort, VaultIndexSyncStatus } from "@collector/api";
 import {
-  bodyStampsForOrderedIds,
   bodyStampsFromMap,
-  orderedIds,
   snapshotToCacheEntry,
 } from "../../lib/dashboard-commit";
 import {
@@ -99,7 +97,6 @@ export function useDashboardQueryLifecycle(
     itemIdsRef,
     itemsByIdRef,
     bodyStampsRef,
-    committedBodyStampsRef,
     totalCountRef,
     committedItemsRef,
     committedTotalCountRef,
@@ -116,9 +113,6 @@ export function useDashboardQueryLifecycle(
     setIsLoading,
     setIsLoadingMore,
     setError,
-    setCommittedItems,
-    setCommittedTotalCount,
-    setCommittedHasMore,
     applyCacheEntryToState,
     commitWorkingToDisplay,
     setStreamWindowEnd,
@@ -209,6 +203,9 @@ export function useDashboardQueryLifecycle(
     const prevCommitted = committedItemsRef.current.length;
     queryKeyRef.current = queryKey;
 
+    // Drop the previous folder's cover flight before warm maps land (#913).
+    abortCoverFlight();
+
     setError(null);
     const warmed = readInitialDashboardCacheEntry({
       cacheKey: queryKey,
@@ -242,6 +239,7 @@ export function useDashboardQueryLifecycle(
     }
     setIsLoading(true);
   }, [
+    abortCoverFlight,
     applyCacheEntryToState,
     clearCommittedPaint,
     clearWorkingWindow,
@@ -461,21 +459,11 @@ export function useDashboardQueryLifecycle(
     ) {
       return;
     }
-    // load-more / in-place stream growth after offset-0 commit settled
-    const prevCommittedLen = committedItemsRef.current.length;
-    setCommittedItems(workingItems);
-    setCommittedTotalCount(totalCount);
-    setCommittedHasMore(streamEndOffset < totalCount);
-    committedItemsRef.current = workingItems;
-    committedTotalCountRef.current = totalCount;
-    committedBodyStampsRef.current = bodyStampsForOrderedIds(
-      bodyStampsRef.current,
-      orderedIds(workingItems),
-    );
-    // Grid no longer resolves covers — resolve when the window grows (#657).
-    if (workingItems.length > prevCommittedLen) {
-      void commitWorkingToDisplay(requestVersionRef.current);
-    }
+    // load-more / in-place stream growth: always go through commit so id-set
+    // changes hold cover paint (#913). Do not setCommittedItems here.
+    void commitWorkingToDisplay(requestVersionRef.current, {
+      blockOnCovers: true,
+    });
   }, [
     commitWorkingToDisplay,
     isLoading,

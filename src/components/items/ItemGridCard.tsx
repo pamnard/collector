@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo, useMemo, useRef } from "react";
 import type { TagWithCount } from "@collector/core";
 import {
   positiveThumbnailPixelSize,
@@ -13,6 +13,7 @@ import {
   itemGridCoverImgClassName,
   itemGridCoverImgSizeAttrs,
   itemGridCoverOverlayLayout,
+  itemGridCoverPulseClassName,
   itemGridCoverSlotAspectStyle,
   itemGridCoverSlotPending,
 } from "./item-grid-cover-slot";
@@ -42,6 +43,25 @@ function ItemGridCardInner({
     [item.tag_ids, tagsById],
   );
 
+  // Host WxH from cover maps owns layout; decode natural size must not retarget
+  // the slot (#913 / #799 / #874).
+  const hostSize: ItemThumbnailPixelSize | null = positiveThumbnailPixelSize(
+    thumbnailSize?.width,
+    thumbnailSize?.height,
+  );
+
+  // While maps collapse (path undefined), keep the last reserved WxH so masonry
+  // height does not drop to text-only then jump back (#913).
+  const latchedHostSizeRef = useRef<ItemThumbnailPixelSize | null>(null);
+  if (hostSize) {
+    latchedHostSizeRef.current = hostSize;
+  } else if (thumbnailPath === null) {
+    latchedHostSizeRef.current = null;
+  }
+  const reservedSize: ItemThumbnailPixelSize | null =
+    hostSize ??
+    (thumbnailPath === undefined ? latchedHostSizeRef.current : null);
+
   const {
     coverSrc,
     coverSrcSet,
@@ -55,26 +75,25 @@ function ItemGridCardInner({
     onCoverImgRef,
   } = useItemGridCover({
     thumbnailPath,
+    reservedPixelSize: reservedSize,
     shouldDecode: nearViewport,
   });
 
   const slotSize: ItemThumbnailPixelSize | null =
-    coverPixelSize ??
-    positiveThumbnailPixelSize(
-      thumbnailSize?.width,
-      thumbnailSize?.height,
-    );
+    reservedSize ?? coverPixelSize;
 
+  // Path unresolved but slot latched: keep reserved chrome without decode.
+  const waitingWithLatch =
+    thumbnailPath === undefined && reservedSize != null && !showCover;
   const coverSlotPending = itemGridCoverSlotPending({
-    coverPending,
+    coverPending: coverPending || waitingWithLatch,
     resolvedPixelSize: slotSize,
   });
   const hasCover = showCover || coverSlotPending;
-  if (showCover && !coverPixelSize) {
+  if (showCover && !slotSize) {
     throw new Error("settled grid cover requires reserved pixel size");
   }
   const overlayLayout = itemGridCoverOverlayLayout({ hasCover, slotSize });
-  const decodingCover = Boolean(loadCover && coverSrc && !showCover);
 
   const meta = (
     <ItemGridCardMeta
@@ -101,27 +120,11 @@ function ItemGridCardInner({
       }}
       className={cn(
         "group flex cursor-pointer flex-col overflow-hidden",
-        decodingCover && !hasCover && "relative",
         !hasCover && "h-full",
         !hasCover && textOnlyTeaserChromeClass,
         hasCover && overlayLayout && "relative h-full",
       )}
     >
-      {decodingCover && coverSrc && !hasCover ? (
-        <img
-          ref={onCoverImgRef}
-          src={coverSrc}
-          srcSet={coverSrcSet ?? undefined}
-          sizes={coverSizes ?? undefined}
-          alt=""
-          aria-hidden
-          className="pointer-events-none absolute h-px w-px opacity-0"
-          loading="eager"
-          decoding="async"
-          onLoad={(event) => onCoverImgLoad(event.currentTarget)}
-          onError={onCoverImgError}
-        />
-      ) : null}
       {hasCover && slotSize ? (
         <div
           className={cn(
@@ -147,10 +150,10 @@ function ItemGridCardInner({
               onError={onCoverImgError}
             />
           ) : null}
-          {!showCover ? (
+          {coverSlotPending || loadCover || showCover ? (
             <div
               aria-hidden
-              className="absolute inset-0 animate-pulse bg-neutral-100 dark:bg-neutral-700"
+              className={itemGridCoverPulseClassName({ visible: !showCover })}
             />
           ) : null}
           {overlayLayout ? (
