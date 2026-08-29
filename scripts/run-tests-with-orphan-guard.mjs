@@ -51,8 +51,15 @@ run(
     join(root, "src/lib/dashboard-perf.test.ts"),
     join(root, "src/lib/dashboard-commit.test.ts"),
     join(root, "src/lib/dashboard-cover-refresh.test.ts"),
+    join(root, "src/lib/cover-maps.test.ts"),
+    join(root, "src/lib/cover-controller.test.ts"),
+    join(root, "src/lib/cover-path-commit-batcher.test.ts"),
+    join(root, "src/components/items/item-grid-cover-slot.test.ts"),
+    join(root, "src/lib/image-slot-fit.test.ts"),
   ],
 );
+
+run("UI regression tests (RTL + jsdom)", "npm", ["run", "test:ui"]);
 
 run(
   "test-run orphan scanner unit tests",

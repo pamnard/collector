@@ -2,6 +2,11 @@ import {
   pruneItemIdFromDashboardListSnapshot,
   type DashboardListSnapshot,
 } from "../lib/dashboard-list-snapshot.ts";
+import {
+  coverMapsClone,
+  emptyCoverMaps,
+  type CoverMaps,
+} from "../lib/cover-maps.ts";
 
 export const DASHBOARD_QUERY_CACHE_MAX = 16;
 
@@ -53,33 +58,34 @@ function sealMap<K, V>(source: ReadonlyMap<K, V>): Map<K, V> {
   });
 }
 
+function sealCoverMaps(maps: CoverMaps): CoverMaps {
+  return {
+    paths: sealMap(maps.paths),
+    stamps: sealMap(maps.stamps),
+    sizes: sealMap(maps.sizes),
+  };
+}
+
 /** Clone + seal so get() can share refs without store poisoning (#665). */
 function sealEntry(entry: DashboardQueryCacheEntry): DashboardQueryCacheEntry {
-  if (!entry.thumbnailSizes) {
-    throw new Error("DashboardQueryCacheEntry.thumbnailSizes is required");
+  if (!entry.covers) {
+    throw new Error("DashboardQueryCacheEntry.covers is required");
   }
   return Object.freeze({
     itemIds: Object.freeze([...entry.itemIds]),
     itemsById: sealMap(entry.itemsById),
     bodyStamps: sealMap(entry.bodyStamps),
-    thumbnailPaths: sealMap(entry.thumbnailPaths),
-    thumbnailStamps: sealMap(entry.thumbnailStamps),
-    thumbnailSizes: sealMap(entry.thumbnailSizes),
+    covers: sealCoverMaps(entry.covers),
     streamEndOffset: entry.streamEndOffset,
     totalCount: entry.totalCount,
     updatedAt: entry.updatedAt,
   }) as DashboardQueryCacheEntry;
 }
 
-/** Structural-sharing cover replace: keep list/body Maps, seal new thumbnails. */
+/** Structural-sharing cover replace: keep list/body Maps, seal new covers. */
 function entryWithSealedCovers(
   entry: DashboardQueryCacheEntry,
-  thumbnailPaths: ReadonlyMap<string, string | null>,
-  thumbnailStamps: ReadonlyMap<string, string>,
-  thumbnailSizes: ReadonlyMap<
-    string,
-    import("@collector/api").ItemThumbnailPixelSize | null
-  >,
+  covers: CoverMaps,
 ): DashboardQueryCacheEntry {
   return Object.freeze({
     itemIds: entry.itemIds,
@@ -87,9 +93,7 @@ function entryWithSealedCovers(
     bodyStamps: entry.bodyStamps,
     streamEndOffset: entry.streamEndOffset,
     totalCount: entry.totalCount,
-    thumbnailPaths: sealMap(thumbnailPaths),
-    thumbnailStamps: sealMap(thumbnailStamps),
-    thumbnailSizes: sealMap(thumbnailSizes),
+    covers: sealCoverMaps(covers),
     updatedAt: Date.now(),
   }) as DashboardQueryCacheEntry;
 }
@@ -124,32 +128,19 @@ export function setDashboardQueryCache(
 }
 
 /**
- * Copy-on-write cover update: reuse list/body containers; replace only
- * thumbnail maps. Returns false when the key is absent (e.g. LRU-evicted);
+ * Copy-on-write cover update: reuse list/body containers; replace only covers.
+ * Returns false when the key is absent (e.g. LRU-evicted);
  * callers may fall back to a full `setDashboardQueryCache` rewrite.
  */
 export function patchDashboardQueryCacheCovers(
   key: string,
-  thumbnailPaths: ReadonlyMap<string, string | null>,
-  thumbnailStamps: ReadonlyMap<string, string>,
-  thumbnailSizes: ReadonlyMap<
-    string,
-    import("@collector/api").ItemThumbnailPixelSize | null
-  >,
+  covers: CoverMaps,
 ): boolean {
   const entry = entries.get(key);
   if (!entry) {
     return false;
   }
-  touch(
-    key,
-    entryWithSealedCovers(
-      entry,
-      thumbnailPaths,
-      thumbnailStamps,
-      thumbnailSizes,
-    ),
-  );
+  touch(key, entryWithSealedCovers(entry, covers));
   return true;
 }
 
@@ -160,12 +151,7 @@ export type ApplyDashboardQueryCacheCoverFlightPatchOptions = {
   flightVersion: number;
   getLiveKey: () => string;
   getLiveVersion: () => number;
-  thumbnailPaths: ReadonlyMap<string, string | null>;
-  thumbnailStamps: ReadonlyMap<string, string>;
-  thumbnailSizes: ReadonlyMap<
-    string,
-    import("@collector/api").ItemThumbnailPixelSize | null
-  >;
+  covers: CoverMaps;
   /** Full rewrite when the flight key was LRU-evicted mid-flight. */
   rewriteFull: () => void;
 };
@@ -184,14 +170,7 @@ export function applyDashboardQueryCacheCoverFlightPatch(
   ) {
     return "skipped";
   }
-  if (
-    patchDashboardQueryCacheCovers(
-      options.flightKey,
-      options.thumbnailPaths,
-      options.thumbnailStamps,
-      options.thumbnailSizes,
-    )
-  ) {
+  if (patchDashboardQueryCacheCovers(options.flightKey, options.covers)) {
     return "patched";
   }
   options.rewriteFull();
@@ -215,3 +194,5 @@ export function clearDashboardQueryCache(): void {
 export function dashboardQueryCacheKeysForTests(): string[] {
   return [...entries.keys()];
 }
+
+export { emptyCoverMaps, coverMapsClone };

@@ -1,10 +1,8 @@
 import type { ItemFile } from "@collector/shared";
-import {
-  intersectCommittedWithPageIdsHoldPaint,
-  mergeCommittedThumbnailPaths,
-  mergeCommittedThumbnailSizes,
-  mergeCommittedThumbnailStamps,
-} from "../../lib/dashboard-commit";
+import { flushSync } from "react-dom";
+import { intersectCommittedWithPageIdsHoldPaint } from "../../lib/dashboard-commit";
+import { emptyCoverMaps } from "../../lib/cover-maps";
+import { revealHeldListPaint } from "../../lib/dashboard-cold-reveal";
 import { applyDashboardIndexPage } from "../../lib/dashboard-stream";
 import { DASHBOARD_PREFETCH_SIZE } from "../../services/collector-client";
 import {
@@ -36,9 +34,7 @@ export async function applyIndexPageAgainstListState(
     | "applyListSnapshot"
     | "setItemsById"
     | "committedItemsRef"
-    | "committedThumbnailPathsRef"
-    | "committedThumbnailStampsRef"
-    | "committedThumbnailSizesRef"
+    | "covers"
   >,
   page: {
     itemIds: string[];
@@ -77,9 +73,7 @@ export async function applyIndexPageAgainstListState(
         totalCount: list.totalCountRef.current,
         committedItems: [],
         committedTotalCount: 0,
-        thumbnailPaths: new Map(),
-        thumbnailStamps: new Map(),
-        thumbnailSizes: new Map(),
+        covers: emptyCoverMaps(),
       });
     },
     replaceWorkingBodiesKeeping: (idsToKeep) => {
@@ -108,32 +102,26 @@ export async function applyIndexPageAgainstListState(
         prevCommittedLen > 0 && nextCommitted.length === 0,
       );
       const nextCommittedIds = nextCommitted.map((item) => item.id);
-      const prunedPaths = mergeCommittedThumbnailPaths(
-        list.committedThumbnailPathsRef.current,
-        new Map(),
-        nextCommittedIds,
-      );
-      const prunedStamps = mergeCommittedThumbnailStamps(
-        list.committedThumbnailStampsRef.current,
-        new Map(),
-        nextCommittedIds,
-      );
-      const prunedSizes = mergeCommittedThumbnailSizes(
-        list.committedThumbnailSizesRef.current,
-        new Map(),
-        nextCommittedIds,
-      );
-      list.applyListSnapshot({
-        itemIds: list.itemIdsRef.current,
-        itemsById: list.itemsByIdRef.current,
-        bodyStamps: list.bodyStampsRef.current,
-        streamEndOffset: list.streamEndOffsetRef.current,
-        totalCount: list.totalCountRef.current,
-        committedItems: nextCommitted,
-        committedTotalCount: list.totalCountRef.current,
-        thumbnailPaths: prunedPaths,
-        thumbnailStamps: prunedStamps,
-        thumbnailSizes: prunedSizes,
+      // Defer cover publish until applyListSnapshot so items+covers paint once
+      // (same #855 hazard: useSyncExternalStore vs useState — flushSync).
+      list.covers.intersect(nextCommittedIds, { deferPublish: true });
+      revealHeldListPaint({
+        requestVersion,
+        getCurrentVersion: () => list.requestVersionRef.current,
+        covers: list.covers,
+        flushSync,
+        applyCommitted: () => {
+          list.applyListSnapshot({
+            itemIds: list.itemIdsRef.current,
+            itemsById: list.itemsByIdRef.current,
+            bodyStamps: list.bodyStampsRef.current,
+            streamEndOffset: list.streamEndOffsetRef.current,
+            totalCount: list.totalCountRef.current,
+            committedItems: nextCommitted,
+            committedTotalCount: list.totalCountRef.current,
+            covers: list.covers.getMaps(),
+          });
+        },
       });
     },
     streamSlice,

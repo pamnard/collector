@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   itemGridCoverImgClassName,
   itemGridCoverImgSizeAttrs,
+  itemGridCoverLayoutPhase,
   itemGridCoverOverlayLayout,
   itemGridCoverPixelSizeFromImg,
   itemGridCoverSlot,
@@ -186,6 +187,68 @@ describe("itemGridCoverOverlayLayout", () => {
     assert.equal(
       itemGridCoverOverlayLayout({ hasCover: true, slotSize: null }),
       false,
+    );
+  });
+});
+
+describe("itemGridCoverLayoutPhase (#799)", () => {
+  it("waits while path is still resolving", () => {
+    assert.equal(
+      itemGridCoverLayoutPhase({
+        thumbnailPath: undefined,
+        resolvedPixelSize: null,
+        coverSettled: false,
+        coverSrc: null,
+      }),
+      "wait-path",
+    );
+  });
+
+  it("is text-only when path is explicitly null", () => {
+    assert.equal(
+      itemGridCoverLayoutPhase({
+        thumbnailPath: null,
+        resolvedPixelSize: null,
+        coverSettled: true,
+        coverSrc: null,
+      }),
+      "text-only",
+    );
+  });
+
+  it("reserves pending only when path and WxH are known before decode", () => {
+    assert.equal(
+      itemGridCoverLayoutPhase({
+        thumbnailPath: "/cover.webp",
+        resolvedPixelSize: { width: 400, height: 300 },
+        coverSettled: false,
+        coverSrc: "/cover.webp",
+      }),
+      "reserved-pending",
+    );
+  });
+
+  it("does not reserve when path is known but WxH is missing (#799)", () => {
+    assert.equal(
+      itemGridCoverLayoutPhase({
+        thumbnailPath: "/cover.webp",
+        resolvedPixelSize: null,
+        coverSettled: false,
+        coverSrc: "/cover.webp",
+      }),
+      "wait-path",
+    );
+  });
+
+  it("is cover-visible when settled with WxH", () => {
+    assert.equal(
+      itemGridCoverLayoutPhase({
+        thumbnailPath: "/cover.webp",
+        resolvedPixelSize: { width: 400, height: 300 },
+        coverSettled: true,
+        coverSrc: "/cover.webp",
+      }),
+      "cover-visible",
     );
   });
 });

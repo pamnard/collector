@@ -4,7 +4,12 @@
 
 import type { DashboardQueryCacheEntry } from "../services/dashboard-query-cache.ts";
 import type { ItemFile } from "@collector/shared";
-import { coverMapsForPersistence } from "./dashboard-commit.ts";
+import {
+  coverMapsClone,
+  coverMapsForPersistence,
+  emptyCoverMaps,
+  type CoverMaps,
+} from "./cover-maps.ts";
 import { orderDashboardItems } from "./dashboard-display.ts";
 
 export type BuildDashboardQueryCacheEntryInput = {
@@ -13,12 +18,7 @@ export type BuildDashboardQueryCacheEntryInput = {
   bodyStamps: Map<string, string>;
   streamEndOffset: number;
   totalCount: number;
-  thumbnailPaths: Map<string, string | null>;
-  thumbnailStamps: Map<string, string>;
-  thumbnailSizes: Map<
-    string,
-    import("@collector/api").ItemThumbnailPixelSize | null
-  >;
+  covers: CoverMaps;
   now?: number;
 };
 
@@ -31,9 +31,7 @@ export function buildDashboardQueryCacheEntry(
     bodyStamps: new Map(input.bodyStamps),
     streamEndOffset: input.streamEndOffset,
     totalCount: input.totalCount,
-    thumbnailPaths: new Map(input.thumbnailPaths),
-    thumbnailStamps: new Map(input.thumbnailStamps),
-    thumbnailSizes: new Map(input.thumbnailSizes),
+    covers: coverMapsClone(input.covers),
     updatedAt: input.now ?? Date.now(),
   };
 }
@@ -45,12 +43,7 @@ export type CacheEntryAppliedState = {
   streamEndOffset: number;
   totalCount: number;
   ordered: ItemFile[];
-  thumbnailPaths: Map<string, string | null>;
-  thumbnailStamps: Map<string, string>;
-  thumbnailSizes: Map<
-    string,
-    import("@collector/api").ItemThumbnailPixelSize | null
-  >;
+  covers: CoverMaps;
   hasMore: boolean;
 };
 
@@ -58,8 +51,8 @@ export type CacheEntryAppliedState = {
 export function stateFromDashboardCacheEntry(
   entry: DashboardQueryCacheEntry,
 ): CacheEntryAppliedState {
-  if (!entry.thumbnailSizes) {
-    throw new Error("DashboardQueryCacheEntry.thumbnailSizes is required");
+  if (!entry.covers) {
+    throw new Error("DashboardQueryCacheEntry.covers is required");
   }
   const itemIds = [...entry.itemIds];
   const itemsById = new Map(entry.itemsById);
@@ -68,11 +61,6 @@ export function stateFromDashboardCacheEntry(
     itemsById,
     entry.streamEndOffset,
   );
-  const covers = coverMapsForPersistence(
-    entry.thumbnailPaths,
-    entry.thumbnailStamps,
-    entry.thumbnailSizes,
-  );
   return {
     itemIds,
     itemsById,
@@ -80,9 +68,7 @@ export function stateFromDashboardCacheEntry(
     streamEndOffset: entry.streamEndOffset,
     totalCount: entry.totalCount,
     ordered,
-    thumbnailPaths: new Map(covers.thumbnailPaths),
-    thumbnailStamps: new Map(covers.thumbnailStamps),
-    thumbnailSizes: new Map(covers.thumbnailSizes),
+    covers: coverMapsClone(coverMapsForPersistence(entry.covers)),
     hasMore: entry.streamEndOffset < entry.totalCount,
   };
 }
@@ -93,7 +79,7 @@ export type ReadInitialDashboardCacheEntryOptions<TSnapshot> = {
   setCached: (key: string, entry: DashboardQueryCacheEntry) => void;
   vaultId: string | null | undefined;
   peekWarmSnapshot: () => TSnapshot | null | undefined;
-  snapshotToEntry: (snapshot: TSnapshot) => DashboardQueryCacheEntry;
+  snapshotToEntry: (snap: TSnapshot) => DashboardQueryCacheEntry;
 };
 
 export function readInitialDashboardCacheEntry<TSnapshot>(
@@ -103,17 +89,16 @@ export function readInitialDashboardCacheEntry<TSnapshot>(
   if (cached) {
     return cached;
   }
-
   if (!options.vaultId) {
     return null;
   }
-
   const warm = options.peekWarmSnapshot();
   if (!warm) {
     return null;
   }
-
   const entry = options.snapshotToEntry(warm);
   options.setCached(options.cacheKey, entry);
   return options.getCached(options.cacheKey) ?? entry;
 }
+
+export { emptyCoverMaps };

@@ -7,7 +7,10 @@ import {
   readInitialDashboardCacheEntry,
   stateFromDashboardCacheEntry,
 } from "./dashboard-query-load.ts";
-import { coverMapsForPersistence } from "./dashboard-commit.ts";
+import {
+  coverMapsForPersistence,
+  coverMapsFromTriple,
+} from "./cover-maps.ts";
 
 function stubItem(id: string): ItemFile {
   return {
@@ -34,9 +37,11 @@ describe("buildDashboardQueryCacheEntry", () => {
       bodyStamps,
       streamEndOffset: 1,
       totalCount: 1,
-      thumbnailPaths: paths,
-      thumbnailStamps: stamps,
-      thumbnailSizes: new Map(),
+      covers: coverMapsFromTriple(
+        paths,
+        stamps,
+        new Map(),
+      ),
       now: 1234,
     });
     assert.deepEqual(entry.itemIds, ["a"]);
@@ -44,8 +49,8 @@ describe("buildDashboardQueryCacheEntry", () => {
     assert.equal(entry.bodyStamps.get("a"), "sa");
     assert.equal(entry.streamEndOffset, 1);
     assert.equal(entry.totalCount, 1);
-    assert.equal(entry.thumbnailPaths.get("a"), "/a");
-    assert.equal(entry.thumbnailStamps.get("a"), "ta");
+    assert.equal(entry.covers.paths.get("a"), "/a");
+    assert.equal(entry.covers.stamps.get("a"), "ta");
     assert.equal(entry.updatedAt, 1234);
     // defensive copies
     const originalIds = ["a"];
@@ -67,21 +72,21 @@ describe("buildDashboardQueryCacheEntry", () => {
       ["a", { width: 10, height: 10 }],
       ["b", null],
     ]);
-    const persisted = coverMapsForPersistence(paths, stamps, sizes);
+    const persisted = coverMapsForPersistence(
+      coverMapsFromTriple(paths, stamps, sizes),
+    );
     const entry = buildDashboardQueryCacheEntry({
       itemIds: ["a", "b"],
       itemsById: byId,
       bodyStamps: new Map(),
       streamEndOffset: 2,
       totalCount: 2,
-      thumbnailPaths: persisted.thumbnailPaths,
-      thumbnailStamps: persisted.thumbnailStamps,
-      thumbnailSizes: persisted.thumbnailSizes,
+      covers: persisted,
       now: 1234,
     });
-    assert.equal(entry.thumbnailPaths.get("a"), "/a");
-    assert.equal(entry.thumbnailPaths.has("b"), false);
-    assert.equal(entry.thumbnailStamps.has("b"), false);
+    assert.equal(entry.covers.paths.get("a"), "/a");
+    assert.equal(entry.covers.paths.has("b"), false);
+    assert.equal(entry.covers.stamps.has("b"), false);
   });
 });
 
@@ -93,9 +98,11 @@ describe("readInitialDashboardCacheEntry", () => {
       bodyStamps: new Map(),
       streamEndOffset: 1,
       totalCount: 1,
-      thumbnailPaths: new Map(),
-      thumbnailStamps: new Map(),
-      thumbnailSizes: new Map(),
+      covers: coverMapsFromTriple(
+        new Map(),
+        new Map(),
+        new Map(),
+      ),
       updatedAt: 1,
     };
     let peeked = false;
@@ -128,9 +135,11 @@ describe("readInitialDashboardCacheEntry", () => {
       bodyStamps: new Map(),
       streamEndOffset: 1,
       totalCount: 1,
-      thumbnailPaths: new Map(),
-      thumbnailStamps: new Map(),
-      thumbnailSizes: new Map(),
+      covers: coverMapsFromTriple(
+        new Map(),
+        new Map(),
+        new Map(),
+      ),
       updatedAt: 9,
     };
     const store = new Map<string, DashboardQueryCacheEntry>();
@@ -177,9 +186,11 @@ describe("stateFromDashboardCacheEntry", () => {
       bodyStamps: new Map([["a", "sa"]]),
       streamEndOffset: 1,
       totalCount: 2,
-      thumbnailPaths: new Map([["a", "/a"]]),
-      thumbnailStamps: new Map([["a", "ta"]]),
-      thumbnailSizes: new Map(),
+      covers: coverMapsFromTriple(
+        new Map([["a", "/a"]]),
+        new Map([["a", "ta"]]),
+        new Map(),
+      ),
       updatedAt: 1,
     };
     const state = stateFromDashboardCacheEntry(entry);
@@ -190,9 +201,9 @@ describe("stateFromDashboardCacheEntry", () => {
     assert.notEqual(state.bodyStamps, entry.bodyStamps);
     state.itemIds.push("b");
     state.itemsById.set("b", stubItem("b"));
-    state.thumbnailPaths.set("b", "/b");
+    state.covers.paths.set("b", "/b");
     assert.deepEqual(entry.itemIds, ["a"]);
     assert.equal(entry.itemsById.has("b"), false);
-    assert.equal(entry.thumbnailPaths.has("b"), false);
+    assert.equal(entry.covers.paths.has("b"), false);
   });
 });

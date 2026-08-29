@@ -13,6 +13,10 @@ import {
   setDashboardQueryCache,
   type DashboardQueryCacheEntry,
 } from "./dashboard-query-cache.ts";
+import {
+  coverMapsFromTriple,
+  emptyCoverMaps,
+} from "../lib/cover-maps.ts";
 
 function stubItem(id: string): ItemFile {
   return { id } as ItemFile;
@@ -30,9 +34,7 @@ function entry(
     bodyStamps: partial.bodyStamps ?? new Map(),
     streamEndOffset: partial.streamEndOffset ?? partial.itemIds.length,
     totalCount: partial.totalCount ?? partial.itemIds.length,
-    thumbnailPaths: partial.thumbnailPaths ?? new Map(),
-    thumbnailStamps: partial.thumbnailStamps ?? new Map(),
-    thumbnailSizes: partial.thumbnailSizes ?? new Map(),
+    covers: partial.covers ?? emptyCoverMaps(),
     updatedAt: partial.updatedAt ?? Date.now(),
   };
 }
@@ -65,8 +67,8 @@ describe("dashboard query cache LRU", () => {
     assert.equal(first.itemIds, second.itemIds);
     assert.equal(first.itemsById, second.itemsById);
     assert.equal(first.bodyStamps, second.bodyStamps);
-    assert.equal(first.thumbnailPaths, second.thumbnailPaths);
-    assert.equal(first.thumbnailStamps, second.thumbnailStamps);
+    assert.equal(first.covers.paths, second.covers.paths);
+    assert.equal(first.covers.stamps, second.covers.stamps);
   });
 
   it("sealed maps from get support size, get, and has", () => {
@@ -76,9 +78,11 @@ describe("dashboard query cache LRU", () => {
       entry({
         itemIds: ["1", "2"],
         bodyStamps: new Map([["1", "s1"]]),
-        thumbnailPaths: new Map([["1", "/a"]]),
-        thumbnailStamps: new Map([["1", "t:a"]]),
-        thumbnailSizes: new Map(),
+        covers: coverMapsFromTriple(
+          new Map([["1", "/a"]]),
+          new Map([["1", "t:a"]]),
+          new Map(),
+        ),
       }),
     );
     const got = getDashboardQueryCache(key);
@@ -89,9 +93,9 @@ describe("dashboard query cache LRU", () => {
     assert.equal(got.itemsById.has("missing"), false);
     assert.equal(got.bodyStamps.size, 1);
     assert.equal(got.bodyStamps.get("1"), "s1");
-    assert.equal(got.thumbnailPaths.size, 1);
-    assert.equal(got.thumbnailPaths.get("1"), "/a");
-    assert.equal(got.thumbnailStamps.has("1"), true);
+    assert.equal(got.covers.paths.size, 1);
+    assert.equal(got.covers.paths.get("1"), "/a");
+    assert.equal(got.covers.stamps.has("1"), true);
   });
 
   it("mutating a returned entry does not corrupt the store", () => {
@@ -103,24 +107,28 @@ describe("dashboard query cache LRU", () => {
       got.itemIds.push("3");
     });
     assert.throws(() => {
-      got.thumbnailPaths.set("1", "/poison");
+      got.covers.paths.set("1", "/poison");
     });
     assert.deepEqual(getDashboardQueryCache(key)?.itemIds, ["1", "2"]);
-    assert.equal(getDashboardQueryCache(key)?.thumbnailPaths.has("1"), false);
+    assert.equal(getDashboardQueryCache(key)?.covers.paths.has("1"), false);
   });
 
   it("set clones caller input so later mutation does not poison the store", () => {
     const key = dashboardQueryCacheKey("folder:a", "");
     const input = entry({
       itemIds: ["1"],
-      thumbnailPaths: new Map([["1", "/a"]]),
+      covers: coverMapsFromTriple(
+        new Map([["1", "/a"]]),
+        new Map([["1", "t:a"]]),
+        new Map(),
+      ),
     });
     setDashboardQueryCache(key, input);
     input.itemIds.push("2");
-    input.thumbnailPaths.set("1", "/poison");
+    input.covers.paths.set("1", "/poison");
     const stored = getDashboardQueryCache(key);
     assert.deepEqual(stored?.itemIds, ["1"]);
-    assert.equal(stored?.thumbnailPaths.get("1"), "/a");
+    assert.equal(stored?.covers.paths.get("1"), "/a");
   });
 
   it("patchDashboardQueryCacheCovers shares list containers and replaces only covers", () => {
@@ -129,10 +137,15 @@ describe("dashboard query cache LRU", () => {
       key,
       entry({
         itemIds: ["1", "2", "3"],
-        bodyStamps: new Map([["1", "s1"], ["2", "s2"]]),
-        thumbnailPaths: new Map([["1", "/old"]]),
-        thumbnailStamps: new Map([["1", "t:old"]]),
-        thumbnailSizes: new Map(),
+        bodyStamps: new Map([
+          ["1", "s1"],
+          ["2", "s2"],
+        ]),
+        covers: coverMapsFromTriple(
+          new Map([["1", "/old"]]),
+          new Map([["1", "t:old"]]),
+          new Map(),
+        ),
       }),
     );
     const before = getDashboardQueryCache(key);
@@ -141,18 +154,20 @@ describe("dashboard query cache LRU", () => {
     assert.equal(
       patchDashboardQueryCacheCovers(
         key,
-        new Map([
-          ["1", "/new"],
-          ["2", "/two"],
-        ]),
-        new Map([
-          ["1", "t:new"],
-          ["2", "t:two"],
-        ]),
-        new Map([
-          ["1", { width: 10, height: 10 }],
-          ["2", { width: 20, height: 20 }],
-        ]),
+        coverMapsFromTriple(
+          new Map([
+            ["1", "/new"],
+            ["2", "/two"],
+          ]),
+          new Map([
+            ["1", "t:new"],
+            ["2", "t:two"],
+          ]),
+          new Map([
+            ["1", { width: 10, height: 10 }],
+            ["2", { width: 20, height: 20 }],
+          ]),
+        ),
       ),
       true,
     );
@@ -162,11 +177,11 @@ describe("dashboard query cache LRU", () => {
     assert.equal(after.itemIds, before.itemIds);
     assert.equal(after.itemsById, before.itemsById);
     assert.equal(after.bodyStamps, before.bodyStamps);
-    assert.notEqual(after.thumbnailPaths, before.thumbnailPaths);
-    assert.notEqual(after.thumbnailStamps, before.thumbnailStamps);
-    assert.equal(after.thumbnailPaths.get("1"), "/new");
-    assert.equal(after.thumbnailPaths.get("2"), "/two");
-    assert.equal(after.thumbnailStamps.get("1"), "t:new");
+    assert.notEqual(after.covers.paths, before.covers.paths);
+    assert.notEqual(after.covers.stamps, before.covers.stamps);
+    assert.equal(after.covers.paths.get("1"), "/new");
+    assert.equal(after.covers.paths.get("2"), "/two");
+    assert.equal(after.covers.stamps.get("1"), "t:new");
     assert.equal(after.streamEndOffset, before.streamEndOffset);
     assert.equal(after.totalCount, before.totalCount);
   });
@@ -175,8 +190,11 @@ describe("dashboard query cache LRU", () => {
     assert.equal(
       patchDashboardQueryCacheCovers(
         "missing|",
-        new Map([["1", "/a"]]),
-        new Map([["1", "t:a"]]),
+        coverMapsFromTriple(
+          new Map([["1", "/a"]]),
+          new Map([["1", "t:a"]]),
+          new Map(),
+        ),
       ),
       false,
     );
@@ -189,26 +207,36 @@ describe("dashboard query cache LRU", () => {
       flightKey,
       entry({
         itemIds: ["old"],
-        thumbnailPaths: new Map([["old", "/old"]]),
+        covers: coverMapsFromTriple(
+          new Map([["old", "/old"]]),
+          new Map([["old", "t:old"]]),
+          new Map(),
+        ),
       }),
     );
     setDashboardQueryCache(
       foreignKey,
       entry({
         itemIds: ["new"],
-        thumbnailPaths: new Map([["new", "/new-before"]]),
+        covers: coverMapsFromTriple(
+          new Map([["new", "/new-before"]]),
+          new Map([["new", "t:new"]]),
+          new Map(),
+        ),
       }),
     );
 
-    let liveKey = foreignKey;
+    const liveKey = foreignKey;
     const result = applyDashboardQueryCacheCoverFlightPatch({
       flightKey,
       flightVersion: 1,
       getLiveKey: () => liveKey,
       getLiveVersion: () => 1,
-      thumbnailPaths: new Map([["old", "/poison"]]),
-      thumbnailStamps: new Map([["old", "t:poison"]]),
-      thumbnailSizes: new Map(),
+      covers: coverMapsFromTriple(
+        new Map([["old", "/poison"]]),
+        new Map([["old", "t:poison"]]),
+        new Map(),
+      ),
       rewriteFull: () => {
         throw new Error("rewriteFull must not run when live key diverged");
       },
@@ -216,11 +244,11 @@ describe("dashboard query cache LRU", () => {
 
     assert.equal(result, "skipped");
     assert.equal(
-      getDashboardQueryCache(foreignKey)?.thumbnailPaths.get("new"),
+      getDashboardQueryCache(foreignKey)?.covers.paths.get("new"),
       "/new-before",
     );
     assert.equal(
-      getDashboardQueryCache(flightKey)?.thumbnailPaths.get("old"),
+      getDashboardQueryCache(flightKey)?.covers.paths.get("old"),
       "/old",
     );
   });
@@ -232,17 +260,21 @@ describe("dashboard query cache LRU", () => {
       flightVersion: 3,
       getLiveKey: () => flightKey,
       getLiveVersion: () => 3,
-      thumbnailPaths: new Map([["1", "/rewritten"]]),
-      thumbnailStamps: new Map([["1", "t:rewritten"]]),
-      thumbnailSizes: new Map(),
+      covers: coverMapsFromTriple(
+        new Map([["1", "/rewritten"]]),
+        new Map([["1", "t:rewritten"]]),
+        new Map(),
+      ),
       rewriteFull: () => {
         setDashboardQueryCache(
           flightKey,
           entry({
             itemIds: ["1"],
-            thumbnailPaths: new Map([["1", "/rewritten"]]),
-            thumbnailStamps: new Map([["1", "t:rewritten"]]),
-            thumbnailSizes: new Map(),
+            covers: coverMapsFromTriple(
+              new Map([["1", "/rewritten"]]),
+              new Map([["1", "t:rewritten"]]),
+              new Map(),
+            ),
           }),
         );
       },
@@ -250,7 +282,7 @@ describe("dashboard query cache LRU", () => {
 
     assert.equal(result, "rewritten");
     assert.equal(
-      getDashboardQueryCache(flightKey)?.thumbnailPaths.get("1"),
+      getDashboardQueryCache(flightKey)?.covers.paths.get("1"),
       "/rewritten",
     );
   });
@@ -284,22 +316,27 @@ describe("dashboard query cache LRU", () => {
       entry({
         itemIds: ["x", "y"],
         totalCount: 2,
-        thumbnailPaths: new Map([["x", "/x"], ["y", "/y"]]),
-        thumbnailStamps: new Map([["x", "t:x"], ["y", "t:y"]]),
-        thumbnailSizes: new Map(),
+        covers: coverMapsFromTriple(
+          new Map([
+            ["x", "/x"],
+            ["y", "/y"],
+          ]),
+          new Map([
+            ["x", "t:x"],
+            ["y", "t:y"],
+          ]),
+          new Map(),
+        ),
       }),
     );
-    setDashboardQueryCache(
-      "b|",
-      entry({ itemIds: ["x"], totalCount: 1 }),
-    );
+    setDashboardQueryCache("b|", entry({ itemIds: ["x"], totalCount: 1 }));
     removeItemIdFromDashboardQueryCache("x");
     const a = getDashboardQueryCache("a|");
     const b = getDashboardQueryCache("b|");
     assert.deepEqual(a?.itemIds, ["y"]);
     assert.equal(a?.totalCount, 1);
-    assert.equal(a?.thumbnailPaths.has("x"), false);
-    assert.equal(a?.thumbnailStamps.has("x"), false);
+    assert.equal(a?.covers.paths.has("x"), false);
+    assert.equal(a?.covers.stamps.has("x"), false);
     assert.deepEqual(b?.itemIds, []);
     assert.equal(b?.totalCount, 0);
   });

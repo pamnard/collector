@@ -36,7 +36,6 @@ export function DashboardWarmGridShell({
   const pageRef = useRef<HTMLDivElement>(null);
   const [contentWidth, setContentWidth] = useState<number | null>(null);
   const gridActive = viewMode === "grid";
-  const stickyNullProbeDoneRef = useRef(false);
 
   useLayoutEffect(() => {
     const page = pageRef.current;
@@ -63,8 +62,9 @@ export function DashboardWarmGridShell({
     };
   }, [gridActive]);
 
-  // DashboardPage remounts on item→list. Maps can still hold sticky null while
-  // cover.webp exists — one probe per mount upgrades those cards (#871).
+  // Once per shell mount (#871). Controller outlives the shell in AppLayout —
+  // one-shot must live here so item→list remount re-probes sticky nulls.
+  const stickyNullProbeDoneRef = useRef(false);
   useEffect(() => {
     if (dashboard.isLoading || dashboard.items.length === 0) {
       return;
@@ -73,11 +73,7 @@ export function DashboardWarmGridShell({
       return;
     }
     stickyNullProbeDoneRef.current = true;
-    for (const item of dashboard.items) {
-      if (dashboard.thumbnailPaths.get(item.id) === null) {
-        dashboard.refreshCoverForItem(item.id);
-      }
-    }
+    dashboard.probeStickyNulls(dashboard.items);
   }, [dashboard]);
 
   return (

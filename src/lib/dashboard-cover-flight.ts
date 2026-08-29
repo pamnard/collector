@@ -5,14 +5,13 @@
  */
 
 import type { ItemFile } from "@collector/shared";
-import type {
-  ItemThumbnailPixelSize,
-  UiSessionThumbnailResolveProgressiveOptions,
-} from "@collector/api";
+import type { UiSessionThumbnailResolveProgressiveOptions } from "@collector/api";
 import {
-  coverNeedsResolve,
+  coverMapsNeedsResolve,
+  coverMapsStripStickyNulls,
   itemCoverStamp,
-} from "./dashboard-commit.ts";
+  type CoverMaps,
+} from "./cover-maps.ts";
 import {
   createCoverPathCommitBatcher,
   type CoverPathCommitBatcher,
@@ -35,14 +34,8 @@ export type RunCoverPathFlightOptions = {
   getRequestVersion: () => number;
   orderedItems: ItemFile[];
   getOrderedIds: () => string[];
-  getPaths: () => Map<string, string | null>;
-  getStamps: () => Map<string, string>;
-  getSizes: () => Map<string, ItemThumbnailPixelSize | null>;
-  commit: (
-    paths: Map<string, string | null>,
-    stamps: Map<string, string>,
-    sizes: Map<string, ItemThumbnailPixelSize | null>,
-  ) => void;
+  getMaps: () => CoverMaps;
+  commit: (maps: CoverMaps) => void;
   getFlight: () => CoverFlightSlot;
   setFlight: (flight: CoverFlightSlot) => void;
   resolveProgressive: ResolveCoverPathsProgressive;
@@ -54,39 +47,24 @@ export async function runCoverPathFlight(
 ): Promise<void> {
   const { requestVersion, resolveProgressive } = options;
 
-  // Sticky null is terminal for coverNeedsResolve. Any flight re-opens those
+  // Sticky null is terminal for needsResolve. Any flight re-opens those
   // holes so disk can win after generateCover / softRefresh (#871).
   {
-    const paths = new Map(options.getPaths());
-    const stamps = new Map(options.getStamps());
-    const sizes = new Map(options.getSizes());
-    let stripped = false;
-    for (const item of options.orderedItems) {
-      if (paths.get(item.id) !== null) {
-        continue;
-      }
-      if (!paths.has(item.id)) {
-        continue;
-      }
-      paths.delete(item.id);
-      stamps.delete(item.id);
-      sizes.delete(item.id);
-      stripped = true;
-    }
-    if (stripped) {
-      options.commit(paths, stamps, sizes);
+    const stripped = coverMapsStripStickyNulls(
+      options.getMaps(),
+      options.orderedItems,
+    );
+    if (stripped.stripped) {
+      options.commit(stripped.maps);
     }
   }
 
-  const collectNeedsResolve = () =>
-    options.orderedItems.filter((item) =>
-      coverNeedsResolve(
-        item,
-        options.getPaths(),
-        options.getStamps(),
-        options.getSizes(),
-      ),
+  const collectNeedsResolve = () => {
+    const maps = options.getMaps();
+    return options.orderedItems.filter((item) =>
+      coverMapsNeedsResolve(maps, item),
     );
+  };
 
   // Same-version waiters share one flight so sync republish does not abort
   // in-flight covers (#657).
@@ -117,9 +95,7 @@ export async function runCoverPathFlight(
       getRequestVersion: options.getRequestVersion,
       isAborted: () => coverController.signal.aborted,
       getOrderedIds: options.getOrderedIds,
-      getPaths: options.getPaths,
-      getStamps: options.getStamps,
-      getSizes: options.getSizes,
+      getMaps: options.getMaps,
       commit: options.commit,
       scheduleFlush: options.scheduleFlush,
     });

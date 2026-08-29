@@ -8,6 +8,7 @@ import {
   setDashboardQueryCache,
 } from "./dashboard-query-cache.ts";
 import { invalidateItemPresentationCache } from "./item-presentation-cache.ts";
+import { coverMapsFromTriple, emptyCoverMaps } from "../lib/cover-maps.ts";
 
 describe("invalidateItemPresentationCache", () => {
   beforeEach(() => {
@@ -22,9 +23,11 @@ describe("invalidateItemPresentationCache", () => {
       bodyStamps: new Map([["1", "1"]]),
       streamEndOffset: 1,
       totalCount: 1,
-      thumbnailPaths: new Map(),
-      thumbnailStamps: new Map(),
-      thumbnailSizes: new Map(),
+      covers: coverMapsFromTriple(
+        new Map(),
+        new Map(),
+        new Map(),
+      ),
       updatedAt: Date.now(),
     });
     invalidateItemPresentationCache();

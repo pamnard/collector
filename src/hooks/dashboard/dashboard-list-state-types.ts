@@ -4,8 +4,9 @@ import type {
   SetStateAction,
 } from "react";
 import type { ItemFile } from "@collector/shared";
-import type { DashboardItemSort, ItemThumbnailPixelSize } from "@collector/api";
+import type { DashboardItemSort } from "@collector/api";
 import type { DashboardListSnapshot } from "../../lib/dashboard-commit";
+import type { CoverController } from "../../lib/cover-controller";
 import type { DashboardQueryCacheEntry } from "../../services/dashboard-query-cache";
 import type { NavFilter } from "../../types/ui";
 
@@ -15,7 +16,12 @@ export type StartCoverPathFlight = (
   options?: { blockOnCovers?: boolean; deferUiCommit?: boolean },
 ) => Promise<void>;
 
-export type DashboardListState = {
+/** Cover-flight adapter only needs the painted list window. */
+export type CoverFlightListBindings = {
+  committedItems: ItemFile[];
+};
+
+export type DashboardListState = CoverFlightListBindings & {
   itemIds: string[];
   itemsById: Map<string, ItemFile>;
   streamEndOffset: number;
@@ -23,34 +29,26 @@ export type DashboardListState = {
   isLoading: boolean;
   isLoadingMore: boolean;
   error: string | null;
-  committedItems: ItemFile[];
-  committedThumbnailPaths: Map<string, string | null>;
-  committedThumbnailStamps: Map<string, string>;
-  committedThumbnailSizes: Map<string, ItemThumbnailPixelSize | null>;
   committedTotalCount: number;
   committedHasMore: boolean;
   workingItems: ItemFile[];
   requestVersionRef: MutableRefObject<number>;
-  streamEndOffsetRef: MutableRefObject<number>;
+  queryKeyRef: MutableRefObject<string>;
   itemIdsRef: MutableRefObject<string[]>;
   itemsByIdRef: MutableRefObject<Map<string, ItemFile>>;
   bodyStampsRef: MutableRefObject<Map<string, string>>;
-  committedBodyStampsRef: MutableRefObject<Map<string, string>>;
+  streamEndOffsetRef: MutableRefObject<number>;
   totalCountRef: MutableRefObject<number>;
+  committedBodyStampsRef: MutableRefObject<Map<string, string>>;
   committedItemsRef: MutableRefObject<ItemFile[]>;
-  committedThumbnailPathsRef: MutableRefObject<Map<string, string | null>>;
-  committedThumbnailStampsRef: MutableRefObject<Map<string, string>>;
-  committedThumbnailSizesRef: MutableRefObject<
-    Map<string, ItemThumbnailPixelSize | null>
-  >;
   committedTotalCountRef: MutableRefObject<number>;
-  queryKeyRef: MutableRefObject<string>;
   streamAbortRef: MutableRefObject<AbortController | null>;
   persistTimerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>;
   queryBusyRef: MutableRefObject<boolean>;
   filterRef: MutableRefObject<NavFilter>;
   searchQueryRef: MutableRefObject<string>;
   sortRef: MutableRefObject<DashboardItemSort>;
+  covers: CoverController;
   setItemIds: Dispatch<SetStateAction<string[]>>;
   setItemsById: Dispatch<SetStateAction<Map<string, ItemFile>>>;
   setStreamEndOffset: Dispatch<SetStateAction<number>>;
@@ -59,13 +57,6 @@ export type DashboardListState = {
   setIsLoadingMore: Dispatch<SetStateAction<boolean>>;
   setError: Dispatch<SetStateAction<string | null>>;
   setCommittedItems: Dispatch<SetStateAction<ItemFile[]>>;
-  setCommittedThumbnailPaths: Dispatch<
-    SetStateAction<Map<string, string | null>>
-  >;
-  setCommittedThumbnailStamps: Dispatch<SetStateAction<Map<string, string>>>;
-  setCommittedThumbnailSizes: Dispatch<
-    SetStateAction<Map<string, ItemThumbnailPixelSize | null>>
-  >;
   setCommittedTotalCount: Dispatch<SetStateAction<number>>;
   setCommittedHasMore: Dispatch<SetStateAction<boolean>>;
   writeQueryCache: (

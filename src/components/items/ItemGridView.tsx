@@ -7,7 +7,10 @@ import { DashboardGridSkeleton } from "./DashboardListSkeleton";
 import { useMasonryColumnCount } from "./use-masonry-column-count";
 import { useInfiniteScroll } from "../../hooks/useInfiniteScroll";
 import { useMainScrollElement } from "../../hooks/useMainScrollElement";
-import { resolveDashboardGridThumbnail } from "../../lib/dashboard-commit";
+import {
+  coverMapsResolveForGrid,
+  type CoverMaps,
+} from "../../lib/cover-maps";
 import {
   dashboardPerfActiveRunId,
   dashboardPerfBeginPhase,
@@ -27,17 +30,10 @@ interface ItemGridViewProps {
 
 function gridMayAwaitCoverDecode(
   items: ReturnType<typeof useDashboardItems>["items"],
-  thumbnailPaths: ReturnType<typeof useDashboardItems>["thumbnailPaths"],
-  thumbnailStamps: ReturnType<typeof useDashboardItems>["thumbnailStamps"],
-  thumbnailSizes: ReturnType<typeof useDashboardItems>["thumbnailSizes"],
+  coverMaps: CoverMaps,
 ): boolean {
   return items.some((item) => {
-    const { path } = resolveDashboardGridThumbnail(
-      item,
-      thumbnailPaths,
-      thumbnailStamps,
-      thumbnailSizes,
-    );
+    const { path } = coverMapsResolveForGrid(coverMaps, item);
     return path !== null;
   });
 }
@@ -112,12 +108,7 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
         dashboardPerfEndPhase(runId, "gridLayout");
         dashboardPerfObserveL2(runId);
         if (
-          !gridMayAwaitCoverDecode(
-            dashboard.items,
-            dashboard.thumbnailPaths,
-            dashboard.thumbnailStamps,
-            dashboard.thumbnailSizes,
-          )
+          !gridMayAwaitCoverDecode(dashboard.items, dashboard.coverMaps)
         ) {
           dashboardPerfCompleteRunWithoutL3(runId);
         }
@@ -126,15 +117,15 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
   }, [
     dashboard.isLoading,
     dashboard.items,
-    dashboard.thumbnailPaths,
-    dashboard.thumbnailStamps,
-    dashboard.thumbnailSizes,
+    dashboard.coverMaps,
     gridVisible,
   ]);
 
   if (dashboard.isLoading) {
     return <DashboardGridSkeleton />;
   }
+
+  const { coverMaps } = dashboard;
 
   return (
     <div ref={gridRootRef}>
@@ -145,19 +136,14 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
       >
         {dashboard.items.map((item) => {
           const { path: thumbnailPath, size: thumbnailSize } =
-            resolveDashboardGridThumbnail(
-              item,
-              dashboard.thumbnailPaths,
-              dashboard.thumbnailStamps,
-              dashboard.thumbnailSizes,
-            );
+            coverMapsResolveForGrid(coverMaps, item);
           return (
             <div key={item.id} data-dashboard-card>
               <ItemGridCard
                 item={item}
+                tagsById={tagsById}
                 thumbnailPath={thumbnailPath}
                 thumbnailSize={thumbnailSize}
-                tagsById={tagsById}
                 onOpen={handleOpenItem}
               />
             </div>
@@ -166,8 +152,13 @@ export function ItemGridView({ dashboard }: ItemGridViewProps) {
       </Masonry>
 
       {dashboard.hasMore && (
-        <div ref={sentinelRef} className="py-8 text-center text-neutral-500 dark:text-neutral-400 text-sm">
-          {dashboard.isLoadingMore ? "Загрузка…" : "Прокрутите для следующих элементов"}
+        <div
+          ref={sentinelRef}
+          className="py-8 text-center text-neutral-500 dark:text-neutral-400 text-sm"
+        >
+          {dashboard.isLoadingMore
+            ? "Загрузка…"
+            : "Прокрутите для следующих элементов"}
         </div>
       )}
     </div>

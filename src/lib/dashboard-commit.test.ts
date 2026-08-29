@@ -3,9 +3,6 @@ import { describe, it } from "node:test";
 import type { ItemFile } from "@collector/shared";
 import {
   applyDashboardListSnapshot,
-  clearCommittedCoverEntry,
-  coverMapsForPersistence,
-  coverNeedsResolve,
   coverPathsFromMaps,
   filterOutItemId,
   intersectCommittedWithPageIds,
@@ -13,20 +10,21 @@ import {
   itemCoverStamp,
   itemsBodiesEqual,
   mapsFromCoverPaths,
-  mergeCommittedThumbnailPaths,
-  mergeCommittedThumbnailStamps,
   orderedIds,
   pruneItemIdFromDashboardLists,
-  resolveDashboardGridThumbnail,
-  resolveDashboardGridThumbnailPath,
   bodyStampsForOrderedIds,
   shouldSkipCommitPaint,
   shouldSkipEmptyCommit,
   snapshotToCacheEntry,
-  thumbnailPathsEqual,
   type DashboardListSnapshot,
   type DashboardListSnapshotSink,
 } from "./dashboard-commit.ts";
+import {
+  coverMapsFromTriple,
+  coverMapsMerge,
+  coverMapsResolveForGrid,
+  coverMapsUpsertPath,
+} from "./cover-maps.ts";
 
 function stubItem(
   id: string,
@@ -61,174 +59,6 @@ describe("itemCoverStamp", () => {
       itemCoverStamp({ thumbnail: null, updated_at: "t1" }),
       ":t1",
     );
-  });
-});
-
-describe("coverNeedsResolve", () => {
-  it("needs resolve when path key is missing", () => {
-    const item = stubItem("a");
-    assert.equal(
-      coverNeedsResolve(item, new Map(), new Map(), new Map()),
-      true,
-    );
-  });
-
-  it("needs resolve on stamp mismatch", () => {
-    const item = stubItem("a", { thumbnail: "c.webp" });
-    const paths = new Map<string, string | null>([["a", "/a"]]);
-    const stamps = new Map([["a", "old:stamp"]]);
-    assert.equal(
-      coverNeedsResolve(item, paths, stamps, new Map([["a", null]])),
-      true,
-    );
-  });
-
-  it("needs resolve when size key is missing", () => {
-    const item = stubItem("a", { thumbnail: "c.webp" });
-    const paths = new Map<string, string | null>([["a", "/a"]]);
-    const stamps = new Map([["a", itemCoverStamp(item)]]);
-    assert.equal(coverNeedsResolve(item, paths, stamps, new Map()), true);
-  });
-
-  it("skips resolve when path stamp and size match", () => {
-    const item = stubItem("a", { thumbnail: "c.webp" });
-    const paths = new Map<string, string | null>([["a", "/a"]]);
-    const stamps = new Map([["a", itemCoverStamp(item)]]);
-    const sizes = new Map([["a", { width: 10, height: 10 }]]);
-    assert.equal(coverNeedsResolve(item, paths, stamps, sizes), false);
-  });
-
-  it("treats explicit null path with matching stamp and size as resolved", () => {
-    const item = stubItem("a");
-    const paths = new Map<string, string | null>([["a", null]]);
-    const stamps = new Map([["a", itemCoverStamp(item)]]);
-    const sizes = new Map([["a", null]]);
-    assert.equal(coverNeedsResolve(item, paths, stamps, sizes), false);
-  });
-});
-
-describe("resolveDashboardGridThumbnailPath", () => {
-  it("returns committed path when resolve is not needed", () => {
-    const item = stubItem("a", { thumbnail: "c.webp" });
-    const paths = new Map<string, string | null>([["a", "/a"]]);
-    const stamps = new Map([["a", itemCoverStamp(item)]]);
-    const sizes = new Map([["a", { width: 10, height: 10 }]]);
-    assert.equal(
-      resolveDashboardGridThumbnailPath(item, paths, stamps, sizes),
-      "/a",
-    );
-  });
-
-  it("returns null when committed null and stamp matches", () => {
-    const item = stubItem("a");
-    const paths = new Map<string, string | null>([["a", null]]);
-    const stamps = new Map([["a", itemCoverStamp(item)]]);
-    const sizes = new Map([["a", null]]);
-    assert.equal(
-      resolveDashboardGridThumbnailPath(item, paths, stamps, sizes),
-      null,
-    );
-  });
-
-  it("returns undefined while cover still needs resolve", () => {
-    const item = stubItem("a");
-    assert.equal(
-      resolveDashboardGridThumbnailPath(
-        item,
-        new Map(),
-        new Map(),
-        new Map(),
-      ),
-      undefined,
-    );
-  });
-
-  it("keeps existing cover path while stamp is stale (#871)", () => {
-    const item = stubItem("a", { updated_at: "2026-01-02T00:00:00.000Z" });
-    const paths = new Map<string, string | null>([["a", "/cover"]]);
-    const stamps = new Map([["a", "old:stamp"]]);
-    const sizes = new Map([["a", { width: 10, height: 10 }]]);
-    assert.equal(coverNeedsResolve(item, paths, stamps, sizes), true);
-    assert.equal(
-      resolveDashboardGridThumbnailPath(item, paths, stamps, sizes),
-      "/cover",
-    );
-    assert.deepEqual(
-      resolveDashboardGridThumbnail(item, paths, stamps, sizes),
-      { path: "/cover", size: { width: 10, height: 10 } },
-    );
-  });
-});
-
-describe("resolveDashboardGridThumbnail", () => {
-  it("returns undefined path and size while cover still needs resolve (pending)", () => {
-    const item = stubItem("a");
-    assert.deepEqual(
-      resolveDashboardGridThumbnail(
-        item,
-        new Map(),
-        new Map(),
-        new Map(),
-      ),
-      { path: undefined, size: undefined },
-    );
-  });
-
-  it("returns committed path and size when resolve is settled", () => {
-    const item = stubItem("a", { thumbnail: "c.webp" });
-    const paths = new Map<string, string | null>([["a", "/a"]]);
-    const stamps = new Map([["a", itemCoverStamp(item)]]);
-    const sizes = new Map([["a", { width: 120, height: 80 }]]);
-    assert.deepEqual(
-      resolveDashboardGridThumbnail(item, paths, stamps, sizes),
-      { path: "/a", size: { width: 120, height: 80 } },
-    );
-  });
-
-  it("returns null path and size for settled null-cover", () => {
-    const item = stubItem("a");
-    const paths = new Map<string, string | null>([["a", null]]);
-    const stamps = new Map([["a", itemCoverStamp(item)]]);
-    const sizes = new Map([["a", null]]);
-    assert.deepEqual(
-      resolveDashboardGridThumbnail(item, paths, stamps, sizes),
-      { path: null, size: null },
-    );
-  });
-
-  it("keeps cover path while size key is missing (stale-while-revalidate #871)", () => {
-    const item = stubItem("a", { thumbnail: "c.webp" });
-    const paths = new Map<string, string | null>([["a", "/a"]]);
-    const stamps = new Map([["a", itemCoverStamp(item)]]);
-    assert.equal(
-      coverNeedsResolve(item, paths, stamps, new Map()),
-      true,
-    );
-    assert.deepEqual(
-      resolveDashboardGridThumbnail(item, paths, stamps, new Map()),
-      { path: "/a", size: null },
-    );
-  });
-});
-
-describe("thumbnailPathsEqual", () => {
-  it("compares only listed ids", () => {
-    const left = new Map<string, string | null>([
-      ["a", "/a"],
-      ["b", null],
-    ]);
-    const right = new Map<string, string | null>([
-      ["a", "/a"],
-      ["b", "/b"],
-    ]);
-    assert.equal(thumbnailPathsEqual(left, right, ["a"]), true);
-    assert.equal(thumbnailPathsEqual(left, right, ["a", "b"]), false);
-  });
-
-  it("treats missing as null", () => {
-    const left = new Map<string, string | null>();
-    const right = new Map<string, string | null>([["a", null]]);
-    assert.equal(thumbnailPathsEqual(left, right, ["a"]), true);
   });
 });
 
@@ -466,76 +296,31 @@ describe("bodyStampsForOrderedIds", () => {
   });
 });
 
-describe("mergeCommittedThumbnailPaths", () => {
-  it("merges resolved paths and prunes ids not in ordered set", () => {
-    const prev = new Map<string, string | null>([
-      ["a", "/old-a"],
-      ["gone", "/x"],
-    ]);
-    const resolved = new Map<string, string | null>([
-      ["a", "/new-a"],
-      ["b", null],
-    ]);
-    const merged = mergeCommittedThumbnailPaths(prev, resolved, ["a", "b"]);
-    assert.deepEqual([...merged.entries()], [
-      ["a", "/new-a"],
-      ["b", null],
-    ]);
-  });
-
-  it("keeps prev path when resolved omits id", () => {
-    const prev = new Map<string, string | null>([["a", "/keep"]]);
-    const resolved = new Map<string, string | null>();
-    const merged = mergeCommittedThumbnailPaths(prev, resolved, ["a"]);
-    assert.equal(merged.get("a"), "/keep");
-  });
-
-  it("does not downgrade an existing cover path to null (#871)", () => {
-    const prev = new Map<string, string | null>([["a", "/cover"]]);
-    const resolved = new Map<string, string | null>([["a", null]]);
-    const merged = mergeCommittedThumbnailPaths(prev, resolved, ["a"]);
-    assert.equal(merged.get("a"), "/cover");
-  });
-});
-
-describe("mergeCommittedThumbnailStamps", () => {
-  it("merges and prunes stamps", () => {
-    const prev = new Map([
-      ["a", "old"],
-      ["gone", "x"],
-    ]);
-    const next = new Map([["a", "new"], ["b", "b"]]);
-    const merged = mergeCommittedThumbnailStamps(prev, next, ["a", "b"]);
-    assert.deepEqual([...merged.entries()], [
-      ["a", "new"],
-      ["b", "b"],
-    ]);
-  });
-});
-
 describe("coverPathsFromMaps / mapsFromCoverPaths", () => {
   it("round-trips non-null path+stamp pairs", () => {
-    const paths = new Map<string, string | null>([
-      ["a", "/a"],
-      ["b", null],
-    ]);
-    const stamps = new Map([
-      ["a", "s-a"],
-      ["b", "s-b"],
-    ]);
-    const sizes = new Map([
-      ["a", { width: 100, height: 80 }],
-      ["b", null],
-    ]);
-    const record = coverPathsFromMaps(paths, stamps, sizes);
+    const maps = coverMapsFromTriple(
+      new Map([
+        ["a", "/a"],
+        ["b", null],
+      ]),
+      new Map([
+        ["a", "s-a"],
+        ["b", "s-b"],
+      ]),
+      new Map([
+        ["a", { width: 100, height: 80 }],
+        ["b", null],
+      ]),
+    );
+    const record = coverPathsFromMaps(maps);
     assert.deepEqual(record, {
       a: { path: "/a", stamp: "s-a", width: 100, height: 80 },
     });
     const back = mapsFromCoverPaths(record);
     // Null covers are not warmed (#720 sticky-null residual).
-    assert.deepEqual([...back.thumbnailPaths.entries()], [["a", "/a"]]);
-    assert.deepEqual([...back.thumbnailStamps.entries()], [["a", "s-a"]]);
-    assert.deepEqual([...back.thumbnailSizes.entries()], [
+    assert.deepEqual([...back.paths.entries()], [["a", "/a"]]);
+    assert.deepEqual([...back.stamps.entries()], [["a", "s-a"]]);
+    assert.deepEqual([...back.sizes.entries()], [
       ["a", { width: 100, height: 80 }],
     ]);
   });
@@ -545,55 +330,19 @@ describe("coverPathsFromMaps / mapsFromCoverPaths", () => {
       a: { path: "/a", stamp: "s-a", width: 10, height: 10 },
       b: { path: null, stamp: "s-b" },
     });
-    assert.equal(back.thumbnailPaths.has("b"), false);
-    assert.equal(back.thumbnailStamps.has("b"), false);
-    assert.equal(back.thumbnailPaths.get("a"), "/a");
-    assert.deepEqual(back.thumbnailSizes.get("a"), { width: 10, height: 10 });
+    assert.equal(back.paths.has("b"), false);
+    assert.equal(back.stamps.has("b"), false);
+    assert.equal(back.paths.get("a"), "/a");
+    assert.deepEqual(back.sizes.get("a"), { width: 10, height: 10 });
   });
 
   it("skips path entries without stamps", () => {
-    const paths = new Map<string, string | null>([["a", "/a"]]);
-    const stamps = new Map<string, string>();
-    assert.deepEqual(coverPathsFromMaps(paths, stamps, new Map()), {});
-  });
-});
-
-describe("clearCommittedCoverEntry (#871)", () => {
-  it("drops one id so coverNeedsResolve fails open", () => {
-    const item = stubItem("a");
-    const paths = new Map<string, string | null>([["a", null]]);
-    const stamps = new Map([["a", itemCoverStamp(item)]]);
-    const sizes = new Map([["a", null]]);
-    assert.equal(coverNeedsResolve(item, paths, stamps, sizes), false);
-
-    const cleared = clearCommittedCoverEntry(paths, stamps, sizes, "a");
-    assert.equal(coverNeedsResolve(item, cleared.paths, cleared.stamps, cleared.sizes), true);
-    assert.equal(cleared.paths.has("a"), false);
-    assert.equal(cleared.stamps.has("a"), false);
-    assert.equal(cleared.sizes.has("a"), false);
-  });
-});
-
-describe("coverMapsForPersistence (#871)", () => {
-  it("omits null paths from cache-bound maps", () => {
-    const paths = new Map<string, string | null>([
-      ["a", "/a"],
-      ["b", null],
-    ]);
-    const stamps = new Map([
-      ["a", "s-a"],
-      ["b", "s-b"],
-    ]);
-    const sizes = new Map([
-      ["a", { width: 10, height: 10 }],
-      ["b", null],
-    ]);
-    const persisted = coverMapsForPersistence(paths, stamps, sizes);
-    assert.deepEqual([...persisted.thumbnailPaths.entries()], [["a", "/a"]]);
-    assert.deepEqual([...persisted.thumbnailStamps.entries()], [["a", "s-a"]]);
-    assert.deepEqual([...persisted.thumbnailSizes.entries()], [
-      ["a", { width: 10, height: 10 }],
-    ]);
+    const maps = coverMapsFromTriple(
+      new Map([["a", "/a"]]),
+      new Map(),
+      new Map(),
+    );
+    assert.deepEqual(coverPathsFromMaps(maps), {});
   });
 });
 
@@ -601,30 +350,42 @@ describe("attach race sticky null recovery (#871)", () => {
   it("upgrades terminal null to cover path without clearing first", () => {
     const itemT1 = stubItem("a", { updated_at: "2026-01-01T00:00:00.000Z" });
     const itemT2 = stubItem("a", { updated_at: "2026-01-02T00:00:00.000Z" });
-    const paths = new Map<string, string | null>([["a", null]]);
-    const stamps = new Map([["a", itemCoverStamp(itemT1)]]);
-    const sizes = new Map([["a", null]]);
-    assert.equal(
-      resolveDashboardGridThumbnailPath(itemT1, paths, stamps, sizes),
-      null,
+    let maps = coverMapsFromTriple(
+      new Map([["a", null]]),
+      new Map([["a", itemCoverStamp(itemT1)]]),
+      new Map([["a", null]]),
     );
+    assert.equal(coverMapsResolveForGrid(maps, itemT1).path, null);
 
-    // coverPatch writes a positive path over sticky null (no clear step).
-    paths.set("a", "/media/a/cover.webp");
-    stamps.set("a", itemCoverStamp(itemT2));
-    sizes.set("a", { width: 320, height: 240 });
-
+    maps = coverMapsUpsertPath(
+      maps,
+      "a",
+      "/media/a/cover.webp",
+      itemCoverStamp(itemT2),
+      { width: 320, height: 240 },
+    );
     assert.equal(
-      resolveDashboardGridThumbnailPath(itemT2, paths, stamps, sizes),
+      coverMapsResolveForGrid(maps, itemT2).path,
       "/media/a/cover.webp",
     );
   });
 
   it("merge keeps cover when a later flight resolves null", () => {
-    const prev = new Map<string, string | null>([["a", "/media/a/cover.webp"]]);
-    const resolved = new Map<string, string | null>([["a", null]]);
-    const merged = mergeCommittedThumbnailPaths(prev, resolved, ["a"]);
-    assert.equal(merged.get("a"), "/media/a/cover.webp");
+    const prev = coverMapsFromTriple(
+      new Map([["a", "/media/a/cover.webp"]]),
+      new Map([["a", "s"]]),
+      new Map([["a", { width: 1, height: 1 }]]),
+    );
+    const merged = coverMapsMerge(
+      prev,
+      {
+        paths: new Map([["a", null]]),
+        stamps: new Map(),
+        sizes: new Map(),
+      },
+      ["a"],
+    );
+    assert.equal(merged.paths.get("a"), "/media/a/cover.webp");
   });
 });
 
@@ -654,8 +415,8 @@ describe("snapshotToCacheEntry", () => {
     assert.equal(entry.bodyStamps.get("a"), "42");
     assert.equal(entry.streamEndOffset, 1);
     assert.equal(entry.totalCount, 5);
-    assert.equal(entry.thumbnailPaths.get("a"), "/cover-a");
-    assert.equal(entry.thumbnailStamps.get("a"), stamp);
+    assert.equal(entry.covers.paths.get("a"), "/cover-a");
+    assert.equal(entry.covers.stamps.get("a"), stamp);
     assert.equal(typeof entry.updatedAt, "number");
   });
 
@@ -676,8 +437,8 @@ describe("snapshotToCacheEntry", () => {
       cover_paths: {},
       saved_at: "2026-01-01T00:00:00.000Z",
     });
-    assert.equal(entry.thumbnailPaths.size, 0);
-    assert.equal(entry.thumbnailStamps.size, 0);
+    assert.equal(entry.covers.paths.size, 0);
+    assert.equal(entry.covers.stamps.size, 0);
     assert.equal(entry.bodyStamps.size, 0);
   });
 });
@@ -754,15 +515,17 @@ describe("pruneItemIdFromDashboardLists", () => {
         ["a", "1"],
         ["b", "2"],
       ]),
-      thumbnailPaths: new Map<string, string | null>([
+      covers: coverMapsFromTriple(
+        new Map<string, string | null>([
         ["a", "/a"],
         ["b", null],
       ]),
-      thumbnailStamps: new Map([
+        new Map([
         ["a", "sa"],
         ["b", "sb"],
       ]),
-      thumbnailSizes: new Map(),
+        new Map(),
+      ),
       streamEndOffset: 2,
       totalCount: 2,
       committedItems: [stubItem("a"), stubItem("b")],
@@ -785,17 +548,19 @@ describe("pruneItemIdFromDashboardLists", () => {
         ["b", "2"],
         ["c", "3"],
       ]),
-      thumbnailPaths: new Map<string, string | null>([
+      covers: coverMapsFromTriple(
+        new Map<string, string | null>([
         ["a", "/a"],
         ["b", "/b"],
         ["c", null],
       ]),
-      thumbnailStamps: new Map([
+        new Map([
         ["a", "sa"],
         ["b", "sb"],
         ["c", "sc"],
       ]),
-      thumbnailSizes: new Map(),
+        new Map(),
+      ),
       streamEndOffset: 3,
       totalCount: 10,
       committedItems: [stubItem("a"), stubItem("b"), stubItem("c")],
@@ -809,8 +574,8 @@ describe("pruneItemIdFromDashboardLists", () => {
     assert.deepEqual(result.itemIds, ["a", "c"]);
     assert.equal(result.itemsById.has("b"), false);
     assert.equal(result.bodyStamps.has("b"), false);
-    assert.equal(result.thumbnailPaths.has("b"), false);
-    assert.equal(result.thumbnailStamps.has("b"), false);
+    assert.equal(result.covers.paths.has("b"), false);
+    assert.equal(result.covers.stamps.has("b"), false);
     assert.equal(result.streamEndOffset, 2);
     assert.equal(result.totalCount, 9);
     assert.deepEqual(
@@ -823,9 +588,11 @@ describe("pruneItemIdFromDashboardLists", () => {
       itemIds: result.itemIds,
       itemsById: result.itemsById,
       bodyStamps: result.bodyStamps,
-      thumbnailPaths: result.thumbnailPaths,
-      thumbnailStamps: result.thumbnailStamps,
-      thumbnailSizes: new Map(),
+      covers: coverMapsFromTriple(
+        result.covers.paths,
+        result.covers.stamps,
+        new Map(),
+      ),
       streamEndOffset: result.streamEndOffset,
       totalCount: result.totalCount,
       committedItems: result.committedItems,
@@ -842,15 +609,17 @@ describe("pruneItemIdFromDashboardLists", () => {
         ["a", "1"],
         ["orphan", "orphan-body"],
       ]),
-      thumbnailPaths: new Map<string, string | null>([
+      covers: coverMapsFromTriple(
+        new Map<string, string | null>([
         ["a", "/a"],
         ["orphan", "/orphan"],
       ]),
-      thumbnailStamps: new Map([
+        new Map([
         ["a", "sa"],
         ["orphan", "so"],
       ]),
-      thumbnailSizes: new Map(),
+        new Map(),
+      ),
       streamEndOffset: 1,
       totalCount: 1,
       committedItems: [stubItem("a"), stubItem("orphan")],
@@ -865,8 +634,8 @@ describe("pruneItemIdFromDashboardLists", () => {
     assert.equal(result.totalCount, 1);
     assert.equal(result.itemsById.has("orphan"), false);
     assert.equal(result.bodyStamps.has("orphan"), false);
-    assert.equal(result.thumbnailPaths.has("orphan"), false);
-    assert.equal(result.thumbnailStamps.has("orphan"), false);
+    assert.equal(result.covers.paths.has("orphan"), false);
+    assert.equal(result.covers.stamps.has("orphan"), false);
     assert.deepEqual(
       result.committedItems.map((item) => item.id),
       ["a"],
@@ -905,14 +674,8 @@ function recordingSnapshotSink(): {
     setCommittedHasMore: (hasMore) => {
       calls.setCommittedHasMore = hasMore;
     },
-    setCommittedThumbnailPaths: (paths) => {
-      calls.setCommittedThumbnailPaths = paths;
-    },
-    setCommittedThumbnailStamps: (stamps) => {
-      calls.setCommittedThumbnailStamps = stamps;
-    },
-    setCommittedThumbnailSizes: (sizes) => {
-      calls.setCommittedThumbnailSizes = sizes;
+    setCoverMaps: (maps) => {
+      calls.setCoverMaps = maps;
     },
   };
   return { sink, calls };
@@ -929,9 +692,11 @@ describe("applyDashboardListSnapshot", () => {
       totalCount: 3,
       committedItems: [item],
       committedTotalCount: 3,
-      thumbnailPaths: new Map([["a", "/a"]]),
-      thumbnailStamps: new Map([["a", "ta"]]),
-      thumbnailSizes: new Map(),
+      covers: coverMapsFromTriple(
+        new Map([["a", "/a"]]),
+        new Map([["a", "ta"]]),
+        new Map(),
+      ),
     };
     const { sink, calls } = recordingSnapshotSink();
     applyDashboardListSnapshot(snapshot, sink);
@@ -954,13 +719,15 @@ describe("applyDashboardListSnapshot", () => {
     assert.equal(calls.setCommittedTotalCount, 3);
     assert.equal(calls.setCommittedHasMore, true);
     assert.equal(
-      (calls.setCommittedThumbnailPaths as Map<string, string | null>).get(
+      (calls.setCoverMaps as import("./cover-maps.ts").CoverMaps).paths.get(
         "a",
       ),
       "/a",
     );
     assert.equal(
-      (calls.setCommittedThumbnailStamps as Map<string, string>).get("a"),
+      (calls.setCoverMaps as import("./cover-maps.ts").CoverMaps).stamps.get(
+        "a",
+      ),
       "ta",
     );
   });
@@ -974,9 +741,11 @@ describe("applyDashboardListSnapshot", () => {
       totalCount: 0,
       committedItems: [],
       committedTotalCount: 0,
-      thumbnailPaths: new Map(),
-      thumbnailStamps: new Map(),
-      thumbnailSizes: new Map(),
+      covers: coverMapsFromTriple(
+        new Map(),
+        new Map(),
+        new Map(),
+      ),
     };
     const { sink, calls } = recordingSnapshotSink();
     applyDashboardListSnapshot(snapshot, sink);

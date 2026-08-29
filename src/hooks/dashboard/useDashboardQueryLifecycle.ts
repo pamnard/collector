@@ -9,11 +9,12 @@ import type { DashboardItemSort, VaultIndexSyncStatus } from "@collector/api";
 import {
   bodyStampsForOrderedIds,
   bodyStampsFromMap,
-  coverMapsForPersistence,
-  coverPathsFromMaps,
   orderedIds,
   snapshotToCacheEntry,
 } from "../../lib/dashboard-commit";
+import {
+  coverMapsPersistenceViews,
+} from "../../lib/cover-maps";
 import {
   createThrottledPublisher,
   mapIndexQueryResult,
@@ -101,9 +102,6 @@ export function useDashboardQueryLifecycle(
     committedBodyStampsRef,
     totalCountRef,
     committedItemsRef,
-    committedThumbnailPathsRef,
-    committedThumbnailStampsRef,
-    committedThumbnailSizesRef,
     committedTotalCountRef,
     queryKeyRef,
     streamAbortRef,
@@ -112,6 +110,7 @@ export function useDashboardQueryLifecycle(
     filterRef,
     searchQueryRef,
     sortRef,
+    covers,
     setItemsById,
     setTotalCount,
     setIsLoading,
@@ -492,11 +491,9 @@ export function useDashboardQueryLifecycle(
 
     persistTimerRef.current = setTimeout(() => {
       const session = getUiSession();
-      const coverPaths = coverPathsFromMaps(
-        committedThumbnailPathsRef.current,
-        committedThumbnailStampsRef.current,
-        committedThumbnailSizesRef.current,
-      );
+      const maps = covers.getMaps();
+      const { maps: persisted, record: coverPaths } =
+        coverMapsPersistenceViews(maps);
       void session.snapshot.persistDashboardSnapshot(
         session.snapshot.buildDashboardSnapshot({
           vaultId,
@@ -519,11 +516,7 @@ export function useDashboardQueryLifecycle(
           bodyStamps: bodyStampsRef.current,
           streamEndOffset,
           totalCount,
-          ...coverMapsForPersistence(
-            committedThumbnailPathsRef.current,
-            committedThumbnailStampsRef.current,
-            committedThumbnailSizesRef.current,
-          ),
+          covers: persisted,
         }),
       );
     }, 400);
@@ -534,6 +527,7 @@ export function useDashboardQueryLifecycle(
       }
     };
   }, [
+    covers,
     filterKey,
     isLoading,
     itemIds,
