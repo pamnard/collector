@@ -22,8 +22,7 @@ function isEnoent(error: unknown): boolean {
   return (
     typeof error === "object" &&
     error !== null &&
-    "code" in error &&
-    (error as { code: unknown }).code === "ENOENT"
+    (error as NodeJS.ErrnoException).code === "ENOENT"
   );
 }
 
@@ -48,15 +47,11 @@ export function createGenerateCoverHandler(deps: {
     const vaultPath = await deps.resolveVaultPath(vaultId);
     const ctx = deps.getContext();
 
-    // Source may be gone after rapid multi-delete (#875). Quiet success — not AlertStack.
-    if (!(await ctx.fs.exists(absolutePath))) {
-      return { status: "ok" };
-    }
-
     let data: Uint8Array;
     try {
       data = await ctx.fs.readBinary(absolutePath);
     } catch (error) {
+      // Rapid multi-delete can remove the candidate before this job runs (#875).
       if (isEnoent(error)) {
         return { status: "ok" };
       }

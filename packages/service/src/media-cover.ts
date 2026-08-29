@@ -71,8 +71,8 @@ export interface MediaCoverServiceDeps {
   /** Wait until generateCover leaves pending/running. */
   waitForCoverJob: (jobId: string) => Promise<TerminalJobStatus>;
   /**
-   * Drop pending generateCover jobs for an item when cover is cleared or
-   * preferred cover is about to be replaced (#875).
+   * Cancel pending generateCover jobs when the item has no cover candidate left
+   * (#875). Preferred-cover replace cancels inside enqueueGenerateCover.
    */
   cancelPendingGenerateCoversForItem: (
     vaultId: string,

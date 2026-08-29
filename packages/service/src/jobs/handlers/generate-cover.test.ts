@@ -47,7 +47,6 @@ const samplePayload = {
 describe("generateCover job (#636 / #640)", () => {
   const dirs: string[] = [];
   const queues: JobQueue[] = [];
-  const exists = vi.fn(async () => true);
   const readBinary = vi.fn(async () => new Uint8Array([1, 2, 3]));
   const resolveVaultPath = vi.fn(async () => "/vault");
   const generateCoverFromMedia = vi.fn(
@@ -63,8 +62,6 @@ describe("generateCover job (#636 / #640)", () => {
   beforeEach(() => {
     applyItemCover.mockReset();
     applyItemCover.mockResolvedValue(undefined);
-    exists.mockReset();
-    exists.mockResolvedValue(true);
     readBinary.mockClear();
     readBinary.mockResolvedValue(new Uint8Array([1, 2, 3]));
     resolveVaultPath.mockClear();
@@ -86,7 +83,7 @@ describe("generateCover job (#636 / #640)", () => {
 
   function handler() {
     return createGenerateCoverHandler({
-      getContext: () => ({ fs: { exists, readBinary } }) as never,
+      getContext: () => ({ fs: { readBinary } }) as never,
       resolveVaultPath,
       generateCoverFromMedia,
       invalidateThumbnailPathCache,
@@ -111,9 +108,7 @@ describe("generateCover job (#636 / #640)", () => {
       "image",
     );
     expect(applyItemCover).toHaveBeenCalledWith(
-      expect.objectContaining({
-        fs: expect.objectContaining({ readBinary }),
-      }),
+      expect.objectContaining({ fs: { readBinary } }),
       "/vault",
       "vault-1",
       "note.md",
@@ -149,8 +144,11 @@ describe("generateCover job (#636 / #640)", () => {
     expect(onVaultPresentationChanged).not.toHaveBeenCalled();
   });
 
-  it("succeeds quietly when the source file was deleted before the job ran (#875)", async () => {
-    exists.mockResolvedValueOnce(false);
+  it("succeeds quietly when readBinary hits ENOENT for a deleted source (#875)", async () => {
+    const enoent = Object.assign(new Error("ENOENT: no such file or directory"), {
+      code: "ENOENT",
+    });
+    readBinary.mockRejectedValueOnce(enoent);
 
     await expect(
       handler()({
@@ -161,31 +159,10 @@ describe("generateCover job (#636 / #640)", () => {
       }),
     ).resolves.toEqual({ status: "ok" });
 
-    expect(exists).toHaveBeenCalledWith("/vault/note.media/a.png");
-    expect(readBinary).not.toHaveBeenCalled();
+    expect(readBinary).toHaveBeenCalledWith("/vault/note.media/a.png");
     expect(generateCoverFromMedia).not.toHaveBeenCalled();
     expect(applyItemCover).not.toHaveBeenCalled();
     expect(invalidateThumbnailPathCache).not.toHaveBeenCalled();
-    expect(onVaultPresentationChanged).not.toHaveBeenCalled();
-  });
-
-  it("succeeds quietly when readBinary races to ENOENT after exists (#875)", async () => {
-    const enoent = Object.assign(new Error("ENOENT: no such file or directory"), {
-      code: "ENOENT",
-    });
-    readBinary.mockRejectedValueOnce(enoent);
-
-    await expect(
-      handler()({
-        id: "job-race",
-        type: "generateCover",
-        attempts: 0,
-        payload: samplePayload,
-      }),
-    ).resolves.toEqual({ status: "ok" });
-
-    expect(generateCoverFromMedia).not.toHaveBeenCalled();
-    expect(applyItemCover).not.toHaveBeenCalled();
     expect(onVaultPresentationChanged).not.toHaveBeenCalled();
   });
 
