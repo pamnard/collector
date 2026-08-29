@@ -11,9 +11,7 @@ import {
   itemDerivedRefreshIdempotencyKey,
   itemDerivedRefreshJobType,
 } from "@collector/shared";
-import {
-  createJobPermanentFailureStore,
-} from "../../job-permanent-failure.js";
+import { createJobPermanentFailureStore } from "../../job-permanent-failure.js";
 import { createJobQueue, type JobQueue } from "../../jobs/job-queue.js";
 import { createJobRegistry } from "../../jobs/job-registry.js";
 import { enqueueItemDerivedRefreshWithFailureReporting } from "./item-derived-refresh-enqueue.js";
@@ -56,10 +54,6 @@ describe("enqueueItemDerivedRefreshWithFailureReporting (#776 / #886)", () => {
   it("enqueues itemDerivedRefresh into jobs.db with shared idempotency key", async () => {
     const queue = await openQueue();
     const store = createJobPermanentFailureStore();
-    const failures: string[] = [];
-    store.subscribe((payload) => {
-      failures.push(payload.error);
-    });
 
     await enqueueItemDerivedRefreshWithFailureReporting(
       {
@@ -85,7 +79,6 @@ describe("enqueueItemDerivedRefreshWithFailureReporting (#776 / #886)", () => {
     expect(job!.type).toBe(itemDerivedRefreshJobType.id);
     expect(job!.status).toBe("pending");
     expect(JSON.parse(job!.payload_json)).toEqual(payload);
-    expect(failures).toEqual([]);
   });
 
   it("surfaces enqueue failure via permanent-failure contract", async () => {

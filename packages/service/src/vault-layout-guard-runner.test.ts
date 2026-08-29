@@ -62,8 +62,9 @@ describe("createVaultLayoutGuardRunner (#886)", () => {
     const inbox = await fs.readDir(joinSegments(path, INBOX_FOLDER_NAME));
     const moved = inbox.filter((n) => isUuidMarkdownBasename(n));
     expect(moved.length).toBeGreaterThanOrEqual(1);
-    expect((await inspectVaultLayout(fs, path)).ok).toBe(true);
-    expect((await inspectVaultLayout(fs, path)).rootMarkdown).toEqual([]);
+    const after = await inspectVaultLayout(fs, path);
+    expect(after.ok).toBe(true);
+    expect(after.rootMarkdown).toEqual([]);
     runner.dispose();
   });
 
@@ -98,7 +99,7 @@ describe("createVaultLayoutGuardRunner (#886)", () => {
 
     const runner = createVaultLayoutGuardRunner({
       getContext: () => ctx,
-      // Real remediates — gate only to observe coalesce, not to fake layout work.
+      // Gate after real remediate so coalesce timing is observable.
       remediate: async (fileSystem, vaultPath) => {
         const n = remediateCount;
         remediateCount += 1;
@@ -119,7 +120,6 @@ describe("createVaultLayoutGuardRunner (#886)", () => {
     });
     expect(await fs.exists(joinSegments(path, "a.md"))).toBe(false);
 
-    // Second mess while first run is gated — must not start a parallel remediate.
     await fs.writeText(joinSegments(path, "b.md"), "---\ntitle: B\n---\n");
     runner.schedule(meta.id, path);
     expect(remediateCount).toBe(1);

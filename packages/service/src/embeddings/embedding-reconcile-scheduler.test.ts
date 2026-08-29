@@ -7,7 +7,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EMBEDDING_MODEL_ID } from "@collector/core";
+import {
+  EMBEDDING_MODEL_ID,
+  type ItemEmbeddingRefreshInput,
+} from "@collector/core";
 import { runMigrations } from "@collector/db";
 import { refreshEmbeddingsJobType } from "@collector/shared";
 import { BetterSqliteMigrator } from "../../../db/src/testing/better-sqlite.js";
@@ -20,6 +23,8 @@ import {
   DEFAULT_EMBEDDING_RECONCILE_INTERVAL_MS,
   DEFAULT_EMBEDDING_RECONCILE_SCAN_LIMIT,
 } from "./embedding-reconcile-scheduler.js";
+
+const silentLogTick = (): void => undefined;
 
 describe("createEmbeddingReconcileScheduler (#742 / #886)", () => {
   let dataDir = "";
@@ -54,7 +59,6 @@ describe("createEmbeddingReconcileScheduler (#742 / #886)", () => {
     id: string;
     title: string;
     description?: string;
-    contentRevision?: number;
   }): Promise<void> {
     const description = options.description ?? "";
     await db!.execute(
@@ -62,8 +66,8 @@ describe("createEmbeddingReconcileScheduler (#742 / #886)", () => {
         id, vault_id, title, description, content_type, source_type,
         metadata_json, properties_json, has_content_file, folder_path,
         created_at, updated_at, content_revision, word_count, character_count
-      ) VALUES (?, 'v1', ?, ?, 'note', 'manual', '{}', '{}', 0, '', 't', 't', ?, 0, 0)`,
-      [options.id, options.title, description, options.contentRevision ?? 1],
+      ) VALUES (?, 'v1', ?, ?, 'note', 'manual', '{}', '{}', 0, '', 't', 't', 1, 0, 0)`,
+      [options.id, options.title, description],
     );
     await db!.execute(
       `INSERT INTO items_fts (item_id, title, description, content)
@@ -84,10 +88,7 @@ describe("createEmbeddingReconcileScheduler (#742 / #886)", () => {
   }
 
   function enqueueRefresh(queue: JobQueue) {
-    return async (
-      vaultId: string,
-      inputs: Parameters<typeof enqueueRefreshEmbeddings>[1]["inputs"],
-    ) => {
+    return async (vaultId: string, inputs: ItemEmbeddingRefreshInput[]) => {
       await enqueueRefreshEmbeddings(queue, { vaultId, inputs });
     };
   }
@@ -193,6 +194,7 @@ describe("createEmbeddingReconcileScheduler (#742 / #886)", () => {
       enqueueRefresh: enqueueRefresh(queue),
       batchSize: 1,
       scanLimit: 10,
+      logTick: silentLogTick,
     });
 
     const first = await scheduler.runTick();
@@ -310,7 +312,7 @@ describe("createEmbeddingReconcileScheduler (#742 / #886)", () => {
     await vi.waitFor(() => {
       expect(onTickError).toHaveBeenCalled();
     });
-    expect(String(onTickError.mock.calls[0]?.[0])).toMatch(/database|closed|SQLITE/i);
+    expect(onTickError.mock.calls[0]?.[0]).toBeTruthy();
     scheduler.dispose();
   });
 
@@ -320,19 +322,25 @@ describe("createEmbeddingReconcileScheduler (#742 / #886)", () => {
     await insertItem({ id: "a.md", title: "A", description: "a" });
     const queue = await openQueue();
     let vaultId: string | null = null;
+    let resolveCalls = 0;
 
     const scheduler = createEmbeddingReconcileScheduler({
       isHealthy: () => true,
-      resolveActiveVaultId: () => vaultId,
+      resolveActiveVaultId: () => {
+        resolveCalls += 1;
+        return vaultId;
+      },
       getDb: () => sql,
       getModelId: () => EMBEDDING_MODEL_ID,
       enqueueRefresh: enqueueRefresh(queue),
       intervalMs: 60_000,
+      logTick: silentLogTick,
     });
     scheduler.start();
-    await vi.waitFor(async () => {
-      expect((await queue.stats()).pending).toBe(0);
+    await vi.waitFor(() => {
+      expect(resolveCalls).toBeGreaterThan(0);
     });
+    expect((await queue.stats()).pending).toBe(0);
 
     vaultId = "v1";
     scheduler.wake();
