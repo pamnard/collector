@@ -3,6 +3,11 @@ import { describe, it } from "node:test";
 import type { ItemFile } from "@collector/shared";
 import { itemCoverStamp } from "./dashboard-commit.ts";
 import {
+  coverMapsFromTriple,
+  emptyCoverMaps,
+  type CoverMaps,
+} from "./cover-maps.ts";
+import {
   runCoverPathFlight,
   type CoverFlightSlot,
 } from "./dashboard-cover-flight.ts";
@@ -28,9 +33,11 @@ describe("runCoverPathFlight", () => {
   it("returns immediately when nothing needs resolve", async () => {
     const item = stubItem("a");
     const stamp = itemCoverStamp(item);
-    let paths = new Map<string, string | null>([["a", "/a"]]);
-    let stamps = new Map<string, string>([["a", stamp]]);
-    let sizes = new Map([["a", { width: 10, height: 10 }]]);
+    let maps: CoverMaps = coverMapsFromTriple(
+      new Map([["a", "/a"]]),
+      new Map([["a", stamp]]),
+      new Map([["a", { width: 10, height: 10 }]]),
+    );
     let resolveCalls = 0;
     let flight: CoverFlightSlot = null;
 
@@ -39,13 +46,9 @@ describe("runCoverPathFlight", () => {
       getRequestVersion: () => 1,
       orderedItems: [item],
       getOrderedIds: () => ["a"],
-      getPaths: () => paths,
-      getStamps: () => stamps,
-      getSizes: () => sizes,
-      commit: (nextPaths, nextStamps, nextSizes) => {
-        paths = nextPaths;
-        stamps = nextStamps;
-        sizes = nextSizes;
+      getMaps: () => maps,
+      commit: (next) => {
+        maps = next;
       },
       getFlight: () => flight,
       setFlight: (next) => {
@@ -63,9 +66,11 @@ describe("runCoverPathFlight", () => {
   it("re-opens sticky null holes so disk cover can win (#871)", async () => {
     const item = stubItem("a", { thumbnail: null });
     const stamp = itemCoverStamp(item);
-    let paths = new Map<string, string | null>([["a", null]]);
-    let stamps = new Map<string, string>([["a", stamp]]);
-    let sizes = new Map([["a", null]]);
+    let maps: CoverMaps = coverMapsFromTriple(
+      new Map([["a", null]]),
+      new Map([["a", stamp]]),
+      new Map([["a", null]]),
+    );
     let flight: CoverFlightSlot = null;
 
     await runCoverPathFlight({
@@ -73,13 +78,9 @@ describe("runCoverPathFlight", () => {
       getRequestVersion: () => 1,
       orderedItems: [item],
       getOrderedIds: () => ["a"],
-      getPaths: () => paths,
-      getStamps: () => stamps,
-      getSizes: () => sizes,
-      commit: (nextPaths, nextStamps, nextSizes) => {
-        paths = nextPaths;
-        stamps = nextStamps;
-        sizes = nextSizes;
+      getMaps: () => maps,
+      commit: (next) => {
+        maps = next;
       },
       getFlight: () => flight,
       setFlight: (next) => {
@@ -98,14 +99,12 @@ describe("runCoverPathFlight", () => {
       },
     });
 
-    assert.equal(paths.get("a"), "/media/a/cover.webp");
+    assert.equal(maps.paths.get("a"), "/media/a/cover.webp");
   });
 
   it("resolves covers and commits via batcher", async () => {
     const item = stubItem("a");
-    let paths = new Map<string, string | null>();
-    let stamps = new Map<string, string>();
-    let sizes = new Map();
+    let maps: CoverMaps = emptyCoverMaps();
     let flight: CoverFlightSlot = null;
     const scheduled: Array<() => void> = [];
 
@@ -114,13 +113,9 @@ describe("runCoverPathFlight", () => {
       getRequestVersion: () => 1,
       orderedItems: [item],
       getOrderedIds: () => ["a"],
-      getPaths: () => paths,
-      getStamps: () => stamps,
-      getSizes: () => sizes,
-      commit: (nextPaths, nextStamps, nextSizes) => {
-        paths = nextPaths;
-        stamps = nextStamps;
-        sizes = nextSizes;
+      getMaps: () => maps,
+      commit: (next) => {
+        maps = next;
       },
       getFlight: () => flight,
       setFlight: (next) => {
@@ -141,16 +136,14 @@ describe("runCoverPathFlight", () => {
       },
     });
 
-    assert.equal(paths.get("a"), "/cover-a");
-    assert.equal(stamps.get("a"), itemCoverStamp(item));
+    assert.equal(maps.paths.get("a"), "/cover-a");
+    assert.equal(maps.stamps.get("a"), itemCoverStamp(item));
     assert.equal(flight, null);
   });
 
   it("same-version waiters share one in-flight promise", async () => {
     const item = stubItem("a");
-    let paths = new Map<string, string | null>();
-    let stamps = new Map<string, string>();
-    let sizes = new Map();
+    let maps: CoverMaps = emptyCoverMaps();
     let flight: CoverFlightSlot = null;
     let resolveCalls = 0;
     let releaseResolve: (() => void) | null = null;
@@ -165,13 +158,9 @@ describe("runCoverPathFlight", () => {
       getRequestVersion: () => 1,
       orderedItems: [item],
       getOrderedIds: () => ["a"],
-      getPaths: () => paths,
-      getStamps: () => stamps,
-      getSizes: () => sizes,
-      commit: (nextPaths, nextStamps, nextSizes) => {
-        paths = nextPaths;
-        stamps = nextStamps;
-        sizes = nextSizes;
+      getMaps: () => maps,
+      commit: (next) => {
+        maps = next;
       },
       getFlight: () => flight,
       setFlight: (next) => {
@@ -197,13 +186,9 @@ describe("runCoverPathFlight", () => {
       getRequestVersion: () => 1,
       orderedItems: [item],
       getOrderedIds: () => ["a"],
-      getPaths: () => paths,
-      getStamps: () => stamps,
-      getSizes: () => sizes,
-      commit: (nextPaths, nextStamps, nextSizes) => {
-        paths = nextPaths;
-        stamps = nextStamps;
-        sizes = nextSizes;
+      getMaps: () => maps,
+      commit: (next) => {
+        maps = next;
       },
       getFlight: () => flight,
       setFlight: (next) => {
@@ -219,15 +204,13 @@ describe("runCoverPathFlight", () => {
     await Promise.all([first, second]);
 
     assert.equal(resolveCalls, 1);
-    assert.equal(paths.get("a"), "/shared");
+    assert.equal(maps.paths.get("a"), "/shared");
   });
 
   it("stops when requestVersion becomes stale", async () => {
     const item = stubItem("a");
     let version = 1;
-    let paths = new Map<string, string | null>();
-    let stamps = new Map<string, string>();
-    let sizes = new Map();
+    let maps: CoverMaps = emptyCoverMaps();
     let flight: CoverFlightSlot = null;
     let resolveCalls = 0;
 
@@ -236,13 +219,9 @@ describe("runCoverPathFlight", () => {
       getRequestVersion: () => version,
       orderedItems: [item],
       getOrderedIds: () => ["a"],
-      getPaths: () => paths,
-      getStamps: () => stamps,
-      getSizes: () => sizes,
-      commit: (nextPaths, nextStamps, nextSizes) => {
-        paths = nextPaths;
-        stamps = nextStamps;
-        sizes = nextSizes;
+      getMaps: () => maps,
+      commit: (next) => {
+        maps = next;
       },
       getFlight: () => flight,
       setFlight: (next) => {
@@ -254,10 +233,6 @@ describe("runCoverPathFlight", () => {
       },
     });
 
-    // Stale after start of loop before resolve — or mid-flight.
-    // If resolve still ran once from first iteration, that is ok; maps stay empty
-    // if commit was gated. Here version flips before resolve returns so batcher
-    // may skip; assert no second resolve and empty or non-crashing end.
     assert.ok(resolveCalls <= 1);
     assert.equal(flight, null);
   });

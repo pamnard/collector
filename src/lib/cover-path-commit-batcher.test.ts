@@ -1,13 +1,19 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createCoverPathCommitBatcher } from "./cover-path-commit-batcher.ts";
+import {
+  coverMapsFromTriple,
+  type CoverMaps,
+} from "./cover-maps.ts";
 import type { ItemThumbnailPixelSize } from "@collector/api";
 
 describe("createCoverPathCommitBatcher", () => {
   it("coalesces N enqueue into one commit on flush", () => {
-    let paths = new Map<string, string | null>();
-    let stamps = new Map<string, string>();
-    let sizes = new Map<string, ItemThumbnailPixelSize | null>();
+    let maps: CoverMaps = coverMapsFromTriple(
+      new Map(),
+      new Map(),
+      new Map(),
+    );
     let commits = 0;
     const scheduled: Array<() => void> = [];
 
@@ -16,14 +22,10 @@ describe("createCoverPathCommitBatcher", () => {
       getRequestVersion: () => 1,
       isAborted: () => false,
       getOrderedIds: () => ["a", "b", "c"],
-      getPaths: () => paths,
-      getStamps: () => stamps,
-      getSizes: () => sizes,
-      commit: (nextPaths, nextStamps, nextSizes) => {
+      getMaps: () => maps,
+      commit: (next) => {
         commits += 1;
-        paths = nextPaths;
-        stamps = nextStamps;
-        sizes = nextSizes;
+        maps = next;
       },
       scheduleFlush: (flush) => {
         scheduled.push(flush);
@@ -45,17 +47,51 @@ describe("createCoverPathCommitBatcher", () => {
     batcher.flush();
     assert.equal(commits, 1);
     assert.equal(scheduled.length, 0);
-    assert.equal(paths.get("a"), "/a");
-    assert.equal(paths.get("b"), "/b");
-    assert.equal(paths.get("c"), "/c");
-    assert.equal(stamps.get("a"), "ta");
-    assert.deepEqual(sizes.get("a"), { width: 10, height: 10 });
+    assert.equal(maps.paths.get("a"), "/a");
+    assert.equal(maps.paths.get("b"), "/b");
+    assert.equal(maps.paths.get("c"), "/c");
+    assert.equal(maps.stamps.get("a"), "ta");
+    assert.deepEqual(maps.sizes.get("a"), { width: 10, height: 10 });
+  });
+
+  it("no-op scheduleFlush still commits on final flush (blockOnCovers)", () => {
+    let maps: CoverMaps = coverMapsFromTriple(
+      new Map(),
+      new Map(),
+      new Map(),
+    );
+    let commits = 0;
+
+    const batcher = createCoverPathCommitBatcher({
+      requestVersion: 1,
+      getRequestVersion: () => 1,
+      isAborted: () => false,
+      getOrderedIds: () => ["a", "b"],
+      getMaps: () => maps,
+      commit: (next) => {
+        commits += 1;
+        maps = next;
+      },
+      // Same as CoverController blockOnCovers: never auto-flush.
+      scheduleFlush: () => () => {},
+    });
+
+    batcher.enqueue("a", "/a", "ta", { width: 10, height: 10 });
+    batcher.enqueue("b", "/b", "tb", { width: 20, height: 20 });
+    assert.equal(commits, 0);
+
+    batcher.flush();
+    assert.equal(commits, 1);
+    assert.equal(maps.paths.get("a"), "/a");
+    assert.equal(maps.paths.get("b"), "/b");
   });
 
   it("cancel flushes pending when request is still live, then rejects further work", () => {
-    let paths = new Map<string, string | null>();
-    let stamps = new Map<string, string>();
-    let sizes = new Map<string, ItemThumbnailPixelSize | null>();
+    let maps: CoverMaps = coverMapsFromTriple(
+      new Map(),
+      new Map(),
+      new Map(),
+    );
     let commits = 0;
 
     const batcher = createCoverPathCommitBatcher({
@@ -63,14 +99,10 @@ describe("createCoverPathCommitBatcher", () => {
       getRequestVersion: () => 1,
       isAborted: () => false,
       getOrderedIds: () => ["a"],
-      getPaths: () => paths,
-      getStamps: () => stamps,
-      getSizes: () => sizes,
-      commit: (nextPaths, nextStamps, nextSizes) => {
+      getMaps: () => maps,
+      commit: (next) => {
         commits += 1;
-        paths = nextPaths;
-        stamps = nextStamps;
-        sizes = nextSizes;
+        maps = next;
       },
       scheduleFlush: () => () => {},
     });
@@ -78,32 +110,32 @@ describe("createCoverPathCommitBatcher", () => {
     batcher.enqueue("a", "/a", "ta", { width: 1, height: 1 });
     batcher.cancel();
     assert.equal(commits, 1);
-    assert.equal(paths.get("a"), "/a");
-    batcher.flush();
+    assert.equal(maps.paths.get("a"), "/a");
+
     batcher.enqueue("a", "/a2", "ta2", { width: 2, height: 2 });
+    batcher.flush();
     assert.equal(commits, 1);
+    assert.equal(maps.paths.get("a"), "/a");
   });
 
   it("cancel drops pending when requestVersion is already stale", () => {
-    let version = 1;
-    let paths = new Map<string, string | null>();
-    let stamps = new Map<string, string>();
-    let sizes = new Map<string, ItemThumbnailPixelSize | null>();
+    let maps: CoverMaps = coverMapsFromTriple(
+      new Map(),
+      new Map(),
+      new Map(),
+    );
     let commits = 0;
+    let version = 1;
 
     const batcher = createCoverPathCommitBatcher({
       requestVersion: 1,
       getRequestVersion: () => version,
       isAborted: () => false,
       getOrderedIds: () => ["a"],
-      getPaths: () => paths,
-      getStamps: () => stamps,
-      getSizes: () => sizes,
-      commit: (nextPaths, nextStamps, nextSizes) => {
+      getMaps: () => maps,
+      commit: (next) => {
         commits += 1;
-        paths = nextPaths;
-        stamps = nextStamps;
-        sizes = nextSizes;
+        maps = next;
       },
       scheduleFlush: () => () => {},
     });
@@ -112,15 +144,17 @@ describe("createCoverPathCommitBatcher", () => {
     version = 2;
     batcher.cancel();
     assert.equal(commits, 0);
-    assert.equal(paths.size, 0);
+    assert.equal(maps.paths.size, 0);
   });
 
   it("does not enqueue null over an existing cover path (#871)", () => {
-    let paths = new Map<string, string | null>([["a", "/cover"]]);
-    let stamps = new Map<string, string>([["a", "old"]]);
-    let sizes = new Map<string, ItemThumbnailPixelSize | null>([
-      ["a", { width: 10, height: 10 }],
-    ]);
+    let maps: CoverMaps = coverMapsFromTriple(
+      new Map([["a", "/a"]]),
+      new Map([["a", "ta"]]),
+      new Map<string, ItemThumbnailPixelSize | null>([
+        ["a", { width: 1, height: 1 }],
+      ]),
+    );
     let commits = 0;
 
     const batcher = createCoverPathCommitBatcher({
@@ -128,23 +162,17 @@ describe("createCoverPathCommitBatcher", () => {
       getRequestVersion: () => 1,
       isAborted: () => false,
       getOrderedIds: () => ["a"],
-      getPaths: () => paths,
-      getStamps: () => stamps,
-      getSizes: () => sizes,
-      commit: (nextPaths, nextStamps, nextSizes) => {
+      getMaps: () => maps,
+      commit: (next) => {
         commits += 1;
-        paths = nextPaths;
-        stamps = nextStamps;
-        sizes = nextSizes;
+        maps = next;
       },
       scheduleFlush: () => () => {},
     });
 
-    batcher.enqueue("a", null, "new", null);
+    batcher.enqueue("a", null, "tb", null);
     batcher.flush();
     assert.equal(commits, 0);
-    assert.equal(paths.get("a"), "/cover");
-    assert.equal(stamps.get("a"), "old");
-    assert.deepEqual(sizes.get("a"), { width: 10, height: 10 });
+    assert.equal(maps.paths.get("a"), "/a");
   });
 });
