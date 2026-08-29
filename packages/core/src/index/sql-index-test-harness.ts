@@ -26,13 +26,12 @@ export type SqlIndexTestSuite = {
     tempPrefix: string,
     dbFileName?: string,
   ) => Promise<SqlIndexTestEnv>;
-  openMemoryDataDir: (tempPrefix: string) => Promise<{
-    dataDir: string;
-    fs: NodeFileSystemAdapter;
-  }>;
 };
 
-/** Shared disposable-index suite: temp dir + migrated BetterSqlite + vault. */
+/**
+ * Shared disposable-index suite: temp dir + migrated BetterSqlite + vault.
+ * When to use vs MemorySql: `../testing/sql-adapter-coverage.md` (#887).
+ */
 export function createSqlIndexTestSuite(): SqlIndexTestSuite {
   let dataDir = "";
   let db: BetterSqliteMigrator | null = null;
@@ -65,11 +64,6 @@ export function createSqlIndexTestSuite(): SqlIndexTestSuite {
       const ctx = { fs, index };
       const vault = await createVault(ctx, dataDir, { name: "Vault" });
       return { fs, dataDir, db, index, ctx, vault };
-    },
-
-    async openMemoryDataDir(tempPrefix: string) {
-      dataDir = await mkdtemp(join(tmpdir(), tempPrefix));
-      return { dataDir, fs };
     },
   };
 }
