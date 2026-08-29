@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   dashboardPerfGetActiveRunId,
   dashboardPerfRecordCoverDecode,
@@ -75,9 +75,12 @@ export function useItemGridCover(args: {
 
   const decodeCovers = shouldDecode || warmDecode;
 
-  const expectedCoverSrc = derivedCoverAttrs(thumbnailPath).src;
+  const expectedAttrs = useMemo(
+    () => derivedCoverAttrs(thumbnailPath),
+    [thumbnailPath],
+  );
   const { coverPending, showCover, loadCover } = itemGridCoverSlot({
-    expectedCoverSrc,
+    expectedCoverSrc: expectedAttrs.src,
     coverSrc,
     coverSettled,
   });
@@ -91,10 +94,9 @@ export function useItemGridCover(args: {
   }, [coverSettled]);
 
   useEffect(() => {
-    const resolved = derivedCoverAttrs(thumbnailPath);
     const plan = planItemGridCoverDecode({
       thumbnailPath,
-      resolvedSrc: resolved.src,
+      resolvedSrc: expectedAttrs.src,
       shouldDecode: decodeCovers,
       currentSrc: coverSrcRef.current,
       currentSettled: coverSettledRef.current,
@@ -123,11 +125,11 @@ export function useItemGridCover(args: {
     }
 
     setCoverSrc(plan.src);
-    setCoverSrcSet(resolved.srcSet);
-    setCoverSizes(resolved.sizes);
+    setCoverSrcSet(expectedAttrs.srcSet);
+    setCoverSizes(expectedAttrs.sizes);
     setCoverSettled(false);
     setCoverPixelSize(null);
-  }, [decodeCovers, thumbnailPath]);
+  }, [decodeCovers, expectedAttrs, thumbnailPath]);
 
   useEffect(() => {
     // Timeout follows in-flight loadCover even after leaving the near zone

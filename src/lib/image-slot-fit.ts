@@ -5,7 +5,6 @@
  */
 
 import {
-  MEDIA_DERIVE_WIDTHS,
   pickMediaDeriveWidth,
   type MediaDeriveWidth,
 } from "@collector/shared";
@@ -92,5 +91,3 @@ export function deriveSrcSetWidthsForSlot(input: {
   }
   return [oneX, twoX];
 }
-
-export { MEDIA_DERIVE_WIDTHS, pickMediaDeriveWidth };

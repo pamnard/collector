@@ -2,10 +2,7 @@
  * Display path + slot CSS size → `/media/derive` URL + srcset (#882).
  */
 
-import {
-  buildHostMediaDeriveUrl,
-  type MediaDeriveWidth,
-} from "@collector/shared";
+import { buildHostMediaDeriveUrl } from "@collector/shared";
 import {
   deriveSrcSetWidthsForSlot,
   neededDeriveWidthForSlot,
@@ -54,15 +51,6 @@ export function absolutePathForMediaDerive(pathOrUrl: string): string | null {
   return pathOrUrl;
 }
 
-function buildDeriveUrl(
-  baseUrl: string,
-  token: string,
-  absolutePath: string,
-  width: MediaDeriveWidth,
-): string {
-  return buildHostMediaDeriveUrl(baseUrl, token, absolutePath, width);
-}
-
 /**
  * Build `<img>` src / srcSet / sizes for a display slot.
  * Without host credentials, falls back to {@link toDisplayAssetSrc} (no derive).
@@ -88,7 +76,12 @@ export function buildDerivedImageAttrs(input: {
     devicePixelRatio: dpr,
     sourceNaturalWidth: input.sourceNaturalWidth,
   });
-  const src = buildDeriveUrl(host.baseUrl, host.token, absolutePath, primaryWidth);
+  const src = buildHostMediaDeriveUrl(
+    host.baseUrl,
+    host.token,
+    absolutePath,
+    primaryWidth,
+  );
   const widths = deriveSrcSetWidthsForSlot({
     slotCssWidthPx: input.slotCssWidthPx,
     sourceNaturalWidth: input.sourceNaturalWidth,
@@ -96,7 +89,7 @@ export function buildDerivedImageAttrs(input: {
   const srcSet = widths
     .map(
       (width) =>
-        `${buildDeriveUrl(host.baseUrl, host.token, absolutePath, width)} ${width}w`,
+        `${buildHostMediaDeriveUrl(host.baseUrl, host.token, absolutePath, width)} ${width}w`,
     )
     .join(", ");
   return { src, srcSet, sizes };

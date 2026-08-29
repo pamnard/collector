@@ -6,11 +6,12 @@
 import { createHash } from "node:crypto";
 import {
   mkdir,
-  open,
+  readFile,
   rename,
   rm,
   stat,
   realpath,
+  writeFile,
 } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
@@ -126,13 +127,8 @@ export async function readOrCreateDerivedWebp(input: {
   );
 
   try {
-    const existing = await open(cachePath, "r");
-    try {
-      const bytes = await existing.readFile();
-      return { bytes, cachePath, cacheHit: true };
-    } finally {
-      await existing.close();
-    }
+    const bytes = await readFile(cachePath);
+    return { bytes, cachePath, cacheHit: true };
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
     if (err.code !== "ENOENT") {
@@ -146,12 +142,7 @@ export async function readOrCreateDerivedWebp(input: {
     quality,
   });
   const tmpPath = `${cachePath}.${process.pid}.${Date.now()}.tmp`;
-  const handle = await open(tmpPath, "w");
-  try {
-    await handle.writeFile(bytes);
-  } finally {
-    await handle.close();
-  }
+  await writeFile(tmpPath, bytes);
   try {
     await rename(tmpPath, cachePath);
   } catch (error) {
@@ -205,18 +196,11 @@ export async function handleMediaDerive(
     return;
   }
   const widthNum = Number.parseInt(rawW, 10);
-  if (!Number.isFinite(widthNum) || String(widthNum) !== rawW) {
-    writeJson(req, res, 400, {
-      ok: false,
-      error: {
-        layer: "validation",
-        code: "bad_request",
-        message: "w must be a whitelist width",
-      } satisfies CollectorApiError,
-    });
-    return;
-  }
-  if (!isMediaDeriveWhitelistWidth(widthNum)) {
+  if (
+    !Number.isFinite(widthNum) ||
+    String(widthNum) !== rawW ||
+    !isMediaDeriveWhitelistWidth(widthNum)
+  ) {
     writeJson(req, res, 400, {
       ok: false,
       error: {
