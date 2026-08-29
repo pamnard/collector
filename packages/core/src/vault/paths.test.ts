@@ -1,8 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
+import { createId } from "../util/ids.js";
 import {
+  itemCoverPath,
   itemCoverRelativePath,
   itemCoverSizePath,
   itemMediaRoot,
+  itemMarkdownPath,
   isUuidMarkdownBasename,
   joinSegments,
   noteSharedMediaRoot,
@@ -11,73 +18,97 @@ import {
 } from "./paths.js";
 
 describe("joinSegments", () => {
-  it("preserves a leading slash on absolute Unix paths", () => {
-    expect(joinSegments("/tmp/smoke/home/.local/share/com.collector.app/collector", "vaults")).toBe(
-      "/tmp/smoke/home/.local/share/com.collector.app/collector/vaults",
-    );
+  let root = "";
+
+  afterEach(async () => {
+    if (root) {
+      await rm(root, { recursive: true, force: true });
+      root = "";
+    }
   });
 
-  it("preserves absolute root when joining bootstrap lock (#181)", () => {
-    const vaults = vaultsRoot(
-      "/tmp/collector-release-smoke/home/.local/share/com.collector.app/collector",
-    );
-    expect(joinSegments(vaults, ".bootstrap.lock")).toBe(
-      "/tmp/collector-release-smoke/home/.local/share/com.collector.app/collector/vaults/.bootstrap.lock",
-    );
+  it("preserves a leading slash and creates the joined path on disk", async () => {
+    root = await mkdtemp(join(tmpdir(), "collector-paths-join-"));
+    const vaults = joinSegments(root, "collector", "vaults");
+    expect(vaults.startsWith("/")).toBe(true);
+    await mkdir(vaults, { recursive: true });
+    const lockPath = joinSegments(vaults, ".bootstrap.lock");
+    await writeFile(lockPath, "locked", "utf8");
+    expect(await readFile(lockPath, "utf8")).toBe("locked");
+    expect(lockPath).toBe(`${vaults}/.bootstrap.lock`);
   });
 
-  it("preserves Windows drive prefix", () => {
+  it("preserves absolute root when joining bootstrap lock (#181)", async () => {
+    root = await mkdtemp(join(tmpdir(), "collector-paths-lock-"));
+    const dataRoot = joinSegments(root, "home", ".local", "share", "com.collector.app", "collector");
+    const vaults = vaultsRoot(dataRoot);
+    const lockPath = joinSegments(vaults, ".bootstrap.lock");
+    await mkdir(vaults, { recursive: true });
+    await writeFile(lockPath, "ok", "utf8");
+    expect(await readFile(lockPath, "utf8")).toBe("ok");
+    expect(lockPath).toBe(`${dataRoot}/vaults/.bootstrap.lock`);
+  });
+
+  it("preserves Windows drive prefix as a path string", () => {
     expect(joinSegments("C:/Users/app/collector", "vaults", ".bootstrap.lock")).toBe(
       "C:/Users/app/collector/vaults/.bootstrap.lock",
     );
   });
 });
 
-describe("isUuidMarkdownBasename", () => {
-  it("accepts uuid.md", () => {
-    expect(
-      isUuidMarkdownBasename("a1b2c3d4-e5f6-7890-abcd-ef1234567890.md"),
-    ).toBe(true);
+describe("isUuidMarkdownBasename / noteUuidFromItemPath / media roots (#279)", () => {
+  let vaultPath = "";
+  const fs = new NodeFileSystemAdapter();
+
+  afterEach(async () => {
+    if (vaultPath) {
+      await rm(vaultPath, { recursive: true, force: true });
+      vaultPath = "";
+    }
   });
 
-  it("rejects non-uuid stems and non-markdown", () => {
-    expect(isUuidMarkdownBasename("note.md")).toBe(false);
-    expect(isUuidMarkdownBasename("a1b2c3d4-e5f6-7890-abcd-ef1234567890.txt")).toBe(
-      false,
-    );
-  });
-});
+  it("accepts uuid.md on disk and rejects non-uuid peers", async () => {
+    vaultPath = await mkdtemp(join(tmpdir(), "collector-paths-uuid-"));
+    const uuid = createId();
+    const good = `${uuid}.md`;
+    const badNote = "note.md";
+    const badExt = `${uuid}.txt`;
+    await writeFile(join(vaultPath, good), "# ok\n", "utf8");
+    await writeFile(join(vaultPath, badNote), "# no\n", "utf8");
+    await writeFile(join(vaultPath, badExt), "x", "utf8");
 
-describe("noteSharedMediaRoot", () => {
-  it("joins media/<uuid> under vault root", () => {
-    const uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
-    expect(noteSharedMediaRoot("/vault", uuid)).toBe(`/vault/media/${uuid}`);
-  });
-
-  it("rejects non-uuid note ids", () => {
-    expect(() => noteSharedMediaRoot("/vault", "note")).toThrow(/UUID/);
-  });
-});
-
-describe("noteUuidFromItemPath / itemMediaRoot (#279)", () => {
-  const uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
-
-  it("reads uuid stem from nested item path", () => {
-    expect(noteUuidFromItemPath(`Inbox/${uuid}.md`)).toBe(uuid);
+    const names = await fs.readDir(vaultPath);
+    expect(names.filter(isUuidMarkdownBasename).sort()).toEqual([good]);
+    expect(isUuidMarkdownBasename(badNote)).toBe(false);
+    expect(isUuidMarkdownBasename(badExt)).toBe(false);
   });
 
-  it("rejects non-uuid basenames", () => {
-    expect(() => noteUuidFromItemPath("Inbox/note.md")).toThrow(
-      /Item path must be <uuid>\.md/,
-    );
-  });
-
-  it("points itemMediaRoot and cover relative path at media/<uuid>/", () => {
+  it("writes cover/media under paths derived from nested item id", async () => {
+    vaultPath = await mkdtemp(join(tmpdir(), "collector-paths-media-"));
+    const uuid = createId();
     const itemId = `Work/${uuid}.md`;
-    expect(itemMediaRoot("/vault", itemId)).toBe(`/vault/media/${uuid}`);
+    const docPath = itemMarkdownPath(vaultPath, itemId);
+    await fs.mkdir(joinSegments(vaultPath, "Work"));
+    await fs.writeText(docPath, "---\ntitle: Work\n---\n\nbody\n");
+
+    expect(noteUuidFromItemPath(itemId)).toBe(uuid);
+    expect(() => noteUuidFromItemPath("Inbox/note.md")).toThrow(/Item path must be <uuid>\.md/);
+    expect(() => noteSharedMediaRoot(vaultPath, "note")).toThrow(/UUID/);
+
+    const mediaRoot = itemMediaRoot(vaultPath, itemId);
+    expect(mediaRoot).toBe(noteSharedMediaRoot(vaultPath, uuid));
+    expect(mediaRoot).toBe(joinSegments(vaultPath, "media", uuid));
+
+    await fs.mkdir(mediaRoot);
+    const coverPath = itemCoverPath(vaultPath, itemId);
+    const sizePath = itemCoverSizePath(vaultPath, itemId);
+    await fs.writeBinary(coverPath, Uint8Array.from([1, 2, 3]));
+    await fs.writeText(sizePath, '{"width":1,"height":1}');
+
+    expect(await fs.exists(coverPath)).toBe(true);
+    expect(await fs.exists(sizePath)).toBe(true);
     expect(itemCoverRelativePath(itemId)).toBe(`media/${uuid}/cover.webp`);
-    expect(itemCoverSizePath("/vault", itemId)).toBe(
-      `/vault/media/${uuid}/cover.size.json`,
-    );
+    expect(await readFile(coverPath)).toEqual(Buffer.from([1, 2, 3]));
+    expect(await readFile(sizePath, "utf8")).toBe('{"width":1,"height":1}');
   });
 });
