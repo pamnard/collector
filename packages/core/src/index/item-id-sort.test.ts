@@ -1,78 +1,105 @@
+/**
+ * BetterSqlite item-id ORDER BY seams (#339/#901). Assert list order from the
+ * index — not resolveItemIdOrderByClause string identity.
+ *
+ * title/created_at/content_type defaults are covered in sql-index-queries.test.ts;
+ * this suite pins COLLATE, updated_at, and count columns.
+ */
 import { describe, expect, it } from "vitest";
+import { createId } from "../util/ids.js";
+import { upsertItem } from "../vault/item-operations.js";
 import {
-  DEFAULT_ITEM_ID_SORT,
-  ITEM_ID_SORT_KEYS,
-  isItemIdSortDir,
-  isItemIdSortKey,
-  primarySortDirForKey,
-  resolveItemIdOrderByClause,
-} from "./item-id-sort.js";
+  createSqlIndexTestSuite,
+  noteItemFields,
+} from "./sql-index-test-harness.js";
 
-describe("item-id-sort", () => {
-  it("exposes allowlisted keys matching registry sortKeys", () => {
-    expect([...ITEM_ID_SORT_KEYS].sort()).toEqual([
-      "character_count",
-      "content_type",
-      "created_at",
-      "title",
-      "updated_at",
-      "word_count",
-    ]);
-  });
+describe("item-id-sort on BetterSqlite (#339/#901)", () => {
+  const suite = createSqlIndexTestSuite();
+  suite.registerCleanup();
 
-  it("defaults to created_at desc", () => {
-    expect(DEFAULT_ITEM_ID_SORT).toEqual({ key: "created_at", dir: "desc" });
-    expect(resolveItemIdOrderByClause()).toBe(
-      "ORDER BY i.created_at DESC, i.id ASC",
+  it("orders by COLLATE title, updated_at, and count columns", async () => {
+    const { db, index, ctx, vault } = await suite.openVaultIndex(
+      "collector-item-id-sort-",
     );
-    expect(resolveItemIdOrderByClause(null)).toBe(
-      "ORDER BY i.created_at DESC, i.id ASC",
+    const { meta, path } = vault;
+
+    const early = "2020-01-01T00:00:00.000Z";
+    const mid = "2021-06-01T00:00:00.000Z";
+    const late = "2022-01-01T00:00:00.000Z";
+
+    const bananaId = `${createId()}.md`;
+    const appleId = `${createId()}.md`;
+    const cherryId = `${createId()}.md`;
+
+    for (const id of [bananaId, appleId, cherryId]) {
+      await upsertItem(ctx, path, meta.id, {
+        item: noteItemFields(meta.id, id, {
+          title: "seed",
+          created_at: mid,
+          updated_at: mid,
+        }),
+        content: "seed",
+      });
+    }
+
+    // Pin sort columns after write: upsertItem recomputes counts and bumps updated_at.
+    await db.execute(
+      `UPDATE items SET title = ?, word_count = ?, character_count = ?,
+        created_at = ?, updated_at = ? WHERE id = ?`,
+      ["banana", 30, 200, late, early, bananaId],
     );
-  });
+    await db.execute(
+      `UPDATE items SET title = ?, word_count = ?, character_count = ?,
+        created_at = ?, updated_at = ? WHERE id = ?`,
+      ["Apple", 10, 50, early, late, appleId],
+    );
+    await db.execute(
+      `UPDATE items SET title = ?, word_count = ?, character_count = ?,
+        created_at = ?, updated_at = ? WHERE id = ?`,
+      ["Cherry", 20, 100, mid, mid, cherryId],
+    );
 
-  it("resolves allowlisted keys to safe SQL fragments", () => {
     expect(
-      resolveItemIdOrderByClause({ key: "title", dir: "asc" }),
-    ).toBe("ORDER BY i.title COLLATE NOCASE ASC, i.id ASC");
-    expect(
-      resolveItemIdOrderByClause({ key: "updated_at", dir: "desc" }),
-    ).toBe("ORDER BY i.updated_at DESC, i.id ASC");
-    expect(
-      resolveItemIdOrderByClause({ key: "content_type", dir: "asc" }),
-    ).toBe("ORDER BY i.content_type ASC, i.id ASC");
-    expect(
-      resolveItemIdOrderByClause({ key: "word_count", dir: "desc" }),
-    ).toBe("ORDER BY i.word_count DESC, i.id ASC");
-    expect(
-      resolveItemIdOrderByClause({ key: "character_count", dir: "asc" }),
-    ).toBe("ORDER BY i.character_count ASC, i.id ASC");
-  });
-
-  it("rejects unknown keys and dirs", () => {
-    expect(() =>
-      resolveItemIdOrderByClause({ key: "folder_path", dir: "asc" }),
-    ).toThrow(/Unsupported item id sort key/);
-    expect(() =>
-      resolveItemIdOrderByClause({
-        key: "title",
-        dir: "sideways" as "asc",
+      await index.listItemIdsByNavFilter(meta.id, "all", {
+        sort: { key: "title", dir: "asc" },
       }),
-    ).toThrow(/Unsupported item id sort dir/);
+    ).toEqual([appleId, bananaId, cherryId]);
+
+    expect(
+      await index.listItemIdsByNavFilter(meta.id, "all", {
+        sort: { key: "updated_at", dir: "desc" },
+      }),
+    ).toEqual([appleId, cherryId, bananaId]);
+
+    expect(
+      await index.listItemIdsByNavFilter(meta.id, "all", {
+        sort: { key: "word_count", dir: "desc" },
+      }),
+    ).toEqual([bananaId, cherryId, appleId]);
+
+    expect(
+      await index.listItemIdsByNavFilter(meta.id, "all", {
+        sort: { key: "character_count", dir: "asc" },
+      }),
+    ).toEqual([appleId, cherryId, bananaId]);
   });
 
-  it("validates keys and dirs", () => {
-    expect(isItemIdSortKey("title")).toBe(true);
-    expect(isItemIdSortKey("tags")).toBe(false);
-    expect(isItemIdSortDir("asc")).toBe(true);
-    expect(isItemIdSortDir("DESC")).toBe(false);
-  });
+  it("rejects unknown sort keys and dirs through the index query path", async () => {
+    const { index, vault } = await suite.openVaultIndex(
+      "collector-item-id-sort-reject-",
+    );
+    const { meta } = vault;
 
-  it("picks primary UI dir per key", () => {
-    expect(primarySortDirForKey("created_at")).toBe("desc");
-    expect(primarySortDirForKey("updated_at")).toBe("desc");
-    expect(primarySortDirForKey("word_count")).toBe("desc");
-    expect(primarySortDirForKey("character_count")).toBe("desc");
-    expect(primarySortDirForKey("title")).toBe("asc");
-    expect(primarySortDirForKey("content_type")).toBe("asc");
+    await expect(
+      index.listItemIdsByNavFilter(meta.id, "all", {
+        sort: { key: "folder_path", dir: "asc" },
+      }),
+    ).rejects.toThrow(/Unsupported item id sort key/);
+
+    await expect(
+      index.listItemIdsByNavFilter(meta.id, "all", {
+        sort: { key: "title", dir: "sideways" as "asc" },
+      }),
+    ).rejects.toThrow(/Unsupported item id sort dir/);
   });
 });
