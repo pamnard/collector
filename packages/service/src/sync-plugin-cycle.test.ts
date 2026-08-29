@@ -1,323 +1,540 @@
-import { describe, expect, it, vi } from "vitest";
-import type { NormalizedSyncItem, SyncPlugin } from "@collector/api";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { AttachMediaFileInput, SyncPlugin } from "@collector/api";
+import type { VaultMeta } from "@collector/shared";
+import {
+  SqlVaultIndexStore,
+  createVault,
+  itemMarkdownPath,
+  listItemMediaWithPaths,
+  readItemFile,
+  readItemRawMarkdown,
+  type VaultContext,
+} from "@collector/core";
+import { NodeFileSystemAdapter } from "@collector/core/node";
+import { MemorySqlAdapter } from "../../core/src/testing/memory-sql.js";
+import {
+  createCredentialsService,
+  createMemoryKeychainBackend,
+} from "./credentials.js";
+import { createItemsCrud } from "./items-crud.js";
+import { createMediaCoverService } from "./media-cover.js";
 import { runSyncPluginCycle } from "./sync-plugin-cycle.js";
-import { createMockSyncPlugin } from "./sync-plugin-mock.js";
 import { createSyncPluginHandoff } from "./sync-plugin-handoff.js";
+import type { TelegramBotApi } from "./plugins/telegram/telegram-bot-api.js";
+import {
+  loadTelegramPluginConfig,
+  saveTelegramPluginConfig,
+  TELEGRAM_BOT_TOKEN_KEY,
+  TELEGRAM_PLUGIN_ID,
+  type TelegramPluginConfig,
+} from "./plugins/telegram/telegram-config.js";
+import { createTelegramSyncPlugin } from "./plugins/telegram/telegram-sync-plugin.js";
 
-function note(remoteId: string, title: string): NormalizedSyncItem {
-  return {
-    remoteId,
-    title,
-    content_type: "note",
-    body: title,
-  };
-}
+describe("runSyncPluginCycle vault + telegram handoff", () => {
+  let dataDir = "";
+  const fs = new NodeFileSystemAdapter();
 
-function stubHandoff(overrides?: {
-  createFromNormalized?: ReturnType<typeof vi.fn>;
-  attachMedia?: ReturnType<typeof vi.fn>;
-  deleteItem?: ReturnType<typeof vi.fn>;
-}) {
-  const createFromNormalized =
-    overrides?.createFromNormalized ??
-    vi.fn(async (item: NormalizedSyncItem) => ({
-      remoteId: item.remoteId,
-      itemId: `Inbox/${item.title}.md`,
-    }));
-  const attachMedia = overrides?.attachMedia ?? vi.fn(async () => {});
-  const deleteItem = overrides?.deleteItem ?? vi.fn(async () => {});
-  return { createFromNormalized, attachMedia, deleteItem };
-}
-
-describe("runSyncPluginCycle", () => {
-  it("authenticate → pull → create → ack → nextCursor", async () => {
-    const plugin = createMockSyncPlugin({
-      items: [note("a", "A"), note("b", "B")],
-    });
-    const handoff = stubHandoff();
-
-    let cursor: string | null = null;
-    const result = await runSyncPluginCycle({
-      plugin,
-      cursor,
-      handoff,
-    });
-    cursor = result.nextCursor;
-
-    expect(plugin.authenticateCalls).toBe(1);
-    expect(plugin.pullCalls).toBe(1);
-    expect(handoff.createFromNormalized).toHaveBeenCalledTimes(2);
-    expect(handoff.attachMedia).toHaveBeenCalledTimes(2);
-    expect(plugin.ackCalls).toEqual([["a"], ["b"]]);
-    expect(plugin.pending()).toEqual([]);
-    expect(result.itemIds).toEqual(["Inbox/A.md", "Inbox/B.md"]);
-    expect(cursor).toMatch(/^mock:1:/);
-
-    const second = await runSyncPluginCycle({
-      plugin,
-      cursor,
-      handoff,
-    });
-    expect(second.importedRemoteIds).toEqual([]);
-    expect(second.nextCursor).toMatch(/^mock:2:/);
-    expect(plugin.ackCalls).toHaveLength(2);
+  afterEach(async () => {
+    if (dataDir) {
+      await rm(dataDir, { recursive: true, force: true });
+      dataDir = "";
+    }
   });
 
-  it("calls markImported after create and before attach; batches ack", async () => {
-    const order: string[] = [];
-    const markCalls: string[][] = [];
-    const ackCalls: string[][] = [];
-    const plugin: SyncPlugin = {
-      id: "marked",
-      async pull() {
-        return {
-          items: [note("a", "A"), note("b", "B")],
-          nextCursor: "c1",
-        };
-      },
-      async markImported(remoteIds) {
-        order.push(`mark:${remoteIds.join(",")}`);
-        markCalls.push([...remoteIds]);
-      },
-      async ack(remoteIds) {
-        order.push(`ack:${remoteIds.join(",")}`);
-        ackCalls.push([...remoteIds]);
-      },
+  function baseConfig(
+    patch: Partial<TelegramPluginConfig> = {},
+  ): TelegramPluginConfig {
+    return {
+      schema_version: 1,
+      enabled: true,
+      folder_path: "Inbox",
+      bot_username: "bot",
+      last_sync_at: null,
+      awaiting_delete: [],
+      imported: [],
+      sync_interval_ms: 300_000,
+      pending_albums: [],
+      album_ack_parts: {},
+      last_pull_warnings: [],
+      ...patch,
     };
-    const handoff = stubHandoff({
-      createFromNormalized: vi.fn(async (item: NormalizedSyncItem) => {
-        order.push(`create:${item.remoteId}`);
-        return { remoteId: item.remoteId, itemId: `Inbox/${item.title}.md` };
-      }),
-      attachMedia: vi.fn(async (itemId: string) => {
-        order.push(`attach:${itemId}`);
-      }),
+  }
+
+  function mockApi(overrides: Partial<TelegramBotApi> = {}): TelegramBotApi {
+    return {
+      getMe: vi.fn(async () => ({
+        id: 1,
+        is_bot: true,
+        first_name: "B",
+        username: "bot",
+      })),
+      getWebhookInfo: vi.fn(async () => ({ url: "" })),
+      deleteWebhook: vi.fn(async () => true as const),
+      ensurePollingClearsWebhook: vi.fn(async () => false),
+      getUpdates: vi.fn(async () => []),
+      deleteMessage: vi.fn(async () => true as const),
+      getFile: vi.fn(),
+      downloadFile: vi.fn(),
+      ...overrides,
+    } as TelegramBotApi;
+  }
+
+  async function openCycle(options?: {
+    api?: TelegramBotApi;
+    failAttachWith?: Error;
+  }): Promise<{
+    plugin: SyncPlugin;
+    handoff: ReturnType<typeof createSyncPluginHandoff>;
+    ctx: VaultContext;
+    vault: VaultMeta;
+    vaultPath: string;
+    vaultId: string;
+  }> {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-sync-cycle-"));
+    const sql = new MemorySqlAdapter();
+    const index = new SqlVaultIndexStore(sql);
+    const ctx: VaultContext = { fs, index };
+    const { meta: vault, path: vaultPath } = await createVault(ctx, dataDir, {
+      name: "Vault",
     });
-    await runSyncPluginCycle({
+    const vaultId = vault.id;
+
+    const credentials = createCredentialsService({
+      backend: createMemoryKeychainBackend(),
+    });
+    await credentials.setCredential({
+      pluginId: TELEGRAM_PLUGIN_ID,
+      key: TELEGRAM_BOT_TOKEN_KEY,
+      secret: "tok",
+    });
+    await saveTelegramPluginConfig(fs, dataDir, vaultId, baseConfig());
+
+    const api = options?.api ?? mockApi();
+
+    const plugin = createTelegramSyncPlugin({
+      credentials,
+      fs,
+      dataDir,
+      resolveActiveVaultId: async () => vaultId,
+      listFolderTree: async () => [
+        { name: "Inbox", path: "Inbox", item_count: 0, children: [] },
+      ],
+      api,
+    });
+
+    const crud = createItemsCrud(
+      {
+        resolveActiveVault: async () => ({ path: vaultPath, vault }),
+        getContext: () => ctx,
+        getIndex: () => index,
+        normalizeMarkdown: (raw: string) => ({ text: raw, changed: false }),
+        enqueueItemDerivedRefresh: async () => undefined,
+        enqueueItemExtractAuto: async () => undefined,
+      } as never,
+      () => crypto.randomUUID(),
+    );
+
+    const media = createMediaCoverService({
+      resolveActiveVault: async () => ({ path: vaultPath, vault }),
+      getContext: () => ctx,
+      enqueueGenerateCover: async () => ({ id: "cover-job" }),
+      waitForCoverJob: async () => "succeeded" as const,
+      resolveThumbnailPathsProgressive: async () => undefined,
+      readCoverPixelSize: async () => ({ width: 1, height: 1 }),
+    });
+
+    const attachMediaFiles = options?.failAttachWith
+      ? async (_itemId: string, _files: AttachMediaFileInput[]) => {
+          throw options.failAttachWith;
+        }
+      : (itemId: string, files: AttachMediaFileInput[]) =>
+          media.attachMediaFiles(itemId, files);
+
+    return {
+      plugin,
+      handoff: createSyncPluginHandoff({
+        createItem: (input) => crud.createItem(input),
+        attachMediaFiles,
+        deleteItem: (itemId) => crud.deleteItem(itemId),
+      }),
+      ctx,
+      vault,
+      vaultPath,
+      vaultId,
+    };
+  }
+
+  it("authenticate → pull → vault create → ack; status and files match", async () => {
+    const deleteMessage = vi.fn(async () => true as const);
+    const api = mockApi({
+      getUpdates: vi.fn(async () => [
+        {
+          update_id: 1,
+          message: {
+            message_id: 10,
+            date: 1,
+            chat: { id: 100, type: "private" },
+            text: "Alpha note",
+          },
+        },
+        {
+          update_id: 2,
+          message: {
+            message_id: 11,
+            date: 2,
+            chat: { id: 100, type: "private" },
+            text: "Beta note",
+          },
+        },
+      ]),
+      deleteMessage,
+    });
+    const { plugin, handoff, vault, vaultPath, vaultId } = await openCycle({
+      api,
+    });
+
+    const result = await runSyncPluginCycle({
       plugin,
       cursor: null,
       handoff,
     });
-    expect(markCalls).toEqual([["a"], ["b"]]);
-    expect(ackCalls).toEqual([["a", "b"]]);
-    expect(order).toEqual([
-      "create:a",
-      "mark:a",
-      "attach:Inbox/A.md",
-      "create:b",
-      "mark:b",
-      "attach:Inbox/B.md",
-      "ack:a,b",
+
+    expect(result.importedRemoteIds).toEqual(["100:10", "100:11"]);
+    expect(result.itemIds).toHaveLength(2);
+    expect(result.nextCursor).toBeTruthy();
+
+    for (const itemId of result.itemIds) {
+      expect(await fs.exists(itemMarkdownPath(vaultPath, itemId))).toBe(true);
+    }
+    const first = await readItemFile(fs, vaultPath, result.itemIds[0]!, vault.id);
+    const second = await readItemFile(
+      fs,
+      vaultPath,
+      result.itemIds[1]!,
+      vault.id,
+    );
+    expect(first.title).toBe("Alpha note");
+    expect(second.title).toBe("Beta note");
+    expect(await readItemRawMarkdown(fs, vaultPath, result.itemIds[0]!)).toContain(
+      "Alpha note",
+    );
+    expect(first.source_type).toBe("plugin");
+
+    expect(deleteMessage).toHaveBeenCalledWith("tok", 100, 10);
+    expect(deleteMessage).toHaveBeenCalledWith("tok", 100, 11);
+
+    const cfg = await loadTelegramPluginConfig(fs, dataDir, vaultId);
+    expect(cfg.awaiting_delete).toEqual([]);
+    expect(cfg.imported).toEqual([
+      { chat_id: 100, message_id: 10 },
+      { chat_id: 100, message_id: 11 },
     ]);
+
+    const empty = await runSyncPluginCycle({
+      plugin,
+      cursor: result.nextCursor,
+      handoff,
+    });
+    expect(empty.importedRemoteIds).toEqual([]);
+    expect(empty.itemIds).toEqual([]);
+    expect(empty.nextCursor).toBe(result.nextCursor);
   });
 
-  it("on attach failure: deleteItem + clearImported; no sticky mark", async () => {
-    const markCalls: string[][] = [];
-    const clearCalls: string[][] = [];
-    const ackCalls: string[][] = [];
-    const plugin: SyncPlugin = {
-      id: "marked-attach-fail",
-      async pull() {
-        return {
-          items: [note("bad", "Bad")],
-          nextCursor: "c1",
-        };
-      },
-      async markImported(remoteIds) {
-        markCalls.push([...remoteIds]);
-      },
-      async clearImported(remoteIds) {
-        clearCalls.push([...remoteIds]);
-      },
-      async ack(remoteIds) {
-        ackCalls.push([...remoteIds]);
-      },
-    };
-    const handoff = stubHandoff({
-      attachMedia: vi.fn(async () => {
-        throw new Error("FOREIGN KEY constraint failed");
-      }),
+  it("attaches media bytes to vault when pull returns a photo", async () => {
+    const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+    const api = mockApi({
+      getUpdates: vi.fn(async () => [
+        {
+          update_id: 5,
+          message: {
+            message_id: 7,
+            date: 1,
+            chat: { id: 50, type: "private" },
+            caption: "Shot",
+            photo: [
+              {
+                file_id: "p1",
+                file_unique_id: "u1",
+                width: 10,
+                height: 10,
+                file_size: bytes.length,
+              },
+            ],
+          },
+        },
+      ]),
+      getFile: vi.fn(async () => ({
+        file_id: "p1",
+        file_unique_id: "u1",
+        file_path: "photos/p1.jpg",
+        file_size: bytes.length,
+      })),
+      downloadFile: vi.fn(async () => bytes),
+      deleteMessage: vi.fn(async () => true as const),
     });
+    const { plugin, handoff, ctx, vaultPath } = await openCycle({ api });
+
+    const result = await runSyncPluginCycle({
+      plugin,
+      cursor: null,
+      handoff,
+    });
+
+    expect(result.itemIds).toHaveLength(1);
+    const mediaRows = await listItemMediaWithPaths(
+      ctx,
+      vaultPath,
+      result.itemIds[0]!,
+    );
+    expect(mediaRows).toHaveLength(1);
+    expect(await fs.exists(mediaRows[0]!.absolute_path)).toBe(true);
+    expect(await fs.readBinary(mediaRows[0]!.absolute_path)).toEqual(bytes);
+  });
+
+  it("on attach failure deletes vault item and clears imported ledger", async () => {
+    const bytes = new Uint8Array([1, 2, 3, 4]);
+    const api = mockApi({
+      getUpdates: vi.fn(async () => [
+        {
+          update_id: 1,
+          message: {
+            message_id: 9,
+            date: 1,
+            chat: { id: 3, type: "private" },
+            photo: [
+              {
+                file_id: "bad",
+                file_unique_id: "ub",
+                width: 1,
+                height: 1,
+                file_size: 4,
+              },
+            ],
+          },
+        },
+      ]),
+      getFile: vi.fn(async () => ({
+        file_id: "bad",
+        file_unique_id: "ub",
+        file_path: "photos/bad.jpg",
+        file_size: 4,
+      })),
+      downloadFile: vi.fn(async () => bytes),
+      deleteMessage: vi.fn(async () => true as const),
+    });
+    const { plugin, handoff, vaultPath, vaultId } = await openCycle({
+      api,
+      failAttachWith: new Error("FOREIGN KEY constraint failed"),
+    });
+
     await expect(
       runSyncPluginCycle({ plugin, cursor: null, handoff }),
     ).rejects.toThrow(/FOREIGN KEY/);
-    expect(markCalls).toEqual([["bad"]]);
-    expect(handoff.deleteItem).toHaveBeenCalledWith("Inbox/Bad.md");
-    expect(clearCalls).toEqual([["bad"]]);
-    expect(ackCalls).toEqual([]);
+
+    const cfg = await loadTelegramPluginConfig(fs, dataDir, vaultId);
+    expect(cfg.imported).toEqual([]);
+    expect(cfg.awaiting_delete).toEqual([{ chat_id: 3, message_id: 9 }]);
+
+    const inbox = join(vaultPath, "Inbox");
+    const leftovers = (await fs.exists(inbox))
+      ? (await fs.readDir(inbox)).filter((name) => name.endsWith(".md"))
+      : [];
+    expect(leftovers).toEqual([]);
   });
 
-  it("on mid-batch attach failure with markImported: ack already imported ids", async () => {
-    const ackCalls: string[][] = [];
-    const clearCalls: string[][] = [];
-    const plugin: SyncPlugin = {
-      id: "marked-fail",
-      async pull() {
-        return {
-          items: [note("ok", "Ok"), note("bad", "Bad")],
-          nextCursor: "c1",
-        };
-      },
-      async markImported() {},
-      async clearImported(remoteIds) {
-        clearCalls.push([...remoteIds]);
-      },
-      async ack(remoteIds) {
-        ackCalls.push([...remoteIds]);
-      },
-    };
-    const handoff = stubHandoff({
-      attachMedia: vi.fn(async (itemId: string) => {
-        if (itemId.includes("Bad")) {
-          throw new Error("attach failed");
-        }
-      }),
+  it("on mid-batch attach failure keeps prior vault item and acks it", async () => {
+    const bytes = new Uint8Array([9, 9, 9, 9]);
+    const deleteMessage = vi.fn(async () => true as const);
+    const api = mockApi({
+      getUpdates: vi.fn(async () => [
+        {
+          update_id: 1,
+          message: {
+            message_id: 1,
+            date: 1,
+            chat: { id: 100, type: "private" },
+            text: "Ok first",
+          },
+        },
+        {
+          update_id: 2,
+          message: {
+            message_id: 2,
+            date: 2,
+            chat: { id: 100, type: "private" },
+            caption: "Bad second",
+            photo: [
+              {
+                file_id: "p2",
+                file_unique_id: "u2",
+                width: 10,
+                height: 10,
+                file_size: 4,
+              },
+            ],
+          },
+        },
+      ]),
+      getFile: vi.fn(async () => ({
+        file_id: "p2",
+        file_unique_id: "u2",
+        file_path: "photos/p2.jpg",
+        file_size: 4,
+      })),
+      downloadFile: vi.fn(async () => bytes),
+      deleteMessage,
     });
+    // Text items skip attachMediaFiles; only the photo item hits this fault.
+    const { plugin, handoff, vault, vaultPath, vaultId } = await openCycle({
+      api,
+      failAttachWith: new Error("attach failed"),
+    });
+
     await expect(
       runSyncPluginCycle({ plugin, cursor: null, handoff }),
     ).rejects.toThrow(/attach failed/);
-    expect(handoff.deleteItem).toHaveBeenCalledWith("Inbox/Bad.md");
-    expect(clearCalls).toEqual([["bad"]]);
-    expect(ackCalls).toEqual([["ok"]]);
+
+    expect(deleteMessage).toHaveBeenCalledWith("tok", 100, 1);
+    expect(deleteMessage).not.toHaveBeenCalledWith("tok", 100, 2);
+
+    const cfg = await loadTelegramPluginConfig(fs, dataDir, vaultId);
+    expect(cfg.imported).toEqual([{ chat_id: 100, message_id: 1 }]);
+    expect(cfg.awaiting_delete).toEqual([{ chat_id: 100, message_id: 2 }]);
+
+    const inbox = join(vaultPath, "Inbox");
+    const notes = (await fs.readDir(inbox)).filter((name) =>
+      name.endsWith(".md"),
+    );
+    expect(notes).toHaveLength(1);
+    const survivingId = `Inbox/${notes[0]}`;
+    const onDisk = await readItemFile(fs, vaultPath, survivingId, vault.id);
+    expect(onDisk.title).toBe("Ok first");
   });
 
-  it("on mid-batch create failure: ack successes, keep cursor (throw)", async () => {
-    const plugin = createMockSyncPlugin({
-      items: [note("ok", "Ok"), note("bad", "Bad")],
-    });
-    const handoff = stubHandoff({
-      createFromNormalized: vi.fn(async (item: NormalizedSyncItem) => {
-        if (item.remoteId === "bad") {
-          throw new Error("import failed");
-        }
-        return { remoteId: item.remoteId, itemId: "Inbox/Ok.md" };
-      }),
-    });
-
-    await expect(
-      runSyncPluginCycle({ plugin, cursor: "prev", handoff }),
-    ).rejects.toThrow(/import failed/);
-
-    expect(plugin.ackCalls).toEqual([["ok"]]);
-    expect(plugin.pending().map((i) => i.remoteId)).toEqual(["bad"]);
-    expect(handoff.deleteItem).not.toHaveBeenCalled();
-  });
-
-  it("works without ack", async () => {
-    const plugin: SyncPlugin = {
-      id: "no-ack",
-      async pull() {
-        return {
-          items: [note("x", "X")],
-          nextCursor: "c1",
-        };
-      },
-    };
-    const result = await runSyncPluginCycle({
-      plugin,
-      cursor: null,
-      handoff: stubHandoff(),
-    });
-    expect(result.nextCursor).toBe("c1");
-    expect(result.importedRemoteIds).toEqual(["x"]);
-  });
-
-  it("retry after attach fail + clear can create once (no durable dup)", async () => {
-    const marked = new Set<string>();
-    const living = new Map<string, string>();
+  it("retry after attach fail + ledger clear writes one vault note", async () => {
+    const bytes = new Uint8Array([1, 2, 3, 4]);
     let attachFails = true;
-    const plugin: SyncPlugin = {
-      id: "retry-dedup",
-      async pull() {
-        const items = marked.has("r1") ? [] : [note("r1", "One")];
-        return { items, nextCursor: "c1" };
-      },
-      async markImported(remoteIds) {
-        for (const id of remoteIds) {
-          marked.add(id);
-        }
-      },
-      async clearImported(remoteIds) {
-        for (const id of remoteIds) {
-          marked.delete(id);
-        }
-      },
-      async ack() {},
-    };
-    const handoff = {
-      createFromNormalized: vi.fn(async (item: NormalizedSyncItem) => {
-        const itemId = `Inbox/${item.title}-${living.size}.md`;
-        living.set(item.remoteId, itemId);
-        return { remoteId: item.remoteId, itemId };
-      }),
-      attachMedia: vi.fn(async () => {
+    const api = mockApi({
+      getUpdates: vi.fn(async () => [
+        {
+          update_id: 1,
+          message: {
+            message_id: 5,
+            date: 1,
+            chat: { id: 100, type: "private" },
+            caption: "Once",
+            photo: [
+              {
+                file_id: "p1",
+                file_unique_id: "u1",
+                width: 1,
+                height: 1,
+                file_size: 4,
+              },
+            ],
+          },
+        },
+      ]),
+      getFile: vi.fn(async () => ({
+        file_id: "p1",
+        file_unique_id: "u1",
+        file_path: "photos/p1.jpg",
+        file_size: 4,
+      })),
+      downloadFile: vi.fn(async () => bytes),
+      deleteMessage: vi.fn(async () => true as const),
+    });
+
+    dataDir = await mkdtemp(join(tmpdir(), "collector-sync-cycle-"));
+    const sql = new MemorySqlAdapter();
+    const index = new SqlVaultIndexStore(sql);
+    const ctx: VaultContext = { fs, index };
+    const { meta: vault, path: vaultPath } = await createVault(ctx, dataDir, {
+      name: "Vault",
+    });
+    const vaultId = vault.id;
+    const credentials = createCredentialsService({
+      backend: createMemoryKeychainBackend(),
+    });
+    await credentials.setCredential({
+      pluginId: TELEGRAM_PLUGIN_ID,
+      key: TELEGRAM_BOT_TOKEN_KEY,
+      secret: "tok",
+    });
+    await saveTelegramPluginConfig(fs, dataDir, vaultId, baseConfig());
+
+    const plugin = createTelegramSyncPlugin({
+      credentials,
+      fs,
+      dataDir,
+      resolveActiveVaultId: async () => vaultId,
+      listFolderTree: async () => [
+        { name: "Inbox", path: "Inbox", item_count: 0, children: [] },
+      ],
+      api,
+    });
+
+    const crud = createItemsCrud(
+      {
+        resolveActiveVault: async () => ({ path: vaultPath, vault }),
+        getContext: () => ctx,
+        getIndex: () => index,
+        normalizeMarkdown: (raw: string) => ({ text: raw, changed: false }),
+        enqueueItemDerivedRefresh: async () => undefined,
+        enqueueItemExtractAuto: async () => undefined,
+      } as never,
+      () => crypto.randomUUID(),
+    );
+    const media = createMediaCoverService({
+      resolveActiveVault: async () => ({ path: vaultPath, vault }),
+      getContext: () => ctx,
+      enqueueGenerateCover: async () => ({ id: "cover-job" }),
+      waitForCoverJob: async () => "succeeded" as const,
+      resolveThumbnailPathsProgressive: async () => undefined,
+      readCoverPixelSize: async () => ({ width: 1, height: 1 }),
+    });
+    const handoff = createSyncPluginHandoff({
+      createItem: (input) => crud.createItem(input),
+      attachMediaFiles: async (itemId, files) => {
         if (attachFails) {
           throw new Error("FOREIGN KEY constraint failed");
         }
-      }),
-      deleteItem: vi.fn(async (itemId: string) => {
-        for (const [remoteId, id] of living) {
-          if (id === itemId) {
-            living.delete(remoteId);
-          }
-        }
-      }),
-    };
+        return media.attachMediaFiles(itemId, files);
+      },
+      deleteItem: (itemId) => crud.deleteItem(itemId),
+    });
 
     await expect(
       runSyncPluginCycle({ plugin, cursor: null, handoff }),
     ).rejects.toThrow(/FOREIGN KEY/);
-    expect(living.size).toBe(0);
-    expect(marked.size).toBe(0);
 
+    let cfg = await loadTelegramPluginConfig(fs, dataDir, vaultId);
+    expect(cfg.imported).toEqual([]);
+    expect(cfg.awaiting_delete).toEqual([{ chat_id: 100, message_id: 5 }]);
+
+    await saveTelegramPluginConfig(fs, dataDir, vaultId, {
+      ...cfg,
+      awaiting_delete: [],
+    });
     attachFails = false;
+
     const ok = await runSyncPluginCycle({ plugin, cursor: null, handoff });
     expect(ok.itemIds).toHaveLength(1);
-    expect(living.size).toBe(1);
-    expect(handoff.createFromNormalized).toHaveBeenCalledTimes(2);
-  });
-});
+    expect(await fs.exists(itemMarkdownPath(vaultPath, ok.itemIds[0]!))).toBe(
+      true,
+    );
+    const mediaRows = await listItemMediaWithPaths(
+      ctx,
+      vaultPath,
+      ok.itemIds[0]!,
+    );
+    expect(mediaRows).toHaveLength(1);
 
-describe("mock + handoff cycle", () => {
-  it("pull → createItem via handoff → ack → cursor", async () => {
-    const plugin = createMockSyncPlugin({
-      items: [
-        note("t1", "One"),
-        {
-          remoteId: "t2",
-          title: "Two",
-          content_type: "note",
-          sourceRef: { plugin_id: "mock", external_id: "t2" },
-        },
-      ],
-    });
-    const createItem = vi.fn(async (input: { title: string }) => ({
-      id: `Inbox/${input.title}.md`,
-      title: input.title,
-    }));
-    const attachMediaFiles = vi.fn(async () => []);
-    const deleteItem = vi.fn(async () => {});
-    const handoff = createSyncPluginHandoff({
-      createItem,
-      attachMediaFiles,
-      deleteItem,
-    });
-
-    let cursor: string | null = null;
-    const result = await runSyncPluginCycle({
-      plugin,
-      cursor,
-      handoff,
-    });
-    cursor = result.nextCursor;
-
-    expect(createItem).toHaveBeenCalledTimes(2);
-    expect(createItem.mock.calls[0][0]).not.toHaveProperty("sourceRef");
-    expect(createItem.mock.calls[1][0].sourceRef).toEqual({
-      plugin_id: "mock",
-      external_id: "t2",
-    });
-    expect(plugin.pending()).toEqual([]);
-    expect(cursor).toBeTruthy();
+    cfg = await loadTelegramPluginConfig(fs, dataDir, vaultId);
+    expect(cfg.awaiting_delete).toEqual([]);
+    expect(cfg.imported).toEqual([{ chat_id: 100, message_id: 5 }]);
   });
 });
