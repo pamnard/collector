@@ -87,9 +87,9 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
     }
   }
 
-  async touch(path: string): Promise<void> {
-    const now = new Date();
-    await utimes(path, now, now);
+  async touch(path: string, mtimeMs?: number): Promise<void> {
+    const when = mtimeMs === undefined ? new Date() : new Date(mtimeMs);
+    await utimes(path, when, when);
   }
 
   async remove(path: string, options?: { recursive?: boolean }): Promise<void> {

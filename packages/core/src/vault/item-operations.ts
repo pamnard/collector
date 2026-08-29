@@ -20,7 +20,10 @@ import {
   normalizeRelativePath,
 } from "./paths.js";
 import { listItemRelativePaths } from "./scan.js";
-import { diskMtimeMsFromDocumentMarkdown } from "./recover-item-mtime.js";
+import {
+  diskMtimeMsFromDocumentMarkdown,
+  ensureFileMtimeAdvanced,
+} from "./recover-item-mtime.js";
 import { readVaultItemMetaBatch } from "./vault-fs-batch.js";
 import { refreshItemIndexAfterWrite } from "./item-index-refresh.js";
 import { countTextStats } from "./text-stats.js";
@@ -93,6 +96,7 @@ export async function writeItemRawMarkdown(
   );
 
   await ctx.fs.writeText(docPath, raw);
+  await ensureFileMtimeAdvanced(ctx.fs, docPath, existingStat.mtimeMs);
   await ctx.fs.touch(vaultPath);
 
   // ensureTagsByName (via parse) only updates tags.json; index FK needs tag rows.

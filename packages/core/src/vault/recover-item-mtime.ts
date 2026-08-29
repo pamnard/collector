@@ -21,6 +21,36 @@ export async function recoverItemDiskMtimeMs(
   return second.mtimeMs;
 }
 
+/**
+ * After overwriting an existing item file, guarantee disk mtime advances.
+ * Many filesystems keep the same mtime across rapid writeFile calls; stamps
+ * and itemDerivedRefresh idempotency keys require a strict increase (#911).
+ */
+export async function ensureFileMtimeAdvanced(
+  fs: FileSystemAdapter,
+  docPath: string,
+  previousMtimeMs: number,
+): Promise<number> {
+  const afterWrite = await fs.stat(docPath);
+  if (afterWrite.mtimeMs !== null && afterWrite.mtimeMs > previousMtimeMs) {
+    return afterWrite.mtimeMs;
+  }
+  const nextMtimeMs = Math.max(Date.now(), previousMtimeMs + 1);
+  await fs.touch(docPath, nextMtimeMs);
+  const healed = await fs.stat(docPath);
+  if (healed.mtimeMs === null) {
+    throw new Error(
+      `ensureFileMtimeAdvanced: missing mtime after touch for ${docPath}`,
+    );
+  }
+  if (healed.mtimeMs <= previousMtimeMs) {
+    throw new Error(
+      `ensureFileMtimeAdvanced: mtime did not advance for ${docPath} (was ${previousMtimeMs}, now ${healed.mtimeMs})`,
+    );
+  }
+  return healed.mtimeMs;
+}
+
 export function fileMtimeMsFromUpdatedAt(updatedAt: string): number {
   const ms = Date.parse(updatedAt);
   if (Number.isNaN(ms)) {
