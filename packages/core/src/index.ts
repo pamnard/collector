@@ -230,6 +230,8 @@ export {
   bareMediaFileId,
   findFirstGalleryImagePath,
   findFirstGalleryVideoPath,
+  findGalleryImagePathByMediaId,
+  findSoleGalleryImagePath,
   listMediaFiles,
   mediaFilePath,
 } from "./vault/media-io.js";
@@ -272,7 +274,10 @@ export type {
   LocalizeRemoteDisplayAssetsResult,
   MarkdownRemoteImageRef,
 } from "./vault/remote-display-assets.js";
-export { resolveItemHeroMedia } from "./vault/hero-image-resolve.js";
+export {
+  resolveCoverSourceDisplayPath,
+  resolveItemHeroMedia,
+} from "./vault/hero-image-resolve.js";
 export type {
   ItemHeroMedia,
   ItemHeroMediaKind,

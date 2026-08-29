@@ -35,9 +35,6 @@ function derivedCoverAttrs(thumbnailPath: string | null | undefined): {
     displayPath: thumbnailPath,
     slotCssWidthPx: GRID_SLOT_CSS_WIDTH_PX,
   });
-  if (!attrs.src) {
-    return { src: null, srcSet: null, sizes: null };
-  }
   return { src: attrs.src, srcSet: attrs.srcSet, sizes: attrs.sizes };
 }
 

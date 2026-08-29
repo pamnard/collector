@@ -5,9 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
 import {
   applyItemCover,
+  attachMediaFile,
   createVault,
   itemCoverPath,
   itemCoverSizePath,
+  mediaFilePath,
   readItemFile,
   resolveItemThumbnailPathsProgressive,
   SqlVaultIndexStore,
@@ -474,6 +476,28 @@ describe("createMediaCoverService", () => {
     expect(readSharp).not.toHaveBeenCalled();
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it("resolveItemThumbnailEntries returns cover-source path for display (#879)", async () => {
+    const { ctx, vault, vaultPath, itemId } = await openVault();
+    const source = await attachMediaFile(ctx, vaultPath, itemId, {
+      filename: "full.png",
+      data: await tinyPng(800, 600),
+    });
+    const coverBytes = await tinyWebp(64, 48);
+    await applyItemCover(ctx, vaultPath, vault.id, itemId, coverBytes, {
+      width: 64,
+      height: 48,
+    }, { sourceMediaId: source.id, sourceFilename: source.filename });
+    const item = await readItemFile(fs, vaultPath, itemId, vault.id);
+    const { service } = createService({ ctx, vault, vaultPath });
+
+    const entries = await service.resolveItemThumbnailEntries([item]);
+
+    expect(entries.get(itemId)).toEqual({
+      path: mediaFilePath(vaultPath, itemId, source.id, source.filename),
+      size: { width: 64, height: 48 },
+    });
   });
 
   it("resolveItemThumbnailEntries backfills missing cover.size.json via sharp (#822)", async () => {

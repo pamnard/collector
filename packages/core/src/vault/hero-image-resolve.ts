@@ -5,8 +5,9 @@
  * is the chosen preview — do not re-scan the gallery to pick “which” image
  * (f00fe67 / gallery-first mismatch).
  *
- * Display sharpness (#741): `<img>` uses the full gallery file recorded in
- * `cover.source.json` (same media that built cover.webp). Grid keeps cover.webp.
+ * Display sharpness (#741 / #879): `<img>` / `/media/derive` use the full gallery
+ * file recorded in `cover.source.json` (same media that built cover.webp).
+ * Teaser layout sizes still come from cover.webp + `cover.size.json`.
  * Without a source sidecar (legacy), falls back to cover.webp.
  *
  * Video-only keeps Play on the gallery video with cover.webp as poster.
@@ -14,11 +15,13 @@
  */
 
 import type { FileSystemAdapter } from "../adapters/types.js";
+import { inferMediaType } from "@collector/shared";
 import { readItemCoverSource } from "./cover-operations.js";
 import {
   findFirstGalleryImagePath,
   findFirstGalleryVideoPath,
-  listMediaFiles,
+  findGalleryImagePathByMediaId,
+  findSoleGalleryImagePath,
   mediaFilePath,
 } from "./media-io.js";
 import { itemCoverPath } from "./paths.js";
@@ -36,36 +39,46 @@ export interface ItemHeroMedia {
   displayPath: string | null;
 }
 
-async function resolveCoverSourceDisplayPath(
+/**
+ * Absolute path of the gallery image that built `cover.webp`, when known.
+ * Null when no usable source (callers fall back to cover.webp).
+ *
+ * Hot path (#879): no `listMediaFiles` / per-file `stat`. Prefers O(1) when
+ * `cover.source.json` carries `filename`; otherwise one `readDirEntries`.
+ */
+export async function resolveCoverSourceDisplayPath(
   fs: FileSystemAdapter,
   vaultPath: string,
   itemId: string,
 ): Promise<string | null> {
   const source = await readItemCoverSource(fs, vaultPath, itemId);
-  const files = await listMediaFiles(fs, vaultPath, itemId);
-  const images = files.filter((entry) => entry.media_type === "image");
 
-  if (source) {
-    const file = files.find((entry) => entry.id === source.mediaId);
-    if (file) {
-      const absolute = mediaFilePath(vaultPath, itemId, file.id, file.filename);
-      if (await fs.exists(absolute)) {
-        return absolute;
-      }
-    }
-  }
-
-  // Legacy covers (no cover.source.json): sole gallery image is the only
-  // possible source — safe without lex-min mismatch among many files.
-  if (images.length === 1) {
-    const only = images[0]!;
-    const absolute = mediaFilePath(vaultPath, itemId, only.id, only.filename);
+  if (source?.filename && inferMediaType(source.filename) === "image") {
+    const absolute = mediaFilePath(
+      vaultPath,
+      itemId,
+      source.mediaId,
+      source.filename,
+    );
     if (await fs.exists(absolute)) {
       return absolute;
     }
   }
 
-  return null;
+  if (source) {
+    const byId = await findGalleryImagePathByMediaId(
+      fs,
+      vaultPath,
+      itemId,
+      source.mediaId,
+    );
+    if (byId !== null) {
+      return byId;
+    }
+  }
+
+  // Legacy covers (no cover.source.json / stale id): sole gallery image only.
+  return findSoleGalleryImagePath(fs, vaultPath, itemId);
 }
 
 export async function resolveItemHeroMedia(

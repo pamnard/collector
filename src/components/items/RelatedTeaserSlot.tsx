@@ -1,5 +1,4 @@
 import type { CSSProperties } from "react";
-import { imageDisplaySlotById } from "../../lib/image-slot-fit";
 import type { RelatedTeaser } from "../../lib/related-teaser";
 import type { TeaserComposition } from "../../lib/teaser-layout/composition";
 import { cn } from "../../lib/utils";
@@ -11,14 +10,13 @@ import {
   contentTypeAccentClass,
 } from "./content-type-icon";
 
-const RELATED_SLOT_CSS_WIDTH_PX =
-  imageDisplaySlotById("related-teaser").cssWidthPx;
-
 type RelatedTeaserSlotProps = {
   teaser: RelatedTeaser;
   composition: TeaserComposition;
   onNavigate: (itemId: string) => void;
   style?: CSSProperties;
+  /** Painted CSS width of this board cell (incl. multi-col span). */
+  slotCssWidthPx: number;
 };
 
 function titleClampClass(titleLen: TeaserComposition["titleLen"]): string {
@@ -39,12 +37,18 @@ export function RelatedTeaserSlot({
   composition,
   onNavigate,
   style,
+  slotCssWidthPx,
 }: RelatedTeaserSlotProps) {
+  if (!(slotCssWidthPx > 0) || !Number.isFinite(slotCssWidthPx)) {
+    throw new Error(
+      `related teaser slot CSS width must be a positive finite number, got ${slotCssWidthPx}`,
+    );
+  }
   const coverAttrs =
     composition.hasImage && teaser.thumbnail
       ? buildDerivedImageAttrs({
           displayPath: teaser.thumbnail,
-          slotCssWidthPx: RELATED_SLOT_CSS_WIDTH_PX,
+          slotCssWidthPx,
         })
       : null;
   const largeType = composition.span === "2x2" || !composition.hasImage;

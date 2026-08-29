@@ -160,6 +160,79 @@ export async function listMediaFiles(
 }
 
 /**
+ * Absolute path of a gallery file by media id (#879).
+ * Cost: `exists(root)` + `readDirEntries` — no per-file `stat` (same as #711).
+ * Returns null when the id is missing or the entry is not an image
+ * (video cover-source keeps `cover.webp` as the display bitmap).
+ */
+export async function findGalleryImagePathByMediaId(
+  fs: FileSystemAdapter,
+  vaultRootPath: string,
+  itemRelativePath: string,
+  mediaId: string,
+): Promise<string | null> {
+  if (!mediaId) {
+    throw new Error("mediaId must be non-empty");
+  }
+  const root = itemMediaRoot(vaultRootPath, itemRelativePath);
+  if (!(await fs.exists(root))) {
+    return null;
+  }
+
+  const entries = await fs.readDirEntries(root);
+  for (const entry of entries) {
+    const name = entry.name;
+    if (shouldSkipMediaDirEntry(name) || entry.isDirectory) {
+      continue;
+    }
+    const attached = name.match(ATTACHED_MEDIA_FILENAME_RE);
+    const entryId = attached
+      ? attached[1]!
+      : bareMediaFileId(itemRelativePath, name);
+    if (entryId !== mediaId) {
+      continue;
+    }
+    if (inferMediaType(name) !== "image") {
+      return null;
+    }
+    return joinSegments(root, name);
+  }
+  return null;
+}
+
+/**
+ * Sole gallery image path when the media dir has exactly one image entry.
+ * No `stat` — listing only (#711 / #879).
+ */
+export async function findSoleGalleryImagePath(
+  fs: FileSystemAdapter,
+  vaultRootPath: string,
+  itemRelativePath: string,
+): Promise<string | null> {
+  const root = itemMediaRoot(vaultRootPath, itemRelativePath);
+  if (!(await fs.exists(root))) {
+    return null;
+  }
+
+  const entries = await fs.readDirEntries(root);
+  let only: string | null = null;
+  for (const entry of entries) {
+    const name = entry.name;
+    if (shouldSkipMediaDirEntry(name) || entry.isDirectory) {
+      continue;
+    }
+    if (inferMediaType(name) !== "image") {
+      continue;
+    }
+    if (only !== null) {
+      return null;
+    }
+    only = name;
+  }
+  return only === null ? null : joinSegments(root, only);
+}
+
+/**
  * Absolute path of the gallery image used for thumbnail fallback (#711).
  *
  * Contract: among non-skipped file entries whose stored name is an image,

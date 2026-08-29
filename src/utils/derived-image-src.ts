@@ -1,5 +1,12 @@
 /**
- * Display path + slot CSS size → `/media/derive` URL + srcset (#882).
+ * Cover slot display: one pipe for hero / grid / related / thumbnail (#876 / #879 / #882).
+ *
+ * 1. Host resolves the best available bitmap path (cover-source gallery file when
+ *    known; otherwise cover.webp — e.g. video poster with no larger still).
+ * 2. UI always loads that path through `/media/derive` sized to the CSS slot.
+ *
+ * Layout reservation (masonry WxH) still uses cover.size.json next to cover.webp.
+ * There is no parallel “raw cover.webp in <img>” path for these surfaces.
  */
 
 import { buildHostMediaDeriveUrl } from "@collector/shared";
@@ -7,7 +14,7 @@ import {
   deriveSrcSetWidthsForSlot,
   neededDeriveWidthForSlot,
 } from "../lib/image-slot-fit.ts";
-import { getHostMediaCredentials, toDisplayAssetSrc } from "./asset-src.ts";
+import { getHostMediaCredentials } from "./asset-src.ts";
 
 export type DerivedImageAttrs = {
   src: string;
@@ -52,8 +59,8 @@ export function absolutePathForMediaDerive(pathOrUrl: string): string | null {
 }
 
 /**
- * Build `<img>` src / srcSet / sizes for a display slot.
- * Without host credentials, falls back to {@link toDisplayAssetSrc} (no derive).
+ * Build `<img>` src / srcSet / sizes for a cover display slot via `/media/derive`.
+ * Vault paths require host credentials — no silent `/media/file` fallback.
  * Pass `sourceMtimeMs` when known so derive URLs include cache-busting `v`.
  */
 export function buildDerivedImageAttrs(input: {
@@ -67,11 +74,16 @@ export function buildDerivedImageAttrs(input: {
   const dpr = input.devicePixelRatio ?? readDevicePixelRatio();
   const sizes = `${Math.round(input.slotCssWidthPx)}px`;
   const absolutePath = absolutePathForMediaDerive(input.displayPath);
+  if (absolutePath === null) {
+    throw new Error(
+      `cover derive requires a vault path or host media URL, got ${input.displayPath}`,
+    );
+  }
   const host = getHostMediaCredentials();
-
-  if (absolutePath === null || host === null) {
-    const src = toDisplayAssetSrc(input.displayPath);
-    return { src, srcSet: src, sizes };
+  if (host === null) {
+    throw new Error(
+      "host media credentials required for cover /media/derive (#555 / #882)",
+    );
   }
 
   const primaryWidth = neededDeriveWidthForSlot({

@@ -1,10 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import type { ItemFile } from "@collector/shared";
+import { buildHostMediaDeriveUrl } from "@collector/shared";
 import { relatedTeaserFromItem } from "./related-teaser";
 import { loadRelatedSemanticTeasers } from "./related-semantic-items";
+import {
+  clearHostMediaCredentials,
+  setHostMediaCredentials,
+} from "../utils/asset-src";
 
 describe("relatedTeaserFromItem", () => {
-  it("stores a display cover URL and measured form", () => {
+  it("stores a display cover path and measured form", () => {
     const item = {
       id: "x.md",
       title: "X",
@@ -24,9 +29,9 @@ describe("relatedTeaserFromItem", () => {
       contentType: "bookmark",
     });
     expect(
-      relatedTeaserFromItem(item, "https://host/media/cover.webp", "landscape")
+      relatedTeaserFromItem(item, "/vault/media/x/photo.jpg", "landscape")
         .thumbnail,
-    ).toBe("https://host/media/cover.webp");
+    ).toBe("/vault/media/x/photo.jpg");
   });
 
   it("rejects imageForm without a resolved cover", () => {
@@ -45,6 +50,13 @@ describe("relatedTeaserFromItem", () => {
 });
 
 describe("loadRelatedSemanticTeasers", () => {
+  beforeEach(() => {
+    setHostMediaCredentials("http://127.0.0.1:9", "tok");
+  });
+  afterEach(() => {
+    clearHostMediaCredentials();
+  });
+
   it("returns null when similar hits are empty", async () => {
     const findSimilarItems = vi.fn(async () => []);
     const result = await loadRelatedSemanticTeasers({
@@ -59,7 +71,7 @@ describe("loadRelatedSemanticTeasers", () => {
     expect(findSimilarItems).toHaveBeenCalledWith("self.md", 2);
   });
 
-  it("hydrates hits in score order and probes cover form", async () => {
+  it("hydrates hits in score order and probes cover form via derive", async () => {
     async function* hydrate(ids: string[]) {
       for (const id of ids) {
         yield {
@@ -73,8 +85,11 @@ describe("loadRelatedSemanticTeasers", () => {
       }
     }
 
+    const coverPath = "/vault/media/a/cover.webp";
     const probe = vi.fn(async (src: string) => {
-      expect(src).toBe("/vault/media/a/cover.webp");
+      expect(src).toBe(
+        buildHostMediaDeriveUrl("http://127.0.0.1:9", "tok", coverPath, 128),
+      );
       return "portrait" as const;
     });
 
@@ -91,10 +106,7 @@ describe("loadRelatedSemanticTeasers", () => {
       resolveThumbnailPaths: async (items) => {
         const map = new Map<string, string | null>();
         for (const item of items) {
-          map.set(
-            item.id,
-            item.id === "a.md" ? "/vault/media/a/cover.webp" : null,
-          );
+          map.set(item.id, item.id === "a.md" ? coverPath : null);
         }
         return map;
       },
@@ -106,7 +118,7 @@ describe("loadRelatedSemanticTeasers", () => {
       {
         id: "a.md",
         title: "a.md",
-        thumbnail: "/vault/media/a/cover.webp",
+        thumbnail: coverPath,
         imageForm: "portrait",
         description: "",
         createdAt: "2020-01-01T00:00:00.000Z",

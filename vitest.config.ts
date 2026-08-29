@@ -4,7 +4,8 @@ import path from "node:path";
 
 /**
  * Root UI regression tests (RTL + jsdom).
- * Lib/node:test suites stay on `node --test`; do not include `*.test.ts` here.
+ * Most lib suites stay on `node --test`; this file also runs lib tests that
+ * need Vite resolve (extensionless imports / package aliases).
  */
 export default defineConfig({
   plugins: [react()],
@@ -22,7 +23,10 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
-    include: ["src/**/*.test.tsx"],
+    include: [
+      "src/**/*.test.tsx",
+      "src/lib/related-semantic-items.test.ts",
+    ],
     setupFiles: ["src/test/setup-rtl.ts"],
     css: false,
   },

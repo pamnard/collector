@@ -92,6 +92,8 @@ export const coverPixelSizeSchema = z.object({
 /** Gallery mediaId that built cover.webp (hero full-res display). */
 export const coverSourceSchema = z.object({
   mediaId: z.string().min(1),
+  /** Original filename when known — enables O(1) display resolve (#879). */
+  filename: z.string().min(1).optional(),
 });
 
 export type ItemFile = z.infer<typeof itemFileSchema>;

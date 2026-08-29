@@ -58,6 +58,7 @@ run(
     join(root, "src/components/items/item-grid-cover-slot.test.ts"),
     join(root, "src/lib/image-slot-fit.test.ts"),
     join(root, "src/utils/derived-image-src.test.ts"),
+    join(root, "src/lib/teaser-layout/related-slot-css-width.test.ts"),
   ],
 );
 

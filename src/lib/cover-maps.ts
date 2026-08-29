@@ -63,7 +63,9 @@ export function orderedIds(items: ItemFile[]): string[] {
 export function itemCoverStamp(
   item: Pick<ItemFile, "thumbnail" | "updated_at">,
 ): string {
-  return `${item.thumbnail ?? ""}:${item.updated_at}`;
+  // Prefix bumps when thumbnail resolve meaning changes (e.g. cover.webp →
+  // cover-source display path, #879) so cached maps re-flight once.
+  return `display-v2:${item.thumbnail ?? ""}:${item.updated_at}`;
 }
 
 function coverMapsPositiveSize(

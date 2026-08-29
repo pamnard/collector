@@ -78,7 +78,8 @@ export function createGenerateCoverHandler(deps: {
 
     // Running job may outlive the media (or a clear). Do not resurrect cover (#875).
     const media = await listItemMediaWithPaths(ctx, vaultPath, itemId);
-    if (!media.some((entry) => entry.id === mediaId)) {
+    const source = media.find((entry) => entry.id === mediaId);
+    if (!source) {
       return { status: "ok" };
     }
 
@@ -89,7 +90,7 @@ export function createGenerateCoverHandler(deps: {
       itemId,
       cover.data,
       cover.size,
-      { sourceMediaId: mediaId },
+      { sourceMediaId: mediaId, sourceFilename: source.filename },
     );
     deps.invalidateThumbnailPathCache?.(itemId);
     deps.onVaultPresentationChanged?.({

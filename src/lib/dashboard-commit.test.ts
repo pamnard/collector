@@ -50,14 +50,14 @@ describe("orderedIds", () => {
 });
 
 describe("itemCoverStamp", () => {
-  it("joins thumbnail and updated_at", () => {
+  it("joins resolve-generation, thumbnail, and updated_at", () => {
     assert.equal(
       itemCoverStamp({ thumbnail: "c.webp", updated_at: "t1" }),
-      "c.webp:t1",
+      "display-v2:c.webp:t1",
     );
     assert.equal(
       itemCoverStamp({ thumbnail: null, updated_at: "t1" }),
-      ":t1",
+      "display-v2::t1",
     );
   });
 });
