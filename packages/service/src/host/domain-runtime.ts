@@ -107,6 +107,8 @@ export function createServiceDomainRuntime(
   const jobs: JobQueue = {
     enqueue: (input) => requireJobs().enqueue(input),
     cancel: (id) => requireJobs().cancel(id),
+    cancelPendingByIdempotencyKeyPrefix: (prefix) =>
+      requireJobs().cancelPendingByIdempotencyKeyPrefix(prefix),
     getJob: (id) => requireJobs().getJob(id),
     findByIdempotencyKey: (key) => requireJobs().findByIdempotencyKey(key),
     findLatestByIdempotencyKeyPrefix: (prefix) =>

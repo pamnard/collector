@@ -371,6 +371,32 @@ describe("createJobQueue (#628 / #629)", () => {
     await queue.stop();
   });
 
+  it("cancelPendingByIdempotencyKeyPrefix treats underscore as literal (#875)", async () => {
+    const dbPath = tempJobsPath();
+    const queue = await createJobQueue({
+      dbPath,
+      registry: createHostJobRegistry(),
+    });
+    const target = await queue.enqueue({
+      type: "__test_noop",
+      delayMs: 60_000,
+      idempotencyKey: "generateCover:v1:a_b.md:m1",
+    });
+    const sibling = await queue.enqueue({
+      type: "__test_noop",
+      delayMs: 60_000,
+      idempotencyKey: "generateCover:v1:axb.md:m1",
+    });
+
+    const cancelled = await queue.cancelPendingByIdempotencyKeyPrefix(
+      "generateCover:v1:a_b.md:",
+    );
+    expect(cancelled).toBe(1);
+    expect(await queue.getJob(target.id)).toMatchObject({ status: "cancelled" });
+    expect(await queue.getJob(sibling.id)).toMatchObject({ status: "pending" });
+    await queue.stop();
+  });
+
   it("rejects unknown job type on enqueue (#629)", async () => {
     const dbPath = tempJobsPath();
     const queue = await createJobQueue({

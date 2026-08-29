@@ -149,11 +149,15 @@ export function createMediaCoverService(
     const previous = presentationChangeByItem.get(itemId) ?? Promise.resolve();
     const next = previous.then(work, work);
     presentationChangeByItem.set(itemId, next);
-    void next.finally(() => {
-      if (presentationChangeByItem.get(itemId) === next) {
-        presentationChangeByItem.delete(itemId);
-      }
-    });
+    // Swallow rethrow from finally so a failed work does not become unhandledRejection
+    // (caller still awaits `next` and sees the error).
+    void next
+      .finally(() => {
+        if (presentationChangeByItem.get(itemId) === next) {
+          presentationChangeByItem.delete(itemId);
+        }
+      })
+      .catch(() => {});
     return next;
   };
 
@@ -204,6 +208,7 @@ export function createMediaCoverService(
     if (mediaType !== "image" && mediaType !== "video") {
       throw new Error(`cover unsupported media type: ${mediaType}`);
     }
+    await deps.cancelPendingGenerateCoversForItem(vault.id, itemId);
     await deps.enqueueGenerateCover({
       vaultId: vault.id,
       itemId,
@@ -355,6 +360,7 @@ export function createMediaCoverService(
       throw new Error("Cover can only be set from image or video files");
     }
 
+    await deps.cancelPendingGenerateCoversForItem(vault.id, itemId);
     const { id: jobId } = await deps.enqueueGenerateCover({
       vaultId: vault.id,
       itemId,

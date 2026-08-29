@@ -65,10 +65,10 @@ export function createFindLatestByIdempotencyKeyPrefix(db: SqlMigrator) {
   ): Promise<JobRow | null> {
     const rows = await db.select<JobRow>(
       `SELECT * FROM jobs
-       WHERE idempotency_key LIKE ?
+       WHERE idempotency_key LIKE ? ESCAPE '\\'
        ORDER BY created_at DESC
        LIMIT 1`,
-      [`${prefix}%`],
+      [`${escapeLikePrefix(prefix)}%`],
     );
     return rows[0] ?? null;
   };

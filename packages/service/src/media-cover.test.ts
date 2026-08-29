@@ -206,6 +206,61 @@ describe("createMediaCoverService", () => {
     expect(onVaultPresentationChanged).not.toHaveBeenCalled();
   });
 
+  it("preferred cover enqueue cancels pending covers for the item (#875)", async () => {
+    const { ctx, vault, vaultPath, itemId } = await openVault();
+    const { service, cancelledFor } = createService({ ctx, vault, vaultPath });
+    await service.attachMediaFiles(itemId, [
+      { name: "a.png", bytes: await tinyPng() },
+    ]);
+    expect(cancelledFor).toEqual([{ vaultId: vault.id, itemId }]);
+  });
+
+  it("setItemCoverFromMedia cancels pending covers before enqueue (#875)", async () => {
+    const { ctx, vault, vaultPath, itemId } = await openVault();
+    const { service, cancelledFor } = createService({
+      ctx,
+      vault,
+      vaultPath,
+      waitForCoverJob: async () => "succeeded",
+    });
+    const [media] = await service.attachMediaFiles(itemId, [
+      { name: "a.png", bytes: await tinyPng() },
+    ]);
+    cancelledFor.length = 0;
+
+    await service.setItemCoverFromMedia(itemId, media!.id);
+
+    expect(cancelledFor).toEqual([{ vaultId: vault.id, itemId }]);
+  });
+
+  it("serialized presentation failure does not raise unhandledRejection (#875)", async () => {
+    const rejections: unknown[] = [];
+    const onUnhandled = (reason: unknown) => {
+      rejections.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const { ctx, vault, vaultPath, itemId } = await openVault();
+      const { service } = createService({
+        ctx,
+        vault,
+        vaultPath,
+        enqueueGenerateCover: async () => {
+          throw new Error("enqueue boom");
+        },
+      });
+      await expect(
+        service.attachMediaFiles(itemId, [
+          { name: "a.png", bytes: await tinyPng() },
+        ]),
+      ).rejects.toThrow(/enqueue boom/);
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(rejections).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
   it("attachMediaFiles prefers an existing image over an attached video", async () => {
     const { ctx, vault, vaultPath, itemId } = await openVault();
     const { service, enqueued } = createService({ ctx, vault, vaultPath });

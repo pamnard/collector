@@ -1,4 +1,8 @@
-import { applyItemCover, type VaultContext } from "@collector/core";
+import {
+  applyItemCover,
+  listItemMediaWithPaths,
+  type VaultContext,
+} from "@collector/core";
 import type { GeneratedCover, MediaType } from "@collector/shared";
 import {
   generateCoverIdempotencyKey,
@@ -40,6 +44,7 @@ export function createGenerateCoverHandler(deps: {
     const {
       vaultId,
       itemId,
+      mediaId,
       absolutePath,
       filename,
       mediaType,
@@ -70,6 +75,13 @@ export function createGenerateCoverHandler(deps: {
         error: "generateCover returned null",
       };
     }
+
+    // Running job may outlive the media (or a clear). Do not resurrect cover (#875).
+    const media = await listItemMediaWithPaths(ctx, vaultPath, itemId);
+    if (!media.some((entry) => entry.id === mediaId)) {
+      return { status: "ok" };
+    }
+
     await applyItemCover(
       ctx,
       vaultPath,
@@ -100,15 +112,11 @@ export function cancelPendingGenerateCoversForItem(
   );
 }
 
-export async function enqueueGenerateCover(
+/** Enqueue only — callers that supersede preferred/clear must cancel first (#875). */
+export function enqueueGenerateCover(
   queue: JobQueue,
   payload: GenerateCoverJobPayload,
 ): Promise<EnqueueResult> {
-  await cancelPendingGenerateCoversForItem(
-    queue,
-    payload.vaultId,
-    payload.itemId,
-  );
   return queue.enqueue({
     type: "generateCover",
     payload,
