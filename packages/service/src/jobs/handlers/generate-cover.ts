@@ -1,6 +1,12 @@
-import { applyItemCover, type VaultContext } from "@collector/core";
+import {
+  applyItemCover,
+  listItemMediaWithPaths,
+  type VaultContext,
+} from "@collector/core";
 import type { GeneratedCover, MediaType } from "@collector/shared";
 import {
+  generateCoverIdempotencyKey,
+  generateCoverIdempotencyKeyPrefix,
   generateCoverJobType,
   type GenerateCoverJobPayload,
   folderPathFromItemPath,
@@ -16,6 +22,14 @@ export type GenerateCoverFromMedia = (
   mediaType: MediaType,
 ) => Promise<GeneratedCover | null>;
 
+function isEnoent(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as NodeJS.ErrnoException).code === "ENOENT"
+  );
+}
+
 export function createGenerateCoverHandler(deps: {
   getContext: () => VaultContext;
   resolveVaultPath: (vaultId: string) => Promise<string>;
@@ -30,13 +44,25 @@ export function createGenerateCoverHandler(deps: {
     const {
       vaultId,
       itemId,
+      mediaId,
       absolutePath,
       filename,
       mediaType,
     } = job.payload;
     const vaultPath = await deps.resolveVaultPath(vaultId);
     const ctx = deps.getContext();
-    const data = await ctx.fs.readBinary(absolutePath);
+
+    let data: Uint8Array;
+    try {
+      data = await ctx.fs.readBinary(absolutePath);
+    } catch (error) {
+      // Rapid multi-delete can remove the candidate before this job runs (#875).
+      if (isEnoent(error)) {
+        return { status: "ok" };
+      }
+      throw error;
+    }
+
     const cover = await deps.generateCoverFromMedia(
       data,
       filename,
@@ -49,6 +75,13 @@ export function createGenerateCoverHandler(deps: {
         error: "generateCover returned null",
       };
     }
+
+    // Running job may outlive the media (or a clear). Do not resurrect cover (#875).
+    const media = await listItemMediaWithPaths(ctx, vaultPath, itemId);
+    if (!media.some((entry) => entry.id === mediaId)) {
+      return { status: "ok" };
+    }
+
     await applyItemCover(
       ctx,
       vaultPath,
@@ -68,6 +101,18 @@ export function createGenerateCoverHandler(deps: {
   };
 }
 
+/** Cancel pending generateCover jobs for one item so a newer preferred cover can win (#875). */
+export function cancelPendingGenerateCoversForItem(
+  queue: JobQueue,
+  vaultId: string,
+  itemId: string,
+): Promise<number> {
+  return queue.cancelPendingByIdempotencyKeyPrefix(
+    generateCoverIdempotencyKeyPrefix({ vaultId, itemId }),
+  );
+}
+
+/** Enqueue only — callers that supersede preferred/clear must cancel first (#875). */
 export function enqueueGenerateCover(
   queue: JobQueue,
   payload: GenerateCoverJobPayload,
@@ -75,6 +120,6 @@ export function enqueueGenerateCover(
   return queue.enqueue({
     type: "generateCover",
     payload,
-    idempotencyKey: `generateCover:${payload.vaultId}:${payload.itemId}:${payload.mediaId}`,
+    idempotencyKey: generateCoverIdempotencyKey(payload),
   });
 }

@@ -8,6 +8,8 @@ import {
   importFolderJobType,
   itemDerivedRefreshIdempotencyKey,
   itemDerivedRefreshIdempotencyKeyPrefix,
+  generateCoverIdempotencyKey,
+  generateCoverIdempotencyKeyPrefix,
   itemDerivedRefreshJobType,
   itemExtractAutoIdempotencyKey,
   itemExtractAutoJobType,
@@ -120,6 +122,25 @@ describe("job type catalog (#629)", () => {
     expect(itemDerivedRefreshIdempotencyKeyPrefix(snapshot)).toBe(
       "itemDerivedRefresh:v1:Inbox/n.md:3:",
     );
+  });
+
+  it("generateCover idempotency keys support per-item cancel/supersede (#875)", () => {
+    const payload = {
+      vaultId: "v1",
+      itemId: "Inbox/n.md",
+      mediaId: "m2",
+    };
+    expect(generateCoverIdempotencyKey(payload)).toBe(
+      "generateCover:v1:Inbox/n.md:m2",
+    );
+    expect(generateCoverIdempotencyKeyPrefix(payload)).toBe(
+      "generateCover:v1:Inbox/n.md:",
+    );
+    expect(
+      generateCoverIdempotencyKey(payload).startsWith(
+        generateCoverIdempotencyKeyPrefix(payload),
+      ),
+    ).toBe(true);
   });
 
   it("includes itemExtractAuto as non-retryable one-shot (#auto-import)", () => {

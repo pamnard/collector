@@ -66,6 +66,7 @@ describe("createSyncPluginHandoff vault handoff", () => {
       getContext: () => ctx,
       enqueueGenerateCover: async () => ({ id: "cover-job" }),
       waitForCoverJob: async () => "succeeded" as const,
+      cancelPendingGenerateCoversForItem: async () => 0,
       resolveThumbnailPathsProgressive: async () => undefined,
       readCoverPixelSize: async () => ({ width: 1, height: 1 }),
     });

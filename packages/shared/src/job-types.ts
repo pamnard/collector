@@ -258,6 +258,23 @@ export const generateCoverJobType = defineJobType({
   payload: generateCoverJobPayloadSchema,
 });
 
+/** Stable idempotency key for one media cover candidate (#636 / #875). */
+export function generateCoverIdempotencyKey(
+  payload: Pick<GenerateCoverJobPayload, "vaultId" | "itemId" | "mediaId">,
+): string {
+  return `generateCover:${payload.vaultId}:${payload.itemId}:${payload.mediaId}`;
+}
+
+/**
+ * Prefix for all generateCover jobs on one item.
+ * Used to cancel/supersede pending covers on delete or preferred-cover replace (#875).
+ */
+export function generateCoverIdempotencyKeyPrefix(
+  payload: Pick<GenerateCoverJobPayload, "vaultId" | "itemId">,
+): string {
+  return `generateCover:${payload.vaultId}:${payload.itemId}:`;
+}
+
 /** Drop-import heavy batch (#637). */
 export const dropImportBatchJobPayloadSchema = z.object({
   vaultId: z.string().min(1),

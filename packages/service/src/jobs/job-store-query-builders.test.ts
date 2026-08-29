@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildJobStatsFromRows } from "./job-store-query-builders.js";
+import {
+  buildJobStatsFromRows,
+  escapeLikePrefix,
+} from "./job-store-query-builders.js";
 
 describe("job-store-query-builders (#793)", () => {
   it("buildJobStatsFromRows aggregates status and byType counts", () => {
@@ -28,5 +31,12 @@ describe("job-store-query-builders (#793)", () => {
       failed: 1,
       cancelled: 0,
     });
+  });
+
+  it("escapeLikePrefix escapes LIKE wildcards for literal prefix cancel (#875)", () => {
+    expect(escapeLikePrefix("generateCover:v1:a_b.md:")).toBe(
+      "generateCover:v1:a\\_b.md:",
+    );
+    expect(escapeLikePrefix("x%y\\z")).toBe("x\\%y\\\\z");
   });
 });

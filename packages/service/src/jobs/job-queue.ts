@@ -57,6 +57,8 @@ export interface EnqueueResult {
 export interface JobQueue {
   enqueue(input: EnqueueInput): Promise<EnqueueResult>;
   cancel(id: string): Promise<boolean>;
+  /** Cancel pending jobs whose idempotency key starts with prefix (#875). */
+  cancelPendingByIdempotencyKeyPrefix(prefix: string): Promise<number>;
   getJob(id: string): Promise<JobRow | null>;
   /** Latest job for key (any status); for opt-in waitDerived (#770). */
   findByIdempotencyKey(key: string): Promise<JobRow | null>;
@@ -195,6 +197,13 @@ export async function createJobQueue(
 
     cancel(id) {
       return store.cancelPending(id, now().toISOString());
+    },
+
+    cancelPendingByIdempotencyKeyPrefix(prefix) {
+      return store.cancelPendingByIdempotencyKeyPrefix(
+        prefix,
+        now().toISOString(),
+      );
     },
 
     getJob(id) {
