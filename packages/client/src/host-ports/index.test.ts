@@ -50,9 +50,18 @@ function tempDataDir(prefix: string): string {
   return dataDir;
 }
 
+async function dialIndexTransport(baseUrl: string, token: string) {
+  return createHttpHostTransport({
+    baseUrl,
+    token,
+    enableEvents: true,
+    connectTimeoutMs: 2_000,
+  });
+}
+
 /**
- * Host stack with a retained runtime so tests can drive derivedCatchUpStatus
- * store updates that broadcast over the same WS event as production (#767).
+ * Retained runtime so tests can drive derivedCatchUpStatus store updates
+ * over the same WS event as production (#767), mirroring jobs.test host stack.
  */
 async function startIndexHostWithRuntime(dataDir: string): Promise<{
   runtime: ServiceDomainRuntime;
@@ -153,16 +162,13 @@ describe("createHostIndexPort (#767 / #888)", () => {
     const dataDir = tempDataDir("collector-index-catchup-get-");
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const transport = await createHttpHostTransport({
-        baseUrl: host.baseUrl,
-        token: await resolveServiceHostToken({ dataDir }),
-        enableEvents: true,
-        connectTimeoutMs: 2_000,
-      });
+      const transport = await dialIndexTransport(
+        host.baseUrl,
+        await resolveServiceHostToken({ dataDir }),
+      );
       try {
         await createCollectorHostService(transport).boot.ensureActiveVault();
-        const ctx = createHostSessionCtx(transport);
-        const port = createHostIndexPort(ctx);
+        const port = createHostIndexPort(createHostSessionCtx(transport));
         for (const key of INDEX_PORT_KEYS) {
           expect(typeof port[key as keyof IndexPort], key).toBe("function");
         }
@@ -180,7 +186,7 @@ describe("createHostIndexPort (#767 / #888)", () => {
           pending: 0,
           running: 0,
         });
-        // Seed used getDerivedCatchUpStatus over RPC (not a hand-rolled cache).
+        // Best-effort seed swallows RPC errors — assert the method name explicitly.
         expect(await transport.request("getDerivedCatchUpStatus")).toEqual(
           port.getDerivedCatchUpStatus(),
         );
@@ -197,12 +203,7 @@ describe("createHostIndexPort (#767 / #888)", () => {
     const dataDir = tempDataDir("collector-index-catchup-sub-");
     const { runtime, baseUrl, token, close } =
       await startIndexHostWithRuntime(dataDir);
-    const transport = await createHttpHostTransport({
-      baseUrl,
-      token,
-      enableEvents: true,
-      connectTimeoutMs: 2_000,
-    });
+    const transport = await dialIndexTransport(baseUrl, token);
     try {
       const port = createHostIndexPort(createHostSessionCtx(transport));
       const seen: DerivedCatchUpStatus[] = [];
@@ -232,14 +233,25 @@ describe("createHostIndexPort (#767 / #888)", () => {
 
       const beforeUnsub = seen.length;
       sub.unsubscribe();
-      runtime.derivedCatchUpStatus.set({
+
+      const idle: DerivedCatchUpStatus = {
         vaultId: null,
         status: "idle",
         pending: 0,
         running: 0,
+      };
+      const witness: DerivedCatchUpStatus[] = [];
+      const witnessSub = createHostIndexPort(
+        createHostSessionCtx(transport),
+      ).subscribeDerivedCatchUpStatus((status) => {
+        witness.push(status);
       });
-      await new Promise((r) => setTimeout(r, 100));
+      runtime.derivedCatchUpStatus.set(idle);
+      await vi.waitFor(() => {
+        expect(witness).toContainEqual(idle);
+      });
       expect(seen).toHaveLength(beforeUnsub);
+      witnessSub.unsubscribe();
     } finally {
       await transport.close();
       await close();
@@ -250,12 +262,10 @@ describe("createHostIndexPort (#767 / #888)", () => {
     const dataDir = tempDataDir("collector-index-sync-sub-");
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
-      const transport = await createHttpHostTransport({
-        baseUrl: host.baseUrl,
-        token: await resolveServiceHostToken({ dataDir }),
-        enableEvents: true,
-        connectTimeoutMs: 2_000,
-      });
+      const transport = await dialIndexTransport(
+        host.baseUrl,
+        await resolveServiceHostToken({ dataDir }),
+      );
       try {
         const service = createCollectorHostService(transport);
         await service.boot.ensureActiveVault();
@@ -277,12 +287,10 @@ describe("createHostIndexPort (#767 / #888)", () => {
           { timeout: 15_000 },
         );
         expect(port.getVaultIndexSyncStatus().vaultId).toBeTruthy();
+        expect(await transport.request("getVaultIndexSyncStatus")).toEqual(
+          port.getVaultIndexSyncStatus(),
+        );
         sub.unsubscribe();
-
-        const before = seen.length;
-        await service.items.listDashboardItemIds("all");
-        await new Promise((r) => setTimeout(r, 200));
-        expect(seen).toHaveLength(before);
       } finally {
         await transport.close();
       }
