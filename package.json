@@ -14,6 +14,7 @@
     "preview": "vite preview",
     "typecheck": "npm run typecheck --workspace @collector/shared && npm run typecheck --workspace @collector/api && npm run typecheck --workspace @collector/db && npm run typecheck --workspace @collector/core && npm run typecheck --workspace @collector/service && npm run typecheck --workspace @collector/client && npm run typecheck --workspace @collector/cli && npm run typecheck --workspace @collector/mcp && tsc --noEmit",
     "test": "node scripts/run-tests-with-orphan-guard.mjs",
+    "test:ui": "vitest run --config vitest.config.ts",
     "test:workspaces": "npm run test --workspace @collector/db && npm run test --workspace @collector/core && npm run test --workspace @collector/service && npm run test --workspace @collector/client && npm run test --workspace @collector/cli && npm run test --workspace @collector/mcp",
     "test:startup": "npm run build:packages && node scripts/startup-index-smoke.mjs",
     "test:vault-index": "npm run build:packages && node scripts/vault-index-rebuild-smoke.mjs",
@@ -74,13 +75,18 @@
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.3.3",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.3",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
+    "jsdom": "^26.1.0",
     "mdast-util-to-hast": "^13.2.1",
     "playwright": "^1.62.1",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.8.3",
-    "vite": "^7.0.4"
+    "vite": "^7.0.4",
+    "vitest": "^3.2.7"
   }
 }

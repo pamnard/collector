@@ -1,18 +1,39 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useSyncExternalStore } from "react";
 import type {
   DashboardItemSort,
-  ItemThumbnailPixelSize,
   VaultPresentationChangedPayload,
 } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
 import { useAppSettings } from "../../context/AppSettingsContext";
 import { dashboardLiveActionForEvent } from "../../lib/vault-presentation-affects";
 import { itemIdToPruneFromPresentationEvent } from "../../lib/presentation-prune-item-id";
-import type { NavFilter } from "../../types/ui";
+import {
+  coverMapsFromCacheEntry,
+  createCoverController,
+  type CoverController,
+} from "../../lib/cover-controller";
+import {
+  emptyCoverMaps,
+  type CoverMaps,
+} from "../../lib/cover-maps";
+import { snapshotToCacheEntry } from "../../lib/dashboard-commit";
+import { readInitialDashboardCacheEntry } from "../../lib/dashboard-query-load";
+import { resolveDashboardCoverPathsProgressive } from "../../lib/preload-dashboard-covers";
+import {
+  dashboardQueryCacheKey,
+  getDashboardQueryCache,
+  setDashboardQueryCache,
+} from "../../services/dashboard-query-cache";
+import { getUiSession } from "../../services/collector-client";
+import { navFilterKey, type NavFilter } from "../../types/ui";
 import { useVaultIndexSyncStatus } from "../useVaultIndexSyncStatus";
+import { persistDashboardCoverMapsToCache } from "./commit-dashboard-cover-maps";
 import { useDashboardCoverFlight } from "./useDashboardCoverFlight";
 import { useDashboardListState } from "./useDashboardListState";
-import type { StartCoverPathFlight } from "./dashboard-list-state-types";
+import type {
+  DashboardListState,
+  StartCoverPathFlight,
+} from "./dashboard-list-state-types";
 import { useDashboardQueryLifecycle } from "./useDashboardQueryLifecycle";
 
 export { DASHBOARD_PREFETCH_SIZE } from "../../services/collector-client";
@@ -24,26 +45,51 @@ export const DEFAULT_DASHBOARD_SORT: DashboardItemSort = {
 
 export interface UseDashboardItemsResult {
   items: ItemFile[];
-  /** Resolved cover paths (null = no file cover). Decode is per-card. */
-  thumbnailPaths: Map<string, string | null>;
-  /** Freshness stamps for cover paths (`thumbnail:updated_at`). */
-  thumbnailStamps: Map<string, string>;
-  /** Cover pixel sizes from host (cover.size.json / sharp backfill; null = no cover). */
-  thumbnailSizes: Map<string, ItemThumbnailPixelSize | null>;
+  /** Opaque cover SoT for masonry (#874). */
+  coverMaps: CoverMaps;
   totalCount: number;
   isLoading: boolean;
   isLoadingMore: boolean;
   hasMore: boolean;
   error: string | null;
   loadMore: () => void;
-  /** Drop a deleted id from committed/working lists and query cache immediately. */
   pruneItem: (itemId: string) => void;
-  /** Re-resolve one item cover after itemCoverChanged (#856 / #871). */
   refreshCoverForItem: (itemId: string) => void;
-  /** Scoped live updates from vaultPresentationChanged (#756). */
+  probeStickyNulls: (items: ItemFile[]) => void;
   applyPresentationEvents: (
     events: VaultPresentationChangedPayload[],
   ) => void;
+}
+
+function readInitialCacheEntry(
+  filter: NavFilter,
+  searchQuery: string,
+  sort: DashboardItemSort,
+  vaultId: string | null | undefined,
+) {
+  return readInitialDashboardCacheEntry({
+    cacheKey: dashboardQueryCacheKey(
+      navFilterKey(filter),
+      searchQuery,
+      sort.key,
+      sort.dir,
+    ),
+    getCached: getDashboardQueryCache,
+    setCached: setDashboardQueryCache,
+    vaultId,
+    peekWarmSnapshot: () => {
+      if (!vaultId) {
+        return null;
+      }
+      return getUiSession().snapshot.peekMatchingDashboardSnapshot({
+        vaultId,
+        filter,
+        search: searchQuery,
+        sort,
+      });
+    },
+    snapshotToEntry: snapshotToCacheEntry,
+  });
 }
 
 export function useDashboardItems(
@@ -57,6 +103,54 @@ export function useDashboardItems(
   const indexSync = useVaultIndexSyncStatus();
 
   const startCoverPathFlightRef = useRef<StartCoverPathFlight>(async () => {});
+  const listRef = useRef<DashboardListState | null>(null);
+  const initialCacheRef = useRef<ReturnType<typeof readInitialCacheEntry> | undefined>(
+    undefined,
+  );
+  if (initialCacheRef.current === undefined) {
+    initialCacheRef.current = readInitialCacheEntry(
+      filter,
+      searchQuery,
+      sort,
+      vaultId,
+    );
+  }
+
+  const coversRef = useRef<CoverController | null>(null);
+  if (coversRef.current === null) {
+    const initial = initialCacheRef.current;
+    coversRef.current = createCoverController(
+      {
+        resolveProgressive: resolveDashboardCoverPathsProgressive,
+        getRequestVersion: () =>
+          listRef.current?.requestVersionRef.current ?? 0,
+        getQueryKey: () => listRef.current?.queryKeyRef.current ?? "",
+        getItem: (id) => listRef.current?.itemsByIdRef.current.get(id),
+        persistMaps: (maps, meta) => {
+          const list = listRef.current;
+          if (!list) {
+            return;
+          }
+          persistDashboardCoverMapsToCache({
+            flightKey: meta.flightKey,
+            flightVersion: meta.flightVersion,
+            queryKeyRef: list.queryKeyRef,
+            requestVersionRef: list.requestVersionRef,
+            itemIds: list.itemIdsRef.current,
+            itemsById: list.itemsByIdRef.current,
+            bodyStamps: list.bodyStampsRef.current,
+            streamEndOffset: list.streamEndOffsetRef.current,
+            totalCount: list.totalCountRef.current,
+            maps,
+          });
+        },
+      },
+      initial
+        ? coverMapsFromCacheEntry(initial)
+        : emptyCoverMaps(),
+    );
+  }
+  const coversController = coversRef.current;
 
   const list = useDashboardListState({
     filter,
@@ -64,7 +158,10 @@ export function useDashboardItems(
     sort,
     vaultId,
     startCoverPathFlightRef,
+    covers: coversController,
+    initialCache: initialCacheRef.current,
   });
+  listRef.current = list;
 
   const isIndexingEmptyGrid =
     (indexSync.status === "running" || indexSync.status === "rebuilding") &&
@@ -77,9 +174,16 @@ export function useDashboardItems(
 
   const covers = useDashboardCoverFlight({
     showSkeleton,
-    list,
+    committedItems: list.committedItems,
+    covers: coversController,
     startCoverPathFlightRef,
   });
+
+  const coverMaps = useSyncExternalStore(
+    coversController.subscribe,
+    coversController.getPublishedMaps,
+    coversController.getPublishedMaps,
+  );
 
   const query = useDashboardQueryLifecycle({
     filter,
@@ -121,7 +225,6 @@ export function useDashboardItems(
         }
       }
       if (softRefresh) {
-        // Same soft path as index-sync republish: no cache clear, no cold load.
         query.syncRepublishRef.current?.flush();
       }
     },
@@ -135,9 +238,7 @@ export function useDashboardItems(
 
   return {
     items: list.committedItems,
-    thumbnailPaths: list.committedThumbnailPaths,
-    thumbnailStamps: list.committedThumbnailStamps,
-    thumbnailSizes: list.committedThumbnailSizes,
+    coverMaps,
     totalCount: list.committedTotalCount,
     isLoading: showSkeleton,
     isLoadingMore: list.isLoadingMore,
@@ -146,6 +247,7 @@ export function useDashboardItems(
     loadMore: query.loadMore,
     pruneItem: list.pruneItem,
     refreshCoverForItem: covers.refreshCoverForItem,
+    probeStickyNulls: covers.probeStickyNulls,
     applyPresentationEvents,
   };
 }

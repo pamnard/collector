@@ -5,12 +5,10 @@
 
 import type { ItemThumbnailPixelSize } from "@collector/api";
 import {
-  mergeCommittedThumbnailPaths,
-  mergeCommittedThumbnailSizes,
-  mergeCommittedThumbnailStamps,
-  thumbnailPathsEqual,
-  thumbnailSizesEqual,
-} from "./dashboard-commit.ts";
+  coverMapsEqual,
+  coverMapsMerge,
+  type CoverMaps,
+} from "./cover-maps.ts";
 
 export type CoverPathCommitBatcher = {
   enqueue: (
@@ -28,14 +26,8 @@ export type CoverPathCommitBatcherOptions = {
   getRequestVersion: () => number;
   isAborted: () => boolean;
   getOrderedIds: () => string[];
-  getPaths: () => Map<string, string | null>;
-  getStamps: () => Map<string, string>;
-  getSizes: () => Map<string, ItemThumbnailPixelSize | null>;
-  commit: (
-    paths: Map<string, string | null>,
-    stamps: Map<string, string>,
-    sizes: Map<string, ItemThumbnailPixelSize | null>,
-  ) => void;
+  getMaps: () => CoverMaps;
+  commit: (maps: CoverMaps) => void;
   /** Schedule a flush; return cancel. Defaults to requestAnimationFrame. */
   scheduleFlush?: (flush: () => void) => () => void;
 };
@@ -91,28 +83,20 @@ export function createCoverPathCommitBatcher(
     pendingSizes = new Map();
 
     const orderedIds = options.getOrderedIds();
-    const mergedPaths = mergeCommittedThumbnailPaths(
-      options.getPaths(),
-      resolvedPaths,
+    const prev = options.getMaps();
+    const merged = coverMapsMerge(
+      prev,
+      {
+        paths: resolvedPaths,
+        stamps: resolvedStamps,
+        sizes: resolvedSizes,
+      },
       orderedIds,
     );
-    const mergedStamps = mergeCommittedThumbnailStamps(
-      options.getStamps(),
-      resolvedStamps,
-      orderedIds,
-    );
-    const mergedSizes = mergeCommittedThumbnailSizes(
-      options.getSizes(),
-      resolvedSizes,
-      orderedIds,
-    );
-    if (
-      thumbnailPathsEqual(options.getPaths(), mergedPaths, orderedIds) &&
-      thumbnailSizesEqual(options.getSizes(), mergedSizes, orderedIds)
-    ) {
+    if (coverMapsEqual(prev, merged, orderedIds)) {
       return;
     }
-    options.commit(mergedPaths, mergedStamps, mergedSizes);
+    options.commit(merged);
   };
 
   const schedule = () => {
@@ -133,7 +117,7 @@ export function createCoverPathCommitBatcher(
       // Never queue a null path over an existing cover — would also refresh
       // stamp/size and leave the card with a stale stamp match (#871).
       if (path == null) {
-        const previous = options.getPaths().get(id);
+        const previous = options.getMaps().paths.get(id);
         if (previous != null) {
           return;
         }

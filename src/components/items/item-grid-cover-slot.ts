@@ -52,6 +52,52 @@ export function itemGridCoverSlotPending(args: {
 }
 
 /**
+ * Single layout phase for grid cover chrome (#799 / #874 regressions).
+ * `thumbnailPath` matches {@link coverMapsResolveForGrid}: undefined = still
+ * resolving, null = no cover, string = path known.
+ */
+export type ItemGridCoverLayoutPhase =
+  | "wait-path"
+  | "text-only"
+  | "reserved-pending"
+  | "cover-visible";
+
+export function itemGridCoverLayoutPhase(args: {
+  thumbnailPath: string | null | undefined;
+  /** Host or decoded WxH; null/undefined = no reservation yet. */
+  resolvedPixelSize: ItemGridCoverPixelSize | null | undefined;
+  coverSettled: boolean;
+  /** Settled visible cover src (non-null when showCover). */
+  coverSrc: string | null;
+}): ItemGridCoverLayoutPhase {
+  if (args.thumbnailPath === undefined) {
+    return "wait-path";
+  }
+  if (args.thumbnailPath === null) {
+    return "text-only";
+  }
+
+  const size = args.resolvedPixelSize;
+  const hasSize =
+    size != null && size.width > 0 && size.height > 0;
+
+  if (args.coverSettled && args.coverSrc) {
+    return hasSize ? "cover-visible" : "text-only";
+  }
+
+  if (!args.coverSettled && hasSize) {
+    return "reserved-pending";
+  }
+
+  // Path known but no WxH yet — must not reserve (would jump after decode).
+  if (!args.coverSettled) {
+    return "wait-path";
+  }
+
+  return "text-only";
+}
+
+/**
  * Capture natural pixels from a decoded cover `<img>` for layout reservation.
  * Visible covers must not rely on post-paint intrinsic sizing alone.
  */
