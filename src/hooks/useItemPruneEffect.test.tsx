@@ -1,7 +1,7 @@
 /**
- * Item prune paint races (#885): a prune signal must remove the item from
- * clickable UI. Flag/seq identity alone is not enough — assert DOM outcome
- * and that updater-identity churn does not re-fire prune.
+ * Item prune paint races (#885/#898): a prune signal must remove the item from
+ * clickable UI. Assert DOM outcome — not onPrune call-counts. Updater-identity
+ * churn must not re-fire prune (visible as a corrupted painted list).
  */
 import {
   useCallback,
@@ -133,28 +133,49 @@ describe("useItemPruneEffect paint sequencing (#885)", () => {
 
   it("changing onPrune identity without a new signal does not re-prune", () => {
     const signal = nextItemPruneSignal(null, "a.md");
-    const calls: string[] = [];
 
     function Harness(props: { pruneKey: number }): ReactElement {
+      const [rows, setRows] = useState<Row[]>([
+        { id: "a.md", title: "Alpha" },
+        { id: "b.md", title: "Beta" },
+      ]);
       const onPrune = useCallback(
         (itemId: string) => {
-          calls.push(`${props.pruneKey}:${itemId}`);
+          setRows((previous) => {
+            // Second fire for an already-removed id paints a corruption marker.
+            if (!previous.some((row) => row.id === itemId)) {
+              return [
+                ...previous,
+                { id: "double-fire.md", title: "Double Fire" },
+              ];
+            }
+            return filterOutItemId(previous, itemId);
+          });
         },
         [props.pruneKey],
       );
       useItemPruneEffect(signal, onPrune);
-      return <div data-testid="prune-harness">stable</div>;
+      return <PaintRows rows={rows} />;
+    }
+
+    function expectStablePrunedPaint(): void {
+      expect(
+        screen.queryByRole("button", { name: "Alpha" }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Beta" })).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Double Fire" }),
+      ).not.toBeInTheDocument();
     }
 
     const { rerender } = render(<Harness pruneKey={1} />);
-    expect(calls).toEqual(["1:a.md"]);
+    expectStablePrunedPaint();
 
     act(() => {
       rerender(<Harness pruneKey={2} />);
     });
 
-    expect(screen.getByTestId("prune-harness")).toHaveTextContent("stable");
     // Ref-held updater: identity churn must not re-fire the same signal.
-    expect(calls).toEqual(["1:a.md"]);
+    expectStablePrunedPaint();
   });
 });
