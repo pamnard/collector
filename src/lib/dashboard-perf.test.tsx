@@ -15,10 +15,8 @@ import {
   dashboardPerfGetRuns,
   dashboardPerfObserveL1,
   dashboardPerfObserveL2,
-  dashboardPerfObserveL3,
   dashboardPerfRecordCoverDecode,
   dashboardPerfRunExpectsViewMode,
-  installDashboardPerfBridge,
   setDashboardPerfEnabledForTests,
   type DashboardPerfViewMode,
 } from "./dashboard-perf.ts";
@@ -45,8 +43,9 @@ function GridPerfPaintProbe(props: {
     dashboardPerfObserveL1(runId);
     dashboardPerfEndPhase(runId, "gridMount");
     dashboardPerfBeginPhase(runId, "gridLayout");
+    let raf2 = 0;
     const raf1 = requestAnimationFrame(() => {
-      const raf2 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
         if (!dashboardPerfRunExpectsViewMode(runId, props.viewMode)) {
           return;
         }
@@ -61,10 +60,10 @@ function GridPerfPaintProbe(props: {
           dashboardPerfRecordCoverDecode(runId, decodeN);
         }
       });
-      void raf2;
     });
     return () => {
       cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
     };
   }, [props.viewMode, props.coverDecodeCount]);
 
@@ -85,7 +84,6 @@ describe("dashboard-perf paint sequencing (#885)", () => {
 
   it("folder cold paint: L1 then L2 then L3 with ordered phase marks", async () => {
     setDashboardPerfEnabledForTests(true);
-    installDashboardPerfBridge();
 
     const runId = dashboardPerfBeginRun("folder", {
       viewMode: "grid",

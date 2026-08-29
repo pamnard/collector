@@ -12,10 +12,10 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import type { ItemFile } from "@collector/shared";
-import { itemCoverStamp } from "./dashboard-commit.ts";
 import {
   coverMapsFromTriple,
   emptyCoverMaps,
+  itemCoverStamp,
   type CoverMaps,
 } from "./cover-maps.ts";
 import {
@@ -43,36 +43,6 @@ function stubItem(
     thumbnail: "c.webp",
     ...overrides,
   } as ItemFile;
-}
-
-function CoverFlightPaint(props: {
-  items: ItemFile[];
-  maps: CoverMaps;
-}): ReactElement {
-  return (
-    <ul data-testid="cover-flight-paint">
-      {props.items.map((item) => {
-        const path = props.maps.paths.get(item.id);
-        const size = props.maps.sizes.get(item.id);
-        return (
-          <li key={item.id} data-testid={`row-${item.id}`}>
-            <button type="button">{item.title}</button>
-            {path ? (
-              <img
-                data-testid={`cover-${item.id}`}
-                src={path}
-                alt=""
-                width={size?.width ?? undefined}
-                height={size?.height ?? undefined}
-              />
-            ) : (
-              <span data-testid={`hole-${item.id}`}>no-cover</span>
-            )}
-          </li>
-        );
-      })}
-    </ul>
-  );
 }
 
 type FlightDriver = {
@@ -116,7 +86,30 @@ function FlightPaintRoot(props: {
     },
   };
 
-  return <CoverFlightPaint items={props.items} maps={maps} />;
+  return (
+    <ul data-testid="cover-flight-paint">
+      {props.items.map((item) => {
+        const path = maps.paths.get(item.id);
+        const size = maps.sizes.get(item.id);
+        return (
+          <li key={item.id} data-testid={`row-${item.id}`}>
+            <button type="button">{item.title}</button>
+            {path ? (
+              <img
+                data-testid={`cover-${item.id}`}
+                src={path}
+                alt=""
+                width={size?.width ?? undefined}
+                height={size?.height ?? undefined}
+              />
+            ) : (
+              <span data-testid={`hole-${item.id}`}>no-cover</span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 function microFlushSchedule(flush: () => void): () => void {

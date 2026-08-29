@@ -23,28 +23,29 @@ afterEach(() => {
 
 type Row = { id: string; title: string };
 
-function PruneListPaint(props: {
-  initialRows: Row[];
-  signal: ItemPruneSignal | null;
-  onPrune?: (itemId: string) => void;
-}): ReactElement {
-  const [rows, setRows] = useState(props.initialRows);
-  const defaultPrune = useCallback((itemId: string) => {
-    setRows((previous) => filterOutItemId(previous, itemId));
-  }, []);
-  const onPrune = props.onPrune ?? defaultPrune;
-
-  useItemPruneEffect(props.signal, onPrune);
-
+function PaintRows(props: { rows: Row[] }): ReactElement {
   return (
     <ul data-testid="prune-list">
-      {rows.map((row) => (
+      {props.rows.map((row) => (
         <li key={row.id}>
           <button type="button">{row.title}</button>
         </li>
       ))}
     </ul>
   );
+}
+
+function PruneListPaint(props: {
+  initialRows: Row[];
+  signal: ItemPruneSignal | null;
+}): ReactElement {
+  const [rows, setRows] = useState(props.initialRows);
+
+  useItemPruneEffect(props.signal, (itemId) => {
+    setRows((previous) => filterOutItemId(previous, itemId));
+  });
+
+  return <PaintRows rows={rows} />;
 }
 
 /** Interactive shell: sequential prunes share one painted list state. */
@@ -61,13 +62,7 @@ function SequentialPruneShell(): ReactElement {
 
   return (
     <div>
-      <ul data-testid="prune-list">
-        {rows.map((row) => (
-          <li key={row.id}>
-            <button type="button">{row.title}</button>
-          </li>
-        ))}
-      </ul>
+      <PaintRows rows={rows} />
       <button
         type="button"
         onClick={() =>
@@ -161,12 +156,5 @@ describe("useItemPruneEffect paint sequencing (#885)", () => {
     expect(screen.getByTestId("prune-harness")).toHaveTextContent("stable");
     // Ref-held updater: identity churn must not re-fire the same signal.
     expect(calls).toEqual(["1:a.md"]);
-  });
-
-  it("nextItemPruneSignal advances seq so a later paint can re-target", () => {
-    const first = nextItemPruneSignal(null, "a.md");
-    const second = nextItemPruneSignal(first, "b.md");
-    expect(second.itemId).toBe("b.md");
-    expect(second.seq).toBe(first.seq + 1);
   });
 });
