@@ -1,5 +1,6 @@
 /**
- * Catalog ↔ live MCP registration contract (#273 / #265).
+ * Tool table ↔ live MCP registration contract (#873 / #273 / #265).
+ * Coverage comes from COLLECTOR_MCP_TOOL_DEFS — no hand-maintained name mirror.
  * Uses in-process createCollectorMcpServer + listTools (no host / :1420).
  */
 
@@ -8,8 +9,12 @@ import type { CollectorHostServiceClient } from "@collector/client";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createStaticMcpHostSession } from "./host-session.js";
+import {
+  COLLECTOR_MCP_TOOL_DEFS,
+  COLLECTOR_MCP_TOOLS,
+} from "./mcp-tool-defs.js";
+import { COLLECTOR_MCP_TOOL_RUNS } from "./mcp-tool-runs.js";
 import { createCollectorMcpServer } from "./server.js";
-import { COLLECTOR_MCP_TOOLS } from "./tools-catalog.js";
 
 type ListedTool = {
   name: string;
@@ -54,22 +59,34 @@ async function listRegisteredTools(): Promise<ListedTool[]> {
   return listed.tools as ListedTool[];
 }
 
-describe("COLLECTOR_MCP_TOOLS catalog ↔ MCP server registration", () => {
-  it("registers every catalog tool and every registered tool has a catalog entry", async () => {
+describe("COLLECTOR_MCP_TOOL_DEFS table ↔ MCP server registration", () => {
+  it("pairs every tool def with a run and registers the same set", async () => {
+    const defNames = COLLECTOR_MCP_TOOL_DEFS.map((tool) => tool.name);
+    const runNames = Object.keys(COLLECTOR_MCP_TOOL_RUNS);
     const registered = await listRegisteredTools();
-    const catalogNames = COLLECTOR_MCP_TOOLS.map((tool) => tool.name);
     const registeredNames = registered.map((tool) => tool.name);
 
-    expect(new Set(catalogNames).size).toBe(catalogNames.length);
-    expect(new Set(registeredNames).size).toBe(registeredNames.length);
-    expect([...registeredNames].sort()).toEqual([...catalogNames].sort());
+    expect(new Set(defNames).size).toBe(defNames.length);
+    expect([...runNames].sort()).toEqual([...defNames].sort());
+    expect([...registeredNames].sort()).toEqual([...defNames].sort());
   });
 
-  it("registers each catalog tool with the catalog description", async () => {
+  it("derives Settings catalog from the same tool table", () => {
+    expect(COLLECTOR_MCP_TOOLS.map((tool) => tool.name)).toEqual(
+      COLLECTOR_MCP_TOOL_DEFS.map((tool) => tool.name),
+    );
+    for (let i = 0; i < COLLECTOR_MCP_TOOL_DEFS.length; i++) {
+      expect(COLLECTOR_MCP_TOOLS[i]!.description).toBe(
+        COLLECTOR_MCP_TOOL_DEFS[i]!.description,
+      );
+    }
+  });
+
+  it("registers each table tool with the table description", async () => {
     const registered = await listRegisteredTools();
     const byName = new Map(registered.map((tool) => [tool.name, tool]));
 
-    for (const entry of COLLECTOR_MCP_TOOLS) {
+    for (const entry of COLLECTOR_MCP_TOOL_DEFS) {
       const live = byName.get(entry.name);
       expect(live, `missing registration for ${entry.name}`).toBeDefined();
       expect(live!.description).toBe(entry.description);
@@ -103,7 +120,7 @@ describe("COLLECTOR_MCP_TOOLS catalog ↔ MCP server registration", () => {
   });
 
   it("rejects reverse-direction tag catalog tools (#842)", () => {
-    const names = COLLECTOR_MCP_TOOLS.map((tool) => tool.name);
+    const names = COLLECTOR_MCP_TOOL_DEFS.map((tool) => tool.name);
     expect(names).not.toContain("collector_create_tag");
     expect(names).not.toContain("collector_delete_tag");
   });
