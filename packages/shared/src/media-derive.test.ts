@@ -7,6 +7,7 @@ import {
   isMediaDeriveWhitelistWidth,
   MEDIA_DERIVE_MAX_WIDTH,
   MEDIA_DERIVE_WIDTHS,
+  mediaDeriveVersionFromMtimeMs,
   pickMediaDeriveWidth,
 } from "./media-derive.js";
 
@@ -31,5 +32,13 @@ describe("media-derive width contract (#882)", () => {
   it("caps needed width by source natural width before stepping", () => {
     expect(pickMediaDeriveWidth(900, 200)).toBe(256);
     expect(pickMediaDeriveWidth(100, 2000)).toBe(128);
+  });
+
+  it("mediaDeriveVersionFromMtimeMs truncates and rejects invalid", () => {
+    expect(mediaDeriveVersionFromMtimeMs(1_700_000_000_123.9)).toBe(
+      1_700_000_000_123,
+    );
+    expect(() => mediaDeriveVersionFromMtimeMs(Number.NaN)).toThrow(/mtimeMs/);
+    expect(() => mediaDeriveVersionFromMtimeMs(-1)).toThrow(/mtimeMs/);
   });
 });

@@ -21,6 +21,19 @@ export function isMediaDeriveWhitelistWidth(w: number): w is MediaDeriveWidth {
 }
 
 /**
+ * Truncated source mtime for derive URL `v` and host Cache-Control match.
+ * Rejects non-finite / negative values (fail fast — no invented version).
+ */
+export function mediaDeriveVersionFromMtimeMs(mtimeMs: number): number {
+  if (!(mtimeMs >= 0) || !Number.isFinite(mtimeMs)) {
+    throw new Error(
+      `media derive mtimeMs must be a finite non-negative number, got ${mtimeMs}`,
+    );
+  }
+  return Math.trunc(mtimeMs);
+}
+
+/**
  * `needed_w ≈ ceil(slot_css_width × dpr)` → nearest whitelist step ≥ that value,
  * then conceptually `min(step, source_natural_width)` by capping the needed
  * width before stepping (request stays on the whitelist; host still never upscales).

@@ -57,7 +57,7 @@ describe("media-derive helpers (#882)", () => {
     ).not.toBe(a);
   });
 
-  it("mediaDeriveEtag and Cache-Control never use immutable without URL version", () => {
+  it("mediaDeriveEtag and Cache-Control never set immutable", () => {
     const key = mediaDeriveCacheKey({
       resolvedPath: "/vault/a.webp",
       mtimeMs: 100,
@@ -68,7 +68,6 @@ describe("media-derive helpers (#882)", () => {
     expect(mediaDeriveBrowserCacheControl(false)).toBe(
       "private, max-age=0, must-revalidate",
     );
-    expect(mediaDeriveBrowserCacheControl(false)).not.toMatch(/immutable/);
     expect(mediaDeriveBrowserCacheControl(true)).toBe(
       "private, max-age=31536000",
     );

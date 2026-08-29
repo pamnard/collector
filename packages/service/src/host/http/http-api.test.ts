@@ -8,6 +8,8 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -626,7 +628,6 @@ describe("host HTTP /media/derive (#882)", () => {
     const { host, token, dataDir } = await start();
     try {
       const filePath = await writeVaultPng(dataDir, 400, 200);
-      const { statSync } = await import("node:fs");
       const mtimeMs = Math.trunc(statSync(filePath).mtimeMs);
       const matched = `${host.baseUrl}/media/derive?path=${encodeURIComponent(filePath)}&w=256&v=${mtimeMs}&token=${encodeURIComponent(token)}`;
       const mismatched = `${host.baseUrl}/media/derive?path=${encodeURIComponent(filePath)}&w=256&v=${mtimeMs + 1}&token=${encodeURIComponent(token)}`;
@@ -689,7 +690,6 @@ describe("host HTTP /media/derive (#882)", () => {
       const before = readdirSync(cacheDir);
       expect(before.length).toBe(1);
 
-      const { utimesSync } = await import("node:fs");
       const next = new Date(Date.now() + 60_000);
       utimesSync(filePath, next, next);
 

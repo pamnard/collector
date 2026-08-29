@@ -19,6 +19,7 @@ import type { CollectorApiError } from "@collector/api";
 import {
   isMediaDeriveWhitelistWidth,
   MEDIA_DERIVE_WEBP_QUALITY,
+  mediaDeriveVersionFromMtimeMs,
   type MediaDeriveWidth,
 } from "@collector/shared";
 import sharp from "sharp";
@@ -86,12 +87,14 @@ export function mediaDeriveCacheKey(input: {
   return `${hash}.webp`;
 }
 
-/** Strong ETag from the disk cache key (hash portion). */
+/** Strong ETag from the disk cache key filename (`<sha256>.webp`). */
 export function mediaDeriveEtag(cacheFileName: string): string {
-  const hash = cacheFileName.endsWith(".webp")
-    ? cacheFileName.slice(0, -".webp".length)
-    : cacheFileName;
-  return `"${hash}"`;
+  if (!cacheFileName.endsWith(".webp")) {
+    throw new Error(
+      `derive cache key must end with .webp, got ${cacheFileName}`,
+    );
+  }
+  return `"${cacheFileName.slice(0, -".webp".length)}"`;
 }
 
 /**
@@ -344,7 +347,7 @@ export async function handleMediaDerive(
   const etag = mediaDeriveEtag(cacheFileName);
   const urlVersionMatchesSource =
     requestedVersion !== null &&
-    requestedVersion === Math.trunc(fileStat.mtimeMs);
+    requestedVersion === mediaDeriveVersionFromMtimeMs(fileStat.mtimeMs);
   const cacheControl = mediaDeriveBrowserCacheControl(urlVersionMatchesSource);
   const cors = corsHeadersForRequest(req);
   const isHead = req.method === "HEAD";

@@ -4,6 +4,7 @@
 
 import {
   isMediaDeriveWhitelistWidth,
+  mediaDeriveVersionFromMtimeMs,
   type MediaDeriveWidth,
 } from "./media-derive.js";
 
@@ -42,12 +43,10 @@ export function buildHostMediaDeriveUrl(
   url.searchParams.set("w", String(width));
   url.searchParams.set("token", token);
   if (sourceMtimeMs !== undefined) {
-    if (!(sourceMtimeMs >= 0) || !Number.isFinite(sourceMtimeMs)) {
-      throw new Error(
-        `media derive sourceMtimeMs must be a finite non-negative number, got ${sourceMtimeMs}`,
-      );
-    }
-    url.searchParams.set("v", String(Math.trunc(sourceMtimeMs)));
+    url.searchParams.set(
+      "v",
+      String(mediaDeriveVersionFromMtimeMs(sourceMtimeMs)),
+    );
   }
   return url.toString();
 }

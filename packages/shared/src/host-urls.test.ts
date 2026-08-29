@@ -68,7 +68,7 @@ describe("host-urls (#550 E)", () => {
         640,
         Number.NaN,
       ),
-    ).toThrow(/sourceMtimeMs/);
+    ).toThrow(/mtimeMs/);
   });
 
   it("deriveWsEventsUrl maps http and https", () => {
