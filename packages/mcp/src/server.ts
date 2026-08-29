@@ -18,8 +18,8 @@ import {
   type McpHostSession,
 } from "./host-session.js";
 import {
-  buildMcpToolInputSchema,
   COLLECTOR_MCP_TOOL_DEFS,
+  createToolParams,
 } from "./mcp-tool-defs.js";
 import { COLLECTOR_MCP_TOOL_RUNS } from "./mcp-tool-runs.js";
 
@@ -68,14 +68,13 @@ export function createCollectorMcpServer(session: McpHostSession): McpServer {
     name: "collector",
     version: "0.1.0",
   });
+  const params = createToolParams();
 
   for (const def of COLLECTOR_MCP_TOOL_DEFS) {
-    const inputSchema = buildMcpToolInputSchema(def);
+    const inputSchema = def.buildSchema(params);
     const run = COLLECTOR_MCP_TOOL_RUNS[def.name];
     const handler = (async (args: Record<string, unknown>) =>
-      runTool(session, (client) =>
-        run(args, client),
-      )) as unknown as ToolCallback<ZodRawShape>;
+      runTool(session, (client) => run(args, client))) as unknown as ToolCallback<ZodRawShape>;
     server.registerTool(
       def.name,
       {

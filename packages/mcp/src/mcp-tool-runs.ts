@@ -4,6 +4,7 @@
  */
 
 import type { CollectorHostServiceClient } from "@collector/client";
+import type { ContentType } from "@collector/shared";
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { COLLECTOR_MCP_TOOL_DEFS } from "./mcp-tool-defs.js";
@@ -60,7 +61,7 @@ export const COLLECTOR_MCP_TOOL_RUNS = {
   collector_create_item: (args, client) =>
     client.items.createItem({
       title: args.title as string,
-      content_type: args.content_type as never,
+      content_type: args.content_type as ContentType,
       ...(args.description === undefined
         ? {}
         : { description: args.description as string }),
@@ -85,7 +86,7 @@ export const COLLECTOR_MCP_TOOL_RUNS = {
         : { content: args.content as string | null }),
       ...(args.content_type === undefined
         ? {}
-        : { content_type: args.content_type as never }),
+        : { content_type: args.content_type as ContentType }),
       ...(args.tags === undefined ? {} : { tags: args.tags as string[] }),
       ...(args.folder_path === undefined
         ? {}
@@ -237,5 +238,3 @@ export const COLLECTOR_MCP_TOOL_RUNS = {
     return { ok: true };
   },
 } as const satisfies Record<ToolName, McpToolRun>;
-
-export type { ToolName, McpToolRun };

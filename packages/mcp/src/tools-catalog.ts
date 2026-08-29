@@ -7,8 +7,6 @@
 
 export {
   COLLECTOR_MCP_TOOLS,
-  COLLECTOR_MCP_TOOL_DEFS,
-  requireMcpToolCatalogEntry,
   type CollectorMcpToolCatalogEntry,
   type CollectorMcpToolParam,
 } from "./mcp-tool-defs.js";

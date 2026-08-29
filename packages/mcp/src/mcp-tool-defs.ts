@@ -5,13 +5,11 @@
  */
 
 import {
-  createToolParams,
   mediaFileFields,
   mediaReplaceFileFields,
   projectToolsCatalog,
   type CollectorMcpToolCatalogEntry,
   type McpToolDef,
-  type ToolParams,
 } from "./tool-params.js";
 
 const ITEM_ID_DESCRIPTION =
@@ -352,32 +350,8 @@ export const COLLECTOR_MCP_TOOL_DEFS = [
 export const COLLECTOR_MCP_TOOLS: readonly CollectorMcpToolCatalogEntry[] =
   projectToolsCatalog(COLLECTOR_MCP_TOOL_DEFS);
 
-const byName = new Map(
-  COLLECTOR_MCP_TOOLS.map((tool) => [tool.name, tool] as const),
-);
-
-export function requireMcpToolCatalogEntry(
-  name: string,
-): CollectorMcpToolCatalogEntry {
-  const entry = byName.get(name);
-  if (!entry) {
-    throw new Error(`Unknown MCP tool (missing from tool table): ${name}`);
-  }
-  return entry;
-}
-
-/** Build input shape for one def (shared by registration and tests). */
-export function buildMcpToolInputSchema(
-  def: McpToolDef,
-  params: ToolParams = createToolParams(),
-) {
-  return def.buildSchema(params);
-}
-
 export type {
   CollectorMcpToolCatalogEntry,
   CollectorMcpToolParam,
-  McpToolDef,
-  ToolParams,
 } from "./tool-params.js";
-export { catalogParamsFromShape, createToolParams } from "./tool-params.js";
+export { createToolParams } from "./tool-params.js";
