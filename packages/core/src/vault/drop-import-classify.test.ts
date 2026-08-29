@@ -16,7 +16,8 @@ import { upsertItem } from "./item-operations.js";
 import { joinSegments } from "./paths.js";
 import { resolveDropTitle } from "./resolve-drop-title.js";
 
-/** All file paths under a drop root, relative, posix, sorted. */
+const byRelPath = (a: string, b: string) => a.localeCompare(b);
+
 async function listDropRelativeFiles(
   fs: NodeFileSystemAdapter,
   dropRoot: string,
@@ -32,8 +33,13 @@ async function listDropRelativeFiles(
     }
     out.push(rel);
   }
-  return out.sort((a, b) => a.localeCompare(b));
+  if (relDir) {
+    return out;
+  }
+  return out.sort(byRelPath);
 }
+
+type ExpectedImport = { contentType: ContentType; title: string };
 
 describe("drop-import-classify against temp drop folder + vault index", () => {
   const suite = createSqlIndexTestSuite();
@@ -70,6 +76,20 @@ Body
       { rel: "shot.webp", bytes: Uint8Array.from([9]) },
     ];
 
+    const expected: Record<string, ExpectedImport | "skip"> = {
+      "a.png": { contentType: "image", title: "a" },
+      "clip.mp4": { contentType: "video", title: "clip" },
+      "doc.pdf": { contentType: "pdf", title: "doc" },
+      "track.mp3": { contentType: "audio", title: "track" },
+      "shot.webp": { contentType: "image", title: "shot" },
+      "note.md": { contentType: "note", title: "note" },
+      "Trip/nested/x.MD": { contentType: "note", title: "x" },
+      "with-title.md": { contentType: "note", title: "From FM" },
+      "foreign.md": { contentType: "note", title: "From FM" },
+      "virus.exe": "skip",
+      "readme.txt": "skip",
+    };
+
     for (const file of files) {
       const abs = join(dropRoot, ...file.rel.split("/"));
       await mkdir(dirname(abs), { recursive: true });
@@ -81,52 +101,38 @@ Body
     }
 
     const discovered = await listDropRelativeFiles(fs, dropRoot);
-    expect(discovered).toEqual(
-      [
-        "Trip/nested/x.MD",
-        "a.png",
-        "clip.mp4",
-        "doc.pdf",
-        "foreign.md",
-        "note.md",
-        "readme.txt",
-        "shot.webp",
-        "track.mp3",
-        "virus.exe",
-        "with-title.md",
-      ].sort((a, b) => a.localeCompare(b)),
-    );
+    expect(discovered).toEqual(files.map((f) => f.rel).sort(byRelPath));
 
     const timestamp = new Date().toISOString();
-    const imported: Array<{
-      rel: string;
-      itemId: string;
-      contentType: ContentType;
-      title: string;
-    }> = [];
-    const skipped: string[] = [];
+    const imported: Array<{ itemId: string; want: ExpectedImport }> = [];
 
     for (const rel of discovered) {
-      expect(await fs.exists(joinSegments(dropRoot, rel))).toBe(true);
+      const want = expected[rel];
+      if (want === undefined) {
+        throw new Error(`unexpected drop file discovered on disk: ${rel}`);
+      }
+
       const classified = classifyDropFilename(rel);
-      if (classified.kind === "skip") {
-        skipped.push(rel);
+      if (want === "skip") {
+        expect(classified).toEqual({ kind: "skip" });
         continue;
       }
 
       const itemId = `Inbox/${createId()}.md`;
+      let content = "";
       let title: string;
       let contentType: ContentType;
-      let content = "";
 
       if (classified.kind === "note") {
         const raw = await fs.readText(joinSegments(dropRoot, rel));
         title = resolveDropTitle(rel, raw);
         contentType = "note";
         content = raw;
-      } else {
+      } else if (classified.kind === "media") {
         title = titleStemFromFilename(rel);
         contentType = classified.contentType;
+      } else {
+        throw new Error(`expected importable classify for ${rel}, got skip`);
       }
 
       await upsertItem(ctx, path, meta.id, {
@@ -140,72 +146,25 @@ Body
         }),
         content,
       });
-      imported.push({ rel, itemId, contentType, title });
+      imported.push({ itemId, want });
     }
 
-    const byRelPath = (a: string, b: string) => a.localeCompare(b);
-    expect(skipped.sort(byRelPath)).toEqual(["readme.txt", "virus.exe"]);
-    expect(imported.map((row) => row.rel).sort(byRelPath)).toEqual(
-      [
-        "Trip/nested/x.MD",
-        "a.png",
-        "clip.mp4",
-        "doc.pdf",
-        "foreign.md",
-        "note.md",
-        "shot.webp",
-        "track.mp3",
-        "with-title.md",
-      ].sort(byRelPath),
+    expect(
+      discovered.filter((rel) => expected[rel] === "skip").sort(byRelPath),
+    ).toEqual(["readme.txt", "virus.exe"]);
+    expect(imported).toHaveLength(
+      Object.values(expected).filter((v) => v !== "skip").length,
     );
-
-    const byRel = new Map(imported.map((row) => [row.rel, row]));
-    expect(byRel.get("a.png")).toMatchObject({
-      contentType: "image",
-      title: "a",
-    });
-    expect(byRel.get("clip.mp4")).toMatchObject({
-      contentType: "video",
-      title: "clip",
-    });
-    expect(byRel.get("doc.pdf")).toMatchObject({
-      contentType: "pdf",
-      title: "doc",
-    });
-    expect(byRel.get("track.mp3")).toMatchObject({
-      contentType: "audio",
-      title: "track",
-    });
-    expect(byRel.get("shot.webp")).toMatchObject({
-      contentType: "image",
-      title: "shot",
-    });
-    expect(byRel.get("note.md")).toMatchObject({
-      contentType: "note",
-      title: "note",
-    });
-    expect(byRel.get("Trip/nested/x.MD")).toMatchObject({
-      contentType: "note",
-      title: "x",
-    });
-    expect(byRel.get("with-title.md")).toMatchObject({
-      contentType: "note",
-      title: "From FM",
-    });
-    expect(byRel.get("foreign.md")).toMatchObject({
-      contentType: "note",
-      title: "From FM",
-    });
 
     const rows = await ctx.index.listItemFilesByIds(
       meta.id,
       imported.map((row) => row.itemId),
     );
     expect(rows).toHaveLength(imported.length);
-    for (const expected of imported) {
-      const row = rows.find((r) => r.id === expected.itemId);
-      expect(row?.title).toBe(expected.title);
-      expect(row?.content_type).toBe(expected.contentType);
+    for (const { itemId, want } of imported) {
+      const row = rows.find((r) => r.id === itemId);
+      expect(row?.title).toBe(want.title);
+      expect(row?.content_type).toBe(want.contentType);
       expect(row?.source_type).toBe("import");
     }
 
