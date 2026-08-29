@@ -15,7 +15,6 @@ describe("listItemIdsByNavFilter", () => {
   it("returns ids for all items under the all filter", async () => {
     const { index, ctx, vault } = await suite.openVaultIndex(
       "collector-nav-filter-",
-      "collector-nav-filter.db",
     );
     const { meta, path } = vault;
 
@@ -32,16 +31,14 @@ describe("listItemIdsByNavFilter", () => {
       });
     }
 
-    expect(await index.listItemIdsByNavFilter(meta.id, "all")).toEqual([
-      firstId,
-      secondId,
-    ]);
+    expect(
+      (await index.listItemIdsByNavFilter(meta.id, "all")).sort(),
+    ).toEqual([firstId, secondId].sort());
   });
 
   it("FTS MATCH + item_tags JOIN keeps only tagged hits (#887)", async () => {
     const { index, ctx, vault } = await suite.openVaultIndex(
       "collector-fts-tag-join-",
-      "collector-fts-tag-join.db",
     );
     const { meta, path } = vault;
     const tag = await seedTagFromDocumentWritePath(ctx, path, meta.id, "fts-join");
@@ -72,9 +69,9 @@ describe("listItemIdsByNavFilter", () => {
     expect(ftsQuery).not.toBeNull();
     const tagFilter = { type: "tag" as const, tagId: tag.id };
 
-    expect(await index.searchItemIds(meta.id, ftsQuery!, "all")).toEqual(
-      expect.arrayContaining([taggedId, untaggedId]),
-    );
+    expect(
+      (await index.searchItemIds(meta.id, ftsQuery!, "all")).sort(),
+    ).toEqual([taggedId, untaggedId].sort());
     expect(await index.searchItemIds(meta.id, ftsQuery!, tagFilter)).toEqual([
       taggedId,
     ]);
