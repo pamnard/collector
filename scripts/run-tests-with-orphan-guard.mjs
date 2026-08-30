@@ -51,6 +51,7 @@ run(
     "--test",
     // dashboard-perf / cover-flight / prune paint races live under vitest RTL (#885)
     join(root, "src/lib/dashboard-commit.test.ts"),
+    join(root, "src/lib/dashboard-commit-to-display.test.ts"),
     join(root, "src/lib/dashboard-cover-refresh.test.ts"),
     join(root, "src/lib/cover-maps.test.ts"),
     join(root, "src/lib/cover-controller.test.ts"),

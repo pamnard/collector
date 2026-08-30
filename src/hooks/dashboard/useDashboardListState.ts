@@ -11,24 +11,14 @@ import type { DashboardItemSort } from "@collector/api";
 import {
   applyDashboardListSnapshot,
   bodyStampsForOrderedIds,
-  itemsBodiesEqual,
   orderedIds,
   pruneItemIdFromDashboardLists,
-  shouldSkipCommitPaint,
-  shouldSkipEmptyCommit,
   type DashboardListSnapshot,
 } from "../../lib/dashboard-commit";
-import {
-  coverMapsForPersistence,
-  coverMapsNeedsResolve,
-} from "../../lib/cover-maps";
+import { coverMapsForPersistence } from "../../lib/cover-maps";
 import type { CoverController } from "../../lib/cover-controller";
-import { revealHeldListPaint } from "../../lib/dashboard-cold-reveal";
-import {
-  isDashboardPrefetchWindowReady,
-  itemIdsEqual,
-  orderDashboardItems,
-} from "../../lib/dashboard-display";
+import { runDashboardCommitToDisplay } from "../../lib/dashboard-commit-to-display";
+import { orderDashboardItems } from "../../lib/dashboard-display";
 import {
   buildDashboardQueryCacheEntry,
   stateFromDashboardCacheEntry,
@@ -40,12 +30,6 @@ import {
   setDashboardQueryCache,
   type DashboardQueryCacheEntry,
 } from "../../services/dashboard-query-cache";
-import {
-  dashboardPerfActiveRunId,
-  dashboardPerfBeginPhase,
-  dashboardPerfEndPhase,
-  dashboardPerfNoteItemCount,
-} from "../../lib/dashboard-perf";
 import { reportServiceError } from "../../services/runtime-error";
 import type {
   DashboardListState,
@@ -241,143 +225,51 @@ export function useDashboardListState(options: {
       requestVersion: number,
       options?: { blockOnCovers?: boolean },
     ) => {
-      if (requestVersionRef.current !== requestVersion) {
-        return;
-      }
-
-      const blockOnCovers = options?.blockOnCovers ?? false;
-
-      const ids = itemIdsRef.current;
-      const byId = itemsByIdRef.current;
-      const end = streamEndOffsetRef.current;
-
-      if (!isDashboardPrefetchWindowReady(ids, byId, end)) {
-        console.warn(
-          "[dashboard] prefetch window incomplete at commit; revealing anyway",
-          {
-            idCount: ids.length,
-            bodyCount: byId.size,
-            streamEndOffset: end,
-          },
-        );
-      }
-
-      const ordered = orderDashboardItems(ids, byId, end);
-      const prevItems = committedItemsRef.current;
-      const nextTotal = totalCountRef.current;
-      if (
-        shouldSkipEmptyCommit(ordered.length, prevItems.length, nextTotal)
-      ) {
-        return;
-      }
-
-      const prevTotal = committedTotalCountRef.current;
-      const prevOrderedIds = orderedIds(prevItems);
-      const nextOrderedIds = orderedIds(ordered);
-      // Folder / filter id-set change must not publish empty maps while the new
-      // list is already on screen (#913) — same held paint as cold blockOnCovers.
-      const orderedIdsChanged = !itemIdsEqual(prevOrderedIds, nextOrderedIds);
-      const holdForCovers = blockOnCovers || orderedIdsChanged;
-      const skipPaint = shouldSkipCommitPaint({
-        prevOrderedIds,
-        nextOrderedIds,
-        prevTotalCount: prevTotal,
-        nextTotalCount: nextTotal,
-        prevBodyStamps: committedBodyStampsRef.current,
-        nextBodyStamps: bodyStampsRef.current,
-      });
-
-      let heldListPaint = false;
-
-      if (!skipPaint) {
-        const itemsUnchanged =
-          !orderedIdsChanged &&
-          prevTotal === nextTotal &&
-          itemsBodiesEqual(prevItems, ordered);
-
-        if (!itemsUnchanged) {
-          // Seed flight maps; defer React list paint until covers are ready (#855 / #913).
-          covers.intersect(nextOrderedIds, {
-            deferPublish: holdForCovers,
-            requestVersion: holdForCovers ? requestVersion : undefined,
-          });
-          committedBodyStampsRef.current = bodyStampsForOrderedIds(
-            bodyStampsRef.current,
-            nextOrderedIds,
-          );
-
-          if (holdForCovers) {
-            heldListPaint = true;
-          } else {
-            const perfRunId = dashboardPerfActiveRunId();
-            dashboardPerfBeginPhase(perfRunId, "commitList");
+      await runDashboardCommitToDisplay({
+        requestVersion,
+        blockOnCovers: options?.blockOnCovers ?? false,
+        ids: itemIdsRef.current,
+        byId: itemsByIdRef.current,
+        end: streamEndOffsetRef.current,
+        nextTotal: totalCountRef.current,
+        prevItems: committedItemsRef.current,
+        prevTotal: committedTotalCountRef.current,
+        bodyStamps: bodyStampsRef.current,
+        committedBodyStamps: committedBodyStampsRef.current,
+        covers,
+        startCoverPathFlight: (...args) =>
+          startCoverPathFlightRef.current(...args),
+        flushSync,
+        getCurrentVersion: () => requestVersionRef.current,
+        sink: {
+          applyImmediateCommitted(ordered, nextTotal, hasMore) {
             setCommittedItems(ordered);
             setCommittedTotalCount(nextTotal);
-            setCommittedHasMore(end < nextTotal);
+            setCommittedHasMore(hasMore);
             committedItemsRef.current = ordered;
             committedTotalCountRef.current = nextTotal;
-            dashboardPerfEndPhase(perfRunId, "commitList");
-            dashboardPerfNoteItemCount(perfRunId, ordered.length);
-            writeQueryCache(ids, byId, end, nextTotal);
-          }
-        } else {
-          committedBodyStampsRef.current = bodyStampsForOrderedIds(
-            bodyStampsRef.current,
-            nextOrderedIds,
-          );
-          writeQueryCache(ids, byId, end, nextTotal);
-        }
-      }
-
-      const coverMaps = covers.getMaps();
-      const coversNeedResolve = ordered.some((item) =>
-        coverMapsNeedsResolve(coverMaps, item),
-      );
-      if (skipPaint && !coversNeedResolve && !heldListPaint) {
-        return;
-      }
-
-      if (coversNeedResolve || holdForCovers) {
-        try {
-          await startCoverPathFlightRef.current(requestVersion, ordered, {
-            blockOnCovers: holdForCovers,
-            deferUiCommit: heldListPaint,
-          });
-        } catch (err: unknown) {
-          if (!heldListPaint) {
-            throw err;
-          }
-          reportServiceError(
-            "dashboard cover paths before held list reveal",
-            err,
-          );
-        }
-      }
-
-      if (heldListPaint) {
-        const perfRunId = dashboardPerfActiveRunId();
-        dashboardPerfBeginPhase(perfRunId, "commitList");
-        const revealed = revealHeldListPaint({
-          requestVersion,
-          getCurrentVersion: () => requestVersionRef.current,
-          covers,
-          flushSync,
-          applyCommitted: () => {
+          },
+          applyHeldCommitted(ordered, nextTotal, hasMore) {
             setCommittedItems(ordered);
             setCommittedTotalCount(nextTotal);
-            setCommittedHasMore(end < nextTotal);
+            setCommittedHasMore(hasMore);
           },
-        });
-        if (revealed === "cancelled-stale") {
-          dashboardPerfEndPhase(perfRunId, "commitList");
-          return;
-        }
-        committedItemsRef.current = ordered;
-        committedTotalCountRef.current = nextTotal;
-        dashboardPerfEndPhase(perfRunId, "commitList");
-        dashboardPerfNoteItemCount(perfRunId, ordered.length);
-        writeQueryCache(ids, byId, end, nextTotal);
-      }
+          syncCommittedRefs(ordered, nextTotal) {
+            committedItemsRef.current = ordered;
+            committedTotalCountRef.current = nextTotal;
+          },
+          setCommittedBodyStamps(stamps) {
+            committedBodyStampsRef.current = stamps;
+          },
+          writeQueryCache,
+          onHeldCoverFlightError(err) {
+            reportServiceError(
+              "dashboard cover paths before held list reveal",
+              err,
+            );
+          },
+        },
+      });
     },
     [covers, startCoverPathFlightRef, writeQueryCache],
   );
