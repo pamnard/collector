@@ -3,30 +3,17 @@ import {
   useAlerts,
   useDismissAlertsOnUnmount,
 } from "../alerts/AlertBusProvider";
-import { runWithBusyAlert } from "../alerts/run-with-busy-alert";
 import type { FolderActionId } from "../../lib/folder-action-catalog";
-import {
-  clearFolderNavFilterAfterDelete,
-  createChildFolder,
-  deleteFolderAt,
-  moveFolderTo,
-  renameFolderLeaf,
-  rewriteFolderNavFilterAfterMove,
-} from "../../lib/folder-actions";
 import type { NavFilter } from "../../types/ui";
-import {
-  FOLDER_COPY_PATH_ALERT_ID,
-  FOLDER_CREATE_BUSY_ID,
-  FOLDER_CREATE_ERROR_ID,
-  FOLDER_DELETE_BUSY_ID,
-  FOLDER_DELETE_ERROR_ID,
-  FOLDER_MOVE_BUSY_ID,
-  FOLDER_MOVE_ERROR_ID,
-  FOLDER_RENAME_BUSY_ID,
-  FOLDER_RENAME_ERROR_ID,
-  SIDEBAR_FOLDER_ALERT_IDS,
-} from "./sidebar-folder-alert-ids";
+import { SIDEBAR_FOLDER_ALERT_IDS } from "./sidebar-folder-alert-ids";
 import type { SidebarFolderLeafDialog } from "./sidebar-folder-dialog-copy";
+import {
+  confirmCreateChildFolder,
+  confirmDeleteFolder,
+  confirmMoveFolder,
+  confirmRenameFolder,
+  copyFolderPathToClipboard,
+} from "./sidebar-folder-crud-ops";
 
 export type UseSidebarFolderCrudInput = {
   activeFilter: NavFilter;
@@ -96,27 +83,7 @@ export function useSidebarFolderCrud({
       return;
     }
     if (id === "copy-path") {
-      void (async () => {
-        try {
-          await navigator.clipboard.writeText(path);
-          alerts.upsert(FOLDER_COPY_PATH_ALERT_ID, {
-            tone: "info",
-            message: "Путь скопирован",
-            onDismiss: () => alerts.dismiss(FOLDER_COPY_PATH_ALERT_ID),
-          });
-          window.setTimeout(() => alerts.dismiss(FOLDER_COPY_PATH_ALERT_ID), 2000);
-        } catch (err: unknown) {
-          console.error("Folder path copy failed", {
-            error: err,
-            folderPath: path,
-          });
-          alerts.upsert(FOLDER_COPY_PATH_ALERT_ID, {
-            tone: "danger",
-            message: "Не удалось скопировать путь",
-            onDismiss: () => alerts.dismiss(FOLDER_COPY_PATH_ALERT_ID),
-          });
-        }
-      })();
+      void copyFolderPathToClipboard(alerts, path);
       return;
     }
     if (id === "delete") {
@@ -128,23 +95,13 @@ export function useSidebarFolderCrud({
     folderPath: string,
     newParentPath: string,
   ) => {
-    const newPath = await runWithBusyAlert(alerts, {
-      busyId: FOLDER_MOVE_BUSY_ID,
-      errorId: FOLDER_MOVE_ERROR_ID,
-      label: "Перемещаю папку и всё содержимое…",
-      run: () => moveFolderTo(folderPath, newParentPath),
-    });
-    if (newPath === undefined) {
-      return;
-    }
-    const next = rewriteFolderNavFilterAfterMove(
+    await confirmMoveFolder({
+      alerts,
       activeFilter,
+      onSelect,
       folderPath,
-      newPath,
-    );
-    if (next) {
-      onSelect(next);
-    }
+      newParentPath,
+    });
   };
 
   const handleConfirmRename = async (
@@ -152,25 +109,18 @@ export function useSidebarFolderCrud({
     newLeafName: string,
   ) => {
     setLeafBusy(true);
-    const newPath = await runWithBusyAlert(alerts, {
-      busyId: FOLDER_RENAME_BUSY_ID,
-      errorId: FOLDER_RENAME_ERROR_ID,
-      label: "Переименовываю папку и всё содержимое…",
-      run: () => renameFolderLeaf(folderPath, newLeafName),
+    const newPath = await confirmRenameFolder({
+      alerts,
+      activeFilter,
+      onSelect,
+      folderPath,
+      newLeafName,
     });
     setLeafBusy(false);
     if (newPath === undefined) {
       return;
     }
     setLeafDialog(null);
-    const next = rewriteFolderNavFilterAfterMove(
-      activeFilter,
-      folderPath,
-      newPath,
-    );
-    if (next) {
-      onSelect(next);
-    }
   };
 
   const handleConfirmCreateChild = async (
@@ -178,11 +128,11 @@ export function useSidebarFolderCrud({
     leafName: string,
   ) => {
     setLeafBusy(true);
-    const newPath = await runWithBusyAlert(alerts, {
-      busyId: FOLDER_CREATE_BUSY_ID,
-      errorId: FOLDER_CREATE_ERROR_ID,
-      label: "Создаю папку…",
-      run: () => createChildFolder(parentPath, leafName),
+    const newPath = await confirmCreateChildFolder({
+      alerts,
+      onSelect,
+      parentPath,
+      leafName,
     });
     setLeafBusy(false);
     if (newPath === undefined) {
@@ -190,24 +140,18 @@ export function useSidebarFolderCrud({
     }
     setLeafDialog(null);
     setCreateFolderOpen(false);
-    onSelect({ type: "folder", folderPath: newPath });
   };
 
   const handleConfirmDelete = async (folderPath: string) => {
     setIsDeletingFolder(true);
     try {
-      await runWithBusyAlert(alerts, {
-        busyId: FOLDER_DELETE_BUSY_ID,
-        errorId: FOLDER_DELETE_ERROR_ID,
-        label: "Удаляю папку и всё содержимое…",
-        rethrow: true,
-        run: () => deleteFolderAt(folderPath),
+      await confirmDeleteFolder({
+        alerts,
+        activeFilter,
+        onSelect,
+        folderPath,
       });
       setDeleteSourcePath(null);
-      const next = clearFolderNavFilterAfterDelete(activeFilter, folderPath);
-      if (next) {
-        onSelect(next);
-      }
     } finally {
       setIsDeletingFolder(false);
     }

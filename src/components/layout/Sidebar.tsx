@@ -1,12 +1,10 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { type CSSProperties } from "react";
 import { PanelLeft } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import type { TagWithCount } from "@collector/core";
 import type { Theme } from "../../hooks/useTheme";
 import type { NavFilter } from "../../types/ui";
 import type { SidebarMode, SettingsSection } from "../../types/sidebar-mode";
 import { parseSettingsSection } from "../../types/sidebar-mode";
-import { getCollectorService } from "../../services/collector-client";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import {
@@ -21,6 +19,7 @@ import { SidebarIconRail } from "./SidebarIconRail";
 import { SidebarSearchPanel } from "./SidebarSearchPanel";
 import { SidebarSettingsNav } from "./SidebarSettingsNav";
 import { SidebarTags } from "./SidebarTags";
+import { useSidebarTags } from "./use-sidebar-tags";
 
 interface AppSidebarProps {
   variant?: "drawer" | "docked";
@@ -100,15 +99,7 @@ export function Sidebar({
     setSearchParams({ section });
     finishSelection();
   };
-  const [tags, setTags] = useState<TagWithCount[]>([]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    getCollectorService().tags.subscribeTags(setTags, undefined, controller.signal);
-    return () => {
-      controller.abort();
-    };
-  }, [vaultRevision]);
+  const tags = useSidebarTags(vaultRevision);
 
   const goToDashboard = (filter: NavFilter) => {
     onFilterSelect(filter);

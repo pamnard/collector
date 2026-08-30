@@ -3,7 +3,6 @@ import {
   useContext,
 } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { CreateItemDialog } from "../items/CreateItemDialog";
 import { useNavState } from "../../hooks/useNavState";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useTheme } from "../../hooks/useTheme";
@@ -31,12 +30,12 @@ import {
   type ViewMode,
 } from "../../types/ui";
 import { AlertBusProvider } from "../alerts/AlertBusProvider";
-import { AlertHost } from "../alerts/AlertHost";
 import { TooltipProvider } from "../ui/tooltip";
 import {
   ItemChromeProvider,
 } from "./item-chrome";
 import { AppLayoutMainColumn } from "./AppLayoutMainColumn";
+import { AppLayoutOverlays } from "./AppLayoutOverlays";
 import { AppShellViewport } from "./AppShellViewport";
 import { resolveAppLayoutRouteChrome } from "./app-layout-route-chrome";
 import type { AppShellSidebarContentProps } from "./app-shell-sidebar-props";
@@ -253,17 +252,11 @@ function AppLayoutInner() {
           />
         </TooltipProvider>
 
-        <AlertHost />
-
-        <CreateItemDialog
-          open={isCreateOpen}
-          onOpenChange={(next) => {
-            if (!next) {
-              closeCreate();
-            }
-          }}
+        <AppLayoutOverlays
+          isCreateOpen={isCreateOpen}
+          createFolderPath={createFolderPath}
+          onCloseCreate={closeCreate}
           onCreated={handleCreated}
-          initialFolderPath={createFolderPath}
         />
       </ItemChromeProvider>
     </ShellContext.Provider>
