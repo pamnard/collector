@@ -25,7 +25,10 @@ import {
   ensureFileMtimeAdvanced,
 } from "./recover-item-mtime.js";
 import { readVaultItemMetaBatch } from "./vault-fs-batch.js";
-import { refreshItemIndexAfterWrite } from "./item-index-refresh.js";
+import {
+  refreshItemIndexAfterWrite,
+  pruneReleasedTagsAfterIndexRefresh,
+} from "./item-index-refresh.js";
 import { countTextStats } from "./text-stats.js";
 
 export async function upsertItem(
@@ -118,6 +121,9 @@ export async function deleteItem(
   itemId: string,
 ): Promise<void> {
   const id = normalizeRelativePath(itemId);
+  const vaultMeta = await readVaultMeta(ctx.fs, vaultPath);
+  const [existingItem] = await ctx.index.listItemFilesByIds(vaultMeta.id, [id]);
+  const releasedTagIds = existingItem?.tag_ids ?? [];
   const docPath = itemMarkdownPath(vaultPath, id);
   if (await ctx.fs.exists(docPath)) {
     await ctx.fs.remove(docPath);
@@ -128,6 +134,15 @@ export async function deleteItem(
   }
   await ctx.fs.touch(vaultPath);
   await ctx.index.deleteItem(id);
+  // Catalog prune is async when the job port is wired (#935).
+  if (releasedTagIds.length > 0) {
+    await pruneReleasedTagsAfterIndexRefresh(
+      ctx,
+      vaultPath,
+      vaultMeta.id,
+      releasedTagIds,
+    );
+  }
 }
 
 export async function listItemsOnDisk(

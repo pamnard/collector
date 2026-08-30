@@ -598,6 +598,46 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
         .map((row) => ({ id: row.id })) as T[];
     }
 
+    if (
+      normalized.startsWith(
+        "SELECT DISTINCT it.tag_id AS tag_id FROM item_tags it INNER JOIN items i ON i.id = it.item_id AND i.vault_id = ?",
+      )
+    ) {
+      const vaultId = bindValues[0];
+      const items = this.tables.get("items") ?? new Map();
+      const itemTags = this.tables.get("item_tags") ?? new Map();
+      const vaultItemIds = new Set(
+        [...items.values()]
+          .filter((row) => row.vault_id === vaultId)
+          .map((row) => String(row.id)),
+      );
+      const tagIds = new Set<string>();
+      for (const row of itemTags.values()) {
+        if (vaultItemIds.has(String(row.item_id))) {
+          tagIds.add(String(row.tag_id));
+        }
+      }
+      return [...tagIds].map((tag_id) => ({ tag_id })) as T[];
+    }
+
+    if (
+      normalized.startsWith("SELECT t.id FROM tags t WHERE t.vault_id = ?") &&
+      normalized.includes("NOT EXISTS")
+    ) {
+      const vaultId = bindValues[0];
+      const tags = this.tables.get("tags") ?? new Map();
+      const itemTags = this.tables.get("item_tags") ?? new Map();
+      const referenced = new Set(
+        [...itemTags.values()].map((row) => String(row.tag_id)),
+      );
+      return [...tags.values()]
+        .filter(
+          (row) =>
+            row.vault_id === vaultId && !referenced.has(String(row.id)),
+        )
+        .map((row) => ({ id: row.id })) as T[];
+    }
+
     if (normalized.startsWith("SELECT item_id, tag_id FROM item_tags WHERE item_id IN")) {
       const ids = new Set(bindValues.map(String));
       const table = this.tables.get("item_tags") ?? new Map();

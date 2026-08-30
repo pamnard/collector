@@ -162,6 +162,10 @@ export interface VaultIndexAdapter {
   listTagsWithCounts(vaultId: string): Promise<
     Array<Tag & { item_count: number }>
   >;
+  /** Tag ids linked to at least one indexed item (#935). */
+  listReferencedTagIds(vaultId: string): Promise<string[]>;
+  /** Index tag rows with zero item_tags refs (#935). */
+  listOrphanTagIds(vaultId: string): Promise<string[]>;
   listItemIdsByTag(
     vaultId: string,
     tagId: string,
@@ -293,6 +297,17 @@ export interface VaultContext {
       contentRevision: number,
       fileMtimeMs: number,
       itemUrl?: string | null,
+    ): Promise<void>;
+  };
+  /**
+   * When set, unused tag catalog prune is enqueued (#935).
+   * Omit `candidateTagIds` for a full vault reconcile.
+   */
+  tagCatalogPruneJobs?: {
+    enqueue(
+      vaultId: string,
+      vaultPath: string,
+      candidateTagIds?: readonly string[],
     ): Promise<void>;
   };
 }

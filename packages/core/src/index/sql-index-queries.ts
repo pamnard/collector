@@ -351,6 +351,37 @@ export async function listTagsWithCounts(
   }));
 }
 
+/** Tag ids currently linked to at least one indexed item in the vault (#935). */
+export async function listReferencedTagIds(
+  selector: SqlIndexSelector,
+  vaultId: string,
+): Promise<string[]> {
+  const rows = await selector.select<{ tag_id: string }>(
+    `SELECT DISTINCT it.tag_id AS tag_id
+     FROM item_tags it
+     INNER JOIN items i ON i.id = it.item_id AND i.vault_id = ?`,
+    [vaultId],
+  );
+  return rows.map((row) => row.tag_id);
+}
+
+/** Index tag rows with zero item_tags references (#935). */
+export async function listOrphanTagIds(
+  selector: SqlIndexSelector,
+  vaultId: string,
+): Promise<string[]> {
+  const rows = await selector.select<{ id: string }>(
+    `SELECT t.id
+     FROM tags t
+     WHERE t.vault_id = ?
+       AND NOT EXISTS (
+         SELECT 1 FROM item_tags it WHERE it.tag_id = t.id
+       )`,
+    [vaultId],
+  );
+  return rows.map((row) => row.id);
+}
+
 export async function listItemIdsByTag(
   selector: SqlIndexSelector,
   vaultId: string,

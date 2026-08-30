@@ -32,6 +32,8 @@ function createNoopVaultIndex(): VaultIndexAdapter {
     upsertTag: noop,
     deleteTag: noop,
     listTagsWithCounts: async () => [],
+    listReferencedTagIds: async () => [],
+    listOrphanTagIds: async () => [],
     listItemIdsByTag: async () => [],
     listItemIdsByFolderPrefix: async () => [],
     getAdjacentItems: async () => ({ prev: null, next: null }),

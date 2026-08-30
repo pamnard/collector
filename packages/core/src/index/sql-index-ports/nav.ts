@@ -14,6 +14,12 @@ export const navSelectStubs = {
   listTagsWithCounts(_vaultId: string): Promise<TagWithCount[]> {
     return requireSqlSelect("listTagsWithCounts");
   },
+  listReferencedTagIds(_vaultId: string): Promise<string[]> {
+    return requireSqlSelect("listReferencedTagIds");
+  },
+  listOrphanTagIds(_vaultId: string): Promise<string[]> {
+    return requireSqlSelect("listOrphanTagIds");
+  },
   listItemIdsByTag(
     _vaultId: string,
     _tagId: string,
@@ -130,6 +136,12 @@ export function createNavStorePort(selector: SqlIndexStoreDb) {
     },
     listTagsWithCounts(vaultId: string) {
       return indexQueries.listTagsWithCounts(selector, vaultId);
+    },
+    listReferencedTagIds(vaultId: string) {
+      return indexQueries.listReferencedTagIds(selector, vaultId);
+    },
+    listOrphanTagIds(vaultId: string) {
+      return indexQueries.listOrphanTagIds(selector, vaultId);
     },
     listItemIdsByTag(
       vaultId: string,

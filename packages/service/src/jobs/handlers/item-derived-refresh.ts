@@ -3,6 +3,7 @@ import {
   readItemFile,
   runItemDerivedLocalizeRefresh,
   upsertItemIndexFromVault,
+  pruneReleasedTagsAfterIndexRefresh,
   type VaultContext,
 } from "@collector/core";
 import {
@@ -44,6 +45,21 @@ export function createItemDerivedRefreshHandler(deps: {
 
     const docPath = itemMarkdownPath(payload.vaultPath, payload.itemId);
     if (!(await ctx.fs.exists(docPath))) {
+      // Item deleted before worker ran: release any remaining index tags (#935).
+      const { releasedTagIds } = await upsertItemIndexFromVault(
+        ctx,
+        payload.vaultPath,
+        payload.vaultId,
+        payload.itemId,
+        payload.contentRevision,
+        payload.fileMtimeMs,
+      );
+      await pruneReleasedTagsAfterIndexRefresh(
+        ctx,
+        payload.vaultPath,
+        payload.vaultId,
+        releasedTagIds,
+      );
       return { status: "ok" };
     }
 
@@ -80,13 +96,21 @@ export function createItemDerivedRefreshHandler(deps: {
       return { status: "ok" };
     }
 
-    await upsertItemIndexFromVault(
+    const { releasedTagIds } = await upsertItemIndexFromVault(
       ctx,
       payload.vaultPath,
       payload.vaultId,
       payload.itemId,
       item.content_revision,
       fileStat.mtimeMs,
+    );
+
+    // Once item_tags reflect the new set, enqueue/run catalog prune (#935).
+    await pruneReleasedTagsAfterIndexRefresh(
+      ctx,
+      payload.vaultPath,
+      payload.vaultId,
+      releasedTagIds,
     );
 
     deps.onVaultPresentationChanged?.({

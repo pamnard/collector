@@ -7,9 +7,19 @@ import {
 } from "./item-io.js";
 import { itemMarkdownPath, normalizeRelativePath } from "./paths.js";
 import { refreshItemEmbeddingAfterWrite } from "./item-embedding-refresh.js";
+import {
+  pruneTagCatalogCandidates,
+  runTagCatalogPrune,
+} from "./tag-catalog-prune.js";
 import { syncTagsToIndex } from "./tag-operations.js";
 
 export type ItemIndexRefreshOutcome = "upserted" | "stale" | "missing";
+
+export type ItemIndexRefreshResult = {
+  outcome: ItemIndexRefreshOutcome;
+  /** Tag ids no longer on this item after the refresh (candidates for prune). */
+  releasedTagIds: string[];
+};
 
 export type ItemIndexRefreshHints = {
   /** Index-only field not stored in vault markdown. */
@@ -29,6 +39,17 @@ function mergeIndexOnlyFields(
   return { ...item, collection_ids };
 }
 
+function releasedTagIds(
+  previous: readonly string[] | undefined,
+  next: readonly string[],
+): string[] {
+  if (!previous || previous.length === 0) {
+    return [];
+  }
+  const nextSet = new Set(next);
+  return previous.filter((id) => !nextSet.has(id));
+}
+
 /** True when indexed row is strictly newer than this snapshot (rev, then mtime). */
 export function isIndexAheadOfSnapshot(
   meta: Pick<ItemSyncMeta, "content_revision" | "file_mtime_ms">,
@@ -45,6 +66,23 @@ export function isIndexAheadOfSnapshot(
 }
 
 /**
+ * Enqueue tag catalog prune when the job port is wired; otherwise run inline (#935).
+ * Omit `candidateTagIds` for a full vault reconcile.
+ */
+export async function scheduleTagCatalogPrune(
+  ctx: VaultContext,
+  vaultPath: string,
+  vaultId: string,
+  candidateTagIds?: readonly string[],
+): Promise<void> {
+  if (ctx.tagCatalogPruneJobs) {
+    await ctx.tagCatalogPruneJobs.enqueue(vaultId, vaultPath, candidateTagIds);
+    return;
+  }
+  await runTagCatalogPrune(ctx, vaultPath, vaultId, candidateTagIds);
+}
+
+/**
  * Upsert one item into the SQL/FTS index from current vault bytes.
  * Skips when the index already reflects a newer snapshot (#766).
  * Re-checks mtime immediately before write to close TOCTOU races.
@@ -57,16 +95,20 @@ export async function upsertItemIndexFromVault(
   expectedContentRevision: number,
   expectedFileMtimeMs: number,
   hints?: ItemIndexRefreshHints,
-): Promise<ItemIndexRefreshOutcome> {
+): Promise<ItemIndexRefreshResult> {
   const id = normalizeRelativePath(itemId);
   const docPath = itemMarkdownPath(vaultPath, id);
 
   if (!(await ctx.fs.exists(docPath))) {
+    const [existingItem] = await ctx.index.listItemFilesByIds(vaultId, [id]);
     const [indexMeta] = await ctx.index.listItemSyncMetaByIds(vaultId, [id]);
     if (indexMeta) {
       await ctx.index.deleteItem(id);
     }
-    return "missing";
+    return {
+      outcome: "missing",
+      releasedTagIds: existingItem?.tag_ids ?? [],
+    };
   }
 
   const [indexMeta] = await ctx.index.listItemSyncMetaByIds(vaultId, [id]);
@@ -78,7 +120,7 @@ export async function upsertItemIndexFromVault(
       expectedFileMtimeMs,
     )
   ) {
-    return "stale";
+    return { outcome: "stale", releasedTagIds: [] };
   }
 
   const fileStat = await ctx.fs.stat(docPath);
@@ -88,7 +130,7 @@ export async function upsertItemIndexFromVault(
 
   // Job targeted an older on-disk generation; a newer enqueue covers current bytes.
   if (fileStat.mtimeMs > expectedFileMtimeMs) {
-    return "stale";
+    return { outcome: "stale", releasedTagIds: [] };
   }
 
   const documentMarkdown = await ctx.fs.readText(docPath);
@@ -106,11 +148,12 @@ export async function upsertItemIndexFromVault(
     freshMeta &&
     isIndexAheadOfSnapshot(freshMeta, item.content_revision, fileStat.mtimeMs)
   ) {
-    return "stale";
+    return { outcome: "stale", releasedTagIds: [] };
   }
 
   const [existingItem] = await ctx.index.listItemFilesByIds(vaultId, [id]);
   item = mergeIndexOnlyFields(item, existingItem, hints);
+  const released = releasedTagIds(existingItem?.tag_ids, item.tag_ids);
 
   await syncTagsToIndex(ctx, vaultPath, vaultId, { tagIds: item.tag_ids });
 
@@ -123,14 +166,14 @@ export async function upsertItemIndexFromVault(
     throw new Error(`Cannot index item ${id}: missing file mtime`);
   }
   if (reStat.mtimeMs !== fileStat.mtimeMs) {
-    return "stale";
+    return { outcome: "stale", releasedTagIds: [] };
   }
   const [finalMeta] = await ctx.index.listItemSyncMetaByIds(vaultId, [id]);
   if (
     finalMeta &&
     isIndexAheadOfSnapshot(finalMeta, item.content_revision, fileStat.mtimeMs)
   ) {
-    return "stale";
+    return { outcome: "stale", releasedTagIds: [] };
   }
 
   await ctx.index.upsertItem(
@@ -150,7 +193,27 @@ export async function upsertItemIndexFromVault(
     item,
     fts.content,
   );
-  return "upserted";
+  return { outcome: "upserted", releasedTagIds: released };
+}
+
+/**
+ * After index item_tags reflect the new set: enqueue or inline prune (#935).
+ * No-op when nothing was released.
+ */
+export async function pruneReleasedTagsAfterIndexRefresh(
+  ctx: VaultContext,
+  vaultPath: string,
+  vaultId: string,
+  releasedTagIds: readonly string[],
+): Promise<void> {
+  if (releasedTagIds.length === 0) {
+    return;
+  }
+  if (ctx.tagCatalogPruneJobs) {
+    await ctx.tagCatalogPruneJobs.enqueue(vaultId, vaultPath, releasedTagIds);
+    return;
+  }
+  await pruneTagCatalogCandidates(ctx, vaultPath, vaultId, releasedTagIds);
 }
 
 /** Enqueue or inline per-item index refresh after a vault write (#766). */
@@ -178,7 +241,7 @@ export async function refreshItemIndexAfterWrite(
     );
     return;
   }
-  await upsertItemIndexFromVault(
+  const { releasedTagIds } = await upsertItemIndexFromVault(
     ctx,
     vaultPath,
     vaultId,
@@ -186,5 +249,11 @@ export async function refreshItemIndexAfterWrite(
     item.content_revision,
     fileStat.mtimeMs,
     { collection_ids: item.collection_ids },
+  );
+  await pruneReleasedTagsAfterIndexRefresh(
+    ctx,
+    vaultPath,
+    vaultId,
+    releasedTagIds,
   );
 }
