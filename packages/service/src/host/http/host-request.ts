@@ -4,7 +4,6 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { CollectorApiError } from "@collector/api";
 import { mapHandlerThrownToApiError } from "../wire/errors.js";
 import { writeJson } from "./write-json.js";
 
@@ -22,10 +21,9 @@ export function runServiceHostHttpRequest(
     if (res.headersSent) {
       return;
     }
-    const apiError: CollectorApiError = mapHandlerThrownToApiError(error);
     writeJson(req, res, 500, {
       ok: false,
-      error: apiError,
+      error: mapHandlerThrownToApiError(error),
     });
   });
 }

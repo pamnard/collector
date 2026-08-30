@@ -159,6 +159,21 @@ export function mediaDeriveTempPath(cachePath: string): string {
   return `${cachePath}.${randomUUID()}.tmp`;
 }
 
+/** Read cache bytes when present; `null` only for missing file. */
+async function readDerivedCacheIfPresent(
+  cachePath: string,
+): Promise<Buffer | null> {
+  try {
+    return await readFile(cachePath);
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
 /**
  * Return cached webp bytes, encoding once on miss.
  * Atomic write: unique temp file then rename into the cache dir.
@@ -191,14 +206,9 @@ export async function readOrCreateDerivedWebp(input: {
     }),
   );
 
-  try {
-    const bytes = await readFile(cachePath);
-    return { bytes, cachePath, cacheHit: true };
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException;
-    if (err.code !== "ENOENT") {
-      throw error;
-    }
+  const cached = await readDerivedCacheIfPresent(cachePath);
+  if (cached !== null) {
+    return { bytes: cached, cachePath, cacheHit: true };
   }
 
   const existing = derivedWebpInflight.get(cachePath);
@@ -207,14 +217,9 @@ export async function readOrCreateDerivedWebp(input: {
   }
 
   const inflight = (async (): Promise<DerivedWebpResult> => {
-    try {
-      const bytes = await readFile(cachePath);
-      return { bytes, cachePath, cacheHit: true };
-    } catch (error) {
-      const err = error as NodeJS.ErrnoException;
-      if (err.code !== "ENOENT") {
-        throw error;
-      }
+    const raced = await readDerivedCacheIfPresent(cachePath);
+    if (raced !== null) {
+      return { bytes: raced, cachePath, cacheHit: true };
     }
 
     const bytes = await encode({
@@ -228,14 +233,9 @@ export async function readOrCreateDerivedWebp(input: {
       await renameFile(tmpPath, cachePath);
     } catch (error) {
       await rm(tmpPath, { force: true });
-      try {
-        const published = await readFile(cachePath);
+      const published = await readDerivedCacheIfPresent(cachePath);
+      if (published !== null) {
         return { bytes: published, cachePath, cacheHit: true };
-      } catch (readError) {
-        const readErr = readError as NodeJS.ErrnoException;
-        if (readErr.code !== "ENOENT") {
-          throw readError;
-        }
       }
       throw error;
     }
@@ -264,6 +264,7 @@ export async function handleMediaDerive(
     if (res.headersSent) {
       throw error;
     }
+    console.error("[collector] /media/derive failed:", error);
     writeJson(req, res, 500, {
       ok: false,
       error: mapHandlerThrownToApiError(error),
