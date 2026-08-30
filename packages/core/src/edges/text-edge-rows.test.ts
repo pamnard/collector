@@ -1,18 +1,19 @@
 import { describe, expect, it } from "vitest";
+import { textLinkCatalogIndexesFromItems } from "../links/text-links-reindex.js";
 import { textEdgeRowsFromBody } from "./text-edge-rows.js";
 
 describe("textEdgeRowsFromBody (#407)", () => {
-  const catalog = [
+  const indexes = textLinkCatalogIndexesFromItems([
     { id: "Inbox/target.md", title: "Target" },
     { id: "Notes/a.md", title: "Note A" },
-  ];
+  ]);
 
   it("stores resolved and unresolved internal links", () => {
     const rows = textEdgeRowsFromBody(
       "vault-1",
       "Notes/a.md",
       "See [[Target]] and [[Missing]]\n",
-      catalog,
+      indexes,
     );
     expect(rows).toEqual([
       expect.objectContaining({
@@ -37,7 +38,7 @@ describe("textEdgeRowsFromBody (#407)", () => {
       "vault-1",
       "Notes/a.md",
       "[[Target]] and [[Target]]\n",
-      catalog,
+      indexes,
     );
     expect(rows).toHaveLength(1);
   });
@@ -47,7 +48,7 @@ describe("textEdgeRowsFromBody (#407)", () => {
       "vault-1",
       "Notes/a.md",
       "[[Note A]]\n",
-      catalog,
+      indexes,
     );
     expect(rows).toEqual([]);
   });
