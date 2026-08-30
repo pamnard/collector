@@ -105,7 +105,6 @@ export function createItemDerivedRefreshHandler(deps: {
       fileStat.mtimeMs,
     );
 
-    // Once item_tags reflect the new set, enqueue/run catalog prune (#935).
     await pruneReleasedTagsAfterIndexRefresh(
       ctx,
       payload.vaultPath,

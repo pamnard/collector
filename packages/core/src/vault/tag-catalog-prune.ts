@@ -80,25 +80,17 @@ export async function reconcileTagCatalog(
   vaultId: string,
 ): Promise<{ prunedTagIds: string[] }> {
   return withTagCatalogLock(vaultPath, async () => {
-    const referenced = new Set(
-      await ctx.index.listReferencedTagIds(vaultId),
-    );
+    const referenced = new Set(await ctx.index.listReferencedTagIds(vaultId));
     const file = await readTagsFile(ctx.fs, vaultPath);
     const kept = file.tags.filter((tag) => referenced.has(tag.id));
-    const droppedFromDisk = file.tags
-      .filter((tag) => !referenced.has(tag.id))
-      .map((tag) => tag.id);
-
     if (kept.length !== file.tags.length) {
       await writeTagsFile(ctx.fs, vaultPath, { tags: kept });
     }
-
     const orphanIndexIds = await ctx.index.listOrphanTagIds(vaultId);
-    const toDelete = [...new Set([...droppedFromDisk, ...orphanIndexIds])];
-    for (const tagId of toDelete) {
+    for (const tagId of orphanIndexIds) {
       await ctx.index.deleteTag(tagId);
     }
-    return { prunedTagIds: toDelete };
+    return { prunedTagIds: orphanIndexIds };
   });
 }
 

@@ -134,7 +134,6 @@ export async function deleteItem(
   }
   await ctx.fs.touch(vaultPath);
   await ctx.index.deleteItem(id);
-  // Catalog prune is async when the job port is wired (#935).
   if (releasedTagIds.length > 0) {
     await pruneReleasedTagsAfterIndexRefresh(
       ctx,

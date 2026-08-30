@@ -7,10 +7,7 @@ import {
 } from "./item-io.js";
 import { itemMarkdownPath, normalizeRelativePath } from "./paths.js";
 import { refreshItemEmbeddingAfterWrite } from "./item-embedding-refresh.js";
-import {
-  pruneTagCatalogCandidates,
-  runTagCatalogPrune,
-} from "./tag-catalog-prune.js";
+import { pruneTagCatalogCandidates } from "./tag-catalog-prune.js";
 import { syncTagsToIndex } from "./tag-operations.js";
 
 export type ItemIndexRefreshOutcome = "upserted" | "stale" | "missing";
@@ -63,23 +60,6 @@ export function isIndexAheadOfSnapshot(
     return false;
   }
   return meta.file_mtime_ms != null && meta.file_mtime_ms > fileMtimeMs;
-}
-
-/**
- * Enqueue tag catalog prune when the job port is wired; otherwise run inline (#935).
- * Omit `candidateTagIds` for a full vault reconcile.
- */
-export async function scheduleTagCatalogPrune(
-  ctx: VaultContext,
-  vaultPath: string,
-  vaultId: string,
-  candidateTagIds?: readonly string[],
-): Promise<void> {
-  if (ctx.tagCatalogPruneJobs) {
-    await ctx.tagCatalogPruneJobs.enqueue(vaultId, vaultPath, candidateTagIds);
-    return;
-  }
-  await runTagCatalogPrune(ctx, vaultPath, vaultId, candidateTagIds);
 }
 
 /**

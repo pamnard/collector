@@ -88,7 +88,6 @@ export {
   refreshItemIndexAfterWrite,
   upsertItemIndexFromVault,
   pruneReleasedTagsAfterIndexRefresh,
-  scheduleTagCatalogPrune,
   isIndexAheadOfSnapshot,
   type ItemIndexRefreshOutcome,
   type ItemIndexRefreshResult,

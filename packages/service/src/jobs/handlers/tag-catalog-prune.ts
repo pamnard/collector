@@ -11,8 +11,6 @@ import type { JobQueue, EnqueueResult } from "../job-queue.js";
 import type { TypedJobHandler } from "../job-registry.js";
 import type { JobHandlerResult } from "../job-types.js";
 
-export type TagCatalogPruneEnqueueInput = TagCatalogPruneJobPayload;
-
 export function createTagCatalogPruneHandler(deps: {
   getContext: () => VaultContext;
 }): TypedJobHandler<typeof tagCatalogPruneJobType.payload> {

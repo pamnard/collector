@@ -6,11 +6,10 @@ import {
 import type { JobQueue, EnqueueResult } from "../job-queue.js";
 import type { TypedJobHandler } from "../job-registry.js";
 import type { JobHandlerResult } from "../job-types.js";
-import { enqueueTagCatalogPrune } from "./tag-catalog-prune.js";
 
 export function createVaultIndexSyncHandler(deps: {
   startVaultIndexSync: (vaultId: string, vaultPath: string) => Promise<void>;
-  /** Optional: enqueue full tag catalog reconcile after sync (#935). */
+  /** Enqueue full tag catalog reconcile after sync (#935). */
   enqueueTagCatalogReconcile?: (
     vaultId: string,
     vaultPath: string,
@@ -37,16 +36,5 @@ export function enqueueVaultIndexSync(
     payload,
     priority: JOB_PRIORITY_BULK,
     idempotencyKey: `vaultIndexSync:${payload.vaultId}`,
-  });
-}
-
-/** Enqueue full tag catalog reconcile onto the durable queue (#935). */
-export function enqueueVaultTagCatalogReconcile(
-  queue: JobQueue,
-  payload: { vaultId: string; vaultPath: string },
-): Promise<EnqueueResult> {
-  return enqueueTagCatalogPrune(queue, {
-    vaultId: payload.vaultId,
-    vaultPath: payload.vaultPath,
   });
 }
