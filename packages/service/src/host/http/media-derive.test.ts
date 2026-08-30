@@ -1,19 +1,30 @@
 /**
- * Unit tests for `/media/derive` helpers (#882).
+ * Unit tests for `/media/derive` helpers (#882 / #933).
  */
 
-import { mkdtempSync, rmSync, writeFileSync, utimesSync, statSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+  utimesSync,
+  statSync,
+} from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
 import {
   encodeDerivedWebpDefault,
+  handleMediaDerive,
   imageDeriveCacheDir,
   isMediaDeriveRequest,
   mediaDeriveBrowserCacheControl,
   mediaDeriveCacheKey,
   mediaDeriveEtag,
+  mediaDeriveTempPath,
   parseMediaDeriveVersionQuery,
   readOrCreateDerivedWebp,
 } from "./media-derive.js";
@@ -249,5 +260,202 @@ describe("media-derive helpers (#882)", () => {
       encodeWebp,
     });
     expect(encodeWebp).toHaveBeenCalledTimes(3);
+  });
+
+  it("readOrCreateDerivedWebp concurrent same-key: one encode, both succeed (#933)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collector-derive-race-"));
+    dirs.push(dir);
+    const sourcePath = join(dir, "src.png");
+    writeFileSync(
+      sourcePath,
+      await sharp({
+        create: {
+          width: 320,
+          height: 160,
+          channels: 3,
+          background: { r: 2, g: 3, b: 4 },
+        },
+      })
+        .png()
+        .toBuffer(),
+    );
+    const cacheDir = join(dir, "image-derive-cache");
+    let releaseEncode!: () => void;
+    const encodeGate = new Promise<void>((resolve) => {
+      releaseEncode = resolve;
+    });
+    const encodeWebp = vi.fn(async () => {
+      await encodeGate;
+      return sharp({
+        create: {
+          width: 256,
+          height: 128,
+          channels: 3,
+          background: { r: 7, g: 8, b: 9 },
+        },
+      })
+        .webp()
+        .toBuffer();
+    });
+
+    const first = readOrCreateDerivedWebp({
+      cacheDir,
+      resolvedPath: sourcePath,
+      mtimeMs: 1000,
+      width: 256,
+      encodeWebp,
+    });
+    const second = readOrCreateDerivedWebp({
+      cacheDir,
+      resolvedPath: sourcePath,
+      mtimeMs: 1000,
+      width: 256,
+      encodeWebp,
+    });
+    // Both callers must be waiting on the shared encode before we release it.
+    await vi.waitFor(() => {
+      expect(encodeWebp).toHaveBeenCalledTimes(1);
+    });
+    releaseEncode();
+    const [a, b] = await Promise.all([first, second]);
+    expect(Buffer.compare(a.bytes, b.bytes)).toBe(0);
+    expect(encodeWebp).toHaveBeenCalledTimes(1);
+    expect(readdirSync(cacheDir).filter((name) => name.endsWith(".webp"))).toHaveLength(
+      1,
+    );
+    expect(readdirSync(cacheDir).some((name) => name.endsWith(".tmp"))).toBe(
+      false,
+    );
+  });
+
+  it("mediaDeriveTempPath is unique per call (no pid+Date.now collision) (#933)", () => {
+    const cachePath = "/tmp/image-derive-cache/abc.webp";
+    const paths = new Set(
+      Array.from({ length: 64 }, () => mediaDeriveTempPath(cachePath)),
+    );
+    expect(paths.size).toBe(64);
+    for (const tmp of paths) {
+      expect(tmp.startsWith(`${cachePath}.`)).toBe(true);
+      expect(tmp.endsWith(".tmp")).toBe(true);
+      expect(tmp).not.toMatch(new RegExp(`\\.${process.pid}\\.\\d+\\.tmp$`));
+    }
+  });
+
+  it("readOrCreateDerivedWebp rename ENOENT re-reads existing cache (#933)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collector-derive-rename-loser-"));
+    dirs.push(dir);
+    const sourcePath = join(dir, "src.png");
+    writeFileSync(sourcePath, Buffer.from("unused"));
+    const cacheDir = join(dir, "image-derive-cache");
+    const published = await sharp({
+      create: {
+        width: 16,
+        height: 8,
+        channels: 3,
+        background: { r: 1, g: 2, b: 3 },
+      },
+    })
+      .webp()
+      .toBuffer();
+    const encodeWebp = vi.fn(async () =>
+      sharp({
+        create: {
+          width: 16,
+          height: 8,
+          channels: 3,
+          background: { r: 9, g: 8, b: 7 },
+        },
+      })
+        .webp()
+        .toBuffer(),
+    );
+
+    const result = await readOrCreateDerivedWebp({
+      cacheDir,
+      resolvedPath: sourcePath,
+      mtimeMs: 42,
+      width: 128,
+      encodeWebp,
+      renameFile: async (_from, to) => {
+        writeFileSync(to, published);
+        const error = new Error(
+          "ENOENT: no such file or directory, rename",
+        ) as NodeJS.ErrnoException;
+        error.code = "ENOENT";
+        throw error;
+      },
+    });
+    expect(Buffer.compare(result.bytes, published)).toBe(0);
+    expect(encodeWebp).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("handleMediaDerive error boundary (#933)", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("maps encode failure to HTTP 500 JSON and does not reject (#933)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-derive-err-"));
+    dirs.push(dataDir);
+    const vaultsRootPath = join(dataDir, "vaults");
+    const mediaDir = join(vaultsRootPath, "v1", "media", "item");
+    mkdirSync(mediaDir, { recursive: true });
+    const sourcePath = join(mediaDir, "src.png");
+    writeFileSync(
+      sourcePath,
+      await sharp({
+        create: {
+          width: 64,
+          height: 32,
+          channels: 3,
+          background: { r: 1, g: 1, b: 1 },
+        },
+      })
+        .png()
+        .toBuffer(),
+    );
+
+    const token = "test-token-933";
+    const server = createServer((req, res) => {
+      const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      void handleMediaDerive(req, res, url, {
+        expectedToken: token,
+        vaultsRootPath,
+        dataDir,
+        encodeWebp: async () => {
+          throw new Error("encode boom for #933");
+        },
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => resolve());
+    });
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        throw new Error("failed to bind test server");
+      }
+      const res = await fetch(
+        `http://127.0.0.1:${address.port}/media/derive?path=${encodeURIComponent(sourcePath)}&w=128&token=${encodeURIComponent(token)}`,
+      );
+      expect(res.status).toBe(500);
+      const body = (await res.json()) as {
+        ok: boolean;
+        error?: { code?: string; message?: string };
+      };
+      expect(body.ok).toBe(false);
+      expect(body.error?.code).toBe("failed");
+      expect(body.error?.message).toMatch(/encode boom/);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
   });
 });
