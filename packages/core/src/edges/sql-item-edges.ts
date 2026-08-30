@@ -6,6 +6,7 @@ import {
   sqlRowPlaceholders,
   type SqlIndexSelector,
 } from "../index/sql-index-helpers.js";
+import { textLinkCatalogIndexesFromItems } from "../links/text-links-reindex.js";
 import { textEdgeRowsFromBody } from "./text-edge-rows.js";
 import type { ItemEdgeInsertRow, UserEdgeNeighbor } from "./types.js";
 import { canonicalUserEdgePair } from "./user-edge-canonical.js";
@@ -69,7 +70,8 @@ export async function replaceTextEdgesForItem(
 ): Promise<void> {
   const timestamp = new Date().toISOString();
   const body = parseDocumentMarkdown(markdownContent).body;
-  const rows = textEdgeRowsFromBody(vaultId, fromId, body, catalog);
+  const indexes = textLinkCatalogIndexesFromItems(catalog);
+  const rows = textEdgeRowsFromBody(vaultId, fromId, body, indexes);
 
   await selector.execute(
     "DELETE FROM item_edges WHERE from_id = ? AND source = 'text'",
@@ -90,6 +92,7 @@ export async function rebuildVaultTextEdges(
   const timestamp = new Date().toISOString();
   const catalog = await loadCatalog();
   const bodies = await loadBodies();
+  const indexes = textLinkCatalogIndexesFromItems(catalog);
 
   await selector.execute(
     "DELETE FROM item_edges WHERE vault_id = ? AND source = 'text'",
@@ -100,7 +103,7 @@ export async function rebuildVaultTextEdges(
   for (const source of bodies) {
     const body = parseDocumentMarkdown(source.content).body;
     allRows.push(
-      ...textEdgeRowsFromBody(vaultId, source.id, body, catalog),
+      ...textEdgeRowsFromBody(vaultId, source.id, body, indexes),
     );
   }
   if (allRows.length === 0) {

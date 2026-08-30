@@ -1,11 +1,45 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { collectBacklinkSources } from "../links/collect-backlink-sources.js";
+import * as textLinksReindex from "../links/text-links-reindex.js";
 import { parseDocumentMarkdown } from "../vault/frontmatter.js";
 import {
   createSqlIndexTestSuite,
   noteItemFields,
 } from "../index/sql-index-test-harness.js";
 import { createId } from "../util/ids.js";
+import { rebuildVaultTextEdges } from "./sql-item-edges.js";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe("rebuildVaultTextEdges catalog indexes (#920)", () => {
+  it("builds catalog id/title indexes once for full-vault rebuild", async () => {
+    const catalog = [
+      { id: "Inbox/target.md", title: "Target" },
+      { id: "Notes/a.md", title: "Note A" },
+      { id: "Notes/b.md", title: "Note B" },
+    ];
+    const bodies = [
+      { id: "Notes/a.md", content: "[[Target]]\n" },
+      { id: "Notes/b.md", content: "[[Target]]\n" },
+      { id: "Inbox/target.md", content: "# Target\n" },
+    ];
+    const selector = {
+      select: vi.fn(async () => []),
+      execute: vi.fn(async () => undefined),
+    };
+    const spy = vi.spyOn(textLinksReindex, "textLinkCatalogIndexesFromItems");
+    await rebuildVaultTextEdges(
+      selector,
+      "vault-1",
+      async () => catalog,
+      async () => bodies,
+    );
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith(catalog);
+  });
+});
 
 describe("item_edges SQL (#407)", () => {
   const suite = createSqlIndexTestSuite();
