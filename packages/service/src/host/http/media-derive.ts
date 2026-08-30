@@ -1,9 +1,9 @@
 /**
- * GET/HEAD `/media/derive` — resize-by-width webp for display slots (#882 / #879).
+ * GET/HEAD `/media/derive` — resize-by-width webp for display slots (#882 / #879 / #933).
  * Auth and vault path escape match `/media/file`. Cache lives under dataDir, not the vault.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   mkdir,
   readFile,
@@ -23,10 +23,20 @@ import {
   type MediaDeriveWidth,
 } from "@collector/shared";
 import sharp from "sharp";
+import { mapHandlerThrownToApiError } from "../wire/errors.js";
 import { isValidHostToken } from "./bearer.js";
 import { corsHeadersForRequest } from "./cors.js";
 import { isResolvedPathInsideVaults } from "./media-handler.js";
 import { writeJson } from "./write-json.js";
+
+type DerivedWebpResult = {
+  bytes: Buffer;
+  cachePath: string;
+  cacheHit: boolean;
+};
+
+/** In-flight encode+publish promises keyed by absolute cache path (#933). */
+const derivedWebpInflight = new Map<string, Promise<DerivedWebpResult>>();
 
 export const MEDIA_DERIVE_PATH = "/media/derive";
 export const IMAGE_DERIVE_CACHE_DIRNAME = "image-derive-cache";
@@ -144,9 +154,30 @@ export async function encodeDerivedWebpDefault(input: {
     .toBuffer();
 }
 
+/** Unique temp path for an atomic cache publish (never pid+Date.now) (#933). */
+export function mediaDeriveTempPath(cachePath: string): string {
+  return `${cachePath}.${randomUUID()}.tmp`;
+}
+
+/** Read cache bytes when present; `null` only for missing file. */
+async function readDerivedCacheIfPresent(
+  cachePath: string,
+): Promise<Buffer | null> {
+  try {
+    return await readFile(cachePath);
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
 /**
  * Return cached webp bytes, encoding once on miss.
- * Atomic write: temp file then rename into the cache dir.
+ * Atomic write: unique temp file then rename into the cache dir.
+ * Concurrent same-key callers share one in-flight encode (#933).
  */
 export async function readOrCreateDerivedWebp(input: {
   cacheDir: string;
@@ -155,9 +186,15 @@ export async function readOrCreateDerivedWebp(input: {
   width: MediaDeriveWidth;
   quality?: number;
   encodeWebp?: EncodeDerivedWebp;
-}): Promise<{ bytes: Buffer; cachePath: string; cacheHit: boolean }> {
+  /** Test seam: override rename (e.g. simulate loser ENOENT). */
+  renameFile?: (
+    from: string,
+    to: string,
+  ) => Promise<void>;
+}): Promise<DerivedWebpResult> {
   const quality = input.quality ?? MEDIA_DERIVE_WEBP_QUALITY;
   const encode = input.encodeWebp ?? encodeDerivedWebpDefault;
+  const renameFile = input.renameFile ?? rename;
   await mkdir(input.cacheDir, { recursive: true });
   const cachePath = join(
     input.cacheDir,
@@ -169,33 +206,73 @@ export async function readOrCreateDerivedWebp(input: {
     }),
   );
 
-  try {
-    const bytes = await readFile(cachePath);
-    return { bytes, cachePath, cacheHit: true };
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException;
-    if (err.code !== "ENOENT") {
-      throw error;
-    }
+  const cached = await readDerivedCacheIfPresent(cachePath);
+  if (cached !== null) {
+    return { bytes: cached, cachePath, cacheHit: true };
   }
 
-  const bytes = await encode({
-    sourcePath: input.resolvedPath,
-    width: input.width,
-    quality,
-  });
-  const tmpPath = `${cachePath}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(tmpPath, bytes);
-  try {
-    await rename(tmpPath, cachePath);
-  } catch (error) {
-    await rm(tmpPath, { force: true });
-    throw error;
+  const existing = derivedWebpInflight.get(cachePath);
+  if (existing) {
+    return existing;
   }
-  return { bytes, cachePath, cacheHit: false };
+
+  const inflight = (async (): Promise<DerivedWebpResult> => {
+    const raced = await readDerivedCacheIfPresent(cachePath);
+    if (raced !== null) {
+      return { bytes: raced, cachePath, cacheHit: true };
+    }
+
+    const bytes = await encode({
+      sourcePath: input.resolvedPath,
+      width: input.width,
+      quality,
+    });
+    const tmpPath = mediaDeriveTempPath(cachePath);
+    await writeFile(tmpPath, bytes);
+    try {
+      await renameFile(tmpPath, cachePath);
+    } catch (error) {
+      await rm(tmpPath, { force: true });
+      const published = await readDerivedCacheIfPresent(cachePath);
+      if (published !== null) {
+        return { bytes: published, cachePath, cacheHit: true };
+      }
+      throw error;
+    }
+    return { bytes, cachePath, cacheHit: false };
+  })();
+
+  derivedWebpInflight.set(cachePath, inflight);
+  try {
+    return await inflight;
+  } finally {
+    if (derivedWebpInflight.get(cachePath) === inflight) {
+      derivedWebpInflight.delete(cachePath);
+    }
+  }
 }
 
 export async function handleMediaDerive(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  options: MediaDeriveHandlerOptions,
+): Promise<void> {
+  try {
+    await handleMediaDeriveUnchecked(req, res, url, options);
+  } catch (error) {
+    if (res.headersSent) {
+      throw error;
+    }
+    console.error("[collector] /media/derive failed:", error);
+    writeJson(req, res, 500, {
+      ok: false,
+      error: mapHandlerThrownToApiError(error),
+    });
+  }
+}
+
+async function handleMediaDeriveUnchecked(
   req: IncomingMessage,
   res: ServerResponse,
   url: URL,

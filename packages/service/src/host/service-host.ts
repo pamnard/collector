@@ -45,6 +45,7 @@ import {
   handleMediaFile,
   isMediaFileRequest,
 } from "./http/media-handler.js";
+import { runServiceHostHttpRequest } from "./http/host-request.js";
 import { handleHttpRpc, writeUnauthorized } from "./http/rpc-handler.js";
 import { tryServeStaticUi } from "./http/static-ui.js";
 import { writeJson } from "./http/write-json.js";
@@ -179,7 +180,7 @@ export async function startServiceHost(
   let boundPort = 0;
 
   const server: Server = createServer((req, res) => {
-    void (async () => {
+    runServiceHostHttpRequest(req, res, async () => {
       const url = new URL(req.url ?? "/", `http://${listenHost}`);
 
       if (req.method === "OPTIONS") {
@@ -262,7 +263,7 @@ export async function startServiceHost(
       }
 
       writeJson(req, res, 404, { ok: false, error: "not_found" });
-    })();
+    });
   });
 
   eventsHub.attach(server);
