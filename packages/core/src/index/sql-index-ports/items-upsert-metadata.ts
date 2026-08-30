@@ -106,9 +106,6 @@ export function createItemsUpsertMetadata(db: SqlIndexDb) {
         offset += SQL_INSERT_CHUNK
       ) {
         const idChunk = allItemIds.slice(offset, offset + SQL_INSERT_CHUNK);
-        if (idChunk.length === 0) {
-          continue;
-        }
         const previousRows = await db.select<{ vault_id: string }>(
           `SELECT vault_id FROM items WHERE id IN (${sqlInPlaceholders(idChunk.length)})`,
           idChunk,
