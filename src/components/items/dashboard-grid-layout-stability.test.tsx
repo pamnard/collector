@@ -462,19 +462,25 @@ describe("cold reveal call sites (#855 / #874)", () => {
       join(root, "src/hooks/dashboard/useDashboardListState.ts"),
       "utf8",
     );
+    const commitSrc = readFileSync(
+      join(root, "src/lib/dashboard-commit-to-display.ts"),
+      "utf8",
+    );
     const apply = readFileSync(
       join(root, "src/hooks/dashboard/apply-index-page-against-list.ts"),
       "utf8",
     );
 
-    expect(listSrc).toContain('from "../../lib/dashboard-cold-reveal"');
+    expect(listSrc).toContain('from "../../lib/dashboard-commit-to-display"');
+    expect(listSrc).toMatch(/runDashboardCommitToDisplay\s*\(/);
+    expect(commitSrc).toContain("./dashboard-cold-reveal.ts");
     expect(apply).toContain('from "../../lib/dashboard-cold-reveal"');
-    expect(listSrc).toMatch(/revealHeldListPaint\s*\(/);
+    expect(commitSrc).toMatch(/revealHeldListPaint\s*\(/);
     expect(apply).toMatch(/revealHeldListPaint\s*\(/);
 
-    const heldAt = listSrc.indexOf("if (heldListPaint)");
+    const heldAt = commitSrc.indexOf("if (heldListPaint)");
     expect(heldAt).toBeGreaterThanOrEqual(0);
-    const heldBlock = listSrc.slice(heldAt, heldAt + 900);
+    const heldBlock = commitSrc.slice(heldAt, heldAt + 900);
     expect(heldBlock).toContain("revealHeldListPaint");
     expect(heldBlock).not.toMatch(
       /setCommittedItems\(ordered\);\s*\n\s*covers\.(publish|flushPublished)/,
