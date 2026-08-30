@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
+import { createItemsPort } from "./sql-index-ports/items.js";
 import { requireSqlSelect } from "./sql-index-ports/require-select.js";
 import { SqlVaultIndexAdapter } from "./sql-index.js";
 
@@ -20,5 +21,19 @@ describe("sql-index compose seams (#792)", () => {
       () => adapter.listVaultItemIds("vault-1"),
       /listVaultItemIds requires select\(\); use SqlVaultIndexStore instead/,
     );
+  });
+});
+
+describe("createItemsPort compose seams (#921)", () => {
+  it("exposes metadata, content, and delete write methods", () => {
+    const port = createItemsPort({
+      execute: async () => 0,
+      select: async () => [],
+    });
+    assert.equal(typeof port.upsertItemMetadata, "function");
+    assert.equal(typeof port.upsertItemMetadataBatch, "function");
+    assert.equal(typeof port.upsertItemContent, "function");
+    assert.equal(typeof port.upsertItemContentBatch, "function");
+    assert.equal(typeof port.deleteItemsBatch, "function");
   });
 });
