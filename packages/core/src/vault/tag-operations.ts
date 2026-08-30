@@ -1,5 +1,5 @@
 /**
- * Tag catalog ops (#842).
+ * Tag catalog ops (#842 / #935).
  *
  * Product rule: aggregated tag lists are derived from document frontmatter
  * tag names only. Tags enter `tags.json` / the index via document writes
@@ -7,12 +7,21 @@
  * API to create, rename, or delete catalog entries independently, and no
  * list→documents mass rewrite.
  *
+ * Unused catalog entries are pruned asynchronously via `tagCatalogPrune`
+ * jobs after item_tags update (#935) — never synchronously on the write RPC.
+ *
  * `listTagsWithCounts` only returns tags currently linked to indexed items;
  * orphan catalog/index rows are omitted from the list.
  */
 import type { Tag } from "@collector/shared";
 import type { VaultContext } from "../adapters/types.js";
 import { listTagsOnDisk } from "./tag-io.js";
+
+export {
+  pruneTagCatalogCandidates,
+  reconcileTagCatalog,
+  runTagCatalogPrune,
+} from "./tag-catalog-prune.js";
 
 export interface TagWithCount extends Tag {
   item_count: number;

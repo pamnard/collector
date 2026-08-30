@@ -97,7 +97,7 @@ describe("upsertItemIndexFromVault (#766)", () => {
       2,
       fileMtimeMs,
     );
-    expect(outcome).toBe("upserted");
+    expect(outcome.outcome).toBe("upserted");
 
     const indexed = await ctx.index.listItemFilesByIds(meta.id, [itemId]);
     expect(indexed[0]?.title).toBe("Note");
@@ -116,7 +116,7 @@ describe("upsertItemIndexFromVault (#766)", () => {
       2,
       fileMtimeMs,
     );
-    expect(outcome).toBe("stale");
+    expect(outcome.outcome).toBe("stale");
     expect(upsertSpy).not.toHaveBeenCalled();
   });
 
@@ -137,7 +137,7 @@ describe("upsertItemIndexFromVault (#766)", () => {
       1,
       stat.mtimeMs - 1,
     );
-    expect(outcome).toBe("stale");
+    expect(outcome.outcome).toBe("stale");
     expect(upsertSpy).not.toHaveBeenCalled();
   });
 
@@ -153,7 +153,7 @@ describe("upsertItemIndexFromVault (#766)", () => {
       item.content_revision,
       fileMtimeMs,
     );
-    expect(outcome).toBe("upserted");
+    expect(outcome.outcome).toBe("upserted");
     expect(upsertSpy).toHaveBeenCalled();
   });
 
@@ -169,7 +169,7 @@ describe("upsertItemIndexFromVault (#766)", () => {
       1,
       fileMtimeMs,
     );
-    expect(outcome).toBe("missing");
+    expect(outcome.outcome).toBe("missing");
     expect(await ctx.index.listItemFilesByIds(meta.id, [itemId])).toEqual([]);
   });
 
@@ -188,7 +188,7 @@ describe("upsertItemIndexFromVault (#766)", () => {
       2,
       fileMtimeMs,
     );
-    expect(outcome).toBe("upserted");
+    expect(outcome.outcome).toBe("upserted");
     expect(upsertTagSpy).not.toHaveBeenCalled();
     upsertTagSpy.mockRestore();
   });
@@ -252,7 +252,7 @@ describe("upsertItemIndexFromVault (#766)", () => {
       2,
       stat.mtimeMs,
     );
-    expect(outcome).toBe("upserted");
+    expect(outcome.outcome).toBe("upserted");
 
     expect(upsertTagSpy).toHaveBeenCalledWith(
       expect.objectContaining({ name: "brand-new" }),

@@ -87,7 +87,10 @@ export {
 export {
   refreshItemIndexAfterWrite,
   upsertItemIndexFromVault,
+  pruneReleasedTagsAfterIndexRefresh,
+  isIndexAheadOfSnapshot,
   type ItemIndexRefreshOutcome,
+  type ItemIndexRefreshResult,
 } from "./vault/item-index-refresh.js";
 
 export {
@@ -216,8 +219,12 @@ export type { DropImportClass } from "./vault/drop-import-classify.js";
 export {
   listTagsWithCounts,
   syncTagsToIndex,
+  pruneTagCatalogCandidates,
+  reconcileTagCatalog,
+  runTagCatalogPrune,
 } from "./vault/tag-operations.js";
 export type { TagWithCount } from "./vault/tag-operations.js";
+export { listTagsOnDisk, readTagsFile, writeTagsFile } from "./vault/tag-io.js";
 export {
   attachMediaFile,
   deleteMediaFile,

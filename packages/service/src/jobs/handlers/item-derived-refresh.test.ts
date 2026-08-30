@@ -70,13 +70,20 @@ describe("itemDerivedRefresh job (#766 / #768)", () => {
 
   it("localizes then upserts index from vault bytes", async () => {
     const localize = vi.fn(async () => "noop" as const);
-    const upsert = vi.fn(async () => "upserted" as const);
+    const upsert = vi.fn(async () => ({
+      outcome: "upserted" as const,
+      releasedTagIds: [] as string[],
+    }));
+    const prune = vi.fn(async () => undefined);
     const localizeSpy = vi
       .spyOn(await import("@collector/core"), "runItemDerivedLocalizeRefresh")
       .mockImplementation(localize);
     const upsertSpy = vi
       .spyOn(await import("@collector/core"), "upsertItemIndexFromVault")
       .mockImplementation(upsert);
+    const pruneSpy = vi
+      .spyOn(await import("@collector/core"), "pruneReleasedTagsAfterIndexRefresh")
+      .mockImplementation(prune);
     const readItemFile = vi.fn(async () => ({
       id: samplePayload.itemId,
       folder_path: "Inbox",
@@ -119,6 +126,12 @@ describe("itemDerivedRefresh job (#766 / #768)", () => {
       3,
       samplePayload.fileMtimeMs,
     );
+    expect(prune).toHaveBeenCalledWith(
+      expect.anything(),
+      samplePayload.vaultPath,
+      samplePayload.vaultId,
+      [],
+    );
     expect(onVaultPresentationChanged).toHaveBeenCalledWith({
       vaultId: samplePayload.vaultId,
       kind: "itemDerivedComplete",
@@ -128,11 +141,18 @@ describe("itemDerivedRefresh job (#766 / #768)", () => {
 
     localizeSpy.mockRestore();
     upsertSpy.mockRestore();
+    pruneSpy.mockRestore();
   });
 
   it("returns ok when item was deleted before localize runs", async () => {
     const onVaultPresentationChanged = vi.fn();
     const localizeRemoteDisplayAssets = vi.fn();
+    const upsertSpy = vi
+      .spyOn(await import("@collector/core"), "upsertItemIndexFromVault")
+      .mockResolvedValue({ outcome: "missing", releasedTagIds: [] });
+    const pruneSpy = vi
+      .spyOn(await import("@collector/core"), "pruneReleasedTagsAfterIndexRefresh")
+      .mockResolvedValue(undefined);
     const handler = createItemDerivedRefreshHandler({
       getContext: () => ({
         fs: {
@@ -160,6 +180,15 @@ describe("itemDerivedRefresh job (#766 / #768)", () => {
     ).resolves.toEqual({ status: "ok" });
     expect(localizeRemoteDisplayAssets).not.toHaveBeenCalled();
     expect(onVaultPresentationChanged).not.toHaveBeenCalled();
+    expect(upsertSpy).toHaveBeenCalled();
+    expect(pruneSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      "/vault",
+      "vault-1",
+      [],
+    );
+    upsertSpy.mockRestore();
+    pruneSpy.mockRestore();
   });
 
   it("dedupes pending jobs for the same snapshot", async () => {
@@ -172,7 +201,11 @@ describe("itemDerivedRefresh job (#766 / #768)", () => {
     vi.spyOn(
       await import("@collector/core"),
       "upsertItemIndexFromVault",
-    ).mockResolvedValue("upserted");
+    ).mockResolvedValue({ outcome: "upserted", releasedTagIds: [] });
+    vi.spyOn(
+      await import("@collector/core"),
+      "pruneReleasedTagsAfterIndexRefresh",
+    ).mockResolvedValue(undefined);
     vi.spyOn(await import("@collector/core"), "readItemFile").mockResolvedValue({
       id: samplePayload.itemId,
       folder_path: "Inbox",

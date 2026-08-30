@@ -48,6 +48,10 @@ import {
   createItemDerivedRefreshHandler,
 } from "../jobs/handlers/item-derived-refresh.js";
 import {
+  createTagCatalogPruneHandler,
+  enqueueTagCatalogPrune,
+} from "../jobs/handlers/tag-catalog-prune.js";
+import {
   createItemExtractAutoHandler,
 } from "../jobs/handlers/item-extract-auto.js";
 import {
@@ -58,7 +62,10 @@ import {
 } from "../jobs/handlers/drop-import-batch.js";
 import { createImportFolderHandler } from "../jobs/handlers/import-folder.js";
 import { createLocalizeItemRemoteDisplayAssets } from "../localize-item-remote-display-assets.js";
-import { reportEnqueueFailure } from "../job-permanent-failure.js";
+import {
+  enqueueJobWithFailureReporting,
+  reportEnqueueFailure,
+} from "../job-permanent-failure.js";
 import { createVaultIndexSyncStatusStore } from "../sync-status.js";
 import {
   createDerivedCatchUpStatusRefresher,
@@ -264,6 +271,23 @@ export function createServiceDomainRuntime(
     );
   }
 
+  async function enqueueTagCatalogPruneJob(
+    vaultId: string,
+    vaultPath: string,
+    candidateTagIds?: readonly string[],
+  ): Promise<void> {
+    await enqueueJobWithFailureReporting(
+      { requireJobs, jobPermanentFailure },
+      "tagCatalogPrune",
+      (queue) =>
+        enqueueTagCatalogPrune(queue, {
+          vaultId,
+          vaultPath,
+          ...(candidateTagIds !== undefined ? { candidateTagIds: [...candidateTagIds] } : {}),
+        }),
+    );
+  }
+
   function getContext() {
     return {
       fs,
@@ -274,6 +298,9 @@ export function createServiceDomainRuntime(
       },
       itemDerivedRefreshJobs: {
         enqueue: enqueueItemDerivedRefreshJob,
+      },
+      tagCatalogPruneJobs: {
+        enqueue: enqueueTagCatalogPruneJob,
       },
     };
   }
@@ -307,6 +334,14 @@ export function createServiceDomainRuntime(
 
   phaseBHandlerBindings.vaultIndexSync = createVaultIndexSyncHandler({
     startVaultIndexSync: vaultSyncController.startVaultIndexSync,
+    enqueueTagCatalogReconcile: async (vaultId, vaultPath) => {
+      await enqueueJobWithFailureReporting(
+        { requireJobs, jobPermanentFailure },
+        "tagCatalogPrune",
+        (queue) =>
+          enqueueTagCatalogPrune(queue, { vaultId, vaultPath }),
+      );
+    },
   });
   phaseBHandlerBindings.reindexVaultBatch = createReindexVaultBatchHandler({
     getContext,
@@ -342,6 +377,10 @@ export function createServiceDomainRuntime(
     localizeRemoteDisplayAssets,
     onVaultPresentationChanged: (payload) =>
       vaultPresentationChanged.notify(payload),
+  });
+
+  phaseBHandlerBindings.tagCatalogPrune = createTagCatalogPruneHandler({
+    getContext,
   });
 
   const { vaults, itemsSearch, tagsFolders, mediaCover } = domainServices;

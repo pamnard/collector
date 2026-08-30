@@ -32,6 +32,7 @@ import {
   vaultMetaPath,
 } from "./paths.js";
 import { readTagsFile, writeTagsFile } from "./tag-io.js";
+import { withTagCatalogLock } from "./tag-catalog-lock.js";
 
 function mtimeToIso(mtimeMs: number | null): string {
   if (mtimeMs === null) {
@@ -95,8 +96,8 @@ export async function loadTagMaps(
  * Ensure tag names exist in tags.json; returns refreshed maps.
  * Creates new Tag records for missing names (portable import).
  * When `current` already has every name, avoids a disk read (index sync).
- * When creating, re-reads disk first so a stale map cannot clobber tags
- * added concurrently by another document write.
+ * When creating, re-reads disk under the vault catalog lock so a stale map
+ * cannot clobber tags added concurrently by another document write or prune (#935).
  */
 export async function ensureTagsByName(
   fs: FileSystemAdapter,
@@ -123,30 +124,32 @@ export async function ensureTagsByName(
     return maps;
   }
 
-  const file = await readTagsFile(fs, vaultPath);
-  maps = buildTagMaps(file.tags);
-  let mutated = false;
-
-  for (const normalized of missing) {
-    const key = normalized.toLowerCase();
-    if (maps.byName.has(key)) {
-      continue;
-    }
-    const tag: Tag = {
-      id: createId(),
-      name: normalized,
-      color: null,
-      created_at: nowIso(),
-    };
-    file.tags.push(tag);
-    mutated = true;
+  return withTagCatalogLock(vaultPath, async () => {
+    const file = await readTagsFile(fs, vaultPath);
     maps = buildTagMaps(file.tags);
-  }
+    let mutated = false;
 
-  if (mutated) {
-    await writeTagsFile(fs, vaultPath, file);
-  }
-  return maps;
+    for (const normalized of missing) {
+      const key = normalized.toLowerCase();
+      if (maps.byName.has(key)) {
+        continue;
+      }
+      const tag: Tag = {
+        id: createId(),
+        name: normalized,
+        color: null,
+        created_at: nowIso(),
+      };
+      file.tags.push(tag);
+      mutated = true;
+      maps = buildTagMaps(file.tags);
+    }
+
+    if (mutated) {
+      await writeTagsFile(fs, vaultPath, file);
+    }
+    return maps;
+  });
 }
 
 async function parseDocumentWithTags(

@@ -15,6 +15,7 @@ import {
   itemExtractAutoJobType,
   isVaultMutatingBulkJob,
   isVaultMutatingBulkJobType,
+  tagCatalogPruneJobType,
   testNoopJobType,
 } from "./job-types.js";
 
@@ -122,6 +123,18 @@ describe("job type catalog (#629)", () => {
     expect(itemDerivedRefreshIdempotencyKeyPrefix(snapshot)).toBe(
       "itemDerivedRefresh:v1:Inbox/n.md:3:",
     );
+  });
+
+  it("includes tagCatalogPrune in JOB_TYPE_CATALOG (#935)", () => {
+    expect(JOB_TYPE_CATALOG.some((t) => t.id === "tagCatalogPrune")).toBe(true);
+    expect(tagCatalogPruneJobType.id).toBe("tagCatalogPrune");
+    expect(isVaultMutatingBulkJobType("tagCatalogPrune")).toBe(false);
+    expect(
+      tagCatalogPruneJobType.payload.parse({
+        vaultId: "v",
+        vaultPath: "/p",
+      }),
+    ).toEqual({ vaultId: "v", vaultPath: "/p" });
   });
 
   it("generateCover idempotency keys support per-item cancel/supersede (#875)", () => {

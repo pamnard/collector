@@ -9,9 +9,20 @@ import type { JobHandlerResult } from "../job-types.js";
 
 export function createVaultIndexSyncHandler(deps: {
   startVaultIndexSync: (vaultId: string, vaultPath: string) => Promise<void>;
+  /** Enqueue full tag catalog reconcile after sync (#935). */
+  enqueueTagCatalogReconcile?: (
+    vaultId: string,
+    vaultPath: string,
+  ) => Promise<void>;
 }): TypedJobHandler<typeof vaultIndexSyncJobType.payload> {
   return async (job): Promise<JobHandlerResult> => {
     await deps.startVaultIndexSync(job.payload.vaultId, job.payload.vaultPath);
+    if (deps.enqueueTagCatalogReconcile) {
+      await deps.enqueueTagCatalogReconcile(
+        job.payload.vaultId,
+        job.payload.vaultPath,
+      );
+    }
     return { status: "ok" };
   };
 }

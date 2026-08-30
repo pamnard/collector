@@ -313,6 +313,29 @@ export const importFolderJobType = defineJobType({
 });
 
 /**
+ * Prune unused tags.json / index tag rows (#935).
+ * Omit `candidateTagIds` (or pass []) for a full vault reconcile.
+ * With candidates: drop only those ids that have zero remaining item_tags refs.
+ */
+export const tagCatalogPruneJobPayloadSchema = z.object({
+  vaultId: z.string().min(1),
+  vaultPath: z.string().min(1),
+  candidateTagIds: z.array(z.string().min(1)).optional(),
+});
+export type TagCatalogPruneJobPayload = z.infer<
+  typeof tagCatalogPruneJobPayloadSchema
+>;
+export const tagCatalogPruneJobType = defineJobType({
+  id: "tagCatalogPrune",
+  payload: tagCatalogPruneJobPayloadSchema,
+});
+
+/** Idempotency for full reconcile (one pending full prune per vault). */
+export function tagCatalogPruneFullIdempotencyKey(vaultId: string): string {
+  return `tagCatalogPrune:${vaultId}:full`;
+}
+
+/**
  * Production catalog — the single explicit list of job type ids (#629).
  * Phase B types join here; test suites may pass a local catalog to
  * `createJobRegistry` without mutating this array.
@@ -328,6 +351,7 @@ export const JOB_TYPE_CATALOG = [
   generateCoverJobType,
   dropImportBatchJobType,
   importFolderJobType,
+  tagCatalogPruneJobType,
 ] as const;
 
 export type JobTypeId = (typeof JOB_TYPE_CATALOG)[number]["id"];

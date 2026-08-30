@@ -52,6 +52,8 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
   upsertTag;
   deleteTag;
   listTagsWithCounts;
+  listReferencedTagIds;
+  listOrphanTagIds;
   listItemIdsByTag;
   listItemIdsByFolderPrefix;
   getAdjacentItems;
@@ -100,6 +102,8 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
 
     this.rewriteItemIds = edgesSelectStubs.rewriteItemIds;
     this.listTagsWithCounts = navSelectStubs.listTagsWithCounts;
+    this.listReferencedTagIds = navSelectStubs.listReferencedTagIds;
+    this.listOrphanTagIds = navSelectStubs.listOrphanTagIds;
     this.listItemIdsByTag = navSelectStubs.listItemIdsByTag;
     this.listItemIdsByFolderPrefix = navSelectStubs.listItemIdsByFolderPrefix;
     this.getAdjacentItems = navSelectStubs.getAdjacentItems;
@@ -180,6 +184,8 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     this.searchItemIds = nav.searchItemIds;
     this.countSearchItemIds = nav.countSearchItemIds;
     this.listTagsWithCounts = nav.listTagsWithCounts;
+    this.listReferencedTagIds = nav.listReferencedTagIds;
+    this.listOrphanTagIds = nav.listOrphanTagIds;
     this.listItemIdsByTag = nav.listItemIdsByTag;
     this.listItemIdsByFolderPrefix = nav.listItemIdsByFolderPrefix;
     this.getAdjacentItems = nav.getAdjacentItems;

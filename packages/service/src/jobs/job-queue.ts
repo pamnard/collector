@@ -11,6 +11,7 @@ import {
   refreshEmbeddingsJobType,
   reindexVaultBatchJobType,
   syncPluginPullJobType,
+  tagCatalogPruneJobType,
   testNoopJobType,
   vaultIndexSyncJobType,
   type TestNoopJobPayload,
@@ -282,5 +283,6 @@ export function createHostJobRegistry(): JobRegistry {
     boundPhaseBHandler("dropImportBatch"),
   );
   registry.register(importFolderJobType, boundPhaseBHandler("importFolder"));
+  registry.register(tagCatalogPruneJobType, boundPhaseBHandler("tagCatalogPrune"));
   return registry;
 }

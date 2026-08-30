@@ -60,7 +60,7 @@ async function ensureItemIndexedForMedia(
       item.content_revision,
       fileStat.mtimeMs,
     );
-    if (outcome === "missing") {
+    if (outcome.outcome === "missing") {
       throw new Error(`Item not found: ${id}`);
     }
     // "upserted" or "stale": re-check. Stale may mean a concurrent derived job
