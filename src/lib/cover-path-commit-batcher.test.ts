@@ -175,4 +175,42 @@ describe("createCoverPathCommitBatcher", () => {
     assert.equal(commits, 0);
     assert.equal(maps.paths.get("a"), "/a");
   });
+
+  it("flush does not prune covers for ids outside flight window (#877)", () => {
+    let maps: CoverMaps = coverMapsFromTriple(
+      new Map([
+        ["old-a", "/old-a"],
+        ["old-b", "/old-b"],
+      ]),
+      new Map([
+        ["old-a", "sa"],
+        ["old-b", "sb"],
+      ]),
+      new Map<string, ItemThumbnailPixelSize | null>([
+        ["old-a", { width: 10, height: 10 }],
+        ["old-b", { width: 20, height: 20 }],
+      ]),
+    );
+
+    const batcher = createCoverPathCommitBatcher({
+      requestVersion: 1,
+      getRequestVersion: () => 1,
+      isAborted: () => false,
+      // New folder flight window — must not strip still-painted old covers.
+      getOrderedIds: () => ["new-c"],
+      getMaps: () => maps,
+      commit: (next) => {
+        maps = next;
+      },
+      scheduleFlush: () => () => {},
+    });
+
+    batcher.enqueue("new-c", "/new-c", "sc", { width: 30, height: 30 });
+    batcher.flush();
+
+    assert.equal(maps.paths.get("old-a"), "/old-a");
+    assert.equal(maps.paths.get("old-b"), "/old-b");
+    assert.equal(maps.paths.get("new-c"), "/new-c");
+    assert.equal(maps.paths.size, 3);
+  });
 });

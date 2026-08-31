@@ -12,6 +12,7 @@ import {
   coverMapsResolveForGrid,
   coverMapsStripStickyNulls,
   coverMapsToPersistenceRecord,
+  coverMapsUpsertPatch,
   coverMapsUpsertPath,
   emptyCoverMaps,
   itemCoverStamp,
@@ -176,6 +177,32 @@ describe("CoverMaps", () => {
       ["a", "new"],
       ["b", "b"],
     ]);
+  });
+
+  it("upsertPatch keeps ids outside the flight window (#877)", () => {
+    const prev = coverMapsFromTriple(
+      new Map([
+        ["a", "/a"],
+        ["b", "/b"],
+      ]),
+      new Map([
+        ["a", "sa"],
+        ["b", "sb"],
+      ]),
+      new Map([
+        ["a", { width: 1, height: 1 }],
+        ["b", { width: 2, height: 2 }],
+      ]),
+    );
+    const upserted = coverMapsUpsertPatch(prev, {
+      paths: new Map([["c", "/c"]]),
+      stamps: new Map([["c", "sc"]]),
+      sizes: new Map([["c", { width: 3, height: 3 }]]),
+    });
+    assert.equal(upserted.paths.get("a"), "/a");
+    assert.equal(upserted.paths.get("b"), "/b");
+    assert.equal(upserted.paths.get("c"), "/c");
+    assert.equal(upserted.paths.size, 3);
   });
 
   it("forPersistence and hydrate omit null (#720)", () => {
