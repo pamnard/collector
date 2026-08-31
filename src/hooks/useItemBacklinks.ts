@@ -7,7 +7,9 @@ import {
 import type { ItemChromeItemRef } from "../components/layout/item-chrome/types";
 import { useShell } from "../components/layout/AppLayout";
 import { filterOutItemId } from "../lib/dashboard-commit";
-import { shouldReportFooterLinkError } from "./item-leaving-after-delete";
+import {
+  shouldReportFooterLinkError,
+} from "./item-leaving-after-delete";
 import { useItemPruneEffect } from "./useItemPruneEffect";
 import { getCollectorService } from "../services/collector-client";
 import { errorMessage } from "../services/runtime-error";
@@ -59,15 +61,19 @@ export function useItemBacklinks(
         }
         setBacklinks(result);
       } catch (err: unknown) {
+        const message = errorMessage(err);
         if (
           !shouldReportFooterLinkError({
             cancelled: controller.signal.aborted,
             leaving: isItemLeavingAfterDelete(itemId),
+            message,
           })
         ) {
+          if (!controller.signal.aborted) {
+            setBacklinks([]);
+          }
           return;
         }
-        const message = errorMessage(err);
         console.error("[useItemBacklinks] load failed", {
           itemId,
           message,
@@ -86,6 +92,11 @@ export function useItemBacklinks(
   }, [alerts, itemId, vaultRevision, matchedLiveSeq, isItemLeavingAfterDelete]);
 
   useItemPruneEffect(itemPruneSignal, (prunedId) => {
+    if (itemId !== null && prunedId === itemId) {
+      alerts.dismiss(ITEM_BACKLINKS_ERROR_ID);
+      setBacklinks([]);
+      return;
+    }
     setBacklinks((previous) => {
       if (previous === null) {
         return null;

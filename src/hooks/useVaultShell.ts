@@ -11,6 +11,7 @@ import {
   itemLiveSignalTriggerForEvent,
   sidebarSearchAffectedByEvent,
 } from "../lib/vault-presentation-affects";
+import { itemIdToPruneFromPresentationEvent } from "../lib/presentation-prune-item-id";
 import {
   emitFolderTreeCountDeltas,
   emitFolderTreeRecount,
@@ -84,6 +85,7 @@ export function useVaultShell(): UseVaultShellResult {
 
       const deltas = new Map<string, number>();
       let needRecount = false;
+      let presentationPruneId: string | undefined;
       for (const event of events) {
         const plan = folderCountPatchPlanForEvent(event);
         if (plan.type === "reload" || plan.type === "recount") {
@@ -101,10 +103,21 @@ export function useVaultShell(): UseVaultShellResult {
           }));
         }
 
+        const pruneId = itemIdToPruneFromPresentationEvent(event);
+        if (pruneId) {
+          presentationPruneId = pruneId;
+        }
+
         // Panel ignores the seq bump when its query is empty.
         if (sidebarSearchAffectedByEvent("x", event)) {
           setSidebarSearchLiveSeq((value) => value + 1);
         }
+      }
+
+      if (presentationPruneId) {
+        setItemPruneSignal((previous) =>
+          nextItemPruneSignal(previous, presentationPruneId),
+        );
       }
 
       if (deltas.size > 0) {

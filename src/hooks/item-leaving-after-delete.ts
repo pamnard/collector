@@ -1,3 +1,5 @@
+import { isItemNotFoundMessage } from "../services/runtime-error";
+
 /**
  * Sync flag: detail page is leaving after delete while vaultRevision may still
  * bump mid-await. Footer link hooks must not alert on Item not found.
@@ -24,10 +26,19 @@ export function createItemLeavingAfterDelete(): ItemLeavingAfterDelete {
   };
 }
 
-/** Whether a footer link load failure should reach AlertStack. */
+/**
+ * Whether a footer link load failure should reach AlertStack.
+ * Like detail reload gate (`!cancelled && !leaving`), plus silent fail-closed
+ * when the open item itself is already gone (`Item not found:`).
+ */
 export function shouldReportFooterLinkError(options: {
   cancelled: boolean;
   leaving: boolean;
+  message: string;
 }): boolean {
-  return !options.cancelled && !options.leaving;
+  return (
+    !options.cancelled &&
+    !options.leaving &&
+    !isItemNotFoundMessage(options.message)
+  );
 }

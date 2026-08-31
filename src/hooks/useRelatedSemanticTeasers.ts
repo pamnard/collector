@@ -6,7 +6,9 @@ import {
 import type { ItemChromeItemRef } from "../components/layout/item-chrome/types";
 import { useShell } from "../components/layout/AppLayout";
 import { filterOutItemId } from "../lib/dashboard-commit";
-import { shouldReportFooterLinkError } from "./item-leaving-after-delete";
+import {
+  shouldReportFooterLinkError,
+} from "./item-leaving-after-delete";
 import { useItemPruneEffect } from "./useItemPruneEffect";
 import { loadRelatedSemanticTeasers } from "../lib/related-semantic-items";
 import type { RelatedTeaser } from "../lib/related-teaser";
@@ -81,15 +83,20 @@ export function useRelatedSemanticTeasers(
         setTeasers(result);
         setReady(true);
       } catch (err: unknown) {
+        const message = errorMessage(err);
         if (
           !shouldReportFooterLinkError({
             cancelled: controller.signal.aborted,
             leaving: isItemLeavingAfterDelete(itemId),
+            message,
           })
         ) {
+          if (!controller.signal.aborted) {
+            setTeasers(null);
+            setReady(true);
+          }
           return;
         }
-        const message = errorMessage(err);
         console.error("[useRelatedSemanticTeasers] load failed", {
           itemId,
           message,
@@ -109,6 +116,12 @@ export function useRelatedSemanticTeasers(
   }, [alerts, itemId, vaultRevision, matchedLiveSeq, isItemLeavingAfterDelete]);
 
   useItemPruneEffect(itemPruneSignal, (prunedId) => {
+    if (itemId !== null && prunedId === itemId) {
+      alerts.dismiss(RELATED_SEMANTIC_ERROR_ID);
+      setTeasers(null);
+      setReady(true);
+      return;
+    }
     setTeasers((previous) => {
       if (previous === null) {
         return null;
