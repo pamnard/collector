@@ -52,6 +52,9 @@ interface ShellContextValue {
   itemPruneSignal: ItemPruneSignal | null;
   itemLiveSignal: ItemLiveSignal | null;
   sidebarSearchLiveSeq: number;
+  markItemLeavingAfterDelete: (itemId: string) => void;
+  clearItemLeavingAfterDelete: () => void;
+  isItemLeavingAfterDelete: (itemId: string) => boolean;
   openCreate: (folderPath?: string) => void;
   dashboardCache: ReturnType<typeof useDashboardItems>;
   dashboardSort: DashboardItemSort;
@@ -91,6 +94,9 @@ function AppLayoutInner() {
     setDashboardPrune,
     setDashboardLiveHandler,
     pruneItem,
+    markItemLeavingAfterDelete,
+    clearItemLeavingAfterDelete,
+    isItemLeavingAfterDelete,
   } = useVaultShell();
 
   const {
@@ -225,6 +231,9 @@ function AppLayoutInner() {
         itemPruneSignal,
         itemLiveSignal,
         sidebarSearchLiveSeq,
+        markItemLeavingAfterDelete,
+        clearItemLeavingAfterDelete,
+        isItemLeavingAfterDelete,
         openCreate,
         dashboardCache,
         dashboardSort,

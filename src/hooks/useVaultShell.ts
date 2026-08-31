@@ -16,6 +16,10 @@ import {
   emitFolderTreeRecount,
 } from "../lib/folder-tree-live";
 import {
+  createItemLeavingAfterDelete,
+  type ItemLeavingAfterDelete,
+} from "./item-leaving-after-delete";
+import {
   nextItemPruneSignal,
   type ItemPruneSignal,
 } from "./useItemPruneEffect";
@@ -46,6 +50,9 @@ export type UseVaultShellResult = {
   setDashboardPrune: (prune: (itemId: string) => void) => void;
   setDashboardLiveHandler: (handler: DashboardLiveHandler) => void;
   pruneItem: (itemId: string) => void;
+  markItemLeavingAfterDelete: ItemLeavingAfterDelete["markItemLeavingAfterDelete"];
+  clearItemLeavingAfterDelete: ItemLeavingAfterDelete["clearItemLeavingAfterDelete"];
+  isItemLeavingAfterDelete: ItemLeavingAfterDelete["isItemLeavingAfterDelete"];
 };
 
 export function useVaultShell(): UseVaultShellResult {
@@ -60,6 +67,7 @@ export function useVaultShell(): UseVaultShellResult {
     throw new Error("useVaultShell: dashboard prune was not set");
   });
   const dashboardLiveRef = useRef<DashboardLiveHandler>(() => {});
+  const itemLeavingAfterDelete = useRef(createItemLeavingAfterDelete()).current;
 
   // Explicit full refresh / folder topology / unknown payload (#756).
   const bumpVaultRevision = useRef(
@@ -153,5 +161,9 @@ export function useVaultShell(): UseVaultShellResult {
     setDashboardPrune,
     setDashboardLiveHandler,
     pruneItem,
+    markItemLeavingAfterDelete: itemLeavingAfterDelete.markItemLeavingAfterDelete,
+    clearItemLeavingAfterDelete:
+      itemLeavingAfterDelete.clearItemLeavingAfterDelete,
+    isItemLeavingAfterDelete: itemLeavingAfterDelete.isItemLeavingAfterDelete,
   };
 }

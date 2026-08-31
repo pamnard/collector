@@ -26,6 +26,7 @@ export default defineConfig({
     include: [
       "src/**/*.test.tsx",
       "src/lib/related-semantic-items.test.ts",
+      "src/hooks/item-leaving-after-delete.test.ts",
     ],
     setupFiles: ["src/test/setup-rtl.ts"],
     css: false,
