@@ -6,6 +6,7 @@ import {
 import type { ItemChromeItemRef } from "../components/layout/item-chrome/types";
 import { useShell } from "../components/layout/AppLayout";
 import { filterOutItemId } from "../lib/dashboard-commit";
+import { shouldReportFooterLinkError } from "./item-leaving-after-delete";
 import { useItemPruneEffect } from "./useItemPruneEffect";
 import { loadRelatedSemanticTeasers } from "../lib/related-semantic-items";
 import type { RelatedTeaser } from "../lib/related-teaser";
@@ -29,7 +30,11 @@ export function useRelatedSemanticTeasers(
   vaultRevision: number,
 ): { teasers: RelatedTeaser[] | null; ready: boolean } {
   const alerts = useAlerts();
-  const { itemPruneSignal, itemLiveSignal } = useShell();
+  const {
+    itemPruneSignal,
+    itemLiveSignal,
+    isItemLeavingAfterDelete,
+  } = useShell();
   useDismissAlertsOnUnmount([RELATED_SEMANTIC_ERROR_ID]);
   const [teasers, setTeasers] = useState<RelatedTeaser[] | null>(null);
   const [ready, setReady] = useState(false);
@@ -42,6 +47,12 @@ export function useRelatedSemanticTeasers(
     if (itemId === null) {
       setTeasers(null);
       setReady(false);
+      return;
+    }
+
+    if (isItemLeavingAfterDelete(itemId)) {
+      setTeasers(null);
+      setReady(true);
       return;
     }
 
@@ -70,7 +81,12 @@ export function useRelatedSemanticTeasers(
         setTeasers(result);
         setReady(true);
       } catch (err: unknown) {
-        if (controller.signal.aborted) {
+        if (
+          !shouldReportFooterLinkError({
+            cancelled: controller.signal.aborted,
+            leaving: isItemLeavingAfterDelete(itemId),
+          })
+        ) {
           return;
         }
         const message = errorMessage(err);
@@ -90,7 +106,7 @@ export function useRelatedSemanticTeasers(
     return () => {
       controller.abort();
     };
-  }, [alerts, itemId, vaultRevision, matchedLiveSeq]);
+  }, [alerts, itemId, vaultRevision, matchedLiveSeq, isItemLeavingAfterDelete]);
 
   useItemPruneEffect(itemPruneSignal, (prunedId) => {
     setTeasers((previous) => {

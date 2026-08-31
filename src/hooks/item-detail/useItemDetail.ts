@@ -37,7 +37,13 @@ export function useItemDetail(): UseItemDetailResult {
   const params = useParams();
   const id = params["*"];
   const navigate = useNavigate();
-  const { vaultRevision, pruneItem, itemLiveSignal } = useShell();
+  const {
+    vaultRevision,
+    pruneItem,
+    itemLiveSignal,
+    markItemLeavingAfterDelete,
+    clearItemLeavingAfterDelete,
+  } = useShell();
   const { error, setError } = useItemDetailError();
   const [item, setItem] = useState<ItemFile | null>(null);
   const [content, setContent] = useState<string | null>(null);
@@ -102,6 +108,7 @@ export function useItemDetail(): UseItemDetailResult {
     setError(null);
     // Before deleteItem: host emits vaultPresentationChanged mid-await.
     reloadGateRef.current.markLeavingAfterDelete();
+    markItemLeavingAfterDelete(id);
 
     try {
       await getCollectorService().items.deleteItem(id);
@@ -109,6 +116,7 @@ export function useItemDetail(): UseItemDetailResult {
       navigate("/");
     } catch (err: unknown) {
       reloadGateRef.current.clearLeavingAfterDelete();
+      clearItemLeavingAfterDelete();
       setError(errorMessage(err));
       throw err;
     } finally {

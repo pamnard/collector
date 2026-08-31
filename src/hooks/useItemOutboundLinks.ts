@@ -6,6 +6,7 @@ import {
 } from "../components/alerts/AlertBusProvider";
 import type { ItemChromeItemRef } from "../components/layout/item-chrome/types";
 import { useShell } from "../components/layout/AppLayout";
+import { shouldReportFooterLinkError } from "./item-leaving-after-delete";
 import { useItemPruneEffect } from "./useItemPruneEffect";
 import { getCollectorService } from "../services/collector-client";
 import { errorMessage } from "../services/runtime-error";
@@ -21,7 +22,11 @@ export function useItemOutboundLinks(
   vaultRevision: number,
 ): OutboundTextLink[] | null {
   const alerts = useAlerts();
-  const { itemPruneSignal, itemLiveSignal } = useShell();
+  const {
+    itemPruneSignal,
+    itemLiveSignal,
+    isItemLeavingAfterDelete,
+  } = useShell();
   useDismissAlertsOnUnmount([ITEM_OUTBOUND_ERROR_ID]);
   const [outbound, setOutbound] = useState<OutboundTextLink[] | null>(null);
 
@@ -32,6 +37,11 @@ export function useItemOutboundLinks(
   useEffect(() => {
     if (itemId === null) {
       setOutbound(null);
+      return;
+    }
+
+    if (isItemLeavingAfterDelete(itemId)) {
+      setOutbound([]);
       return;
     }
 
@@ -48,7 +58,12 @@ export function useItemOutboundLinks(
         }
         setOutbound(result);
       } catch (err: unknown) {
-        if (controller.signal.aborted) {
+        if (
+          !shouldReportFooterLinkError({
+            cancelled: controller.signal.aborted,
+            leaving: isItemLeavingAfterDelete(itemId),
+          })
+        ) {
           return;
         }
         const message = errorMessage(err);
@@ -67,7 +82,7 @@ export function useItemOutboundLinks(
     return () => {
       controller.abort();
     };
-  }, [alerts, itemId, vaultRevision, matchedLiveSeq]);
+  }, [alerts, itemId, vaultRevision, matchedLiveSeq, isItemLeavingAfterDelete]);
 
   useItemPruneEffect(itemPruneSignal, (prunedId) => {
     setOutbound((previous) => {

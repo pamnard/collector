@@ -7,6 +7,7 @@ import {
 import type { ItemChromeItemRef } from "../components/layout/item-chrome/types";
 import { useShell } from "../components/layout/AppLayout";
 import { filterOutItemId } from "../lib/dashboard-commit";
+import { shouldReportFooterLinkError } from "./item-leaving-after-delete";
 import { useItemPruneEffect } from "./useItemPruneEffect";
 import { getCollectorService } from "../services/collector-client";
 import { errorMessage } from "../services/runtime-error";
@@ -22,7 +23,11 @@ export function useItemBacklinks(
   vaultRevision: number,
 ): BacklinkSource[] | null {
   const alerts = useAlerts();
-  const { itemPruneSignal, itemLiveSignal } = useShell();
+  const {
+    itemPruneSignal,
+    itemLiveSignal,
+    isItemLeavingAfterDelete,
+  } = useShell();
   useDismissAlertsOnUnmount([ITEM_BACKLINKS_ERROR_ID]);
   const [backlinks, setBacklinks] = useState<BacklinkSource[] | null>(null);
 
@@ -33,6 +38,11 @@ export function useItemBacklinks(
   useEffect(() => {
     if (itemId === null) {
       setBacklinks(null);
+      return;
+    }
+
+    if (isItemLeavingAfterDelete(itemId)) {
+      setBacklinks([]);
       return;
     }
 
@@ -49,7 +59,12 @@ export function useItemBacklinks(
         }
         setBacklinks(result);
       } catch (err: unknown) {
-        if (controller.signal.aborted) {
+        if (
+          !shouldReportFooterLinkError({
+            cancelled: controller.signal.aborted,
+            leaving: isItemLeavingAfterDelete(itemId),
+          })
+        ) {
           return;
         }
         const message = errorMessage(err);
@@ -68,7 +83,7 @@ export function useItemBacklinks(
     return () => {
       controller.abort();
     };
-  }, [alerts, itemId, vaultRevision, matchedLiveSeq]);
+  }, [alerts, itemId, vaultRevision, matchedLiveSeq, isItemLeavingAfterDelete]);
 
   useItemPruneEffect(itemPruneSignal, (prunedId) => {
     setBacklinks((previous) => {
