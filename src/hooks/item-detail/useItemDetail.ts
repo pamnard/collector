@@ -6,6 +6,7 @@ import type { ItemDetailMode } from "../../components/layout/item-chrome";
 import type { ItemFormValues } from "../../types/item";
 import { getCollectorService } from "../../services/collector-client";
 import { errorMessage } from "../../services/runtime-error";
+import { useItemPruneEffect } from "../useItemPruneEffect";
 import { useItemDetailError } from "./useItemDetailError";
 import { useItemDetailLoad } from "./useItemDetailLoad";
 import { useItemDetailSaves } from "./useItemDetailSaves";
@@ -41,6 +42,7 @@ export function useItemDetail(): UseItemDetailResult {
     vaultRevision,
     pruneItem,
     itemLiveSignal,
+    itemPruneSignal,
     markItemLeavingAfterDelete,
     clearItemLeavingAfterDelete,
   } = useShell();
@@ -70,6 +72,15 @@ export function useItemDetail(): UseItemDetailResult {
     setMode,
     setSourceText,
     setSourceBaseline,
+  });
+
+  useItemPruneEffect(itemPruneSignal, (prunedId) => {
+    if (id === undefined || prunedId !== id) {
+      return;
+    }
+    reloadGateRef.current.markLeavingAfterDelete();
+    markItemLeavingAfterDelete(prunedId);
+    navigate("/");
   });
 
   const { switchToView, switchToForm, switchToSource } = useItemDetailSaves({

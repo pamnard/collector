@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { isItemNotFoundMessage } from "../services/runtime-error";
 import {
   createItemLeavingAfterDelete,
   shouldReportFooterLinkError,
@@ -22,22 +23,58 @@ describe("createItemLeavingAfterDelete", () => {
   });
 });
 
-describe("shouldReportFooterLinkError", () => {
-  it("suppresses Item not found style failures while leaving after delete", () => {
+describe("isItemNotFoundMessage", () => {
+  it("matches host Item not found prefix", () => {
     expect(
-      shouldReportFooterLinkError({ cancelled: false, leaving: true }),
+      isItemNotFoundMessage(
+        "Item not found: Мемы/f34a02dc-a82f-4f01-88ea-fa73dc5f5c8a.md",
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects unrelated errors", () => {
+    expect(isItemNotFoundMessage("network timeout")).toBe(false);
+  });
+});
+
+describe("shouldReportFooterLinkError", () => {
+  it("suppresses while leaving after delete", () => {
+    expect(
+      shouldReportFooterLinkError({
+        cancelled: false,
+        leaving: true,
+        message: "network timeout",
+      }),
     ).toBe(false);
   });
 
   it("suppresses when the effect was cancelled", () => {
     expect(
-      shouldReportFooterLinkError({ cancelled: true, leaving: false }),
+      shouldReportFooterLinkError({
+        cancelled: true,
+        leaving: false,
+        message: "network timeout",
+      }),
     ).toBe(false);
   });
 
-  it("still reports for a normal missing id load", () => {
+  it("suppresses when the open item itself is missing", () => {
     expect(
-      shouldReportFooterLinkError({ cancelled: false, leaving: false }),
+      shouldReportFooterLinkError({
+        cancelled: false,
+        leaving: false,
+        message: "Item not found: Inbox/gone.md",
+      }),
+    ).toBe(false);
+  });
+
+  it("still reports other load failures", () => {
+    expect(
+      shouldReportFooterLinkError({
+        cancelled: false,
+        leaving: false,
+        message: "network timeout",
+      }),
     ).toBe(true);
   });
 });

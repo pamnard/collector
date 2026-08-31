@@ -6,7 +6,9 @@ import {
 } from "../components/alerts/AlertBusProvider";
 import type { ItemChromeItemRef } from "../components/layout/item-chrome/types";
 import { useShell } from "../components/layout/AppLayout";
-import { shouldReportFooterLinkError } from "./item-leaving-after-delete";
+import {
+  shouldReportFooterLinkError,
+} from "./item-leaving-after-delete";
 import { useItemPruneEffect } from "./useItemPruneEffect";
 import { getCollectorService } from "../services/collector-client";
 import { errorMessage } from "../services/runtime-error";
@@ -58,15 +60,19 @@ export function useItemOutboundLinks(
         }
         setOutbound(result);
       } catch (err: unknown) {
+        const message = errorMessage(err);
         if (
           !shouldReportFooterLinkError({
             cancelled: controller.signal.aborted,
             leaving: isItemLeavingAfterDelete(itemId),
+            message,
           })
         ) {
+          if (!controller.signal.aborted) {
+            setOutbound([]);
+          }
           return;
         }
-        const message = errorMessage(err);
         console.error("[useItemOutboundLinks] load failed", {
           itemId,
           message,
@@ -85,6 +91,11 @@ export function useItemOutboundLinks(
   }, [alerts, itemId, vaultRevision, matchedLiveSeq, isItemLeavingAfterDelete]);
 
   useItemPruneEffect(itemPruneSignal, (prunedId) => {
+    if (itemId !== null && prunedId === itemId) {
+      alerts.dismiss(ITEM_OUTBOUND_ERROR_ID);
+      setOutbound([]);
+      return;
+    }
     setOutbound((previous) => {
       if (previous === null) {
         return null;
