@@ -202,7 +202,9 @@ export function coverMapsEqual(
 /**
  * Merge patch into maps for the ordered window. Never downgrades path→null (#871).
  * Skip is atomic: if path→null is refused, stamp/size for that id are not applied.
- * Ids outside orderedItemIds are dropped (intersect).
+ * Ids outside orderedItemIds are dropped (intersect) — use only at list-commit
+ * boundaries. Progressive flight must use {@link coverMapsUpsertPatch} instead
+ * (#877 / batcher prune race).
  */
 export function coverMapsMerge(
   maps: CoverMaps,
@@ -210,40 +212,10 @@ export function coverMapsMerge(
   orderedItemIds: string[],
 ): CoverMaps {
   const orderedSet = new Set(orderedItemIds);
-  const mergedPaths = new Map(maps.paths);
-  const skippedIds = new Set<string>();
-  for (const id of orderedItemIds) {
-    if (!patch.paths.has(id)) {
-      continue;
-    }
-    const next = patch.paths.get(id) ?? null;
-    const previous = mergedPaths.get(id);
-    if (next === null && previous != null) {
-      skippedIds.add(id);
-      continue;
-    }
-    mergedPaths.set(id, next);
-  }
-
-  const mergedStamps = new Map(maps.stamps);
-  for (const id of orderedItemIds) {
-    if (skippedIds.has(id) || !patch.stamps.has(id)) {
-      continue;
-    }
-    const stamp = patch.stamps.get(id);
-    if (stamp === undefined) {
-      continue;
-    }
-    mergedStamps.set(id, stamp);
-  }
-
-  const mergedSizes = new Map(maps.sizes);
-  for (const id of orderedItemIds) {
-    if (skippedIds.has(id) || !patch.sizes.has(id)) {
-      continue;
-    }
-    mergedSizes.set(id, patch.sizes.get(id) ?? null);
-  }
+  const upserted = coverMapsUpsertPatch(maps, patch, orderedItemIds);
+  const mergedPaths = new Map(upserted.paths);
+  const mergedStamps = new Map(upserted.stamps);
+  const mergedSizes = new Map(upserted.sizes);
 
   for (const id of mergedPaths.keys()) {
     if (!orderedSet.has(id)) {
@@ -259,6 +231,66 @@ export function coverMapsMerge(
     if (!orderedSet.has(id)) {
       mergedSizes.delete(id);
     }
+  }
+
+  return {
+    paths: mergedPaths,
+    stamps: mergedStamps,
+    sizes: mergedSizes,
+  };
+}
+
+/**
+ * Apply cover-path patch without dropping other ids.
+ * Progressive flight / batcher must use this so a new folder's flush cannot
+ * strip covers for the list still on screen (#877 Heisenbug: maps collapse
+ * while committed items lag).
+ *
+ * When `limitToIds` is set, only those patch keys apply (same as merge window).
+ * When omitted, every patch key applies.
+ */
+export function coverMapsUpsertPatch(
+  maps: CoverMaps,
+  patch: CoverMapsPatch,
+  limitToIds?: string[],
+): CoverMaps {
+  const allow =
+    limitToIds === undefined ? null : new Set(limitToIds);
+  const mergedPaths = new Map(maps.paths);
+  const skippedIds = new Set<string>();
+  for (const [id, nextRaw] of patch.paths) {
+    if (allow && !allow.has(id)) {
+      continue;
+    }
+    const next = nextRaw ?? null;
+    const previous = mergedPaths.get(id);
+    if (next === null && previous != null) {
+      skippedIds.add(id);
+      continue;
+    }
+    mergedPaths.set(id, next);
+  }
+
+  const mergedStamps = new Map(maps.stamps);
+  for (const [id, stamp] of patch.stamps) {
+    if (allow && !allow.has(id)) {
+      continue;
+    }
+    if (skippedIds.has(id) || stamp === undefined) {
+      continue;
+    }
+    mergedStamps.set(id, stamp);
+  }
+
+  const mergedSizes = new Map(maps.sizes);
+  for (const [id, size] of patch.sizes) {
+    if (allow && !allow.has(id)) {
+      continue;
+    }
+    if (skippedIds.has(id)) {
+      continue;
+    }
+    mergedSizes.set(id, size ?? null);
   }
 
   return {

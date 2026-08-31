@@ -6,7 +6,7 @@
 import type { ItemThumbnailPixelSize } from "@collector/api";
 import {
   coverMapsEqual,
-  coverMapsMerge,
+  coverMapsUpsertPatch,
   type CoverMaps,
 } from "./cover-maps.ts";
 
@@ -84,15 +84,14 @@ export function createCoverPathCommitBatcher(
 
     const orderedIds = options.getOrderedIds();
     const prev = options.getMaps();
-    const merged = coverMapsMerge(
-      prev,
-      {
-        paths: resolvedPaths,
-        stamps: resolvedStamps,
-        sizes: resolvedSizes,
-      },
-      orderedIds,
-    );
+    // Upsert only — never prune to flight orderedIds. Intersect/prune belongs
+    // at list-commit boundaries; pruning here strips covers for the list still
+    // on screen when a new folder flight flushes first (#877).
+    const merged = coverMapsUpsertPatch(prev, {
+      paths: resolvedPaths,
+      stamps: resolvedStamps,
+      sizes: resolvedSizes,
+    });
     if (coverMapsEqual(prev, merged, orderedIds)) {
       return;
     }
