@@ -72,13 +72,13 @@ Use **source** get/update only when replacing the entire `.md` (frontmatter + bo
 
 ### Article / imported body
 
-When the user asks to pull an ordinary link into a note (“перенеси содержимое ссылки”, web clip, Reddit/blog/news, etc.):
+When the user wants the contents of a normal web link in a note (any site that is not covered below — Reddit, blogs, news, docs, etc.):
 
-1. Fetch the page yourself (HTTP / browser / whatever works).
-2. Write via structured `update-item` / `collector_update_item`.
+1. Open/download the page yourself.
+2. Put the article into the note with `update-item` / `collector_update_item`.
 3. Follow [references/import-rules.md](references/import-rules.md).
 
-**Do not** open with `discover-extract-candidates` / `collector_discover_extract_candidates` for that job. Those tools are unrelated to general import.
+Do **not** start with `discover-extract-candidates` / `collector_discover_extract_candidates` for that. Those tools are only for the few sites listed in the next section.
 
 Minimal invariant in the main skill:
 
@@ -87,11 +87,14 @@ Minimal invariant in the main skill:
 - do not duplicate the article title in `content`
 - preserve useful links as working links
 
-### Host-specific extract (not a clipper)
+### Site-specific extract tools (Instagram today)
 
-`discover-extract-candidates` / `extract-item-candidate` (MCP: `collector_discover_*` / `collector_extract_*`) run **registered host plugins** only (today: Instagram). They are not html/readability and not a generic “URL → note” path.
+Collector has a separate pair of tools that only know a few sites (right now: **Instagram**):
 
-Use them only when you already know the link is for a registered plugin host, or after discover returns a **non-empty** candidate list. Empty `[]` means no plugin matched — fall through to ordinary fetch + update; do not narrate extractors to the user.
+- `discover-extract-candidates` / `collector_discover_extract_candidates` — looks in the note for links those tools understand
+- `extract-item-candidate` / `collector_extract_item_candidate` — pulls that site’s content into the note
+
+Use them **only** for those sites (or when discover actually returns a match). If discover returns an empty list, ignore these tools and import the page yourself as above. Do not talk about these tools to the user when they do not apply.
 
 ### Import: local assets
 
@@ -130,7 +133,7 @@ Assign tag **names** on an item via structured update (`tags`) or source frontma
 - Reusing pre-move `itemId` after a successful move
 - Passing `itemId` where `mediaId` is required (or the reverse)
 - Preferring source rewrite for a single field change
-- Using extract discover/extract for an arbitrary “pull this link into the note” task (Reddit, blogs, etc.) — that is fetch + `update-item`, not extract plugins
+- Calling the Instagram/site-specific extract tools for a normal “put this link into the note” task (Reddit, blogs, etc.) — download the page and use `update-item` instead
 - Prefacing imported article body with `Source:`, byline, or duplicated original URL (belongs in `url`, or at bottom only if asked)
 - Duplicating the article title as the first line / H1 in `content` when the item `title` already stores it
 - Preserving source-site scaffolding instead of article content: duplicate frontmatter, breadcrumbs, nav menus, share controls, subscribe prompts, related-article rails, footer chrome

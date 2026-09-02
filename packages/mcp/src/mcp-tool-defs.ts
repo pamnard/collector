@@ -317,14 +317,13 @@ export const COLLECTOR_MCP_TOOL_DEFS = [
   {
     name: "collector_discover_extract_candidates",
     description:
-      "List matches from **host-specific extract plugins** for URLs in the note body or frontmatter `url` " +
-      "(registered today: Instagram). " +
-      "NOT a general web/article clipper — do not call for arbitrary links (Reddit, blogs, news, etc.) " +
-      "or for a generic “pull this URL into the note” request. " +
-      "For ordinary pages: fetch the page yourself, then collector_update_item (see import rules). " +
-      "Returns candidates ({ extractorId, url, optional meta }). Does not fetch or change the note. " +
-      "Empty [] = no registered plugin matched this note — stop using extract; do not narrate extractors. " +
-      "Only if the list is non-empty, call collector_extract_item_candidate with a returned candidate.",
+      "Find links in this note that Collector’s site-specific extract tools understand " +
+      "(right now: Instagram only). " +
+      "Not for ordinary web pages — for Reddit, blogs, news, docs, etc., download the page yourself " +
+      "and use collector_update_item. " +
+      "Returns a list of matches ({ extractorId, url, optional meta }). Does not change the note. " +
+      "Empty list = this note has no supported site link; ignore these extract tools and import yourself. " +
+      "Only if the list is non-empty, call collector_extract_item_candidate with one of those matches.",
     buildSchema: (p) => ({
       itemId: p.requiredString(ITEM_ID_DESCRIPTION),
     }),
@@ -332,20 +331,20 @@ export const COLLECTOR_MCP_TOOL_DEFS = [
   {
     name: "collector_extract_item_candidate",
     description:
-      "Run **one host-specific extract plugin** candidate (registered today: Instagram). " +
-      "NOT a general web/article importer and not html/readability. " +
-      "Call only with a candidate from collector_discover_extract_candidates; never invent extractorId/url. " +
-      "Unknown extractorId fails. Never runs automatically on note open.",
+      "Pull content into the note for one match from collector_discover_extract_candidates " +
+      "(right now: Instagram only). " +
+      "Not for ordinary web pages. Call only with a match from discover; do not invent extractorId or url. " +
+      "Unknown extractorId fails. Does not run by itself when a note is opened.",
     buildSchema: (p) => ({
       itemId: p.requiredString(ITEM_ID_DESCRIPTION),
       extractorId: p.requiredString(
-        "Extractor plugin id from discover (e.g. instagram). Not a free-form site name. Unknown ids fail.",
+        "Id from the discover match (e.g. instagram). Do not invent site names.",
       ),
       url: p.requiredString(
-        "URL from the discover candidate only. Do not pass an arbitrary page URL.",
+        "URL from the discover match only. Do not pass a random page URL.",
       ),
       meta: p.optionalStringRecord(
-        "Optional string map from the discover candidate (e.g. Instagram shortcode). Omit when unused.",
+        "Optional fields from the discover match (e.g. Instagram shortcode). Omit if unused.",
       ),
     }),
   },

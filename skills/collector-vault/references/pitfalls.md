@@ -30,9 +30,9 @@ Collector MCP has no `mcp_auth` tool — Cursor may inject that name for its own
 - Whole-document edit (frontmatter + body as one blob) → get-source then update-source.
 - Do not rewrite source to change a single title if structured update is available.
 
-## Extract ≠ import
+## Site-specific extract ≠ ordinary link import
 
-Extract MCP/CLI (`discover-extract-candidates`, `extract-item-candidate`) is **host-specific plugins** (today: Instagram), not a general clipper. A note that is only a Reddit/blog/news URL is ordinary import: fetch the page, then `update-item`. Do not call discover first “just in case”; empty `[]` is not a product mystery — it means no plugin matched. Do not tell the user about extractors unless a plugin candidate actually applies.
+`discover-extract-candidates` and `extract-item-candidate` only handle a few sites (today: Instagram). A note that is just a Reddit, blog, or news URL is ordinary import: download the page, then `update-item`. Do not call discover “just in case”. An empty result means “not Instagram (or another supported site)” — import yourself and do not mention extract tools to the user.
 
 ## Provenance in body
 

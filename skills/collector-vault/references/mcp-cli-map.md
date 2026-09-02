@@ -27,10 +27,10 @@ CLI always needs dial flags before the subcommand: `--base-url … --data-dir �
 | Replace media | `collector_replace_media` | `replace-media <item-id> <media-id> --file <path>` |
 | Delete media | `collector_delete_media` | `delete-media <item-id> <media-id>` |
 | Set cover | `collector_set_item_cover` | `set-item-cover <item-id> <media-id>` |
-| Discover extract candidates (host plugins only) | `collector_discover_extract_candidates` | `discover-extract-candidates <item-id>` |
-| Run extract candidate (host plugins only) | `collector_extract_item_candidate` | `extract-item-candidate <item-id> --extractor-id … --url …` |
+| Find Instagram-style extract matches (few sites only) | `collector_discover_extract_candidates` | `discover-extract-candidates <item-id>` |
+| Run one of those matches | `collector_extract_item_candidate` | `extract-item-candidate <item-id> --extractor-id … --url …` |
 
-Extract rows are **not** general web import. Ordinary “URL → note body” is fetch + `update-item` / `collector_update_item`.
+Those two rows are **not** for ordinary web pages. For a normal link, download the page and use `update-item` / `collector_update_item`.
 
 ## Flag notes (CLI)
 

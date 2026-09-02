@@ -1,8 +1,8 @@
 # Import rules
 
-## Channel
+## How to import a normal link
 
-Ordinary link → note body is **agent fetch + `update-item` / `collector_update_item`**. Do not route that through extract discover/extract tools; those are host-specific plugins (e.g. Instagram), not this workflow.
+Download the page yourself, then write the note with `update-item` / `collector_update_item`. Do not use the Instagram/site-specific extract tools for ordinary links — they only work for a few sites.
 
 ## Goal
 
