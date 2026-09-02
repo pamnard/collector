@@ -30,6 +30,10 @@ Collector MCP has no `mcp_auth` tool — Cursor may inject that name for its own
 - Whole-document edit (frontmatter + body as one blob) → get-source then update-source.
 - Do not rewrite source to change a single title if structured update is available.
 
+## Site-specific extract ≠ ordinary link import
+
+`discover-extract-candidates` and `extract-item-candidate` only handle a few sites (today: Instagram). A note that is just a Reddit, blog, or news URL is ordinary import: download the page, then `update-item`. Do not call discover “just in case”. An empty result means “not Instagram (or another supported site)” — import yourself and do not mention extract tools to the user.
+
 ## Provenance in body
 
 Canonical page link → item `url`. Do not open the markdown body with `Source: …`, a byline, or a copy of that URL. Body starts with the content. An explicit source line only when the user asks — and then at the **bottom**, not the top.

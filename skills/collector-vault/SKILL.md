@@ -72,7 +72,13 @@ Use **source** get/update only when replacing the entire `.md` (frontmatter + bo
 
 ### Article / imported body
 
-When filling `content` from a web article (or similar), follow [references/import-rules.md](references/import-rules.md).
+When the user wants the contents of a normal web link in a note (any site that is not covered below — Reddit, blogs, news, docs, etc.):
+
+1. Open/download the page yourself.
+2. Put the article into the note with `update-item` / `collector_update_item`.
+3. Follow [references/import-rules.md](references/import-rules.md).
+
+Do **not** start with `discover-extract-candidates` / `collector_discover_extract_candidates` for that. Those tools are only for the few sites listed in the next section.
 
 Minimal invariant in the main skill:
 
@@ -80,6 +86,15 @@ Minimal invariant in the main skill:
 - body starts with article content, not source-site chrome
 - do not duplicate the article title in `content`
 - preserve useful links as working links
+
+### Site-specific extract tools (Instagram today)
+
+Collector has a separate pair of tools that only know a few sites (right now: **Instagram**):
+
+- `discover-extract-candidates` / `collector_discover_extract_candidates` — looks in the note for links those tools understand
+- `extract-item-candidate` / `collector_extract_item_candidate` — pulls that site’s content into the note
+
+Use them **only** for those sites (or when discover actually returns a match). If discover returns an empty list, ignore these tools and import the page yourself as above. Do not talk about these tools to the user when they do not apply.
 
 ### Import: local assets
 
@@ -118,6 +133,7 @@ Assign tag **names** on an item via structured update (`tags`) or source frontma
 - Reusing pre-move `itemId` after a successful move
 - Passing `itemId` where `mediaId` is required (or the reverse)
 - Preferring source rewrite for a single field change
+- Calling the Instagram/site-specific extract tools for a normal “put this link into the note” task (Reddit, blogs, etc.) — download the page and use `update-item` instead
 - Prefacing imported article body with `Source:`, byline, or duplicated original URL (belongs in `url`, or at bottom only if asked)
 - Duplicating the article title as the first line / H1 in `content` when the item `title` already stores it
 - Preserving source-site scaffolding instead of article content: duplicate frontmatter, breadcrumbs, nav menus, share controls, subscribe prompts, related-article rails, footer chrome

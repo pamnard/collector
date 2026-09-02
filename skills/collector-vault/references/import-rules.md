@@ -1,5 +1,9 @@
 # Import rules
 
+## How to import a normal link
+
+Download the page yourself, then write the note with `update-item` / `collector_update_item`. Do not use the Instagram/site-specific extract tools for ordinary links — they only work for a few sites.
+
 ## Goal
 
 Import must preserve the article's function, not just its text.

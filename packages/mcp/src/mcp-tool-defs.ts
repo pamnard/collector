@@ -317,10 +317,13 @@ export const COLLECTOR_MCP_TOOL_DEFS = [
   {
     name: "collector_discover_extract_candidates",
     description:
-      "Discover extract options for one note (from body and frontmatter URL). " +
-      "Returns candidates ({ extractorId, url, optional meta }). Does not fetch or change the note. " +
-      "Empty when nothing matches. " +
-      "Then call collector_extract_item_candidate with a returned candidate.",
+      "Find links in this note that Collector’s site-specific extract tools understand " +
+      "(right now: Instagram only). " +
+      "Not for ordinary web pages — for Reddit, blogs, news, docs, etc., download the page yourself " +
+      "and use collector_update_item. " +
+      "Returns a list of matches ({ extractorId, url, optional meta }). Does not change the note. " +
+      "Empty list = this note has no supported site link; ignore these extract tools and import yourself. " +
+      "Only if the list is non-empty, call collector_extract_item_candidate with one of those matches.",
     buildSchema: (p) => ({
       itemId: p.requiredString(ITEM_ID_DESCRIPTION),
     }),
@@ -328,19 +331,20 @@ export const COLLECTOR_MCP_TOOL_DEFS = [
   {
     name: "collector_extract_item_candidate",
     description:
-      "Run extract for one candidate on an item (never runs automatically on open). " +
-      "Fails when extractorId is unknown. " +
-      "Prefer a candidate from collector_discover_extract_candidates.",
+      "Pull content into the note for one match from collector_discover_extract_candidates " +
+      "(right now: Instagram only). " +
+      "Not for ordinary web pages. Call only with a match from discover; do not invent extractorId or url. " +
+      "Unknown extractorId fails. Does not run by itself when a note is opened.",
     buildSchema: (p) => ({
       itemId: p.requiredString(ITEM_ID_DESCRIPTION),
       extractorId: p.requiredString(
-        "Extractor id (e.g. from discover). Unknown ids fail.",
+        "Id from the discover match (e.g. instagram). Do not invent site names.",
       ),
       url: p.requiredString(
-        "URL to extract (from discover candidate). Non-empty string required.",
+        "URL from the discover match only. Do not pass a random page URL.",
       ),
       meta: p.optionalStringRecord(
-        "Optional string map for the extractor (e.g. shortcode). Omit when unused.",
+        "Optional fields from the discover match (e.g. Instagram shortcode). Omit if unused.",
       ),
     }),
   },

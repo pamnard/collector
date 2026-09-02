@@ -240,4 +240,31 @@ describe("COLLECTOR_MCP_TOOL_DEFS table ↔ MCP server registration", () => {
     expect(cover).toBeDefined();
     expect(cover!.description).toMatch(/not required for a default cover/i);
   });
+
+  it("documents extract tools as site-specific (Instagram), not ordinary link import", () => {
+    const discover = COLLECTOR_MCP_TOOLS.find(
+      (tool) => tool.name === "collector_discover_extract_candidates",
+    );
+    expect(discover).toBeDefined();
+    expect(discover!.description).toMatch(/Instagram/i);
+    expect(discover!.description).toMatch(/Not for ordinary web pages/i);
+    expect(discover!.description).toMatch(/collector_update_item/i);
+    expect(discover!.description).toMatch(/Empty list/i);
+
+    const extract = COLLECTOR_MCP_TOOLS.find(
+      (tool) => tool.name === "collector_extract_item_candidate",
+    );
+    expect(extract).toBeDefined();
+    expect(extract!.description).toMatch(/Instagram/i);
+    expect(extract!.description).toMatch(/Not for ordinary web pages/i);
+    expect(extract!.description).toMatch(
+      /collector_discover_extract_candidates/i,
+    );
+    const extractorId = extract!.params.find(
+      (param) => param.name === "extractorId",
+    );
+    expect(extractorId?.description).toMatch(/discover match/i);
+    const url = extract!.params.find((param) => param.name === "url");
+    expect(url?.description).toMatch(/discover match/i);
+  });
 });

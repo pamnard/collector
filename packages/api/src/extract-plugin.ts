@@ -1,7 +1,8 @@
 /**
- * Extract plugin contract (#849) — host discover → explicit extract.
- * Host-specific fetch/merge stay in per-host extractors (e.g. Instagram #318).
- * Not SyncPlugin; not html/readability (#316).
+ * Extract plugin contract (#849) — discover matching site links, then extract on demand.
+ * Per-site fetch/merge lives in site extractors (e.g. Instagram #318).
+ * Not a generic “download any web page into a note” path (that is agent fetch + updateItem; see #316).
+ * MCP/CLI wording must stay plain: empty discover = not a supported site; import the page yourself.
  */
 
 export type ExtractCandidate = {

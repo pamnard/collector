@@ -52,9 +52,9 @@ export const COMMAND_USAGE = {
   "delete-media": "Usage: collector-cli delete-media <item-id> <media-id>",
   "set-item-cover": "Usage: collector-cli set-item-cover <item-id> <media-id>",
   "discover-extract-candidates":
-    "Usage: collector-cli discover-extract-candidates <item-id>",
+    "Usage: collector-cli discover-extract-candidates <item-id>  (Instagram and other site-specific extract tools only; not for ordinary web pages)",
   "extract-item-candidate":
-    "Usage: collector-cli extract-item-candidate <item-id> --extractor-id <id> --url <url> [--meta '{...}']",
+    "Usage: collector-cli extract-item-candidate <item-id> --extractor-id <id> --url <url> [--meta '{...}']  (use a match from discover only)",
 } as const satisfies Record<RegisteredCommandName, string>;
 
 const HELP_FLAGS = new Set(["--help", "-h"]);
