@@ -1,5 +1,9 @@
 # Import rules
 
+## Channel
+
+Ordinary link → note body is **agent fetch + `update-item` / `collector_update_item`**. Do not route that through extract discover/extract tools; those are host-specific plugins (e.g. Instagram), not this workflow.
+
 ## Goal
 
 Import must preserve the article's function, not just its text.

@@ -2,6 +2,8 @@
  * Extract plugin contract (#849) — host discover → explicit extract.
  * Host-specific fetch/merge stay in per-host extractors (e.g. Instagram #318).
  * Not SyncPlugin; not html/readability (#316).
+ * Agent/MCP surface must not present this as a general “URL → note” clipper:
+ * empty discover means no plugin matched; ordinary pages use fetch + updateItem.
  */
 
 export type ExtractCandidate = {

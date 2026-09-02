@@ -317,10 +317,14 @@ export const COLLECTOR_MCP_TOOL_DEFS = [
   {
     name: "collector_discover_extract_candidates",
     description:
-      "Discover extract options for one note (from body and frontmatter URL). " +
+      "List matches from **host-specific extract plugins** for URLs in the note body or frontmatter `url` " +
+      "(registered today: Instagram). " +
+      "NOT a general web/article clipper — do not call for arbitrary links (Reddit, blogs, news, etc.) " +
+      "or for a generic “pull this URL into the note” request. " +
+      "For ordinary pages: fetch the page yourself, then collector_update_item (see import rules). " +
       "Returns candidates ({ extractorId, url, optional meta }). Does not fetch or change the note. " +
-      "Empty when nothing matches. " +
-      "Then call collector_extract_item_candidate with a returned candidate.",
+      "Empty [] = no registered plugin matched this note — stop using extract; do not narrate extractors. " +
+      "Only if the list is non-empty, call collector_extract_item_candidate with a returned candidate.",
     buildSchema: (p) => ({
       itemId: p.requiredString(ITEM_ID_DESCRIPTION),
     }),
@@ -328,19 +332,20 @@ export const COLLECTOR_MCP_TOOL_DEFS = [
   {
     name: "collector_extract_item_candidate",
     description:
-      "Run extract for one candidate on an item (never runs automatically on open). " +
-      "Fails when extractorId is unknown. " +
-      "Prefer a candidate from collector_discover_extract_candidates.",
+      "Run **one host-specific extract plugin** candidate (registered today: Instagram). " +
+      "NOT a general web/article importer and not html/readability. " +
+      "Call only with a candidate from collector_discover_extract_candidates; never invent extractorId/url. " +
+      "Unknown extractorId fails. Never runs automatically on note open.",
     buildSchema: (p) => ({
       itemId: p.requiredString(ITEM_ID_DESCRIPTION),
       extractorId: p.requiredString(
-        "Extractor id (e.g. from discover). Unknown ids fail.",
+        "Extractor plugin id from discover (e.g. instagram). Not a free-form site name. Unknown ids fail.",
       ),
       url: p.requiredString(
-        "URL to extract (from discover candidate). Non-empty string required.",
+        "URL from the discover candidate only. Do not pass an arbitrary page URL.",
       ),
       meta: p.optionalStringRecord(
-        "Optional string map for the extractor (e.g. shortcode). Omit when unused.",
+        "Optional string map from the discover candidate (e.g. Instagram shortcode). Omit when unused.",
       ),
     }),
   },

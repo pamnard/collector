@@ -72,7 +72,13 @@ Use **source** get/update only when replacing the entire `.md` (frontmatter + bo
 
 ### Article / imported body
 
-When filling `content` from a web article (or similar), follow [references/import-rules.md](references/import-rules.md).
+When the user asks to pull an ordinary link into a note (“перенеси содержимое ссылки”, web clip, Reddit/blog/news, etc.):
+
+1. Fetch the page yourself (HTTP / browser / whatever works).
+2. Write via structured `update-item` / `collector_update_item`.
+3. Follow [references/import-rules.md](references/import-rules.md).
+
+**Do not** open with `discover-extract-candidates` / `collector_discover_extract_candidates` for that job. Those tools are unrelated to general import.
 
 Minimal invariant in the main skill:
 
@@ -80,6 +86,12 @@ Minimal invariant in the main skill:
 - body starts with article content, not source-site chrome
 - do not duplicate the article title in `content`
 - preserve useful links as working links
+
+### Host-specific extract (not a clipper)
+
+`discover-extract-candidates` / `extract-item-candidate` (MCP: `collector_discover_*` / `collector_extract_*`) run **registered host plugins** only (today: Instagram). They are not html/readability and not a generic “URL → note” path.
+
+Use them only when you already know the link is for a registered plugin host, or after discover returns a **non-empty** candidate list. Empty `[]` means no plugin matched — fall through to ordinary fetch + update; do not narrate extractors to the user.
 
 ### Import: local assets
 
@@ -118,6 +130,7 @@ Assign tag **names** on an item via structured update (`tags`) or source frontma
 - Reusing pre-move `itemId` after a successful move
 - Passing `itemId` where `mediaId` is required (or the reverse)
 - Preferring source rewrite for a single field change
+- Using extract discover/extract for an arbitrary “pull this link into the note” task (Reddit, blogs, etc.) — that is fetch + `update-item`, not extract plugins
 - Prefacing imported article body with `Source:`, byline, or duplicated original URL (belongs in `url`, or at bottom only if asked)
 - Duplicating the article title as the first line / H1 in `content` when the item `title` already stores it
 - Preserving source-site scaffolding instead of article content: duplicate frontmatter, breadcrumbs, nav menus, share controls, subscribe prompts, related-article rails, footer chrome

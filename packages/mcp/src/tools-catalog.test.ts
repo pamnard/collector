@@ -240,4 +240,32 @@ describe("COLLECTOR_MCP_TOOL_DEFS table ↔ MCP server registration", () => {
     expect(cover).toBeDefined();
     expect(cover!.description).toMatch(/not required for a default cover/i);
   });
+
+  it("documents extract tools as host-specific plugins, not a general clipper", () => {
+    const discover = COLLECTOR_MCP_TOOLS.find(
+      (tool) => tool.name === "collector_discover_extract_candidates",
+    );
+    expect(discover).toBeDefined();
+    expect(discover!.description).toMatch(/host-specific extract plugins/i);
+    expect(discover!.description).toMatch(/Instagram/i);
+    expect(discover!.description).toMatch(/NOT a general web\/article clipper/i);
+    expect(discover!.description).toMatch(/collector_update_item/i);
+    expect(discover!.description).toMatch(/Empty \[\]/i);
+
+    const extract = COLLECTOR_MCP_TOOLS.find(
+      (tool) => tool.name === "collector_extract_item_candidate",
+    );
+    expect(extract).toBeDefined();
+    expect(extract!.description).toMatch(/host-specific extract plugin/i);
+    expect(extract!.description).toMatch(/NOT a general web\/article importer/i);
+    expect(extract!.description).toMatch(
+      /collector_discover_extract_candidates/i,
+    );
+    const extractorId = extract!.params.find(
+      (param) => param.name === "extractorId",
+    );
+    expect(extractorId?.description).toMatch(/from discover/i);
+    const url = extract!.params.find((param) => param.name === "url");
+    expect(url?.description).toMatch(/discover candidate/i);
+  });
 });
