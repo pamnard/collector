@@ -12,6 +12,7 @@ import { readTagsFile, writeTagsFile } from "./tag-io.js";
 import {
   preferTagForSimilarityMap,
   tagSimilarityKey,
+  tagStoredForm,
 } from "./tag-normalize.js";
 
 function pickWinner(group: Tag[], counts: Map<string, number>): Tag {
@@ -65,6 +66,60 @@ async function pinRemappedItem(
     throw new Error(`Missing mtime after tag remap write: ${item.id}`);
   }
   return { item, fileMtimeMs: stat.mtimeMs };
+}
+
+/**
+ * Rename every catalog row onto normalize(name).storedForm and rewrite linked
+ * items so frontmatter cannot keep legacy forms like `A/B`.
+ * Caller must hold withTagCatalogLock.
+ */
+export async function canonicalizeCatalogStoredForms(
+  ctx: VaultContext,
+  vaultPath: string,
+  vaultId: string,
+): Promise<{ renamedTagIds: string[] }> {
+  const file = await readTagsFile(ctx.fs, vaultPath);
+  const renamed: Tag[] = [];
+  const nextTags = file.tags.map((tag) => {
+    const stored = tagStoredForm(tag.name);
+    if (tag.name === stored) {
+      return tag;
+    }
+    const updated = { ...tag, name: stored };
+    renamed.push(updated);
+    return updated;
+  });
+  if (renamed.length === 0) {
+    return { renamedTagIds: [] };
+  }
+
+  await writeTagsFile(ctx.fs, vaultPath, { tags: nextTags });
+  const tagsById = new Map(nextTags.map((tag) => [tag.id, tag]));
+
+  for (const tag of renamed) {
+    await ctx.index.upsertTag(tag, vaultId);
+    const itemIds = await ctx.index.listItemIdsByTag(vaultId, tag.id);
+    if (itemIds.length === 0) {
+      continue;
+    }
+    const indexedItems = await ctx.index.listItemFilesByIds(vaultId, itemIds);
+    const metadataBatch: Array<{ item: ItemFile; fileMtimeMs: number }> = [];
+    for (const indexed of indexedItems) {
+      const body = (await readItemContent(ctx.fs, vaultPath, indexed.id)) ?? "";
+      await writeItemDocument(ctx.fs, vaultPath, indexed, body, {
+        tagsById,
+        assumeCatalogLocked: true,
+      });
+      metadataBatch.push(
+        await pinRemappedItem(ctx, vaultPath, vaultId, indexed, tagsById),
+      );
+    }
+    if (metadataBatch.length > 0) {
+      await ctx.index.upsertItemMetadataBatch(metadataBatch, vaultId);
+    }
+  }
+
+  return { renamedTagIds: renamed.map((tag) => tag.id) };
 }
 
 /**
@@ -134,7 +189,10 @@ export async function mergeTagSimilarityClones(
       const nextItem = { ...indexed, tag_ids: nextTagIds };
       const body = (await readItemContent(ctx.fs, vaultPath, indexed.id)) ?? "";
       // Always rewrite so FM stores the winner's catalog name (#943).
-      await writeItemDocument(ctx.fs, vaultPath, nextItem, body, { tagsById });
+      await writeItemDocument(ctx.fs, vaultPath, nextItem, body, {
+        tagsById,
+        assumeCatalogLocked: true,
+      });
       metadataBatch.push(
         await pinRemappedItem(ctx, vaultPath, vaultId, nextItem, tagsById),
       );

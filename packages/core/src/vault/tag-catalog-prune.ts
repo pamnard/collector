@@ -7,7 +7,10 @@
  * tags.json under withTagCatalogLock (re-read before write).
  */
 import type { VaultContext } from "../adapters/types.js";
-import { mergeTagSimilarityClones } from "./tag-catalog-similarity.js";
+import {
+  canonicalizeCatalogStoredForms,
+  mergeTagSimilarityClones,
+} from "./tag-catalog-similarity.js";
 import { withTagCatalogLock } from "./tag-catalog-lock.js";
 import { readTagsFile, writeTagsFile } from "./tag-io.js";
 
@@ -74,8 +77,8 @@ export async function pruneTagCatalogCandidates(
 }
 
 /**
- * Merge similarity clones (#943), then rewrite tags.json to currently
- * referenced tags and delete orphan index rows.
+ * Merge similarity clones (#943), canonicalize catalog names to stored form,
+ * then rewrite tags.json to currently referenced tags and delete orphan index rows.
  */
 export async function reconcileTagCatalog(
   ctx: VaultContext,
@@ -88,6 +91,7 @@ export async function reconcileTagCatalog(
       vaultPath,
       vaultId,
     );
+    await canonicalizeCatalogStoredForms(ctx, vaultPath, vaultId);
 
     const referenced = new Set(await ctx.index.listReferencedTagIds(vaultId));
     const file = await readTagsFile(ctx.fs, vaultPath);

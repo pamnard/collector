@@ -16,6 +16,7 @@ import { basename, normalizeRelativePath } from "./paths.js";
 import {
   preferTagForSimilarityMap,
   tagSimilarityKey,
+  tagStoredForm,
 } from "./tag-normalize.js";
 import { countTextStats } from "./text-stats.js";
 
@@ -157,7 +158,7 @@ export function serializeItemDocument(
     if (!tag) {
       throw new Error(`Cannot serialize item ${item.id}: unknown tag_id ${tagId}`);
     }
-    tagNames.push(tag.name);
+    tagNames.push(tagStoredForm(tag.name));
   }
 
   const frontmatter = buildCanonicalFrontmatter({

@@ -122,6 +122,7 @@ export {
   listItemsOnDisk,
   streamItemsByIds,
   upsertItem,
+  writeItemCanonicalSourceMarkdown,
   writeItemRawMarkdown,
 } from "./vault/item-operations.js";
 export type {
@@ -230,6 +231,7 @@ export {
   preferTagForSimilarityMap,
   resolveTagFromMaps,
   tagSimilarityKey,
+  tagStoredForm,
 } from "./vault/tag-normalize.js";
 export type { NormalizedTagName } from "./vault/tag-normalize.js";
 export { mergeTagSimilarityClones } from "./vault/tag-catalog-similarity.js";

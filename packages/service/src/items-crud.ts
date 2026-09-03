@@ -33,6 +33,7 @@ import {
   serializeItemDocument,
   textLinkResolveContextFromItems,
   upsertItem,
+  writeItemCanonicalSourceMarkdown,
   writeItemRawMarkdown,
   type AdjacentItemAnchor,
 } from "@collector/core";
@@ -182,21 +183,15 @@ export function createItemsCrud(
     const { vault, path } = await deps.resolveActiveVault();
     const ctx = deps.getContext();
     const { text: normalized } = deps.normalizeMarkdown(rawMarkdown);
-    const existing = await readItemRawMarkdown(ctx.fs, path, itemId);
-    let item: ItemFile;
-    let wrote = false;
-    if (normalized !== existing) {
-      item = await writeItemRawMarkdown(
-        ctx,
-        path,
-        vault.id,
-        itemId,
-        normalized,
-      );
-      wrote = true;
+    const { item, wrote } = await writeItemCanonicalSourceMarkdown(
+      ctx,
+      path,
+      vault.id,
+      itemId,
+      normalized,
+    );
+    if (wrote) {
       await enqueueExtractAutoForItem(vault.id, path, item);
-    } else {
-      item = await readItemFile(ctx.fs, path, itemId, vault.id);
     }
 
     if (

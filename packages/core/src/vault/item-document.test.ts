@@ -58,8 +58,8 @@ describe("item-document mapping", () => {
     });
     const md = serializeItemDocument(item, body, byId);
     expect(md).toContain("tags:");
-    expect(md).toContain("Focus");
-    expect(md).toContain("Research");
+    expect(md).toContain("focus");
+    expect(md).toContain("research");
     expect(md).not.toContain(TAG_A.id);
     expect(md).not.toContain("word_count");
     expect(md).not.toContain("character_count");
@@ -69,7 +69,7 @@ describe("item-document mapping", () => {
       vaultId: VAULT_ID,
       tagsByName: byName,
     });
-    expect(parsed.item).toEqual(item);
+    expect(parsed.item.tag_ids).toEqual([TAG_A.id, TAG_B.id]);
     expect(parsed.body).toBe(body);
   });
 
@@ -212,5 +212,22 @@ body
     expect(() =>
       serializeItemDocument(sampleItem({ tag_ids: [TAG_B.id] }), "", byId),
     ).toThrow(/unknown tag_id/);
+  });
+
+  it("serializeItemDocument writes stored form for legacy catalog names (#943)", () => {
+    const legacy: Tag = {
+      id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      name: "A/B",
+      color: null,
+      created_at: "2020-01-01T00:00:00.000Z",
+    };
+    const { byId } = buildTagMaps([legacy]);
+    const md = serializeItemDocument(
+      sampleItem({ tag_ids: [legacy.id] }),
+      "body",
+      byId,
+    );
+    expect(md).toContain("- ab");
+    expect(md).not.toContain("A/B");
   });
 });

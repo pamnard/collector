@@ -5,6 +5,7 @@ import {
   preferTagForSimilarityMap,
   resolveTagFromMaps,
   tagSimilarityKey,
+  tagStoredForm,
 } from "./tag-normalize.js";
 
 describe("tag-normalize (#943)", () => {
@@ -89,5 +90,11 @@ describe("tag-normalize (#943)", () => {
       created_at: "2020-01-01T00:00:00.000Z",
     };
     expect(preferTagForSimilarityMap(a, b).id).toBe(a.id);
+  });
+
+  it("tagStoredForm maps legacy catalog names to stored form (#943)", () => {
+    expect(tagStoredForm("A/B")).toBe("ab");
+    expect(tagStoredForm("Focus")).toBe("focus");
+    expect(tagStoredForm("web-dev")).toBe("web-dev");
   });
 });
