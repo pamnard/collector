@@ -822,7 +822,7 @@ describe("sync operations", () => {
 
     const tags = await listTagsOnDisk(countingFs, path);
     expect(tags).toHaveLength(1);
-    expect(tags[0]?.name).toBe("SharedNew");
+    expect(tags[0]?.name).toBe("sharednew");
 
     const indexed = await listItemsByIds(emptyCtx, path, itemIds);
     expect(indexed).toHaveLength(itemCount);

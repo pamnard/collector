@@ -145,7 +145,7 @@ describe("createTagsFoldersService", () => {
     const tags = await service.listTags();
     expect(kickoff).toHaveBeenCalledWith(meta.id, path);
     expect(tags).toHaveLength(1);
-    expect(tags[0]?.name).toBe("Research");
+    expect(tags[0]?.name).toBe("research");
     expect(tags[0]?.item_count).toBe(1);
   });
 

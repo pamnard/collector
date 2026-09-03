@@ -93,6 +93,39 @@ updated: 2024-01-01T00:00:00.000Z
     expect(result.item.tag_ids).toEqual([TAG_A.id]);
   });
 
+  it("dedupes similarity-key clone names in frontmatter to one tag_id (#943)", () => {
+    const cloneA: Tag = {
+      id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      name: "web-dev",
+      color: null,
+      created_at: "2020-01-01T00:00:00.000Z",
+    };
+    const cloneB: Tag = {
+      id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      name: "web_dev",
+      color: null,
+      created_at: "2021-01-01T00:00:00.000Z",
+    };
+    const { byName } = buildTagMaps([cloneA, cloneB]);
+    const md = `---
+title: X
+tags:
+  - web-dev
+  - Web_Dev
+  - webdev
+created: 2024-01-01T00:00:00.000Z
+updated: 2024-01-01T00:00:00.000Z
+---
+`;
+    const result = parseItemDocument(md, {
+      itemId: ITEM_ID,
+      vaultId: VAULT_ID,
+      tagsByName: byName,
+    });
+    expect(result.missingTagNames).toEqual([]);
+    expect(result.item.tag_ids).toEqual([cloneA.id]);
+  });
+
   it("uses mtime fallbacks when FM dates are absent", () => {
     const { byName } = buildTagMaps([]);
     const md = `---

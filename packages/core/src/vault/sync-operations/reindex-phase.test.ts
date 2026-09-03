@@ -147,7 +147,7 @@ body
 
     const onDisk = await readTagsFile(fs, path);
     expect(onDisk.tags.map((tag) => tag.name).sort()).toEqual(
-      [...tagNames].sort(),
+      [...tagNames].map((n) => n.toLowerCase()).sort(),
     );
     expect(onDisk.tags).toHaveLength(tagNames.length);
 

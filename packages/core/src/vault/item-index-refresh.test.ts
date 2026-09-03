@@ -142,7 +142,7 @@ describe("upsertItemIndexFromVault (#766)", () => {
 
     const { listTagsOnDisk } = await import("./tag-io.js");
     expect((await listTagsOnDisk(fs, path)).map((t) => t.name)).toContain(
-      "OrphanName",
+      "orphanname",
     );
     const indexed = await ctx.index.listItemFilesByIds(meta.id, [itemId]);
     expect(indexed[0]?.tag_ids).toHaveLength(1);
@@ -641,7 +641,7 @@ describe("refreshItemIndexAfterWrite (#766)", () => {
     await reconcileTagCatalog(ctx, path, meta.id);
 
     const tags = await listTagsOnDisk(fs, path);
-    expect(tags.map((t) => t.name)).toContain("FreshTag");
+    expect(tags.map((t) => t.name)).toContain("freshtag");
     const indexed = await ctx.index.listItemFilesByIds(meta.id, [itemId]);
     expect(indexed[0]?.tag_ids).toHaveLength(1);
   });
