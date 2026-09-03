@@ -3,7 +3,10 @@
  * No network — finds post/reel/tv URLs in note text and optional frontmatter.
  */
 
-import { normalizeRemoteHttpUrl } from "@collector/core";
+import {
+  collectHttpUrlsFromBody,
+  parseRemoteHttpUrl,
+} from "../collect-http-urls.js";
 
 export type InstagramExtractCandidate = {
   extractorId: "instagram";
@@ -19,31 +22,13 @@ const MEDIA_PATH_KINDS = new Set(["p", "reel", "reels", "tv"]);
 /** Instagram media shortcode alphabet in public URLs. */
 const SHORTCODE_RE = /^[A-Za-z0-9_-]+$/;
 
-/** http(s) URL tokens in note body (bare + inside markdown links). */
-const HTTP_URL_RE = /https?:\/\/[^\s<>()\[\]"'`]+/gi;
-
-const TRAILING_PUNCT_RE = /[.,;:!?)]+$/;
-
 type ParsedInstagramMedia = {
   kind: string;
   shortcode: string;
 };
 
-function parseUrl(raw: string): URL | null {
-  const trimmed = raw.trim();
-  if (trimmed.length === 0) {
-    return null;
-  }
-  try {
-    return new URL(normalizeRemoteHttpUrl(trimmed));
-  } catch {
-    // Invalid URL string — expected for free-form note text.
-    return null;
-  }
-}
-
 function parseInstagramMedia(url: string): ParsedInstagramMedia | null {
-  const parsed = parseUrl(url);
+  const parsed = parseRemoteHttpUrl(url);
   if (!parsed) {
     return null;
   }
@@ -85,17 +70,6 @@ function candidateFromUrl(raw: string): InstagramExtractCandidate | null {
     url: `https://www.instagram.com/${media.kind}/${media.shortcode}/`,
     shortcode: media.shortcode,
   };
-}
-
-function collectHttpUrlsFromBody(body: string): string[] {
-  const found: string[] = [];
-  for (const match of body.matchAll(HTTP_URL_RE)) {
-    const token = match[0].replace(TRAILING_PUNCT_RE, "");
-    if (token.length > 0) {
-      found.push(token);
-    }
-  }
-  return found;
 }
 
 /**

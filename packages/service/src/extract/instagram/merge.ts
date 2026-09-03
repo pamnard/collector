@@ -3,6 +3,11 @@
  * No HTTP, vault writes, or attachMediaFiles — assembly is #318.
  */
 
+import {
+  extensionFromUrl,
+  firstNonEmptyLine,
+  mergeBlockReplacingMatchedUrls,
+} from "../merge-text.js";
 import type {
   InstagramFetchSuccess,
   InstagramFetchedMedia,
@@ -43,7 +48,11 @@ export function mergeInstagramIntoNote(
 ): InstagramMergeResult {
   return {
     title: deriveInstagramTitle(fetch),
-    body: mergeBody(note.body, fetch.shortcode, buildInstagramBodyBlock(fetch)),
+    body: mergeBlockReplacingMatchedUrls(
+      note.body,
+      (url) => instagramUrlMatchesShortcode(url, fetch.shortcode),
+      buildInstagramBodyBlock(fetch),
+    ),
     url: fetch.sourceUrl,
     mediaIntents: listInstagramMediaIntents(fetch),
   };
@@ -72,90 +81,6 @@ function buildInstagramBodyBlock(fetch: InstagramFetchSuccess): string {
     }
   }
   return parts.join("\n\n");
-}
-
-/**
- * Replace the first Instagram URL matching `shortcode` with `instagramBlock`
- * (when non-empty); delete remaining matches. Preserve unrelated text. If no
- * URL match, prepend the block when present.
- */
-function mergeBody(
-  body: string,
-  shortcode: string,
-  instagramBlock: string,
-): string {
-  const matches = findInstagramUrlSpans(body, shortcode);
-  if (matches.length === 0) {
-    if (instagramBlock.length === 0) {
-      return normalizeBlankLines(body);
-    }
-    const preserved = body.trim();
-    return normalizeBlankLines(
-      preserved.length === 0
-        ? instagramBlock
-        : `${instagramBlock}\n\n${preserved}`,
-    );
-  }
-
-  const chunks: string[] = [];
-  let cursor = 0;
-  let inserted = false;
-  for (const match of matches) {
-    chunks.push(body.slice(cursor, match.start));
-    if (!inserted && instagramBlock.length > 0) {
-      chunks.push(instagramBlock);
-      inserted = true;
-    }
-    cursor = match.end;
-  }
-  chunks.push(body.slice(cursor));
-  return normalizeBlankLines(chunks.join(""));
-}
-
-type Span = { start: number; end: number };
-
-function findInstagramUrlSpans(body: string, shortcode: string): Span[] {
-  const spans: Span[] = [];
-
-  for (const match of body.matchAll(
-    /\[(?:[^\]]*)\]\((https?:\/\/[^)\s]+)\)/gi,
-  )) {
-    const rawUrl = match[1];
-    if (rawUrl === undefined || match.index === undefined) {
-      continue;
-    }
-    if (!instagramUrlMatchesShortcode(rawUrl, shortcode)) {
-      continue;
-    }
-    spans.push({ start: match.index, end: match.index + match[0].length });
-  }
-
-  for (const match of body.matchAll(/https?:\/\/[^\s<>\]`)]+/gi)) {
-    if (match.index === undefined) {
-      continue;
-    }
-    const start = match.index;
-    const end = start + match[0].length;
-    if (spans.some((s) => start >= s.start && end <= s.end)) {
-      continue;
-    }
-    const rawUrl = trimTrailingUrlPunctuation(match[0]);
-    if (!instagramUrlMatchesShortcode(rawUrl, shortcode)) {
-      continue;
-    }
-    spans.push({ start, end: start + rawUrl.length });
-  }
-
-  spans.sort((a, b) => a.start - b.start);
-  const out: Span[] = [];
-  for (const span of spans) {
-    const prev = out[out.length - 1];
-    if (prev && span.start < prev.end) {
-      continue;
-    }
-    out.push(span);
-  }
-  return out;
 }
 
 function instagramUrlMatchesShortcode(
@@ -207,44 +132,4 @@ function extensionForMedia(media: InstagramFetchedMedia): string {
     return fromUrl;
   }
   return media.kind === "video" ? ".mp4" : ".jpg";
-}
-
-function extensionFromUrl(url: string): string | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return null;
-  }
-  const base = parsed.pathname.split("/").pop();
-  if (base === undefined || base.length === 0) {
-    return null;
-  }
-  const dot = base.lastIndexOf(".");
-  if (dot <= 0 || dot === base.length - 1) {
-    return null;
-  }
-  const ext = base.slice(dot).toLowerCase();
-  if (!/^\.[a-z0-9]{1,8}$/.test(ext)) {
-    return null;
-  }
-  return ext;
-}
-
-function firstNonEmptyLine(text: string): string | null {
-  for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (trimmed.length > 0) {
-      return trimmed;
-    }
-  }
-  return null;
-}
-
-function trimTrailingUrlPunctuation(raw: string): string {
-  return raw.replace(/[.,;:!?)]+$/, "");
-}
-
-function normalizeBlankLines(text: string): string {
-  return text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }

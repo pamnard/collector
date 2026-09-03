@@ -78,6 +78,7 @@ import { createWaitDerivedRuntime } from "./domain-runtime/wait-derived.js";
 import { createSyncPluginRuntime } from "./domain-runtime/sync-plugins.js";
 import { createExtractPluginRegistry } from "../extract-plugin-registry.js";
 import { createInstagramExtractorPlugin } from "../extract/instagram/instagram-extractor-plugin.js";
+import { createPinterestExtractorPlugin } from "../extract/pinterest/pinterest-extractor-plugin.js";
 import {
   createVaultSyncController,
   type VaultSyncController,
@@ -471,9 +472,16 @@ export function createServiceDomainRuntime(
       mediaCover.attachMediaFiles(itemId, files),
   });
 
+  const pinterestExtractor = createPinterestExtractorPlugin({
+    getItemById: (itemId) => itemsSearch.getItemById(itemId),
+    updateItem: (itemId, input) => itemsSearch.updateItem(itemId, input),
+    attachMediaFiles: (itemId, files) =>
+      mediaCover.attachMediaFiles(itemId, files),
+  });
+
   const extract = createExtractPluginRegistry({
     getItemById: (itemId) => itemsSearch.getItemById(itemId),
-    createCatalog: () => [instagramExtractor],
+    createCatalog: () => [instagramExtractor, pinterestExtractor],
   });
 
   phaseBHandlerBindings.itemExtractAuto = createItemExtractAutoHandler({
