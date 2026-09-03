@@ -111,6 +111,7 @@ For asset-localisation rules and fallback order, follow [references/import-rules
 1. `list-item-media` → use media `id` (UUID) for replace/delete/set-cover.
 2. Attach via host-readable `sourcePath` / CLI `--file`, or MCP `dataBase64` (+ `filename` when base64).
 3. Do not invent sidecar paths or write into `*.media/` yourself.
+4. Attach (cover auto-syncs) is enough to “bring a picture” into the note. Do **not** also put that same image into `content` as `![…](…)` unless the user this turn **explicitly** asks to place it in the body/text.
 
 ### Folders
 
@@ -140,6 +141,7 @@ Assign tag **names** on an item via structured update (`tags`) or source frontma
 - Duplicating the article title as the first line / H1 in `content` when the item `title` already stores it
 - Preserving source-site scaffolding instead of article content: duplicate frontmatter, breadcrumbs, nav menus, share controls, subscribe prompts, related-article rails, footer chrome
 - Rewriting source-page web links into local `(... .md)` links or vault-internal nodes without an explicit user request
+- Putting an attached/cover image into `content` again without an explicit user ask this turn (same picture shown twice on the page)
 
 Details and edge cases: [references/pitfalls.md](references/pitfalls.md), [references/import-rules.md](references/import-rules.md).
 

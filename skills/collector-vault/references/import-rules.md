@@ -37,6 +37,8 @@ Preferred order when one path fails:
 
 A block on one path is not a reason to skip images entirely. Stop only after exhausting viable paths, and then report what was tried and what remains manual.
 
+**Cover / attach vs body.** Putting a file into item media (so it can be the cover) is not the same as pasting it into markdown. Do not add `![…](…)` for an image that is already attached as media/cover unless the user this turn **explicitly** asks to place it in the body/text. Inline figures that belong inside an imported article stay in the body as part of that article; still do not also dump the cover/hero a second time at the top of `content` without that explicit ask.
+
 ## Restore, do not delete
 
 If a useful structure element is broken, the default action is to restore it in a working form, not to delete it.
@@ -62,6 +64,7 @@ Before considering an import complete, verify:
 - no broken `#anchor` TOC links
 - if the source article is a catalog/index, the imported note still contains working links
 - if the source article had useful diagrams or images, they are preserved in a workable local form or explicitly reported as blocked after trying alternatives
+- cover/attached hero is not also duplicated as a leading `![…](…)` in `content` unless the user this turn asked for that in the body
 
 ## Anti-patterns
 
@@ -70,3 +73,4 @@ Before considering an import complete, verify:
 - keeping a broken TOC full of `#anchor` links that do not work in the target renderer
 - declaring import complete after `image count = 0` without exhausting viable download paths
 - cleaning the page so aggressively that a catalog stops being a catalog
+- attaching a cover/hero and also pasting the same image into `content` without an explicit user ask this turn
