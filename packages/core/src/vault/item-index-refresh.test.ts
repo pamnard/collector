@@ -104,6 +104,50 @@ describe("upsertItemIndexFromVault (#766)", () => {
     expect(indexed[0]?.content_revision).toBe(2);
   });
 
+  it("restores missing frontmatter tags into catalog during upsert", async () => {
+    const { ctx, meta, path, itemId } = await seedItem(1);
+    const createdAt = "2024-01-01T00:00:00.000Z";
+    const raw = [
+      "---",
+      "title: Note",
+      "type: note",
+      "tags:",
+      "  - OrphanName",
+      "content_revision: 1",
+      `created: ${createdAt}`,
+      `updated: ${createdAt}`,
+      "---",
+      "",
+      "body",
+      "",
+    ].join("\n");
+    const docPath = join(path, itemId);
+    await fs.writeText(docPath, raw);
+    const { writeTagsFile } = await import("./tag-io.js");
+    await writeTagsFile(fs, path, { tags: [] });
+    const stat = await fs.stat(docPath);
+    if (stat.mtimeMs === null) {
+      throw new Error("expected mtime after rewrite");
+    }
+
+    const outcome = await upsertItemIndexFromVault(
+      ctx,
+      path,
+      meta.id,
+      itemId,
+      1,
+      stat.mtimeMs,
+    );
+    expect(outcome.outcome).toBe("upserted");
+
+    const { listTagsOnDisk } = await import("./tag-io.js");
+    expect((await listTagsOnDisk(fs, path)).map((t) => t.name)).toContain(
+      "OrphanName",
+    );
+    const indexed = await ctx.index.listItemFilesByIds(meta.id, [itemId]);
+    expect(indexed[0]?.tag_ids).toHaveLength(1);
+  });
+
   it("skips stale jobs when index already has a newer revision", async () => {
     const { ctx, meta, path, itemId, fileMtimeMs } = await seedItem(3);
     const upsertSpy = vi.spyOn(ctx.index, "upsertItem");
@@ -346,10 +390,13 @@ describe("refreshItemIndexAfterWrite (#766)", () => {
         fileMtimeMs: stat.mtimeMs,
       },
     ]);
-    expect(await ctx.index.listItemFilesByIds(meta.id, [itemId])).toEqual([]);
+    // Tags/metadata are pinned on write; full FTS still waits for the job.
+    const indexed = await ctx.index.listItemFilesByIds(meta.id, [itemId]);
+    expect(indexed).toHaveLength(1);
+    expect(indexed[0]?.title).toBe("Queued");
   });
 
-  it("writeItemRawMarkdown enqueues derived refresh without inline index upsert", async () => {
+  it("writeItemRawMarkdown enqueues derived refresh and pins metadata when jobs wired", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "collector-item-raw-enqueue-"));
     const sql = new MemorySqlAdapter();
     const enqueued: Array<{ itemId: string; fileMtimeMs: number }> = [];
@@ -412,11 +459,15 @@ describe("refreshItemIndexAfterWrite (#766)", () => {
     expect(enqueued).toHaveLength(1);
     expect(enqueued[0]?.itemId).toBe(itemId);
     expect(enqueued[0]?.fileMtimeMs).toBeTypeOf("number");
-    expect(await ctx.index.listItemFilesByIds(meta.id, [itemId])).toEqual([]);
+    // Metadata/tags are pinned on write so reconcile cannot drop catalog rows;
+    // full FTS/content refresh still goes through the derived job.
+    const indexed = await ctx.index.listItemFilesByIds(meta.id, [itemId]);
+    expect(indexed).toHaveLength(1);
+    expect(indexed[0]?.title).toBe("After");
   });
 
-  it("writeItemRawMarkdown skips tag sync when derived jobs are wired (#776)", async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "collector-item-raw-tag-defer-"));
+  it("writeItemRawMarkdown syncs item tags even when derived jobs are wired", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-item-raw-tag-pin-"));
     const sql = new MemorySqlAdapter();
     const ctx = {
       fs,
@@ -468,7 +519,12 @@ describe("refreshItemIndexAfterWrite (#766)", () => {
       "",
     ].join("\n");
     await writeItemRawMarkdown(ctx, path, meta.id, itemId, raw);
-    expect(upsertTagSpy).not.toHaveBeenCalled();
+    const upsertedNames = upsertTagSpy.mock.calls.map(
+      (call) => (call[0] as { name: string }).name,
+    );
+    expect(upsertedNames).toContain("alpha");
+    const indexed = await ctx.index.listItemFilesByIds(meta.id, [itemId]);
+    expect(indexed[0]?.tag_ids).toHaveLength(1);
     upsertTagSpy.mockRestore();
   });
 
@@ -526,6 +582,67 @@ describe("refreshItemIndexAfterWrite (#766)", () => {
     expect(upsertedNames).toContain("alpha");
     expect(upsertedNames).not.toContain("beta");
     expect(upsertedNames).not.toContain("gamma");
+    expect(alpha.id).toBeTruthy();
     upsertTagSpy.mockRestore();
+  });
+
+  it("write with jobs then full reconcile keeps freshly ensured tags", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-tag-write-reconcile-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = {
+      fs,
+      index: new SqlVaultIndexStore(sql),
+      itemDerivedRefreshJobs: {
+        enqueue: async () => undefined,
+      },
+    };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemId = `${createId()}.md`;
+    const createdAt = "2024-01-01T00:00:00.000Z";
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: createdAt,
+        updated_at: createdAt,
+      },
+      content: "body",
+    });
+
+    const raw = [
+      "---",
+      "title: Note",
+      "type: note",
+      "tags:",
+      "  - FreshTag",
+      "content_revision: 2",
+      `created: ${createdAt}`,
+      `updated: ${createdAt}`,
+      "---",
+      "",
+      "body",
+      "",
+    ].join("\n");
+    await writeItemRawMarkdown(ctx, path, meta.id, itemId, raw);
+
+    const { reconcileTagCatalog } = await import("./tag-catalog-prune.js");
+    const { listTagsOnDisk } = await import("./tag-io.js");
+    await reconcileTagCatalog(ctx, path, meta.id);
+
+    const tags = await listTagsOnDisk(fs, path);
+    expect(tags.map((t) => t.name)).toContain("FreshTag");
+    const indexed = await ctx.index.listItemFilesByIds(meta.id, [itemId]);
+    expect(indexed[0]?.tag_ids).toHaveLength(1);
   });
 });

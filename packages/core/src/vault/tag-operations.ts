@@ -38,8 +38,10 @@ export interface SyncTagsToIndexOptions {
 /**
  * Upsert tag rows into the SQL index from tags.json on disk.
  * Per-item saves pass `tagIds` so unchanged vault tags are not re-upserted (#776).
- * When `itemDerivedRefreshJobs` is wired, RPC paths defer tag sync entirely;
- * `upsertItemIndexFromVault` syncs the item's tag_ids before upsert (FK invariant).
+ * When `itemDerivedRefreshJobs` is wired, full FTS/content refresh is still
+ * deferred to the job, but per-item tag rows + item_tags are pinned on the
+ * write path (`pinItemTagsToIndex`) so full catalog reconcile cannot drop
+ * freshly ensured names.
  */
 export async function syncTagsToIndex(
   ctx: VaultContext,

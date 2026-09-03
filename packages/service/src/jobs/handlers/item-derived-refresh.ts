@@ -1,12 +1,14 @@
 import {
   itemMarkdownPath,
-  readItemFile,
+  parseDocumentMarkdown,
+  partitionDocumentFrontmatter,
   runItemDerivedLocalizeRefresh,
   upsertItemIndexFromVault,
   pruneReleasedTagsAfterIndexRefresh,
   type VaultContext,
 } from "@collector/core";
 import {
+  folderPathFromItemPath,
   itemDerivedRefreshIdempotencyKey,
   itemDerivedRefreshJobType,
   type ItemDerivedRefreshJobPayload,
@@ -19,6 +21,13 @@ import type { LocalizeItemRemoteDisplayAssets } from "../../localize-item-remote
 
 export type ItemDerivedRefreshEnqueueInput = ItemDerivedRefreshJobPayload;
 
+function contentRevisionFromDocumentMarkdown(raw: string): number | null {
+  const { known } = partitionDocumentFrontmatter(
+    parseDocumentMarkdown(raw).frontmatter,
+  );
+  return known.content_revision ?? null;
+}
+
 export function createItemDerivedRefreshHandler(deps: {
   getContext: () => VaultContext;
   localizeRemoteDisplayAssets: LocalizeItemRemoteDisplayAssets;
@@ -29,6 +38,7 @@ export function createItemDerivedRefreshHandler(deps: {
   return async (job): Promise<JobHandlerResult> => {
     const payload = job.payload;
     const ctx = deps.getContext();
+    const folderPath = folderPathFromItemPath(payload.itemId);
 
     const localizeOutcome = await runItemDerivedLocalizeRefresh(
       ctx,
@@ -70,38 +80,43 @@ export function createItemDerivedRefreshHandler(deps: {
       );
     }
 
-    const item = await readItemFile(
-      ctx.fs,
-      payload.vaultPath,
-      payload.itemId,
-      payload.vaultId,
-    );
-
     if (localizeOutcome === "markdown" || localizeOutcome === "media") {
       deps.onVaultPresentationChanged?.({
         vaultId: payload.vaultId,
         kind: "itemUpserted",
         itemId: payload.itemId,
-        folderPath: item.folder_path,
+        folderPath,
       });
     }
 
     if (localizeOutcome === "media") {
+      // Media-only localize already ran syncIndexItemsFromFilesystem; tag rows
+      // were pinned on the write path. Skip a second full upsert.
       deps.onVaultPresentationChanged?.({
         vaultId: payload.vaultId,
         kind: "itemDerivedComplete",
         itemId: payload.itemId,
-        folderPath: item.folder_path,
+        folderPath,
       });
       return { status: "ok" };
     }
 
+    // Use on-disk content_revision (may have been bumped by localize). Passing
+    // the job's pre-localize revision after a pin that advanced the index
+    // would make upsertItemIndexFromVault return stale and skip FTS.
+    const raw = await ctx.fs.readText(docPath);
+    const contentRevision =
+      contentRevisionFromDocumentMarkdown(raw) ?? payload.contentRevision;
+
+    // Upsert from vault bytes (itemFileFromDocumentMarkdown ensures missing
+    // catalog tags). Do not call strict readItemFile — unresolved FM tags
+    // would brick the job before repair.
     const { releasedTagIds } = await upsertItemIndexFromVault(
       ctx,
       payload.vaultPath,
       payload.vaultId,
       payload.itemId,
-      item.content_revision,
+      contentRevision,
       fileStat.mtimeMs,
     );
 
@@ -116,7 +131,7 @@ export function createItemDerivedRefreshHandler(deps: {
       vaultId: payload.vaultId,
       kind: "itemDerivedComplete",
       itemId: payload.itemId,
-      folderPath: item.folder_path,
+      folderPath,
     });
 
     return { status: "ok" };
