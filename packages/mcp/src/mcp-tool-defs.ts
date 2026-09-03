@@ -318,7 +318,7 @@ export const COLLECTOR_MCP_TOOL_DEFS = [
     name: "collector_discover_extract_candidates",
     description:
       "Find links in this note that Collector’s site-specific extract tools understand " +
-      "(right now: Instagram only). " +
+      "(Instagram, Pinterest, YouTube). " +
       "Not for ordinary web pages — for Reddit, blogs, news, docs, etc., download the page yourself " +
       "and use collector_update_item. " +
       "Returns a list of matches ({ extractorId, url, optional meta }). Does not change the note. " +
@@ -332,7 +332,8 @@ export const COLLECTOR_MCP_TOOL_DEFS = [
     name: "collector_extract_item_candidate",
     description:
       "Pull content into the note for one match from collector_discover_extract_candidates " +
-      "(right now: Instagram only). " +
+      "(Instagram, Pinterest, YouTube). " +
+      "YouTube uses the machine’s Chrome/Chromium YouTube login cookies via bundled yt-dlp. " +
       "Not for ordinary web pages. Call only with a match from discover; do not invent extractorId or url. " +
       "Unknown extractorId fails. Does not run by itself when a note is opened.",
     buildSchema: (p) => ({
