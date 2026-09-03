@@ -13,12 +13,17 @@ import {
   serializeDocumentMarkdown,
 } from "./frontmatter.js";
 import { basename, normalizeRelativePath } from "./paths.js";
+import {
+  preferTagForSimilarityMap,
+  tagSimilarityKey,
+  tagStoredForm,
+} from "./tag-normalize.js";
 import { countTextStats } from "./text-stats.js";
 
 export interface ParseItemDocumentContext {
   itemId: string;
   vaultId: string;
-  /** Lowercased tag name → Tag */
+  /** Similarity key → Tag (pre-reconcile collisions: earlier created_at/id only). */
   tagsByName: Map<string, Tag>;
   /**
    * When frontmatter omits created/updated, use these ISO timestamps
@@ -31,18 +36,8 @@ export interface ParseItemDocumentContext {
 export interface ParsedItemDocument {
   item: ItemFile;
   body: string;
-  /** Tag names from frontmatter in file order / stored form. */
-  tagNames: string[];
   /** Tag names in FM that were not in tagsByName (caller must create). */
   missingTagNames: string[];
-}
-
-function tagNameKey(name: string): string {
-  return name.toLowerCase();
-}
-
-function normalizeTagName(name: string): string {
-  return name.trim();
 }
 
 /** Portable fallback title: filename stem when frontmatter has no `title`. */
@@ -58,7 +53,13 @@ export function buildTagMaps(tags: Tag[]): {
   const byName = new Map<string, Tag>();
   const byId = new Map<string, Tag>();
   for (const tag of tags) {
-    byName.set(tagNameKey(tag.name), tag);
+    const key = tagSimilarityKey(tag.name);
+    const existing = byName.get(key);
+    if (existing) {
+      byName.set(key, preferTagForSimilarityMap(existing, tag));
+    } else {
+      byName.set(key, tag);
+    }
     byId.set(tag.id, tag);
   }
   return { byName, byId };
@@ -92,15 +93,15 @@ export function parseItemDocument(
     );
   }
 
-  const tagNames = (known.tags ?? []).map(normalizeTagName);
+  const tagNames = known.tags ?? [];
   const tag_ids: string[] = [];
-  const missingTagNames: string[] = [];
   const seenTagIds = new Set<string>();
+  const missingTagNames: string[] = [];
   for (const name of tagNames) {
-    if (!name) {
+    if (!name.trim()) {
       throw new Error(`Item document ${itemId} has blank tag name`);
     }
-    const tag = ctx.tagsByName.get(tagNameKey(name));
+    const tag = ctx.tagsByName.get(tagSimilarityKey(name));
     if (!tag) {
       missingTagNames.push(name);
       continue;
@@ -140,7 +141,6 @@ export function parseItemDocument(
   return {
     item,
     body: parsed.body,
-    tagNames,
     missingTagNames,
   };
 }
@@ -161,7 +161,7 @@ export function serializeItemDocument(
     if (!tag) {
       throw new Error(`Cannot serialize item ${item.id}: unknown tag_id ${tagId}`);
     }
-    tagNames.push(tag.name);
+    tagNames.push(tagStoredForm(tag.name));
   }
 
   const frontmatter = buildCanonicalFrontmatter({

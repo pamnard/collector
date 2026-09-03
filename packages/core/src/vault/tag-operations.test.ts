@@ -99,7 +99,7 @@ describe("tag operations (#842)", () => {
 
     const withTag = await listTagsWithCounts(ctx, meta.id);
     expect(withTag).toHaveLength(1);
-    expect(withTag[0]?.name).toBe("Research");
+    expect(withTag[0]?.name).toBe("research");
     expect(withTag[0]?.item_count).toBe(1);
 
     await writeItemRawMarkdown(

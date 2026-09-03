@@ -21,8 +21,6 @@ export type ItemIndexRefreshResult = {
 export type ItemIndexRefreshHints = {
   /** Index-only field not stored in vault markdown. */
   collection_ids?: string[];
-  /** Indexed tag ids before the current write pinned new metadata. */
-  previousTagIds?: string[];
 };
 
 function mergeIndexOnlyFields(
@@ -38,7 +36,8 @@ function mergeIndexOnlyFields(
   return { ...item, collection_ids };
 }
 
-function releasedTagIds(
+/** Tag ids on the previous item row but absent after this write (#935/#944). */
+export function releasedTagIdsFromChange(
   previous: readonly string[] | undefined,
   next: readonly string[],
 ): string[] {
@@ -135,7 +134,8 @@ export async function upsertItemIndexFromVault(
 
   const [existingItem] = await ctx.index.listItemFilesByIds(vaultId, [id]);
   item = mergeIndexOnlyFields(item, existingItem, hints);
-  const released = releasedTagIds(
+  // Prefer write-path hint: pin may already have replaced item_tags.
+  const released = releasedTagIdsFromChange(
     hints?.previousTagIds ?? existingItem?.tag_ids,
     item.tag_ids,
   );
@@ -207,7 +207,6 @@ export async function refreshItemIndexAfterWrite(
   vaultPath: string,
   vaultId: string,
   item: ItemFile,
-  hints?: ItemIndexRefreshHints,
 ): Promise<void> {
   const docPath = itemMarkdownPath(vaultPath, item.id);
   const fileStat = await ctx.fs.stat(docPath);
@@ -224,7 +223,6 @@ export async function refreshItemIndexAfterWrite(
       item.content_revision,
       fileStat.mtimeMs,
       item.url,
-      hints?.previousTagIds,
     );
     return;
   }
@@ -235,10 +233,7 @@ export async function refreshItemIndexAfterWrite(
     item.id,
     item.content_revision,
     fileStat.mtimeMs,
-    {
-      collection_ids: item.collection_ids,
-      previousTagIds: hints?.previousTagIds,
-    },
+    { collection_ids: item.collection_ids },
   );
   await pruneReleasedTagsAfterIndexRefresh(
     ctx,

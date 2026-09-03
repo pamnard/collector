@@ -15,17 +15,19 @@ import {
   deleteItem,
   listItemsByIds,
   listItemsOnDisk,
-  syncItemFromDisk,
   streamItemsByIds,
   upsertItem,
+  syncItemFromDisk,
+  writeItemCanonicalSourceMarkdown,
   writeItemRawMarkdown,
 } from "../vault/item-operations.js";
-import { readItemRawMarkdown } from "../vault/item-io.js";
-import { readTagsFile } from "../vault/tag-io.js";
+import { readItemRawMarkdown, readTagsFile } from "../vault/item-io.js";
 import { itemMarkdownPath, itemMediaRoot } from "../vault/paths.js";
+import { writeTagsFile } from "../vault/tag-io.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
-import { attachMediaFile } from "../vault/media-operations.js";
 import { seedTagFromDocumentWritePath } from "../testing/seed-tag.js";
+import { attachMediaFile } from "../vault/media-operations.js";
+import { listTagsWithCounts } from "../vault/tag-operations.js";
 
 class CountingFileSystemAdapter implements FileSystemAdapter {
   statCount = 0;
@@ -262,7 +264,225 @@ describe("item operations", () => {
     ]);
   });
 
-  it("syncs catalog and index from existing file bytes without rewriting markdown", async () => {
+  it("writeItemCanonicalSourceMarkdown rewrites legacy tag names in frontmatter (#943)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-canonical-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    const legacyId = createId();
+    const itemId = `${createId()}.md`;
+    const created = "2024-01-01T00:00:00.000Z";
+    await writeTagsFile(fs, path, {
+      tags: [
+        {
+          id: legacyId,
+          name: "A/B",
+          color: null,
+          created_at: created,
+        },
+      ],
+    });
+    await ctx.index.upsertTag(
+      {
+        id: legacyId,
+        name: "A/B",
+        color: null,
+        created_at: created,
+      },
+      meta.id,
+    );
+
+    const raw = [
+      "---",
+      "title: Legacy",
+      "type: note",
+      "tags:",
+      "  - A/B",
+      `created: ${created}`,
+      `updated: ${created}`,
+      "---",
+      "",
+      "body",
+      "",
+    ].join("\n");
+    await fs.mkdir(path);
+    await fs.writeText(itemMarkdownPath(path, itemId), raw);
+    await ctx.index.upsertItemMetadata(
+      {
+        item: {
+          id: itemId,
+          vault_id: meta.id,
+          title: "Legacy",
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          properties: {},
+          tag_ids: [legacyId],
+          collection_ids: [],
+          folder_path: "",
+          content_revision: 1,
+          word_count: 0,
+          character_count: 0,
+          created_at: created,
+          updated_at: created,
+        },
+        fileMtimeMs: Date.now(),
+      },
+      meta.id,
+    );
+
+    const { item, wrote } = await writeItemCanonicalSourceMarkdown(
+      ctx,
+      path,
+      meta.id,
+      itemId,
+      raw,
+    );
+    expect(wrote).toBe(true);
+    expect(item.tag_ids).toEqual([legacyId]);
+
+    const onDisk = await readItemRawMarkdown(fs, path, itemId);
+    expect(onDisk).toMatch(/tags:\s*\n\s*- ab/);
+    expect(onDisk).not.toContain("A/B");
+  });
+
+  it("writeItemCanonicalSourceMarkdown skips write when frontmatter already canonical", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-canonical-skip-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    const itemId = `${createId()}.md`;
+    const created = "2024-01-01T00:00:00.000Z";
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Canonical",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        created_at: created,
+        updated_at: created,
+      },
+      content: "body",
+    });
+
+    const existing = await readItemRawMarkdown(fs, path, itemId);
+    const { wrote } = await writeItemCanonicalSourceMarkdown(
+      ctx,
+      path,
+      meta.id,
+      itemId,
+      existing,
+    );
+    expect(wrote).toBe(false);
+  });
+
+  it("writeItemCanonicalSourceMarkdown syncs index on wrote:false when catalog mutated (#948)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-canonical-noop-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    const legacyId = createId();
+    const itemId = `${createId()}.md`;
+    const created = "2024-01-01T00:00:00.000Z";
+    await writeTagsFile(fs, path, {
+      tags: [
+        {
+          id: legacyId,
+          name: "A/B",
+          color: null,
+          created_at: created,
+        },
+      ],
+    });
+    await ctx.index.upsertTag(
+      {
+        id: legacyId,
+        name: "A/B",
+        color: null,
+        created_at: created,
+      },
+      meta.id,
+    );
+
+    // Disk already has stored-form tags; catalog still legacy → no rewrite, but
+    // ensure must rename catalog and pin item_tags (#948 wrote:false gap).
+    const raw = [
+      "---",
+      "title: Legacy",
+      "type: note",
+      "tags:",
+      "  - ab",
+      "content_revision: 1",
+      `created: ${created}`,
+      `updated: ${created}`,
+      "---",
+      "",
+      "body",
+      "",
+    ].join("\n");
+    await fs.mkdir(path);
+    await fs.writeText(itemMarkdownPath(path, itemId), raw);
+    await ctx.index.upsertItemMetadata(
+      {
+        item: {
+          id: itemId,
+          vault_id: meta.id,
+          title: "Legacy",
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          properties: {},
+          tag_ids: [],
+          collection_ids: [],
+          folder_path: "",
+          content_revision: 1,
+          word_count: 0,
+          character_count: 0,
+          created_at: created,
+          updated_at: created,
+        },
+        fileMtimeMs: Date.now(),
+      },
+      meta.id,
+    );
+
+    const { item, wrote } = await writeItemCanonicalSourceMarkdown(
+      ctx,
+      path,
+      meta.id,
+      itemId,
+      raw,
+    );
+    expect(wrote).toBe(false);
+    expect(item.tag_ids).toEqual([legacyId]);
+    expect(await readItemRawMarkdown(fs, path, itemId)).toBe(raw);
+    expect((await readTagsFile(fs, path)).tags).toEqual([
+      expect.objectContaining({ id: legacyId, name: "ab" }),
+    ]);
+    const indexed = await listItemsByIds(ctx, path, [itemId]);
+    expect(indexed[0]?.tag_ids).toEqual([legacyId]);
+    const tags = await listTagsWithCounts(ctx, meta.id);
+    expect(tags).toEqual([
+      expect.objectContaining({
+        id: legacyId,
+        name: "ab",
+        item_count: 1,
+      }),
+    ]);
+  });
+
+  it("syncItemFromDisk syncs catalog and index without rewriting markdown", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "collector-vault-sync-file-first-"));
     const sql = new MemorySqlAdapter();
     const ctx = { fs, index: new SqlVaultIndexStore(sql) };
@@ -274,7 +494,7 @@ describe("item operations", () => {
       ctx,
       path,
       meta.id,
-      "Index",
+      "focus",
     );
     const itemId = `${createId()}.md`;
     const created = "2024-01-01T00:00:00.000Z";
@@ -301,7 +521,7 @@ describe("item operations", () => {
       "title: Original",
       "type: note",
       "tags:",
-      "  - index",
+      "  - focus",
       "content_revision: 1",
       `created: ${created}`,
       `updated: ${created}`,
@@ -310,23 +530,59 @@ describe("item operations", () => {
       "body",
       "",
     ].join("\n");
-    const docPath = itemMarkdownPath(path, itemId);
-    await fs.writeText(docPath, raw);
+    await fs.writeText(itemMarkdownPath(path, itemId), raw);
 
     const synced = await syncItemFromDisk(ctx, path, meta.id, itemId);
     expect(synced.tag_ids).toEqual([existingTag.id]);
     expect(await readItemRawMarkdown(fs, path, itemId)).toBe(raw);
 
-    const tagsFile = await readTagsFile(fs, path);
-    expect(tagsFile.tags).toEqual([
-      expect.objectContaining({
-        id: existingTag.id,
-        name: "index",
-      }),
-    ]);
-
     const indexed = await listItemsByIds(ctx, path, [itemId]);
     expect(indexed[0]?.tag_ids).toEqual([existingTag.id]);
+  });
+
+  it("syncItemFromDisk short-circuits when catalog and index already match FM", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-sync-short-"));
+    const sql = new MemorySqlAdapter();
+    const enqueued: string[] = [];
+    const ctx = {
+      fs,
+      index: new SqlVaultIndexStore(sql),
+      itemDerivedRefreshJobs: {
+        enqueue: async (
+          _vaultId: string,
+          _vaultPath: string,
+          itemId: string,
+        ) => {
+          enqueued.push(itemId);
+        },
+      },
+    };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const tag = await seedTagFromDocumentWritePath(ctx, path, meta.id, "focus");
+    const itemId = `${createId()}.md`;
+    const created = "2024-01-01T00:00:00.000Z";
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [tag.id],
+        collection_ids: [],
+        created_at: created,
+        updated_at: created,
+      },
+      content: "body",
+    });
+    enqueued.length = 0;
+
+    const synced = await syncItemFromDisk(ctx, path, meta.id, itemId);
+    expect(synced.tag_ids).toEqual([tag.id]);
+    expect(enqueued).toEqual([]);
   });
 
   it("listItemsByIds preserves order and skips missing items", async () => {

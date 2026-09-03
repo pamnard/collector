@@ -58,8 +58,8 @@ describe("item-document mapping", () => {
     });
     const md = serializeItemDocument(item, body, byId);
     expect(md).toContain("tags:");
-    expect(md).toContain("Focus");
-    expect(md).toContain("Research");
+    expect(md).toContain("focus");
+    expect(md).toContain("research");
     expect(md).not.toContain(TAG_A.id);
     expect(md).not.toContain("word_count");
     expect(md).not.toContain("character_count");
@@ -69,7 +69,7 @@ describe("item-document mapping", () => {
       vaultId: VAULT_ID,
       tagsByName: byName,
     });
-    expect(parsed.item).toEqual(item);
+    expect(parsed.item.tag_ids).toEqual([TAG_A.id, TAG_B.id]);
     expect(parsed.body).toBe(body);
   });
 
@@ -93,7 +93,40 @@ updated: 2024-01-01T00:00:00.000Z
     expect(result.item.tag_ids).toEqual([TAG_A.id]);
   });
 
-  it("trims tag names before resolving or reporting missing tags", () => {
+  it("dedupes similarity-key clone names in frontmatter to one tag_id (#943)", () => {
+    const cloneA: Tag = {
+      id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      name: "web-dev",
+      color: null,
+      created_at: "2020-01-01T00:00:00.000Z",
+    };
+    const cloneB: Tag = {
+      id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      name: "web_dev",
+      color: null,
+      created_at: "2021-01-01T00:00:00.000Z",
+    };
+    const { byName } = buildTagMaps([cloneA, cloneB]);
+    const md = `---
+title: X
+tags:
+  - web-dev
+  - Web_Dev
+  - webdev
+created: 2024-01-01T00:00:00.000Z
+updated: 2024-01-01T00:00:00.000Z
+---
+`;
+    const result = parseItemDocument(md, {
+      itemId: ITEM_ID,
+      vaultId: VAULT_ID,
+      tagsByName: byName,
+    });
+    expect(result.missingTagNames).toEqual([]);
+    expect(result.item.tag_ids).toEqual([cloneA.id]);
+  });
+
+  it("trims padded tag names when resolving against the catalog", () => {
     const { byName } = buildTagMaps([TAG_A]);
     const md = `---
 title: X
@@ -109,30 +142,29 @@ updated: 2024-01-01T00:00:00.000Z
       vaultId: VAULT_ID,
       tagsByName: byName,
     });
-    expect(result.tagNames).toEqual(["Focus", "Unknown"]);
-    expect(result.missingTagNames).toEqual(["Unknown"]);
+    expect(result.missingTagNames).toEqual(["  Unknown  "]);
     expect(result.item.tag_ids).toEqual([TAG_A.id]);
   });
 
-  it("deduplicates tag_ids by resolved tag id while preserving first-seen order", () => {
-    const { byName } = buildTagMaps([TAG_A, TAG_B]);
-    const md = `---
+  it("fails fast on blank frontmatter tag names", () => {
+    const { byName } = buildTagMaps([]);
+    expect(() =>
+      parseItemDocument(
+        `---
 title: X
 tags:
-  - Focus
-  - " focus "
-  - Research
-  - Focus
+  - "   "
 created: 2024-01-01T00:00:00.000Z
 updated: 2024-01-01T00:00:00.000Z
 ---
-`;
-    const result = parseItemDocumentResolved(md, {
-      itemId: ITEM_ID,
-      vaultId: VAULT_ID,
-      tagsByName: byName,
-    });
-    expect(result.item.tag_ids).toEqual([TAG_A.id, TAG_B.id]);
+`,
+        {
+          itemId: ITEM_ID,
+          vaultId: VAULT_ID,
+          tagsByName: byName,
+        },
+      ),
+    ).toThrow(/blank tag name/);
   });
 
   it("uses mtime fallbacks when FM dates are absent", () => {
@@ -221,5 +253,22 @@ body
     expect(() =>
       serializeItemDocument(sampleItem({ tag_ids: [TAG_B.id] }), "", byId),
     ).toThrow(/unknown tag_id/);
+  });
+
+  it("serializeItemDocument writes stored form for legacy catalog names (#943)", () => {
+    const legacy: Tag = {
+      id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      name: "A/B",
+      color: null,
+      created_at: "2020-01-01T00:00:00.000Z",
+    };
+    const { byId } = buildTagMaps([legacy]);
+    const md = serializeItemDocument(
+      sampleItem({ tag_ids: [legacy.id] }),
+      "body",
+      byId,
+    );
+    expect(md).toContain("- ab");
+    expect(md).not.toContain("A/B");
   });
 });

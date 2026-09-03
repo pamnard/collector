@@ -44,7 +44,7 @@ Prefer a short `description` and useful `tags` when creating or enriching an ite
 
 ## Import and assets
 
-On import, prefer attaching related assets into the item’s local media and pointing the body at those files. Hotlinking remote image hosts leaves the note dependent on the network.
+On import, prefer attaching related assets into the item’s local media (cover auto-syncs). Hotlinking remote image hosts leaves the note dependent on the network. Do not also paste that same image into `content` unless the user this turn **explicitly** asks for it in the body — attach/cover alone is enough; duplicating into the text shows the picture twice.
 
 ## Media layout
 

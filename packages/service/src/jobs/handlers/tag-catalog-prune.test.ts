@@ -139,7 +139,7 @@ describe("tagCatalogPrune job (#935)", () => {
       }),
     );
     const tagId = (await listTagsOnDisk(fs, path)).find(
-      (t) => t.name === "Gone",
+      (t) => t.name === "gone",
     )!.id;
 
     // Simulate released refs without inline prune: clear item tags in index
@@ -156,7 +156,7 @@ describe("tagCatalogPrune job (#935)", () => {
       meta.id,
     );
     expect((await listTagsOnDisk(fs, path)).map((t) => t.name)).toEqual([
-      "Gone",
+      "gone",
     ]);
 
     const jobDir = mkdtempSync(join(tmpdir(), "collector-tag-prune-jobs-"));

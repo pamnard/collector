@@ -17,6 +17,7 @@ import {
   isVaultPresentationPayload,
   openItemAffectedByEvent,
   itemLiveSignalTriggerForEvent,
+  sidebarTagsAffectedByEvent,
   sidebarSearchAffectedByEvent,
 } from "../lib/vault-presentation-affects.ts";
 import { patchFolderTreeItemCounts } from "../lib/folder-tree-count-patch.ts";
@@ -308,6 +309,55 @@ describe("sidebar / detail relevance (#756)", () => {
         folderPath: "A",
       }),
       "derivedComplete",
+    );
+  });
+
+  it("sidebar tags refetch only on count-affecting item events (#950)", () => {
+    assert.equal(
+      sidebarTagsAffectedByEvent({
+        vaultId: "v",
+        kind: "itemCreated",
+        itemId: "A/x.md",
+        folderPath: "A",
+      }),
+      true,
+    );
+    assert.equal(
+      sidebarTagsAffectedByEvent({
+        vaultId: "v",
+        kind: "itemUpserted",
+        itemId: "A/x.md",
+        folderPath: "A",
+      }),
+      true,
+    );
+    assert.equal(
+      sidebarTagsAffectedByEvent({
+        vaultId: "v",
+        kind: "itemDeleted",
+        itemId: "A/x.md",
+        folderPath: "A",
+      }),
+      true,
+    );
+    assert.equal(
+      sidebarTagsAffectedByEvent({
+        vaultId: "v",
+        kind: "itemMoved",
+        itemId: "B/x.md",
+        fromFolderPath: "A",
+        toFolderPath: "B",
+      }),
+      false,
+    );
+    assert.equal(
+      sidebarTagsAffectedByEvent({
+        vaultId: "v",
+        kind: "itemCoverChanged",
+        itemId: "A/x.md",
+        folderPath: "A",
+      }),
+      false,
     );
   });
 

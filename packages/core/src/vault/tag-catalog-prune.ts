@@ -1,11 +1,16 @@
 /**
- * Document-derived tag catalog prune / reconcile (#935).
+ * Document-derived tag catalog prune / reconcile (#935 / #943).
  *
  * Workers (or inline paths without the job port) drop catalog entries and
- * index tag rows that have zero remaining item_tags references. Mutates
+ * index tag rows that have zero remaining item_tags references. Full reconcile
+ * also merges similarity-key clones before orphan prune (#943). Mutates
  * tags.json under withTagCatalogLock (re-read before write).
  */
 import type { VaultContext } from "../adapters/types.js";
+import {
+  canonicalizeCatalogStoredForms,
+  mergeTagSimilarityClones,
+} from "./tag-catalog-similarity.js";
 import { withTagCatalogLock } from "./tag-catalog-lock.js";
 import { readTagsFile, writeTagsFile } from "./tag-io.js";
 
@@ -72,7 +77,8 @@ export async function pruneTagCatalogCandidates(
 }
 
 /**
- * Rewrite tags.json to currently referenced tags and delete orphan index rows.
+ * Merge similarity clones (#943), canonicalize catalog names to stored form,
+ * then rewrite tags.json to currently referenced tags and delete orphan index rows.
  */
 export async function reconcileTagCatalog(
   ctx: VaultContext,
@@ -80,6 +86,13 @@ export async function reconcileTagCatalog(
   vaultId: string,
 ): Promise<{ prunedTagIds: string[] }> {
   return withTagCatalogLock(vaultPath, async () => {
+    const { mergedLoserIds } = await mergeTagSimilarityClones(
+      ctx,
+      vaultPath,
+      vaultId,
+    );
+    await canonicalizeCatalogStoredForms(ctx, vaultPath, vaultId);
+
     const referenced = new Set(await ctx.index.listReferencedTagIds(vaultId));
     const file = await readTagsFile(ctx.fs, vaultPath);
     const kept = file.tags.filter((tag) => referenced.has(tag.id));
@@ -90,7 +103,7 @@ export async function reconcileTagCatalog(
     for (const tagId of orphanIndexIds) {
       await ctx.index.deleteTag(tagId);
     }
-    return { prunedTagIds: orphanIndexIds };
+    return { prunedTagIds: [...mergedLoserIds, ...orphanIndexIds] };
   });
 }
 

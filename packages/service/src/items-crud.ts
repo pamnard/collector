@@ -29,10 +29,11 @@ import {
   readItemFile,
   readItemRawMarkdown,
   resolveOrCreateInboxFolder,
+  resolveTagFromMaps,
   serializeItemDocument,
-  syncItemFromDisk,
   textLinkResolveContextFromItems,
   upsertItem,
+  writeItemCanonicalSourceMarkdown,
   writeItemRawMarkdown,
   type AdjacentItemAnchor,
 } from "@collector/core";
@@ -182,21 +183,15 @@ export function createItemsCrud(
     const { vault, path } = await deps.resolveActiveVault();
     const ctx = deps.getContext();
     const { text: normalized } = deps.normalizeMarkdown(rawMarkdown);
-    const existing = await readItemRawMarkdown(ctx.fs, path, itemId);
-    let item: ItemFile;
-    let wrote = false;
-    if (normalized !== existing) {
-      item = await writeItemRawMarkdown(
-        ctx,
-        path,
-        vault.id,
-        itemId,
-        normalized,
-      );
-      wrote = true;
+    const { item, wrote } = await writeItemCanonicalSourceMarkdown(
+      ctx,
+      path,
+      vault.id,
+      itemId,
+      normalized,
+    );
+    if (wrote) {
       await enqueueExtractAutoForItem(vault.id, path, item);
-    } else {
-      item = await syncItemFromDisk(ctx, path, vault.id, itemId);
     }
 
     if (
@@ -376,14 +371,19 @@ export function createItemsCrud(
     let tagIds = current.tag_ids;
     if (input.tags !== undefined) {
       maps = await ensureTagsByName(ctx.fs, path, input.tags, maps);
-      tagIds = input.tags.map((rawName) => {
-        const name = rawName.trim();
-        const tag = maps.byName.get(name.toLowerCase());
+      const seen = new Set<string>();
+      tagIds = [];
+      for (const rawName of input.tags) {
+        const tag = resolveTagFromMaps(maps.byName, rawName);
         if (!tag) {
-          throw new Error(`Tag not resolved after ensure: ${name}`);
+          throw new Error(`Tag not resolved after ensure: ${rawName}`);
         }
-        return tag.id;
-      });
+        if (seen.has(tag.id)) {
+          continue;
+        }
+        seen.add(tag.id);
+        tagIds.push(tag.id);
+      }
     }
 
     const nextItem: ItemFile = {

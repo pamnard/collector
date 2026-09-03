@@ -332,6 +332,58 @@ describe("itemDerivedRefresh job (#766 / #768)", () => {
     pruneSpy.mockRestore();
   });
 
+  it("media-only localize still prunes released tags from previousTagIds (#948)", async () => {
+    const localizeSpy = vi
+      .spyOn(await import("@collector/core"), "runItemDerivedLocalizeRefresh")
+      .mockResolvedValue("media");
+    const upsertSpy = vi
+      .spyOn(await import("@collector/core"), "upsertItemIndexFromVault")
+      .mockResolvedValue({ outcome: "upserted", releasedTagIds: [] });
+    const pruneSpy = vi
+      .spyOn(await import("@collector/core"), "pruneReleasedTagsAfterIndexRefresh")
+      .mockResolvedValue(undefined);
+
+    const handler = createItemDerivedRefreshHandler({
+      getContext: () =>
+        ({
+          fs: {
+            exists: async () => true,
+            stat: async () => ({ mtimeMs: samplePayload.fileMtimeMs }),
+          },
+          index: {
+            listItemFilesByIds: async () => [
+              { id: samplePayload.itemId, tag_ids: ["tag-kept"] },
+            ],
+          },
+        }) as never,
+      localizeRemoteDisplayAssets: vi.fn(),
+    });
+
+    await expect(
+      handler({
+        id: "job-media-prune",
+        type: "itemDerivedRefresh",
+        attempts: 0,
+        payload: {
+          ...samplePayload,
+          previousTagIds: ["tag-kept", "tag-released"],
+        },
+      }),
+    ).resolves.toEqual({ status: "ok" });
+
+    expect(upsertSpy).not.toHaveBeenCalled();
+    expect(pruneSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      samplePayload.vaultPath,
+      samplePayload.vaultId,
+      ["tag-released"],
+    );
+
+    localizeSpy.mockRestore();
+    upsertSpy.mockRestore();
+    pruneSpy.mockRestore();
+  });
+
   it("dedupes pending jobs for the same snapshot", async () => {
     const dir = mkdtempSync(join(tmpdir(), "collector-item-derived-job-"));
     dirs.push(dir);

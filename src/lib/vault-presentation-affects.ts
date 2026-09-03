@@ -142,6 +142,17 @@ export function sidebarSearchAffectedByEvent(
   );
 }
 
+/** Sidebar tag list refetches on item mutations that can change tag counts (#950). */
+export function sidebarTagsAffectedByEvent(
+  event: VaultPresentationChangedPayload,
+): boolean {
+  return (
+    event.kind === "itemCreated" ||
+    event.kind === "itemUpserted" ||
+    event.kind === "itemDeleted"
+  );
+}
+
 /** Detail / teasers / backlinks / adjacent reload only when itemId matches. */
 export function openItemAffectedByEvent(
   openItemId: string | null | undefined,

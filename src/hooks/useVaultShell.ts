@@ -9,6 +9,7 @@ import {
   folderCountPatchPlanForEvent,
   mergeFolderCountDeltas,
   itemLiveSignalTriggerForEvent,
+  sidebarTagsAffectedByEvent,
   sidebarSearchAffectedByEvent,
 } from "../lib/vault-presentation-affects";
 import { itemIdToPruneFromPresentationEvent } from "../lib/presentation-prune-item-id";
@@ -16,6 +17,7 @@ import {
   emitFolderTreeCountDeltas,
   emitFolderTreeRecount,
 } from "../lib/folder-tree-live";
+import { emitTagListRefresh } from "../lib/tag-list-live";
 import {
   createItemLeavingAfterDelete,
   type ItemLeavingAfterDelete,
@@ -85,6 +87,7 @@ export function useVaultShell(): UseVaultShellResult {
 
       const deltas = new Map<string, number>();
       let needRecount = false;
+      let needTagRefresh = false;
       let presentationPruneId: string | undefined;
       for (const event of events) {
         const plan = folderCountPatchPlanForEvent(event);
@@ -112,6 +115,10 @@ export function useVaultShell(): UseVaultShellResult {
         if (sidebarSearchAffectedByEvent("x", event)) {
           setSidebarSearchLiveSeq((value) => value + 1);
         }
+
+        if (sidebarTagsAffectedByEvent(event)) {
+          needTagRefresh = true;
+        }
       }
 
       if (presentationPruneId) {
@@ -125,6 +132,9 @@ export function useVaultShell(): UseVaultShellResult {
       }
       if (needRecount) {
         emitFolderTreeRecount();
+      }
+      if (needTagRefresh) {
+        emitTagListRefresh();
       }
     },
     [],
