@@ -120,6 +120,7 @@ export {
   deleteItem,
   listItemsByIds,
   listItemsOnDisk,
+  syncItemFromDisk,
   streamItemsByIds,
   upsertItem,
   writeItemRawMarkdown,

@@ -31,6 +31,8 @@ export interface ParseItemDocumentContext {
 export interface ParsedItemDocument {
   item: ItemFile;
   body: string;
+  /** Tag names from frontmatter in file order / stored form. */
+  tagNames: string[];
   /** Tag names in FM that were not in tagsByName (caller must create). */
   missingTagNames: string[];
 }
@@ -126,6 +128,7 @@ export function parseItemDocument(
   return {
     item,
     body: parsed.body,
+    tagNames,
     missingTagNames,
   };
 }

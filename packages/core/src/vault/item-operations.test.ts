@@ -15,14 +15,17 @@ import {
   deleteItem,
   listItemsByIds,
   listItemsOnDisk,
+  syncItemFromDisk,
   streamItemsByIds,
   upsertItem,
   writeItemRawMarkdown,
 } from "../vault/item-operations.js";
 import { readItemRawMarkdown } from "../vault/item-io.js";
+import { readTagsFile } from "../vault/tag-io.js";
 import { itemMarkdownPath, itemMediaRoot } from "../vault/paths.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import { attachMediaFile } from "../vault/media-operations.js";
+import { seedTagFromDocumentWritePath } from "../testing/seed-tag.js";
 
 class CountingFileSystemAdapter implements FileSystemAdapter {
   statCount = 0;
@@ -257,6 +260,73 @@ describe("item operations", () => {
       { vaultId: meta.id, itemIds: [itemId] },
       { vaultId: meta.id, itemIds: [itemId] },
     ]);
+  });
+
+  it("syncs catalog and index from existing file bytes without rewriting markdown", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-sync-file-first-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, {
+      name: "Vault",
+    });
+
+    const existingTag = await seedTagFromDocumentWritePath(
+      ctx,
+      path,
+      meta.id,
+      "Index",
+    );
+    const itemId = `${createId()}.md`;
+    const created = "2024-01-01T00:00:00.000Z";
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Original",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        created_at: created,
+        updated_at: created,
+      },
+      content: "body",
+    });
+
+    const raw = [
+      "---",
+      "title: Original",
+      "type: note",
+      "tags:",
+      "  - index",
+      "content_revision: 1",
+      `created: ${created}`,
+      `updated: ${created}`,
+      "---",
+      "",
+      "body",
+      "",
+    ].join("\n");
+    const docPath = itemMarkdownPath(path, itemId);
+    await fs.writeText(docPath, raw);
+
+    const synced = await syncItemFromDisk(ctx, path, meta.id, itemId);
+    expect(synced.tag_ids).toEqual([existingTag.id]);
+    expect(await readItemRawMarkdown(fs, path, itemId)).toBe(raw);
+
+    const tagsFile = await readTagsFile(fs, path);
+    expect(tagsFile.tags).toEqual([
+      expect.objectContaining({
+        id: existingTag.id,
+        name: "index",
+      }),
+    ]);
+
+    const indexed = await listItemsByIds(ctx, path, [itemId]);
+    expect(indexed[0]?.tag_ids).toEqual([existingTag.id]);
   });
 
   it("listItemsByIds preserves order and skips missing items", async () => {

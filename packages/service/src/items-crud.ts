@@ -30,6 +30,7 @@ import {
   readItemRawMarkdown,
   resolveOrCreateInboxFolder,
   serializeItemDocument,
+  syncItemFromDisk,
   textLinkResolveContextFromItems,
   upsertItem,
   writeItemRawMarkdown,
@@ -195,7 +196,7 @@ export function createItemsCrud(
       wrote = true;
       await enqueueExtractAutoForItem(vault.id, path, item);
     } else {
-      item = await readItemFile(ctx.fs, path, itemId, vault.id);
+      item = await syncItemFromDisk(ctx, path, vault.id, itemId);
     }
 
     if (

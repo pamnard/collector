@@ -110,17 +110,23 @@ export async function ensureTagsByName(
   }
 
   let maps = current ?? (await loadTagMaps(fs, vaultPath));
-  const missing: string[] = [];
+  const desiredByKey = new Map<string, string>();
+  let needsWrite = false;
   for (const rawName of names) {
     const normalized = rawName.trim();
     if (!normalized) {
       throw new Error("Tag name must be non-empty");
     }
-    if (!maps.byName.has(normalized.toLowerCase())) {
-      missing.push(normalized);
+    const key = normalized.toLowerCase();
+    if (!desiredByKey.has(key)) {
+      desiredByKey.set(key, normalized);
+    }
+    const existing = maps.byName.get(key);
+    if (!existing || existing.name !== normalized) {
+      needsWrite = true;
     }
   }
-  if (missing.length === 0) {
+  if (!needsWrite) {
     return maps;
   }
 
@@ -129,9 +135,13 @@ export async function ensureTagsByName(
     maps = buildTagMaps(file.tags);
     let mutated = false;
 
-    for (const normalized of missing) {
-      const key = normalized.toLowerCase();
-      if (maps.byName.has(key)) {
+    for (const [key, normalized] of desiredByKey.entries()) {
+      const existing = maps.byName.get(key);
+      if (existing) {
+        if (existing.name !== normalized) {
+          existing.name = normalized;
+          mutated = true;
+        }
         continue;
       }
       const tag: Tag = {
@@ -142,11 +152,11 @@ export async function ensureTagsByName(
       };
       file.tags.push(tag);
       mutated = true;
-      maps = buildTagMaps(file.tags);
     }
 
     if (mutated) {
       await writeTagsFile(fs, vaultPath, file);
+      maps = buildTagMaps(file.tags);
     }
     return maps;
   });
@@ -194,7 +204,11 @@ export async function itemFileFromDocumentMarkdown(
     fallbackCreatedAt: fallbackIso,
     fallbackUpdatedAt: fallbackIso,
   });
-  if (first.missingTagNames.length === 0) {
+  const needsCatalogSync = first.tagNames.some((name) => {
+    const tag = maps.byName.get(name.toLowerCase());
+    return !tag || tag.name !== name;
+  });
+  if (first.missingTagNames.length === 0 && !needsCatalogSync) {
     return first.item;
   }
   if (tagMaps) {
@@ -202,14 +216,14 @@ export async function itemFileFromDocumentMarkdown(
       const next = await ensureTagsByName(
         fs,
         vaultPath,
-        first.missingTagNames,
+        first.tagNames,
         tagMaps.maps,
       );
       tagMaps.maps = next;
       return next;
     });
   } else {
-    maps = await ensureTagsByName(fs, vaultPath, first.missingTagNames, maps);
+    maps = await ensureTagsByName(fs, vaultPath, first.tagNames, maps);
   }
   return parseItemDocumentResolved(raw, {
     itemId,

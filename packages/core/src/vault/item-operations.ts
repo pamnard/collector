@@ -76,6 +76,34 @@ async function pinItemTagsToIndex(
   );
 }
 
+async function syncParsedItemFromRawMarkdown(
+  ctx: VaultContext,
+  vaultPath: string,
+  vaultId: string,
+  itemId: string,
+  raw: string,
+  fileMtimeMs: number,
+  options?: { deferIndexRefresh?: boolean },
+): Promise<ItemFile> {
+  const item = await itemFileFromDocumentMarkdown(
+    ctx.fs,
+    vaultPath,
+    vaultId,
+    itemId,
+    raw,
+    fileMtimeMs,
+  );
+
+  await pinItemTagsToIndex(ctx, vaultPath, vaultId, item, fileMtimeMs, {
+    preserveIndexSnapshot: options?.deferIndexRefresh === true,
+  });
+
+  if (!options?.deferIndexRefresh) {
+    await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);
+  }
+  return item;
+}
+
 export async function upsertItem(
   ctx: VaultContext,
   vaultPath: string,
@@ -143,15 +171,6 @@ export async function writeItemRawMarkdown(
     throw new Error(`Cannot write item document ${id}: missing file mtime`);
   }
 
-  const item = await itemFileFromDocumentMarkdown(
-    ctx.fs,
-    vaultPath,
-    vaultId,
-    id,
-    raw,
-    existingStat.mtimeMs,
-  );
-
   await ctx.fs.writeText(docPath, raw);
   await ensureFileMtimeAdvanced(ctx.fs, docPath, existingStat.mtimeMs);
   await ctx.fs.touch(vaultPath);
@@ -160,17 +179,49 @@ export async function writeItemRawMarkdown(
   if (afterStat.mtimeMs === null) {
     throw new Error(`Cannot write item document ${id}: missing file mtime after write`);
   }
+  return syncParsedItemFromRawMarkdown(
+    ctx,
+    vaultPath,
+    vaultId,
+    id,
+    raw,
+    afterStat.mtimeMs,
+    options,
+  );
+}
 
-  // Pin tags before return so concurrent full tagCatalogPrune reconcile cannot
-  // drop freshly ensured catalog rows that still have zero item_tags refs.
-  await pinItemTagsToIndex(ctx, vaultPath, vaultId, item, afterStat.mtimeMs, {
-    preserveIndexSnapshot: options?.deferIndexRefresh === true,
-  });
-
-  if (!options?.deferIndexRefresh) {
-    await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);
+/**
+ * Re-parse the existing vault `.md` bytes and sync catalog + index without
+ * rewriting the document. Used when a higher layer persists "no-op" bytes but
+ * still needs file-first tag/catalog/index reconciliation.
+ */
+export async function syncItemFromDisk(
+  ctx: VaultContext,
+  vaultPath: string,
+  vaultId: string,
+  itemId: string,
+  options?: { deferIndexRefresh?: boolean },
+): Promise<ItemFile> {
+  const id = normalizeRelativePath(itemId);
+  const docPath = itemMarkdownPath(vaultPath, id);
+  if (!(await ctx.fs.exists(docPath))) {
+    throw new Error(`Item not found: ${id}`);
   }
-  return item;
+
+  const fileStat = await ctx.fs.stat(docPath);
+  if (fileStat.mtimeMs === null) {
+    throw new Error(`Cannot sync item document ${id}: missing file mtime`);
+  }
+  const raw = await ctx.fs.readText(docPath);
+  return syncParsedItemFromRawMarkdown(
+    ctx,
+    vaultPath,
+    vaultId,
+    id,
+    raw,
+    fileStat.mtimeMs,
+    options,
+  );
 }
 
 export async function deleteItem(
