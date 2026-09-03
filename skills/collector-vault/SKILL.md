@@ -87,14 +87,16 @@ Minimal invariant in the main skill:
 - do not duplicate the article title in `content`
 - preserve useful links as working links
 
-### Site-specific extract tools (Instagram today)
+### Site-specific extract tools (Instagram, Pinterest, YouTube)
 
-Collector has a separate pair of tools that only know a few sites (right now: **Instagram**):
+Collector has a separate pair of tools that only know a few sites (**Instagram**, **Pinterest**, **YouTube**):
 
 - `discover-extract-candidates` / `collector_discover_extract_candidates` — looks in the note for links those tools understand
 - `extract-item-candidate` / `collector_extract_item_candidate` — pulls that site’s content into the note
 
 Use them **only** for those sites (or when discover actually returns a match). If discover returns an empty list, ignore these tools and import the page yourself as above. Do not talk about these tools to the user when they do not apply.
+
+**YouTube:** extract uses the bundled `yt-dlp` and reads **Chrome/Chromium cookies** from the machine (YouTube login session) to pass bot checks. Override browser/profile with `COLLECTOR_YT_COOKIES_BROWSER` (e.g. `chrome:Profile 3`) when needed. Do not log cookie contents.
 
 ### Import: local assets
 

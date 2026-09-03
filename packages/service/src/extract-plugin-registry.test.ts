@@ -30,6 +30,10 @@ import {
   PINTEREST_PLUGIN_ID,
   createPinterestExtractorPlugin,
 } from "./extract/pinterest/pinterest-extractor-plugin.js";
+import {
+  YOUTUBE_PLUGIN_ID,
+  createYoutubeExtractorPlugin,
+} from "./extract/youtube/youtube-extractor-plugin.js";
 import { createExtractPluginRegistry } from "./extract-plugin-registry.js";
 import { createItemsCrud } from "./items-crud.js";
 
@@ -46,11 +50,16 @@ const PINTEREST_FIXTURES = join(
 );
 
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+const SAMPLE_MP4 = new Uint8Array([
+  0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70,
+]);
 
 const OK_SHORTCODE = "CxImage01ab";
 const OK_URL = `https://www.instagram.com/p/${OK_SHORTCODE}/`;
 const OK_PIN_ID = "111222333444";
 const OK_PIN_URL = `https://www.pinterest.com/pin/${OK_PIN_ID}/`;
+const OK_YT_ID = "dQw4w9WgXcQ";
+const OK_YT_URL = `https://www.youtube.com/watch?v=${OK_YT_ID}`;
 
 function readFixture(name: string): string {
   return readFileSync(join(FIXTURES, name), "utf8");
@@ -121,7 +130,12 @@ describe("createExtractPluginRegistry (#849 / #899)", () => {
   async function openHarness(input: {
     body: string;
     url?: string | null;
-    catalog?: "instagram" | "pinterest" | "empty" | "frontmatter-probe";
+    catalog?:
+      | "instagram"
+      | "pinterest"
+      | "youtube"
+      | "empty"
+      | "frontmatter-probe";
   }): Promise<{
     registry: ReturnType<typeof createExtractPluginRegistry>;
     itemId: string;
@@ -210,6 +224,25 @@ describe("createExtractPluginRegistry (#849 / #899)", () => {
           updateItem: (id, patch) => crud.updateItem(id, patch),
           attachMediaFiles: attachFiles,
           fetchImpl: createPinterestFixtureFetch(),
+        }),
+      ];
+    } else if (mode === "youtube") {
+      catalog = [
+        createYoutubeExtractorPlugin({
+          getItemById: (id) => crud.getItemById(id),
+          updateItem: (id, patch) => crud.updateItem(id, patch),
+          attachMediaFiles: attachFiles,
+          fetchYoutubeImpl: async () => ({
+            ok: true,
+            value: {
+              sourceUrl: OK_YT_URL,
+              videoId: OK_YT_ID,
+              title: "Never Gonna Give You Up",
+              transcript: "We're no strangers to love",
+              videoBytes: SAMPLE_MP4,
+              videoFilename: `${OK_YT_ID}.mp4`,
+            },
+          }),
         }),
       ];
     } else if (mode === "frontmatter-probe") {
@@ -353,6 +386,39 @@ describe("createExtractPluginRegistry (#849 / #899)", () => {
     expect(media[0]!.filename).toBe(`${OK_PIN_ID}-1.jpg`);
     expect(await fs.exists(media[0]!.absolute_path)).toBe(true);
     expect(await fs.readBinary(media[0]!.absolute_path)).toEqual(JPEG);
+  });
+
+  it("extract writes YouTube fixture into vault note + media (#317)", async () => {
+    const h = await openHarness({
+      body: `Keep preamble\n\n${OK_YT_URL}\n`,
+      catalog: "youtube",
+    });
+    const candidates = await h.registry.discoverExtractCandidates(h.itemId);
+    expect(candidates).toEqual([
+      {
+        extractorId: YOUTUBE_PLUGIN_ID,
+        url: OK_YT_URL,
+        meta: { shortcode: OK_YT_ID },
+      },
+    ]);
+
+    await h.registry.extractItemCandidate(h.itemId, candidates[0]!);
+
+    const item = await readItemFile(fs, h.vaultPath, h.itemId, h.vaultId);
+    expect(item.title).toBe("Never Gonna Give You Up");
+    expect(item.url).toBe(OK_YT_URL);
+
+    const raw = await readItemRawMarkdown(fs, h.vaultPath, h.itemId);
+    expect(raw).toContain("Keep preamble");
+    expect(raw).toContain("We're no strangers to love");
+    const body = raw.replace(/^---[\s\S]*?---\n/, "");
+    expect(body).not.toContain(OK_YT_URL);
+
+    const media = await listItemMediaWithPaths(h.ctx, h.vaultPath, h.itemId);
+    expect(media).toHaveLength(1);
+    expect(media[0]!.filename).toBe(`${OK_YT_ID}.mp4`);
+    expect(await fs.exists(media[0]!.absolute_path)).toBe(true);
+    expect(await fs.readBinary(media[0]!.absolute_path)).toEqual(SAMPLE_MP4);
   });
 
   it("unknown extractorId fails loudly", async () => {

@@ -18,6 +18,8 @@ SHARP_VERSION="${COLLECTOR_SHARP_VERSION:-0.34.2}"
 NAPI_RS_KEYRING_VERSION="${COLLECTOR_NAPI_RS_KEYRING_VERSION:-1.3.0}"
 # Static ffmpeg for video cover.webp extract (#267). Override to pin / skip fetch.
 FFMPEG_STATIC_VERSION="${COLLECTOR_FFMPEG_STATIC_VERSION:-5.3.0}"
+# Standalone yt-dlp for YouTube extract (#317). Override to pin.
+YT_DLP_VERSION="${COLLECTOR_YT_DLP_VERSION:-2026.08.19}"
 
 HOST_OUT="${COLLECTOR_HOST_OUT:-$ROOT/dist/collector-release/collector-service-host}"
 CACHE_ROOT="${COLLECTOR_NODE_CACHE:-$ROOT/.cache/collector-node/node-v${NODE_VERSION}}"
@@ -361,6 +363,57 @@ if [[ ! -f "$HOST_OUT/bin/${FFMPEG_BIN_NAME}" ]]; then
   exit 1
 fi
 
+echo "==> fetch yt-dlp@${YT_DLP_VERSION} → $HOST_OUT/bin (#317)"
+# Shared cache with packages/service/scripts/ensure-host-ytdlp.mjs
+YT_DLP_FETCH_DIR="$ROOT/.cache/collector-node/yt-dlp-${PLATFORM_ARCH}-v${YT_DLP_VERSION}"
+YT_DLP_BIN_NAME="yt-dlp"
+YT_DLP_ASSET=""
+YT_DLP_SHA256=""
+case "$PLATFORM_ARCH" in
+  linux-x64)
+    YT_DLP_ASSET="yt-dlp_linux"
+    YT_DLP_SHA256="58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a"
+    ;;
+  linux-arm64)
+    YT_DLP_ASSET="yt-dlp_linux_aarch64"
+    YT_DLP_SHA256="b16e4dab368a816cd05d477d698a605a6ae87ccee1c8ffd38fa21d7254141fcc"
+    ;;
+  darwin-*)
+    YT_DLP_ASSET="yt-dlp_macos"
+    YT_DLP_SHA256="0f192b7ec147ab6288885d6351d9ab67367640029b4377576ef46dd79cf7b202"
+    ;;
+  win-*)
+    YT_DLP_BIN_NAME="yt-dlp.exe"
+    YT_DLP_ASSET="yt-dlp.exe"
+    YT_DLP_SHA256="66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a"
+    ;;
+  *)
+    echo "FAIL: no yt-dlp asset mapping for $PLATFORM_ARCH" >&2
+    exit 1
+    ;;
+esac
+mkdir -p "$YT_DLP_FETCH_DIR"
+YT_DLP_CACHE_BIN="$YT_DLP_FETCH_DIR/${YT_DLP_BIN_NAME}"
+if [[ ! -f "$YT_DLP_CACHE_BIN" ]]; then
+  YT_DLP_URL="https://github.com/yt-dlp/yt-dlp/releases/download/${YT_DLP_VERSION}/${YT_DLP_ASSET}"
+  download "$YT_DLP_URL" "$YT_DLP_CACHE_BIN"
+  chmod +x "$YT_DLP_CACHE_BIN" 2>/dev/null || true
+fi
+ACTUAL_SHA="$(sha256sum "$YT_DLP_CACHE_BIN" | awk '{print $1}')"
+if [[ "$ACTUAL_SHA" != "$YT_DLP_SHA256" ]]; then
+  echo "FAIL: yt-dlp sha256 mismatch for $YT_DLP_CACHE_BIN" >&2
+  echo "  got:      $ACTUAL_SHA" >&2
+  echo "  expected: $YT_DLP_SHA256" >&2
+  exit 1
+fi
+mkdir -p "$HOST_OUT/bin"
+cp -f "$YT_DLP_CACHE_BIN" "$HOST_OUT/bin/${YT_DLP_BIN_NAME}"
+chmod +x "$HOST_OUT/bin/${YT_DLP_BIN_NAME}" 2>/dev/null || true
+if [[ ! -f "$HOST_OUT/bin/${YT_DLP_BIN_NAME}" ]]; then
+  echo "FAIL: missing bundled yt-dlp at $HOST_OUT/bin/${YT_DLP_BIN_NAME}" >&2
+  exit 1
+fi
+
 echo "==> ABI probe: open :memory: DB + sharp with bundled Node"
 (
   cd "$HOST_OUT"
@@ -368,6 +421,7 @@ echo "==> ABI probe: open :memory: DB + sharp with bundled Node"
   "./${NODE_BIN_NAME}" -e "require('sharp'); console.log('sharp ok')"
   "./${NODE_BIN_NAME}" -e "require('@napi-rs/keyring'); console.log('keyring ok')"
   "./bin/${FFMPEG_BIN_NAME}" -version | head -1
+  "./bin/${YT_DLP_BIN_NAME}" --version | head -1
 )
 
 echo "==> smoke: bundled host --help"
@@ -445,6 +499,10 @@ if [[ ! -d "$HOST_OUT/node_modules/@napi-rs/keyring" ]]; then
 fi
 if [[ ! -f "$HOST_OUT/bin/${FFMPEG_BIN_NAME}" ]]; then
   echo "FAIL: missing ffmpeg under $HOST_OUT/bin" >&2
+  exit 1
+fi
+if [[ ! -f "$HOST_OUT/bin/${YT_DLP_BIN_NAME}" ]]; then
+  echo "FAIL: missing yt-dlp under $HOST_OUT/bin" >&2
   exit 1
 fi
 

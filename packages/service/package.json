@@ -26,7 +26,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node ./scripts/copy-host-assets.mjs",
+    "build": "tsc -p tsconfig.json && node ./scripts/copy-host-assets.mjs && node ./scripts/ensure-host-ytdlp.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "serve": "node ./dist/host/cli.js serve"
