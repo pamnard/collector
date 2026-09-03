@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   SqlVaultIndexStore,
   createVault,
+  deleteItem,
   joinSegments,
   readItemFile,
   upsertItem,
@@ -147,6 +148,54 @@ describe("createTagsFoldersService", () => {
     expect(tags).toHaveLength(1);
     expect(tags[0]?.name).toBe("research");
     expect(tags[0]?.item_count).toBe(1);
+  });
+
+  it("listTags drops a tag after deleting its last item (#950)", async () => {
+    const { ctx, meta, path } = await openVault();
+    const { service } = createService({ ctx, meta, path });
+
+    const itemId = `${crypto.randomUUID()}.md`;
+    const createdAt = "2024-01-01T00:00:00.000Z";
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Tagged note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: createdAt,
+        updated_at: createdAt,
+      },
+      content: "body",
+    });
+
+    await writeItemRawMarkdown(
+      ctx,
+      path,
+      meta.id,
+      itemId,
+      noteMarkdown({
+        tagsYaml: "tags:\n  - Research",
+        contentRevision: 2,
+        createdAt,
+      }),
+    );
+    expect(await service.listTags()).toEqual([
+      expect.objectContaining({ name: "research", item_count: 1 }),
+    ]);
+
+    await deleteItem(ctx, path, itemId);
+
+    expect(await service.listTags()).toEqual([]);
   });
 
   it("create/rename/delete folder persist on disk + index and emit after kickoff (#756/#758)", async () => {
