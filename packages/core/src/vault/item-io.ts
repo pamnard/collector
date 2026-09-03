@@ -31,7 +31,7 @@ import {
   normalizeRelativePath,
   vaultMetaPath,
 } from "./paths.js";
-import { normalizeTagName } from "./tag-normalize.js";
+import { normalizeTagName, tagSimilarityKey, tagStoredForm } from "./tag-normalize.js";
 import { readTagsFile, writeTagsFile } from "./tag-io.js";
 import { withTagCatalogLock } from "./tag-catalog-lock.js";
 
@@ -96,10 +96,10 @@ export async function loadTagMaps(
 /**
  * Ensure tag names exist in tags.json; returns refreshed maps.
  * Creates new Tag records for missing similarity keys (portable import).
- * Names are normalized (#943): lookup by similarity key; new rows use stored form.
- * When `current` already has every key, avoids a disk read (index sync).
- * When creating, re-reads disk under the vault catalog lock so a stale map
- * cannot clobber tags added concurrently by another document write or prune (#935).
+ * Names are normalized (#943): lookup by similarity key; catalog + new rows
+ * use stored form (legacy names like `A/B` are rewritten to `ab` on touch).
+ * When creating/renaming, re-reads disk under the vault catalog lock so a stale
+ * map cannot clobber tags added concurrently by another document write or prune (#935).
  */
 export async function ensureTagsByName(
   fs: FileSystemAdapter,
@@ -113,14 +113,21 @@ export async function ensureTagsByName(
 
   let maps = current ?? (await loadTagMaps(fs, vaultPath));
   const missingByKey = new Map<string, string>();
+  let needsRename = false;
   for (const rawName of names) {
     const { storedForm, similarityKey } = normalizeTagName(rawName);
-    if (maps.byName.has(similarityKey) || missingByKey.has(similarityKey)) {
+    const existing = maps.byName.get(similarityKey);
+    if (!existing) {
+      if (!missingByKey.has(similarityKey)) {
+        missingByKey.set(similarityKey, storedForm);
+      }
       continue;
     }
-    missingByKey.set(similarityKey, storedForm);
+    if (existing.name !== tagStoredForm(existing.name)) {
+      needsRename = true;
+    }
   }
-  if (missingByKey.size === 0) {
+  if (missingByKey.size === 0 && !needsRename) {
     return maps;
   }
 
@@ -128,6 +135,23 @@ export async function ensureTagsByName(
     const file = await readTagsFile(fs, vaultPath);
     maps = buildTagMaps(file.tags);
     let mutated = false;
+
+    for (let i = 0; i < file.tags.length; i++) {
+      const tag = file.tags[i]!;
+      const stored = tagStoredForm(tag.name);
+      if (tag.name === stored) {
+        continue;
+      }
+      const touched = names.some(
+        (raw) => normalizeTagName(raw).similarityKey === tagSimilarityKey(tag.name),
+      );
+      if (!touched) {
+        continue;
+      }
+      file.tags[i] = { ...tag, name: stored };
+      mutated = true;
+    }
+    maps = buildTagMaps(file.tags);
 
     for (const [similarityKey, storedForm] of missingByKey) {
       if (maps.byName.has(similarityKey)) {
@@ -147,6 +171,7 @@ export async function ensureTagsByName(
 
     if (mutated) {
       await writeTagsFile(fs, vaultPath, file);
+      maps = buildTagMaps(file.tags);
     }
     return maps;
   });
@@ -194,22 +219,28 @@ export async function itemFileFromDocumentMarkdown(
     fallbackCreatedAt: fallbackIso,
     fallbackUpdatedAt: fallbackIso,
   });
-  if (first.missingTagNames.length === 0) {
-    return first.item;
+  const namesToEnsure = [...first.missingTagNames];
+  for (const tagId of first.item.tag_ids) {
+    const tag = maps.byId.get(tagId);
+    if (tag && tag.name !== tagStoredForm(tag.name)) {
+      namesToEnsure.push(tag.name);
+    }
   }
-  if (tagMaps) {
-    maps = await enqueueTagEnsure(tagMaps, async () => {
-      const next = await ensureTagsByName(
-        fs,
-        vaultPath,
-        first.missingTagNames,
-        tagMaps.maps,
-      );
-      tagMaps.maps = next;
-      return next;
-    });
-  } else {
-    maps = await ensureTagsByName(fs, vaultPath, first.missingTagNames, maps);
+  if (namesToEnsure.length > 0) {
+    if (tagMaps) {
+      maps = await enqueueTagEnsure(tagMaps, async () => {
+        const next = await ensureTagsByName(
+          fs,
+          vaultPath,
+          namesToEnsure,
+          tagMaps.maps,
+        );
+        tagMaps.maps = next;
+        return next;
+      });
+    } else {
+      maps = await ensureTagsByName(fs, vaultPath, namesToEnsure, maps);
+    }
   }
   return parseItemDocumentResolved(raw, {
     itemId,
@@ -271,7 +302,11 @@ export async function writeItemDocument(
   vaultRootPath: string,
   item: ItemFile,
   body: string,
-  options?: { tagsById?: Map<string, Tag> },
+  options?: {
+    tagsById?: Map<string, Tag>;
+    /** Caller already holds withTagCatalogLock for this vault. */
+    assumeCatalogLocked?: boolean;
+  },
 ): Promise<void> {
   const parsed = itemFileSchema.parse({
     ...item,
@@ -279,8 +314,40 @@ export async function writeItemDocument(
     folder_path: folderPathFromItemPath(item.id),
   });
   await ensureParentDir(fs, vaultRootPath, parsed.id);
-  const tagsById =
-    options?.tagsById ?? (await loadTagMaps(fs, vaultRootPath)).byId;
+  let tagsById: Map<string, Tag>;
+  if (options?.assumeCatalogLocked) {
+    if (!options.tagsById) {
+      throw new Error(
+        `writeItemDocument(${parsed.id}): assumeCatalogLocked requires tagsById`,
+      );
+    }
+    tagsById = options.tagsById;
+    for (const tagId of parsed.tag_ids) {
+      if (!tagsById.has(tagId)) {
+        throw new Error(
+          `Cannot write item ${parsed.id}: unknown tag_id ${tagId}`,
+        );
+      }
+    }
+  } else {
+    let maps = options?.tagsById
+      ? buildTagMaps([...options.tagsById.values()])
+      : await loadTagMaps(fs, vaultRootPath);
+    const names: string[] = [];
+    for (const tagId of parsed.tag_ids) {
+      const tag = maps.byId.get(tagId);
+      if (!tag) {
+        throw new Error(
+          `Cannot write item ${parsed.id}: unknown tag_id ${tagId}`,
+        );
+      }
+      names.push(tag.name);
+    }
+    if (names.length > 0) {
+      maps = await ensureTagsByName(fs, vaultRootPath, names, maps);
+    }
+    tagsById = maps.byId;
+  }
   const markdown = serializeItemDocument(parsed, body, tagsById);
   const docPath = itemMarkdownPath(vaultRootPath, parsed.id);
   const before = await fs.stat(docPath);

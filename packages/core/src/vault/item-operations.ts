@@ -1,10 +1,13 @@
 import type { ItemFile } from "@collector/shared";
 import type { UpsertItemInput, VaultContext } from "../adapters/types.js";
 import { nowIso } from "../util/ids.js";
+import { serializeItemDocument } from "./item-document.js";
+import { parseDocumentMarkdown } from "./frontmatter.js";
 import {
   itemFileFromDocumentMarkdown,
   loadTagMaps,
   readItemFile,
+  readItemRawMarkdown,
   readVaultMeta,
   writeItemDocument,
   writeItemSourceRef,
@@ -181,6 +184,71 @@ export async function writeItemRawMarkdown(
   }
   await pruneReleasedTagsAfterIndexRefresh(ctx, vaultPath, vaultId, released);
   return item;
+}
+
+/**
+ * UI source-editor save: parse frontmatter, ensure/normalize tags (#943),
+ * re-serialize canonical frontmatter, write only when bytes differ from disk.
+ * Import/sync paths keep using writeItemRawMarkdown (raw bytes contract).
+ */
+export async function writeItemCanonicalSourceMarkdown(
+  ctx: VaultContext,
+  vaultPath: string,
+  vaultId: string,
+  itemId: string,
+  raw: string,
+  options?: { deferIndexRefresh?: boolean },
+): Promise<{ item: ItemFile; wrote: boolean }> {
+  const id = normalizeRelativePath(itemId);
+  const docPath = itemMarkdownPath(vaultPath, id);
+  if (!(await ctx.fs.exists(docPath))) {
+    throw new Error(`Item not found: ${id}`);
+  }
+
+  const existingStat = await ctx.fs.stat(docPath);
+  if (existingStat.mtimeMs === null) {
+    throw new Error(`Cannot write item document ${id}: missing file mtime`);
+  }
+
+  const existing = await readItemRawMarkdown(ctx.fs, vaultPath, id);
+  const item = await itemFileFromDocumentMarkdown(
+    ctx.fs,
+    vaultPath,
+    vaultId,
+    id,
+    raw,
+    existingStat.mtimeMs,
+  );
+  const body = parseDocumentMarkdown(raw).body;
+  const maps = await loadTagMaps(ctx.fs, vaultPath);
+  const canonical = serializeItemDocument(item, body, maps.byId);
+
+  if (canonical === existing) {
+    return { item, wrote: false };
+  }
+
+  await writeItemDocument(ctx.fs, vaultPath, item, body);
+  await ensureFileMtimeAdvanced(ctx.fs, docPath, existingStat.mtimeMs);
+  await ctx.fs.touch(vaultPath);
+
+  const afterStat = await ctx.fs.stat(docPath);
+  if (afterStat.mtimeMs === null) {
+    throw new Error(
+      `Cannot write item document ${id}: missing file mtime after write`,
+    );
+  }
+
+  const [beforeItem] = await ctx.index.listItemFilesByIds(vaultId, [id]);
+  const released = releasedTagIdsFromChange(beforeItem?.tag_ids, item.tag_ids);
+  await pinItemTagsToIndex(ctx, vaultPath, vaultId, item, afterStat.mtimeMs, {
+    preserveIndexSnapshot: options?.deferIndexRefresh === true,
+  });
+
+  if (!options?.deferIndexRefresh) {
+    await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);
+  }
+  await pruneReleasedTagsAfterIndexRefresh(ctx, vaultPath, vaultId, released);
+  return { item, wrote: true };
 }
 
 export async function deleteItem(

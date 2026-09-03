@@ -1,13 +1,14 @@
 /**
  * Tag name normalization + similarity-key resolve (#943).
  *
- * Invariant: at most one catalog tag per similarity key.
- * New writes store the cleaned form; lookup merges separator/casing clones.
+ * Invariant: at most one catalog tag per similarity key, and every persisted
+ * name (catalog + frontmatter) is the cleaned stored form — never raw input
+ * like `A/B` or `Foo Bar!`.
  */
 import type { Tag } from "@collector/shared";
 
 export type NormalizedTagName = {
-  /** Catalog name for newly created tags. */
+  /** Catalog + frontmatter name. */
   storedForm: string;
   /** Match key: storedForm with `-` and `_` removed. */
   similarityKey: string;
@@ -36,6 +37,11 @@ export function normalizeTagName(raw: string): NormalizedTagName {
 /** Similarity key for a catalog or input name (same pipeline as normalize). */
 export function tagSimilarityKey(name: string): string {
   return normalizeTagName(name).similarityKey;
+}
+
+/** Stored form for an existing catalog name (rename legacy rows onto the pipeline). */
+export function tagStoredForm(name: string): string {
+  return normalizeTagName(name).storedForm;
 }
 
 /**

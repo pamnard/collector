@@ -589,6 +589,79 @@ describe("tag catalog prune / reconcile (#935)", () => {
     expect(names).not.toContain("stale");
   });
 
+  it("full reconcile canonicalizes legacy catalog names to stored form (#943)", async () => {
+    const { ctx, meta, path } = await openVault();
+    const legacyId = createId();
+    const createdAt = "2024-01-01T00:00:00.000Z";
+    await writeTagsFile(fs, path, {
+      tags: [
+        {
+          id: legacyId,
+          name: "A/B",
+          color: null,
+          created_at: createdAt,
+        },
+      ],
+    });
+    await ctx.index.upsertTag(
+      {
+        id: legacyId,
+        name: "A/B",
+        color: null,
+        created_at: createdAt,
+      },
+      meta.id,
+    );
+
+    const itemId = `${createId()}.md`;
+    const { itemMarkdownPath } = await import("./paths.js");
+    await fs.writeText(
+      itemMarkdownPath(path, itemId),
+      noteMarkdown({
+        tagsYaml: "tags:\n  - A/B",
+        contentRevision: 1,
+        createdAt,
+        title: "Legacy tag",
+      }),
+    );
+    await ctx.index.upsertItemMetadata(
+      {
+        item: {
+          id: itemId,
+          vault_id: meta.id,
+          title: "Legacy tag",
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          properties: {},
+          tag_ids: [legacyId],
+          collection_ids: [],
+          folder_path: "",
+          content_revision: 1,
+          word_count: 0,
+          character_count: 0,
+          created_at: createdAt,
+          updated_at: createdAt,
+        },
+        fileMtimeMs: Date.now(),
+      },
+      meta.id,
+    );
+
+    await reconcileTagCatalog(ctx, path, meta.id);
+
+    const tags = await listTagsOnDisk(fs, path);
+    expect(tags).toHaveLength(1);
+    expect(tags[0]?.name).toBe("ab");
+    expect(tags[0]?.id).toBe(legacyId);
+
+    const { readItemRawMarkdown } = await import("./item-io.js");
+    const md = await readItemRawMarkdown(fs, path, itemId);
+    expect(md).toContain("- ab");
+    expect(md).not.toContain("A/B");
+  });
+
   it("write with tagCatalogPruneJobs only enqueues (no inline prune)", async () => {
     const { ctx: base, meta, path } = await openVault();
     const enqueued: Array<readonly string[] | undefined> = [];
