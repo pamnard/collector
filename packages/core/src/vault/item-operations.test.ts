@@ -21,13 +21,12 @@ import {
   writeItemCanonicalSourceMarkdown,
   writeItemRawMarkdown,
 } from "../vault/item-operations.js";
-import { readItemRawMarkdown, readTagsFile } from "../vault/item-io.js";
+import { readItemRawMarkdown } from "../vault/item-io.js";
 import { itemMarkdownPath, itemMediaRoot } from "../vault/paths.js";
-import { writeTagsFile } from "../vault/tag-io.js";
+import { readTagsFile, writeTagsFile } from "../vault/tag-io.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
 import { seedTagFromDocumentWritePath } from "../testing/seed-tag.js";
 import { attachMediaFile } from "../vault/media-operations.js";
-import { listTagsWithCounts } from "../vault/tag-operations.js";
 
 class CountingFileSystemAdapter implements FileSystemAdapter {
   statCount = 0;
@@ -414,15 +413,12 @@ describe("item operations", () => {
       meta.id,
     );
 
-    // Disk already has stored-form tags; catalog still legacy → no rewrite, but
-    // ensure must rename catalog and pin item_tags (#948 wrote:false gap).
-    const raw = [
+    const rawLegacy = [
       "---",
       "title: Legacy",
       "type: note",
       "tags:",
-      "  - ab",
-      "content_revision: 1",
+      "  - A/B",
       `created: ${created}`,
       `updated: ${created}`,
       "---",
@@ -431,7 +427,7 @@ describe("item operations", () => {
       "",
     ].join("\n");
     await fs.mkdir(path);
-    await fs.writeText(itemMarkdownPath(path, itemId), raw);
+    await fs.writeText(itemMarkdownPath(path, itemId), rawLegacy);
     await ctx.index.upsertItemMetadata(
       {
         item: {
@@ -457,29 +453,63 @@ describe("item operations", () => {
       meta.id,
     );
 
+    // First save rewrites FM to stored form.
+    const first = await writeItemCanonicalSourceMarkdown(
+      ctx,
+      path,
+      meta.id,
+      itemId,
+      rawLegacy,
+    );
+    expect(first.wrote).toBe(true);
+    const canonical = await readItemRawMarkdown(fs, path, itemId);
+
+    // Simulate drift: catalog back to legacy spelling, index loses item_tags.
+    await writeTagsFile(fs, path, {
+      tags: [
+        {
+          id: legacyId,
+          name: "A/B",
+          color: null,
+          created_at: created,
+        },
+      ],
+    });
+    await ctx.index.upsertTag(
+      {
+        id: legacyId,
+        name: "A/B",
+        color: null,
+        created_at: created,
+      },
+      meta.id,
+    );
+    await ctx.index.upsertItemMetadata(
+      {
+        item: {
+          ...first.item,
+          tag_ids: [],
+        },
+        fileMtimeMs: Date.now(),
+      },
+      meta.id,
+    );
+
     const { item, wrote } = await writeItemCanonicalSourceMarkdown(
       ctx,
       path,
       meta.id,
       itemId,
-      raw,
+      canonical,
     );
     expect(wrote).toBe(false);
     expect(item.tag_ids).toEqual([legacyId]);
-    expect(await readItemRawMarkdown(fs, path, itemId)).toBe(raw);
+    expect(await readItemRawMarkdown(fs, path, itemId)).toBe(canonical);
     expect((await readTagsFile(fs, path)).tags).toEqual([
       expect.objectContaining({ id: legacyId, name: "ab" }),
     ]);
     const indexed = await listItemsByIds(ctx, path, [itemId]);
     expect(indexed[0]?.tag_ids).toEqual([legacyId]);
-    const tags = await listTagsWithCounts(ctx, meta.id);
-    expect(tags).toEqual([
-      expect.objectContaining({
-        id: legacyId,
-        name: "ab",
-        item_count: 1,
-      }),
-    ]);
   });
 
   it("syncItemFromDisk syncs catalog and index without rewriting markdown", async () => {

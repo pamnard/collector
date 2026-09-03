@@ -92,9 +92,12 @@ async function pinItemTagsToIndex(
 }
 
 /**
- * Capture releases before pin, pin item_tags, refresh (or enqueue) index, prune.
- * Immediate prune keeps orphans off the catalog even when a derived job later
- * takes a media-only shortcut (#948).
+ * Capture releases before pin, pin item_tags, then refresh and/or prune.
+ *
+ * - With `itemDerivedRefreshJobs`: enqueue derived refresh with `previousTagIds`
+ *   (media-only localize must still prune — see item-derived-refresh).
+ * - Without jobs: inline refresh + immediate prune from the pre-pin snapshot.
+ * - With `deferIndexRefresh`: prune immediately; caller owns derived enqueue.
  */
 async function pinRefreshAndPruneItemTags(
   ctx: VaultContext,
@@ -111,11 +114,19 @@ async function pinRefreshAndPruneItemTags(
     preserveIndexSnapshot: options?.deferIndexRefresh === true,
   });
 
-  if (!options?.deferIndexRefresh) {
+  if (options?.deferIndexRefresh === true) {
+    await pruneReleasedTagsAfterIndexRefresh(ctx, vaultPath, vaultId, released);
+    return;
+  }
+
+  if (ctx.itemDerivedRefreshJobs) {
     await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item, {
       previousTagIds,
     });
+    return;
   }
+
+  await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);
   await pruneReleasedTagsAfterIndexRefresh(ctx, vaultPath, vaultId, released);
 }
 
@@ -136,6 +147,7 @@ async function syncParsedItemFromRawMarkdown(
     raw,
     fileMtimeMs,
   );
+  // Raw write always refreshes: body/FTS may change even when tag_ids match.
   await pinRefreshAndPruneItemTags(
     ctx,
     vaultPath,
@@ -145,6 +157,41 @@ async function syncParsedItemFromRawMarkdown(
     options,
   );
   return item;
+}
+
+/**
+ * After parse/ensure: short-circuit when item_tags already match, otherwise
+ * pin + refresh/prune. Shared by raw write, disk sync, and canonical no-op.
+ */
+async function reconcileParsedItemWithIndex(
+  ctx: VaultContext,
+  vaultPath: string,
+  vaultId: string,
+  item: ItemFile,
+  fileMtimeMs: number,
+  options?: { deferIndexRefresh?: boolean },
+): Promise<ItemFile> {
+  const [existing] = await ctx.index.listItemFilesByIds(vaultId, [item.id]);
+  if (existing && sameTagIds(existing.tag_ids, item.tag_ids)) {
+    await syncTagsToIndex(ctx, vaultPath, vaultId, { tagIds: item.tag_ids });
+    return {
+      ...item,
+      collection_ids: existing.collection_ids,
+    };
+  }
+
+  await pinRefreshAndPruneItemTags(
+    ctx,
+    vaultPath,
+    vaultId,
+    item,
+    fileMtimeMs,
+    options,
+  );
+  return {
+    ...item,
+    collection_ids: existing?.collection_ids ?? item.collection_ids,
+  };
 }
 
 export async function upsertItem(
@@ -265,19 +312,7 @@ export async function syncItemFromDisk(
     raw,
     fileStat.mtimeMs,
   );
-
-  const [existing] = await ctx.index.listItemFilesByIds(vaultId, [id]);
-  if (existing && sameTagIds(existing.tag_ids, item.tag_ids)) {
-    // Catalog ensure above may have rewritten stored forms; push names to SQL
-    // without enqueueing a derived refresh when item_tags already match FM.
-    await syncTagsToIndex(ctx, vaultPath, vaultId, { tagIds: item.tag_ids });
-    return {
-      ...item,
-      collection_ids: existing.collection_ids,
-    };
-  }
-
-  await pinRefreshAndPruneItemTags(
+  return reconcileParsedItemWithIndex(
     ctx,
     vaultPath,
     vaultId,
@@ -285,10 +320,6 @@ export async function syncItemFromDisk(
     fileStat.mtimeMs,
     options,
   );
-  return {
-    ...item,
-    collection_ids: existing?.collection_ids ?? item.collection_ids,
-  };
 }
 
 /**
@@ -332,11 +363,12 @@ export async function writeItemCanonicalSourceMarkdown(
   const canonical = serializeItemDocument(item, body, maps.byId);
 
   if (canonical === existing) {
-    const synced = await syncItemFromDisk(
+    const synced = await reconcileParsedItemWithIndex(
       ctx,
       vaultPath,
       vaultId,
-      id,
+      item,
+      existingStat.mtimeMs,
       options,
     );
     return { item: synced, wrote: false };
