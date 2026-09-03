@@ -146,13 +146,49 @@ export function parseItemDocument(
 }
 
 /**
+ * Prefer frontmatter tag spellings that are already stored form.
+ * Legacy names (`Index`, `A/B`) are omitted so serialize falls back to
+ * `tagStoredForm` (#947). Used when re-serializing through the canonical
+ * write path so file FM spelling (`web_dev`) survives (#949).
+ */
+export function preferredStoredFormTagNames(
+  tags: unknown,
+): string[] | undefined {
+  if (
+    !Array.isArray(tags) ||
+    !tags.every((tagName): tagName is string => typeof tagName === "string")
+  ) {
+    return undefined;
+  }
+  const preferred: string[] = [];
+  const seenKeys = new Set<string>();
+  for (const rawName of tags) {
+    const name = rawName.trim();
+    if (!name) {
+      throw new Error("Preferred tag name must be non-empty");
+    }
+    if (tagStoredForm(name) !== name) {
+      continue;
+    }
+    const key = tagSimilarityKey(name);
+    if (seenKeys.has(key)) {
+      throw new Error(`Duplicate preferred tag name: ${name}`);
+    }
+    seenKeys.add(key);
+    preferred.push(name);
+  }
+  return preferred.length > 0 ? preferred : undefined;
+}
+
+/**
  * Serialize ItemFile + body to canonical YAML-frontmatter markdown.
  * Fails if a tag_id has no entry in tagsById.
  * Foreign keys are written from `item.properties`.
  *
- * When `preferredTagNames` is set (file FM spelling or intentional `input.tags`),
- * those exact strings win for matching similarity keys. Otherwise catalog names
- * are written via `tagStoredForm` (#943 / #947).
+ * When `preferredTagNames` is set (existing file FM spelling when tags are
+ * unchanged), those exact strings win for matching similarity keys. Otherwise
+ * catalog names are written via `tagStoredForm` (#943 / #947). Do not pass
+ * raw `input.tags` here — intentional tag updates must use stored form.
  */
 export function serializeItemDocument(
   item: ItemFile,

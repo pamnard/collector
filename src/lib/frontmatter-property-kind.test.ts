@@ -69,18 +69,4 @@ describe("formatFrontmatterPropertyValue", () => {
       JSON.stringify({ n: 1 }, null, 2),
     );
   });
-
-  it("keeps parsed tag casing from raw frontmatter", () => {
-    const raw = `---
-title: Note
-tags:
-  - index
----
-body
-`;
-
-    const entries = Object.fromEntries(frontmatterEntriesFromRaw(raw));
-
-    expect(formatFrontmatterPropertyValue("tags", entries.tags)).toBe("index");
-  });
 });

@@ -306,6 +306,8 @@ export async function writeItemDocument(
     tagsById?: Map<string, Tag>;
     /** Caller already holds withTagCatalogLock for this vault. */
     assumeCatalogLocked?: boolean;
+    /** Exact FM tag spellings to preserve (#949); see serializeItemDocument. */
+    preferredTagNames?: string[];
   },
 ): Promise<void> {
   const parsed = itemFileSchema.parse({
@@ -348,7 +350,9 @@ export async function writeItemDocument(
     }
     tagsById = maps.byId;
   }
-  const markdown = serializeItemDocument(parsed, body, tagsById);
+  const markdown = serializeItemDocument(parsed, body, tagsById, {
+    preferredTagNames: options?.preferredTagNames,
+  });
   const docPath = itemMarkdownPath(vaultRootPath, parsed.id);
   const before = await fs.stat(docPath);
   await fs.writeText(docPath, markdown);

@@ -4,6 +4,7 @@ import {
   buildTagMaps,
   parseItemDocument,
   parseItemDocumentResolved,
+  preferredStoredFormTagNames,
   serializeItemDocument,
 } from "./item-document.js";
 
@@ -316,5 +317,16 @@ updated: 2024-01-01T00:00:00.000Z
 
     expect(out).toContain("  - web_dev");
     expect(out).not.toContain("  - web-dev");
+  });
+
+  it("preferredStoredFormTagNames keeps stored forms and drops legacy (#947/#949)", () => {
+    expect(preferredStoredFormTagNames(["web_dev", "index"])).toEqual([
+      "web_dev",
+      "index",
+    ]);
+    expect(preferredStoredFormTagNames(["Index", "A/B"])).toBeUndefined();
+    expect(preferredStoredFormTagNames(["web_dev", "Index"])).toEqual([
+      "web_dev",
+    ]);
   });
 });

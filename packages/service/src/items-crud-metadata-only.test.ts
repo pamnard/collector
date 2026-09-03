@@ -192,4 +192,35 @@ describe("createItemsCrud metadata-only update (#776)", () => {
     expect(afterRaw).toContain("  - web_dev");
     expect(afterRaw).not.toContain("  - web-dev");
   });
+
+  it("explicit updateItem tags write stored form, not raw input casing (#947/#949)", async () => {
+    const seeded = await seedTaggedNote({
+      tmpPrefix: "collector-metadata-explicit-tags-",
+      catalogTagName: "Index",
+      fileTagName: "index",
+    });
+    const crud = createCrud(seeded);
+
+    await crud.updateItem(seeded.itemId, { tags: ["Index"] });
+
+    const afterRaw = await readItemRawMarkdown(fs, seeded.path, seeded.itemId);
+    expect(afterRaw).toContain("  - index");
+    expect(afterRaw).not.toContain("  - Index");
+  });
+
+  it("preserves file FM tag spelling on content-path updateItem (#949)", async () => {
+    const seeded = await seedTaggedNote({
+      tmpPrefix: "collector-content-tag-spell-",
+      catalogTagName: "web-dev",
+      fileTagName: "web_dev",
+    });
+    const crud = createCrud(seeded);
+
+    await crud.updateItem(seeded.itemId, { content: "body rewritten" });
+
+    const afterRaw = await readItemRawMarkdown(fs, seeded.path, seeded.itemId);
+    expect(afterRaw).toContain("body rewritten");
+    expect(afterRaw).toContain("  - web_dev");
+    expect(afterRaw).not.toContain("  - web-dev");
+  });
 });

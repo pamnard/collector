@@ -367,10 +367,11 @@ export function createItemsCrud(
       currentContent = await readItemContent(ctx.fs, path, current.id);
     }
 
+    // Preferred FM spelling only when tags are unchanged (#949). Intentional
+    // input.tags must go through ensure + serialize tagStoredForm (#947) — do
+    // not pass raw input strings as preferred (that reintroduces catalog↔file drift).
     let preferredTagNames: string[] | undefined;
-    if (input.tags !== undefined) {
-      preferredTagNames = input.tags.map((tagName) => tagName.trim());
-    } else if (current.tag_ids.length > 0) {
+    if (input.tags === undefined && current.tag_ids.length > 0) {
       const currentRawMarkdown = await readItemRawMarkdown(ctx.fs, path, current.id);
       const parsedCurrentSource = parseDocumentMarkdown(currentRawMarkdown);
       if (
