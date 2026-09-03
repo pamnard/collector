@@ -1,7 +1,10 @@
 import type { ItemFile } from "@collector/shared";
 import type { UpsertItemInput, VaultContext } from "../adapters/types.js";
 import { nowIso } from "../util/ids.js";
-import { serializeItemDocument } from "./item-document.js";
+import {
+  preferredStoredFormTagNames,
+  serializeItemDocument,
+} from "./item-document.js";
 import { parseDocumentMarkdown } from "./frontmatter.js";
 import {
   itemFileFromDocumentMarkdown,
@@ -328,6 +331,10 @@ export async function syncItemFromDisk(
  * re-serialize canonical frontmatter, write only when bytes differ from disk.
  * Import/sync paths keep using writeItemRawMarkdown (raw bytes contract).
  *
+ * Already-stored-form tag spellings from `raw` are preferred on re-serialize
+ * so content-path updates keep file FM spelling (#949) while legacy names
+ * still canonicalize via tagStoredForm (#947).
+ *
  * Even when bytes are unchanged (`wrote: false`), catalog + index still sync
  * from the parsed file so ensure/rename cannot leave SQL behind (#948).
  */
@@ -359,9 +366,15 @@ export async function writeItemCanonicalSourceMarkdown(
     raw,
     existingStat.mtimeMs,
   );
-  const body = parseDocumentMarkdown(raw).body;
+  const parsedRaw = parseDocumentMarkdown(raw);
+  const body = parsedRaw.body;
   const maps = await loadTagMaps(ctx.fs, vaultPath);
-  const canonical = serializeItemDocument(item, body, maps.byId);
+  const preferredTagNames = preferredStoredFormTagNames(
+    parsedRaw.frontmatter.tags,
+  );
+  const canonical = serializeItemDocument(item, body, maps.byId, {
+    preferredTagNames,
+  });
 
   if (canonical === existing) {
     const synced = await reconcileParsedItemWithIndex(
@@ -375,7 +388,10 @@ export async function writeItemCanonicalSourceMarkdown(
     return { item: synced, wrote: false };
   }
 
-  await writeItemDocument(ctx.fs, vaultPath, item, body);
+  await writeItemDocument(ctx.fs, vaultPath, item, body, {
+    tagsById: maps.byId,
+    preferredTagNames,
+  });
   await ensureFileMtimeAdvanced(ctx.fs, docPath, existingStat.mtimeMs);
   await ctx.fs.touch(vaultPath);
 

@@ -98,6 +98,7 @@ export {
   buildTagMaps,
   parseItemDocument,
   parseItemDocumentResolved,
+  preferredStoredFormTagNames,
   serializeItemDocument,
 } from "./vault/item-document.js";
 

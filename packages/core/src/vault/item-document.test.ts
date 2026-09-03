@@ -4,6 +4,7 @@ import {
   buildTagMaps,
   parseItemDocument,
   parseItemDocumentResolved,
+  preferredStoredFormTagNames,
   serializeItemDocument,
 } from "./item-document.js";
 
@@ -270,5 +271,62 @@ body
     );
     expect(md).toContain("- ab");
     expect(md).not.toContain("A/B");
+  });
+
+  it("uses preferred tag names when serializing tags (#949)", () => {
+    const { byId, byName } = buildTagMaps([
+      { ...TAG_A, name: "Index" },
+      TAG_B,
+    ]);
+    const md = `---
+title: Portable
+tags:
+  - index
+created: 2024-01-01T00:00:00.000Z
+updated: 2024-01-01T00:00:00.000Z
+---
+`;
+    const parsed = parseItemDocumentResolved(md, {
+      itemId: ITEM_ID,
+      vaultId: VAULT_ID,
+      tagsByName: byName,
+    });
+
+    const out = serializeItemDocument(parsed.item, parsed.body, byId, {
+      preferredTagNames: ["index"],
+    });
+
+    expect(out).toContain("  - index");
+    expect(out).not.toContain("  - Index");
+  });
+
+  it("preferred tag names win over catalog stored-form spelling (#949)", () => {
+    const catalog: Tag = {
+      id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      name: "web-dev",
+      color: null,
+      created_at: "2020-01-01T00:00:00.000Z",
+    };
+    const { byId } = buildTagMaps([catalog]);
+    const out = serializeItemDocument(
+      sampleItem({ tag_ids: [catalog.id] }),
+      "body",
+      byId,
+      { preferredTagNames: ["web_dev"] },
+    );
+
+    expect(out).toContain("  - web_dev");
+    expect(out).not.toContain("  - web-dev");
+  });
+
+  it("preferredStoredFormTagNames keeps stored forms and drops legacy (#947/#949)", () => {
+    expect(preferredStoredFormTagNames(["web_dev", "index"])).toEqual([
+      "web_dev",
+      "index",
+    ]);
+    expect(preferredStoredFormTagNames(["Index", "A/B"])).toBeUndefined();
+    expect(preferredStoredFormTagNames(["web_dev", "Index"])).toEqual([
+      "web_dev",
+    ]);
   });
 });
