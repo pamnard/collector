@@ -98,7 +98,7 @@ export function parseItemDocument(
   const seenTagIds = new Set<string>();
   for (const name of tagNames) {
     if (!name) {
-      continue;
+      throw new Error(`Item document ${itemId} has blank tag name`);
     }
     const tag = ctx.tagsByName.get(tagNameKey(name));
     if (!tag) {
