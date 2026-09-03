@@ -367,6 +367,22 @@ export function createItemsCrud(
       currentContent = await readItemContent(ctx.fs, path, current.id);
     }
 
+    let preferredTagNames: string[] | undefined;
+    if (input.tags !== undefined) {
+      preferredTagNames = input.tags.map((tagName) => tagName.trim());
+    } else if (current.tag_ids.length > 0) {
+      const currentRawMarkdown = await readItemRawMarkdown(ctx.fs, path, current.id);
+      const parsedCurrentSource = parseDocumentMarkdown(currentRawMarkdown);
+      if (
+        Array.isArray(parsedCurrentSource.frontmatter.tags) &&
+        parsedCurrentSource.frontmatter.tags.every(
+          (tagName): tagName is string => typeof tagName === "string",
+        )
+      ) {
+        preferredTagNames = parsedCurrentSource.frontmatter.tags;
+      }
+    }
+
     let maps = await loadTagMaps(ctx.fs, path);
     let tagIds = current.tag_ids;
     if (input.tags !== undefined) {
@@ -406,13 +422,16 @@ export function createItemsCrud(
         nextItem,
         currentContent ?? "",
         maps.byId,
+        { preferredTagNames },
       );
       return persistMetadataOnlySource(nextItem.id, markdown, move);
     }
 
     const body =
       input.content !== undefined ? (input.content ?? "") : (currentContent ?? "");
-    const markdown = serializeItemDocument(nextItem, body, maps.byId);
+    const markdown = serializeItemDocument(nextItem, body, maps.byId, {
+      preferredTagNames,
+    });
     // Same normalize + localize + write path as updateItemSource (every note persist).
     return persistNormalizedSource(nextItem.id, markdown, nextItem.url, move);
   };

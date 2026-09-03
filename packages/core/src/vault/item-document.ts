@@ -149,19 +149,41 @@ export function parseItemDocument(
  * Serialize ItemFile + body to canonical YAML-frontmatter markdown.
  * Fails if a tag_id has no entry in tagsById.
  * Foreign keys are written from `item.properties`.
+ *
+ * When `preferredTagNames` is set (file FM spelling or intentional `input.tags`),
+ * those exact strings win for matching similarity keys. Otherwise catalog names
+ * are written via `tagStoredForm` (#943 / #947).
  */
 export function serializeItemDocument(
   item: ItemFile,
   body: string,
   tagsById: Map<string, Tag>,
+  options?: { preferredTagNames?: string[] },
 ): string {
+  const preferredTagNames = options?.preferredTagNames;
+  const preferredByKey = new Map<string, string>();
+  if (preferredTagNames !== undefined) {
+    for (const rawName of preferredTagNames) {
+      const name = rawName.trim();
+      if (!name) {
+        throw new Error("Preferred tag name must be non-empty");
+      }
+      const key = tagSimilarityKey(name);
+      if (preferredByKey.has(key)) {
+        throw new Error(`Duplicate preferred tag name: ${name}`);
+      }
+      preferredByKey.set(key, name);
+    }
+  }
   const tagNames: string[] = [];
   for (const tagId of item.tag_ids) {
     const tag = tagsById.get(tagId);
     if (!tag) {
       throw new Error(`Cannot serialize item ${item.id}: unknown tag_id ${tagId}`);
     }
-    tagNames.push(tagStoredForm(tag.name));
+    tagNames.push(
+      preferredByKey.get(tagSimilarityKey(tag.name)) ?? tagStoredForm(tag.name),
+    );
   }
 
   const frontmatter = buildCanonicalFrontmatter({
