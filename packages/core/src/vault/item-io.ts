@@ -31,6 +31,7 @@ import {
   normalizeRelativePath,
   vaultMetaPath,
 } from "./paths.js";
+import { normalizeTagName } from "./tag-normalize.js";
 import { readTagsFile, writeTagsFile } from "./tag-io.js";
 import { withTagCatalogLock } from "./tag-catalog-lock.js";
 
@@ -94,8 +95,9 @@ export async function loadTagMaps(
 
 /**
  * Ensure tag names exist in tags.json; returns refreshed maps.
- * Creates new Tag records for missing names (portable import).
- * When `current` already has every name, avoids a disk read (index sync).
+ * Creates new Tag records for missing similarity keys (portable import).
+ * Names are normalized (#943): lookup by similarity key; new rows use stored form.
+ * When `current` already has every key, avoids a disk read (index sync).
  * When creating, re-reads disk under the vault catalog lock so a stale map
  * cannot clobber tags added concurrently by another document write or prune (#935).
  */
@@ -110,17 +112,15 @@ export async function ensureTagsByName(
   }
 
   let maps = current ?? (await loadTagMaps(fs, vaultPath));
-  const missing: string[] = [];
+  const missingByKey = new Map<string, string>();
   for (const rawName of names) {
-    const normalized = rawName.trim();
-    if (!normalized) {
-      throw new Error("Tag name must be non-empty");
+    const { storedForm, similarityKey } = normalizeTagName(rawName);
+    if (maps.byName.has(similarityKey) || missingByKey.has(similarityKey)) {
+      continue;
     }
-    if (!maps.byName.has(normalized.toLowerCase())) {
-      missing.push(normalized);
-    }
+    missingByKey.set(similarityKey, storedForm);
   }
-  if (missing.length === 0) {
+  if (missingByKey.size === 0) {
     return maps;
   }
 
@@ -129,20 +129,20 @@ export async function ensureTagsByName(
     maps = buildTagMaps(file.tags);
     let mutated = false;
 
-    for (const normalized of missing) {
-      const key = normalized.toLowerCase();
-      if (maps.byName.has(key)) {
+    for (const [similarityKey, storedForm] of missingByKey) {
+      if (maps.byName.has(similarityKey)) {
         continue;
       }
       const tag: Tag = {
         id: createId(),
-        name: normalized,
+        name: storedForm,
         color: null,
         created_at: nowIso(),
       };
       file.tags.push(tag);
+      maps.byName.set(similarityKey, tag);
+      maps.byId.set(tag.id, tag);
       mutated = true;
-      maps = buildTagMaps(file.tags);
     }
 
     if (mutated) {
@@ -271,6 +271,7 @@ export async function writeItemDocument(
   vaultRootPath: string,
   item: ItemFile,
   body: string,
+  options?: { tagsById?: Map<string, Tag> },
 ): Promise<void> {
   const parsed = itemFileSchema.parse({
     ...item,
@@ -278,8 +279,9 @@ export async function writeItemDocument(
     folder_path: folderPathFromItemPath(item.id),
   });
   await ensureParentDir(fs, vaultRootPath, parsed.id);
-  const maps = await loadTagMaps(fs, vaultRootPath);
-  const markdown = serializeItemDocument(parsed, body, maps.byId);
+  const tagsById =
+    options?.tagsById ?? (await loadTagMaps(fs, vaultRootPath)).byId;
+  const markdown = serializeItemDocument(parsed, body, tagsById);
   const docPath = itemMarkdownPath(vaultRootPath, parsed.id);
   const before = await fs.stat(docPath);
   await fs.writeText(docPath, markdown);

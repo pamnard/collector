@@ -29,6 +29,7 @@ import {
   readItemFile,
   readItemRawMarkdown,
   resolveOrCreateInboxFolder,
+  resolveTagFromMaps,
   serializeItemDocument,
   textLinkResolveContextFromItems,
   upsertItem,
@@ -375,14 +376,19 @@ export function createItemsCrud(
     let tagIds = current.tag_ids;
     if (input.tags !== undefined) {
       maps = await ensureTagsByName(ctx.fs, path, input.tags, maps);
-      tagIds = input.tags.map((rawName) => {
-        const name = rawName.trim();
-        const tag = maps.byName.get(name.toLowerCase());
+      const seen = new Set<string>();
+      tagIds = [];
+      for (const rawName of input.tags) {
+        const tag = resolveTagFromMaps(maps.byName, rawName);
         if (!tag) {
-          throw new Error(`Tag not resolved after ensure: ${name}`);
+          throw new Error(`Tag not resolved after ensure: ${rawName}`);
         }
-        return tag.id;
-      });
+        if (seen.has(tag.id)) {
+          continue;
+        }
+        seen.add(tag.id);
+        tagIds.push(tag.id);
+      }
     }
 
     const nextItem: ItemFile = {

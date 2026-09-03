@@ -28,6 +28,7 @@ import { readVaultItemMetaBatch } from "./vault-fs-batch.js";
 import {
   refreshItemIndexAfterWrite,
   pruneReleasedTagsAfterIndexRefresh,
+  releasedTagIdsFromChange,
 } from "./item-index-refresh.js";
 import { countTextStats } from "./text-stats.js";
 
@@ -110,6 +111,10 @@ export async function upsertItem(
   if (afterStat.mtimeMs === null) {
     throw new Error(`Cannot upsert item ${id}: missing file mtime after write`);
   }
+  // Capture releases before pin so prune still sees tags removed by this write
+  // (pin replaces item_tags first; refresh alone would compute an empty release set).
+  const [beforeItem] = await ctx.index.listItemFilesByIds(vaultId, [id]);
+  const released = releasedTagIdsFromChange(beforeItem?.tag_ids, item.tag_ids);
   await pinItemTagsToIndex(ctx, vaultPath, vaultId, item, afterStat.mtimeMs, {
     preserveIndexSnapshot: input.deferIndexRefresh === true,
   });
@@ -117,6 +122,7 @@ export async function upsertItem(
   if (!input.deferIndexRefresh) {
     await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);
   }
+  await pruneReleasedTagsAfterIndexRefresh(ctx, vaultPath, vaultId, released);
   return item;
 }
 
@@ -163,6 +169,9 @@ export async function writeItemRawMarkdown(
 
   // Pin tags before return so concurrent full tagCatalogPrune reconcile cannot
   // drop freshly ensured catalog rows that still have zero item_tags refs.
+  // Capture releases before pin so prune still sees tags removed by this write.
+  const [beforeItem] = await ctx.index.listItemFilesByIds(vaultId, [id]);
+  const released = releasedTagIdsFromChange(beforeItem?.tag_ids, item.tag_ids);
   await pinItemTagsToIndex(ctx, vaultPath, vaultId, item, afterStat.mtimeMs, {
     preserveIndexSnapshot: options?.deferIndexRefresh === true,
   });
@@ -170,6 +179,7 @@ export async function writeItemRawMarkdown(
   if (!options?.deferIndexRefresh) {
     await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);
   }
+  await pruneReleasedTagsAfterIndexRefresh(ctx, vaultPath, vaultId, released);
   return item;
 }
 

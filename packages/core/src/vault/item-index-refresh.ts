@@ -36,7 +36,8 @@ function mergeIndexOnlyFields(
   return { ...item, collection_ids };
 }
 
-function releasedTagIds(
+/** Tag ids on the previous item row but absent after this write (#935/#944). */
+export function releasedTagIdsFromChange(
   previous: readonly string[] | undefined,
   next: readonly string[],
 ): string[] {
@@ -133,7 +134,7 @@ export async function upsertItemIndexFromVault(
 
   const [existingItem] = await ctx.index.listItemFilesByIds(vaultId, [id]);
   item = mergeIndexOnlyFields(item, existingItem, hints);
-  const released = releasedTagIds(existingItem?.tag_ids, item.tag_ids);
+  const released = releasedTagIdsFromChange(existingItem?.tag_ids, item.tag_ids);
 
   await syncTagsToIndex(ctx, vaultPath, vaultId, { tagIds: item.tag_ids });
 

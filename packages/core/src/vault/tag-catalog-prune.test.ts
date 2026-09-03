@@ -97,7 +97,7 @@ describe("tag catalog prune / reconcile (#935)", () => {
       }),
     );
     const before = await listTagsOnDisk(fs, path);
-    expect(before.map((t) => t.name)).toEqual(["Solo"]);
+    expect(before.map((t) => t.name)).toEqual(["solo"]);
     const tagId = before[0]!.id;
 
     await writeItemRawMarkdown(
@@ -171,7 +171,7 @@ describe("tag catalog prune / reconcile (#935)", () => {
       }),
     );
     const tagId = (await listTagsOnDisk(fs, path)).find(
-      (t) => t.name === "Shared",
+      (t) => t.name === "shared",
     )!.id;
 
     await writeItemRawMarkdown(
@@ -188,9 +188,309 @@ describe("tag catalog prune / reconcile (#935)", () => {
     );
 
     const tags = await listTagsOnDisk(fs, path);
-    expect(tags.map((t) => t.name)).toEqual(["Shared"]);
+    expect(tags.map((t) => t.name)).toEqual(["shared"]);
     expect(tags[0]!.id).toBe(tagId);
     expect(await ctx.index.listItemIdsByTag(meta.id, tagId)).toEqual([b]);
+  });
+
+  it("full reconcile merges similarity clones onto winner (#943)", async () => {
+    const { ctx, meta, path } = await openVault();
+    const winnerId = createId();
+    const loserId = createId();
+    const createdEarly = "2024-01-01T00:00:00.000Z";
+    const createdLate = "2024-06-01T00:00:00.000Z";
+    await writeTagsFile(fs, path, {
+      tags: [
+        {
+          id: winnerId,
+          name: "web-dev",
+          color: null,
+          created_at: createdEarly,
+        },
+        {
+          id: loserId,
+          name: "web_dev",
+          color: null,
+          created_at: createdLate,
+        },
+      ],
+    });
+    await ctx.index.upsertTag(
+      {
+        id: winnerId,
+        name: "web-dev",
+        color: null,
+        created_at: createdEarly,
+      },
+      meta.id,
+    );
+    await ctx.index.upsertTag(
+      {
+        id: loserId,
+        name: "web_dev",
+        color: null,
+        created_at: createdLate,
+      },
+      meta.id,
+    );
+
+    const winnerItem = `${createId()}.md`;
+    const loserItem = `${createId()}.md`;
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: winnerItem,
+        vault_id: meta.id,
+        title: "Winner note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [winnerId],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: createdEarly,
+        updated_at: createdEarly,
+      },
+      content: "body",
+      deferIndexRefresh: true,
+    });
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: loserItem,
+        vault_id: meta.id,
+        title: "Loser note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [loserId],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: createdLate,
+        updated_at: createdLate,
+      },
+      content: "body",
+      deferIndexRefresh: true,
+    });
+
+    const first = await reconcileTagCatalog(ctx, path, meta.id);
+    expect(first.prunedTagIds).toContain(loserId);
+
+    const tags = await listTagsOnDisk(fs, path);
+    expect(tags).toHaveLength(1);
+    expect(tags[0]?.id).toBe(winnerId);
+    expect(tags[0]?.name).toBe("web-dev");
+
+    expect(await ctx.index.listItemIdsByTag(meta.id, winnerId)).toEqual(
+      expect.arrayContaining([winnerItem, loserItem]),
+    );
+    expect(await ctx.index.listItemIdsByTag(meta.id, loserId)).toEqual([]);
+
+    const { readItemRawMarkdown } = await import("./item-io.js");
+    const loserMd = await readItemRawMarkdown(fs, path, loserItem);
+    expect(loserMd).toContain("web-dev");
+    expect(loserMd).not.toContain("web_dev");
+
+    const second = await reconcileTagCatalog(ctx, path, meta.id);
+    expect(second.prunedTagIds).not.toContain(loserId);
+    expect(await listTagsOnDisk(fs, path)).toHaveLength(1);
+  });
+
+  it("full reconcile picks winner by item_count (#943)", async () => {
+    const { ctx, meta, path } = await openVault();
+    const earlyId = createId();
+    const lateId = createId();
+    const createdEarly = "2024-01-01T00:00:00.000Z";
+    const createdLate = "2024-06-01T00:00:00.000Z";
+    await writeTagsFile(fs, path, {
+      tags: [
+        {
+          id: earlyId,
+          name: "web-dev",
+          color: null,
+          created_at: createdEarly,
+        },
+        {
+          id: lateId,
+          name: "web_dev",
+          color: null,
+          created_at: createdLate,
+        },
+      ],
+    });
+    await ctx.index.upsertTag(
+      {
+        id: earlyId,
+        name: "web-dev",
+        color: null,
+        created_at: createdEarly,
+      },
+      meta.id,
+    );
+    await ctx.index.upsertTag(
+      {
+        id: lateId,
+        name: "web_dev",
+        color: null,
+        created_at: createdLate,
+      },
+      meta.id,
+    );
+
+    const earlyItem = `${createId()}.md`;
+    const lateA = `${createId()}.md`;
+    const lateB = `${createId()}.md`;
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: earlyItem,
+        vault_id: meta.id,
+        title: "Early",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [earlyId],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: createdEarly,
+        updated_at: createdEarly,
+      },
+      content: "body",
+      deferIndexRefresh: true,
+    });
+    for (const itemId of [lateA, lateB]) {
+      await upsertItem(ctx, path, meta.id, {
+        item: {
+          id: itemId,
+          vault_id: meta.id,
+          title: "Late",
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          properties: {},
+          tag_ids: [lateId],
+          collection_ids: [],
+          folder_path: "",
+          content_revision: 1,
+          word_count: 0,
+          character_count: 0,
+          created_at: createdLate,
+          updated_at: createdLate,
+        },
+        content: "body",
+        deferIndexRefresh: true,
+      });
+    }
+
+    await reconcileTagCatalog(ctx, path, meta.id);
+    const tags = await listTagsOnDisk(fs, path);
+    expect(tags).toHaveLength(1);
+    expect(tags[0]?.id).toBe(lateId);
+    expect(tags[0]?.name).toBe("web_dev");
+    expect(
+      (await ctx.index.listItemIdsByTag(meta.id, lateId)).sort(),
+    ).toEqual([earlyItem, lateA, lateB].sort());
+  });
+
+  it("full reconcile rewrites FM when index already collapsed to map winner (#943)", async () => {
+    const { ctx, meta, path } = await openVault();
+    const mapWinnerId = createId();
+    const loserId = createId();
+    const createdEarly = "2024-01-01T00:00:00.000Z";
+    const createdLate = "2024-06-01T00:00:00.000Z";
+    await writeTagsFile(fs, path, {
+      tags: [
+        {
+          id: mapWinnerId,
+          name: "web-dev",
+          color: null,
+          created_at: createdEarly,
+        },
+        {
+          id: loserId,
+          name: "web_dev",
+          color: null,
+          created_at: createdLate,
+        },
+      ],
+    });
+    await ctx.index.upsertTag(
+      {
+        id: mapWinnerId,
+        name: "web-dev",
+        color: null,
+        created_at: createdEarly,
+      },
+      meta.id,
+    );
+    await ctx.index.upsertTag(
+      {
+        id: loserId,
+        name: "web_dev",
+        color: null,
+        created_at: createdLate,
+      },
+      meta.id,
+    );
+
+    // Simulate post-sync: item_tags already on map-preferred id, FM still loser name.
+    const itemId = `${createId()}.md`;
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Collapsed",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [mapWinnerId],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: createdEarly,
+        updated_at: createdEarly,
+      },
+      content: "body",
+      deferIndexRefresh: true,
+    });
+    const { itemMarkdownPath } = await import("./paths.js");
+    await fs.writeText(
+      itemMarkdownPath(path, itemId),
+      noteMarkdown({
+        tagsYaml: "tags:\n  - web_dev",
+        contentRevision: 1,
+        createdAt: createdEarly,
+        title: "Collapsed",
+      }),
+    );
+
+    await reconcileTagCatalog(ctx, path, meta.id);
+
+    const tags = await listTagsOnDisk(fs, path);
+    expect(tags).toHaveLength(1);
+    expect(tags[0]?.id).toBe(mapWinnerId);
+
+    const { readItemRawMarkdown } = await import("./item-io.js");
+    const md = await readItemRawMarkdown(fs, path, itemId);
+    expect(md).toContain("web-dev");
+    expect(md).not.toMatch(/web_dev/);
   });
 
   it("full reconcile drops accumulated orphans from tags.json and index", async () => {
@@ -262,7 +562,7 @@ describe("tag catalog prune / reconcile (#935)", () => {
     const originalWrite = fs.writeText.bind(fs);
     let ensureWriteSeen = false;
     vi.spyOn(fs, "writeText").mockImplementation(async (p, text) => {
-      if (p.endsWith("tags.json") && text.includes("Fresh") && !ensureWriteSeen) {
+      if (p.endsWith("tags.json") && text.includes("fresh") && !ensureWriteSeen) {
         ensureWriteSeen = true;
         ensureStarted();
         await pruneGate;
@@ -284,8 +584,9 @@ describe("tag catalog prune / reconcile (#935)", () => {
 
     const tags = await listTagsOnDisk(fs, path);
     const names = tags.map((t) => t.name).sort();
-    expect(names).toEqual(["Fresh", "Keep"]);
+    expect(names).toEqual(["fresh", "keep"]);
     expect(names).not.toContain("Stale");
+    expect(names).not.toContain("stale");
   });
 
   it("write with tagCatalogPruneJobs only enqueues (no inline prune)", async () => {
@@ -338,7 +639,7 @@ describe("tag catalog prune / reconcile (#935)", () => {
       }),
     );
     const tagId = (await listTagsOnDisk(fs, path)).find(
-      (t) => t.name === "Temp",
+      (t) => t.name === "temp",
     )!.id;
     enqueued.length = 0;
 
@@ -356,9 +657,9 @@ describe("tag catalog prune / reconcile (#935)", () => {
 
     // Without itemDerivedRefreshJobs, index refresh is inline and schedules prune.
     expect(enqueued).toEqual([[tagId]]);
-    // Catalog still has Temp until the job drains.
+    // Catalog still has temp until the job drains.
     expect((await listTagsOnDisk(fs, path)).map((t) => t.name)).toEqual([
-      "Temp",
+      "temp",
     ]);
   });
 });

@@ -226,6 +226,14 @@ export {
 export type { TagWithCount } from "./vault/tag-operations.js";
 export { listTagsOnDisk, readTagsFile, writeTagsFile } from "./vault/tag-io.js";
 export {
+  normalizeTagName,
+  preferTagForSimilarityMap,
+  resolveTagFromMaps,
+  tagSimilarityKey,
+} from "./vault/tag-normalize.js";
+export type { NormalizedTagName } from "./vault/tag-normalize.js";
+export { mergeTagSimilarityClones } from "./vault/tag-catalog-similarity.js";
+export {
   attachMediaFile,
   deleteMediaFile,
   listItemMediaWithPaths,

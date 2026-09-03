@@ -105,7 +105,7 @@ describe("item-io", () => {
     const created = await ensureTagsByName(fs, path, ["Focus"]);
     expect(created.byName.has("focus")).toBe(true);
     const onDisk = await readTagsFile(fs, path);
-    expect(onDisk.tags.map((t) => t.name)).toEqual(["Focus"]);
+    expect(onDisk.tags.map((t) => t.name)).toEqual(["focus"]);
 
     const readSpy = vi.spyOn(fs, "readText");
     const writeSpy = vi.spyOn(fs, "writeText");
@@ -136,6 +136,48 @@ describe("item-io", () => {
     expect(tagsAfter.tags.filter((t) => t.name === "Research")).toHaveLength(1);
   });
 
+  it("ensureTagsByName: similarity key reuses catalog row and stores cleaned form (#943)", async () => {
+    const { path } = await seedVault();
+
+    const first = await ensureTagsByName(fs, path, ["web-dev"]);
+    expect(first.byName.get("webdev")?.name).toBe("web-dev");
+
+    const writeSpy = vi.spyOn(fs, "writeText");
+    const second = await ensureTagsByName(fs, path, ["Web_Dev!"], first);
+    expect(second.byName.get("webdev")?.id).toBe(first.byName.get("webdev")?.id);
+    expect(
+      writeSpy.mock.calls.some((call) => String(call[0]).endsWith("tags.json")),
+    ).toBe(false);
+    writeSpy.mockRestore();
+
+    const onDisk = await readTagsFile(fs, path);
+    expect(onDisk.tags).toHaveLength(1);
+    expect(onDisk.tags[0]?.name).toBe("web-dev");
+
+    const cleaned = await ensureTagsByName(fs, path, ["Foo   Bar!"]);
+    expect(cleaned.byName.get("foobar")?.name).toBe("foo_bar");
+    const after = await readTagsFile(fs, path);
+    expect(after.tags.map((t) => t.name).sort()).toEqual(["foo_bar", "web-dev"]);
+
+    const caseOnly = await ensureTagsByName(fs, path, ["FOCUS"]);
+    expect(caseOnly.byName.size).toBe(3);
+    const focusRow = (await readTagsFile(fs, path)).tags.find(
+      (t) => t.name === "focus",
+    );
+    expect(focusRow).toBeDefined();
+  });
+
+  it("ensureTagsByName: dedupes similarity variants in one batch (#943)", async () => {
+    const { path } = await seedVault();
+    const maps = await ensureTagsByName(fs, path, [
+      "web-dev",
+      "Web_Dev",
+      "webdev",
+    ]);
+    expect(maps.byName.size).toBe(1);
+    expect((await readTagsFile(fs, path)).tags).toHaveLength(1);
+  });
+
   it("itemFileFromDocumentMarkdown creates missing tags and updates holder", async () => {
     const { meta, path } = await seedVault();
     const itemId = `${createId()}.md`;
@@ -162,7 +204,7 @@ body
     expect(item.tag_ids).toHaveLength(1);
     expect(holder.maps.byName.has("newtag")).toBe(true);
     expect((await readTagsFile(fs, path)).tags.map((t) => t.name)).toContain(
-      "NewTag",
+      "newtag",
     );
 
     const again = await itemFileFromDocumentMarkdown(
@@ -210,7 +252,9 @@ body
       expect(holder.maps.byName.has(tagName.toLowerCase())).toBe(true);
     }
     const onDisk = await readTagsFile(fs, path);
-    expect(onDisk.tags.map((t) => t.name).sort()).toEqual([...tagNames].sort());
+    expect(onDisk.tags.map((t) => t.name).sort()).toEqual(
+      [...tagNames].map((n) => n.toLowerCase()).sort(),
+    );
     expect(onDisk.tags).toHaveLength(tagNames.length);
   });
 
