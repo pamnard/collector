@@ -1,0 +1,27 @@
+{
+  "resource_response": {
+    "data": {
+      "id": "555666777888",
+      "title": "Carousel pin",
+      "description": "Two frames",
+      "closeup_unified_description": "Two frames",
+      "pinner": { "username": "carousel_user" },
+      "images": {
+        "orig": {
+          "url": "https://cdn.pinterest.fixture/carousel.jpg",
+          "width": 1000,
+          "height": 1000
+        }
+      },
+      "videos": {
+        "video_list": {
+          "V_720P": {
+            "url": "https://cdn.pinterest.fixture/carousel.mp4",
+            "width": 720,
+            "height": 1280
+          }
+        }
+      }
+    }
+  }
+}

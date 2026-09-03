@@ -26,6 +26,10 @@ import {
   INSTAGRAM_PLUGIN_ID,
   createInstagramExtractorPlugin,
 } from "./extract/instagram/instagram-extractor-plugin.js";
+import {
+  PINTEREST_PLUGIN_ID,
+  createPinterestExtractorPlugin,
+} from "./extract/pinterest/pinterest-extractor-plugin.js";
 import { createExtractPluginRegistry } from "./extract-plugin-registry.js";
 import { createItemsCrud } from "./items-crud.js";
 
@@ -36,17 +40,28 @@ const FIXTURES = join(
   dirname(fileURLToPath(import.meta.url)),
   "extract/instagram/fixtures",
 );
+const PINTEREST_FIXTURES = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "extract/pinterest/fixtures",
+);
 
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
 
 const OK_SHORTCODE = "CxImage01ab";
 const OK_URL = `https://www.instagram.com/p/${OK_SHORTCODE}/`;
+const OK_PIN_ID = "111222333444";
+const OK_PIN_URL = `https://www.pinterest.com/pin/${OK_PIN_ID}/`;
 
 function readFixture(name: string): string {
   return readFileSync(join(FIXTURES, name), "utf8");
 }
 
+function readPinterestFixture(name: string): string {
+  return readFileSync(join(PINTEREST_FIXTURES, name), "utf8");
+}
+
 const SINGLE_EMBED_HTML = readFixture("single-image-embed.html");
+const SINGLE_PIN_HTML = readPinterestFixture("single-image-pin.html");
 
 /** Fixture-backed Instagram HTTP — no network. */
 function createFixtureFetch(): typeof fetch {
@@ -72,6 +87,27 @@ function createFixtureFetch(): typeof fetch {
   };
 }
 
+function createPinterestFixtureFetch(): typeof fetch {
+  return async (input) => {
+    const url = String(input);
+    if (url.includes(`/pin/${OK_PIN_ID}/`) && !url.includes("PinResource")) {
+      return new Response(SINGLE_PIN_HTML, {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+    if (url.includes("cdn.pinterest.fixture/single.jpg")) {
+      return new Response(JPEG, {
+        status: 200,
+        headers: { "content-type": "image/jpeg" },
+      });
+    }
+    throw new Error(
+      `unexpected URL in extract-plugin-registry pinterest fixture fetch: ${url}`,
+    );
+  };
+}
+
 describe("createExtractPluginRegistry (#849 / #899)", () => {
   const dirs: string[] = [];
   const fs = new NodeFileSystemAdapter();
@@ -85,7 +121,7 @@ describe("createExtractPluginRegistry (#849 / #899)", () => {
   async function openHarness(input: {
     body: string;
     url?: string | null;
-    catalog?: "instagram" | "empty" | "frontmatter-probe";
+    catalog?: "instagram" | "pinterest" | "empty" | "frontmatter-probe";
   }): Promise<{
     registry: ReturnType<typeof createExtractPluginRegistry>;
     itemId: string;
@@ -140,6 +176,22 @@ describe("createExtractPluginRegistry (#849 / #899)", () => {
       () => "unused",
     );
 
+    const attachFiles = async (
+      id: string,
+      files: { name: string; bytes: Uint8Array }[],
+    ) => {
+      const out = [];
+      for (const file of files) {
+        out.push(
+          await attachMediaFile(ctx, vaultPath, id, {
+            filename: file.name,
+            data: file.bytes,
+          }),
+        );
+      }
+      return out;
+    };
+
     const mode = input.catalog ?? "instagram";
     let catalog: ExtractorPlugin[] = [];
     if (mode === "instagram") {
@@ -147,19 +199,17 @@ describe("createExtractPluginRegistry (#849 / #899)", () => {
         createInstagramExtractorPlugin({
           getItemById: (id) => crud.getItemById(id),
           updateItem: (id, patch) => crud.updateItem(id, patch),
-          attachMediaFiles: async (id, files) => {
-            const out = [];
-            for (const file of files) {
-              out.push(
-                await attachMediaFile(ctx, vaultPath, id, {
-                  filename: file.name,
-                  data: file.bytes,
-                }),
-              );
-            }
-            return out;
-          },
+          attachMediaFiles: attachFiles,
           fetchImpl: createFixtureFetch(),
+        }),
+      ];
+    } else if (mode === "pinterest") {
+      catalog = [
+        createPinterestExtractorPlugin({
+          getItemById: (id) => crud.getItemById(id),
+          updateItem: (id, patch) => crud.updateItem(id, patch),
+          attachMediaFiles: attachFiles,
+          fetchImpl: createPinterestFixtureFetch(),
         }),
       ];
     } else if (mode === "frontmatter-probe") {
@@ -269,6 +319,38 @@ describe("createExtractPluginRegistry (#849 / #899)", () => {
     const media = await listItemMediaWithPaths(h.ctx, h.vaultPath, h.itemId);
     expect(media).toHaveLength(1);
     expect(media[0]!.filename).toBe(`${OK_SHORTCODE}.jpg`);
+    expect(await fs.exists(media[0]!.absolute_path)).toBe(true);
+    expect(await fs.readBinary(media[0]!.absolute_path)).toEqual(JPEG);
+  });
+
+  it("extract writes Pinterest fixture into vault note + media (#34)", async () => {
+    const h = await openHarness({
+      body: `Keep preamble\n\n${OK_PIN_URL}\n`,
+      catalog: "pinterest",
+    });
+    const candidates = await h.registry.discoverExtractCandidates(h.itemId);
+    expect(candidates).toEqual([
+      {
+        extractorId: PINTEREST_PLUGIN_ID,
+        url: OK_PIN_URL,
+        meta: { shortcode: OK_PIN_ID },
+      },
+    ]);
+
+    await h.registry.extractItemCandidate(h.itemId, candidates[0]!);
+
+    const item = await readItemFile(fs, h.vaultPath, h.itemId, h.vaultId);
+    expect(item.title).toBe("Morning ride");
+    expect(item.url).toBe(OK_PIN_URL);
+
+    const raw = await readItemRawMarkdown(fs, h.vaultPath, h.itemId);
+    expect(raw).toContain("Keep preamble");
+    const body = raw.replace(/^---[\s\S]*?---\n/, "");
+    expect(body).not.toContain(OK_PIN_URL);
+
+    const media = await listItemMediaWithPaths(h.ctx, h.vaultPath, h.itemId);
+    expect(media).toHaveLength(1);
+    expect(media[0]!.filename).toBe(`${OK_PIN_ID}-1.jpg`);
     expect(await fs.exists(media[0]!.absolute_path)).toBe(true);
     expect(await fs.readBinary(media[0]!.absolute_path)).toEqual(JPEG);
   });

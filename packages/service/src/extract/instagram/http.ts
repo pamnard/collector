@@ -198,23 +198,7 @@ export function apiHeaders(
   return headers;
 }
 
-export function classifyHttpStatus(
-  status: number,
-): "ok" | "not_found" | "rate_limited" | "private_or_unavailable" | "other" {
-  if (status >= 200 && status < 300) {
-    return "ok";
-  }
-  if (status === 404) {
-    return "not_found";
-  }
-  if (status === 429) {
-    return "rate_limited";
-  }
-  if (status === 401 || status === 403) {
-    return "private_or_unavailable";
-  }
-  return "other";
-}
+export { classifyHttpStatus } from "../classify-http-status.js";
 
 export function extractLsdToken(webpage: string): string | null {
   const patterns = [
