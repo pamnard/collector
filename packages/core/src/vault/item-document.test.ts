@@ -126,6 +126,47 @@ updated: 2024-01-01T00:00:00.000Z
     expect(result.item.tag_ids).toEqual([cloneA.id]);
   });
 
+  it("trims padded tag names when resolving against the catalog", () => {
+    const { byName } = buildTagMaps([TAG_A]);
+    const md = `---
+title: X
+tags:
+  - "  Focus  "
+  - "  Unknown  "
+created: 2024-01-01T00:00:00.000Z
+updated: 2024-01-01T00:00:00.000Z
+---
+`;
+    const result = parseItemDocument(md, {
+      itemId: ITEM_ID,
+      vaultId: VAULT_ID,
+      tagsByName: byName,
+    });
+    expect(result.missingTagNames).toEqual(["  Unknown  "]);
+    expect(result.item.tag_ids).toEqual([TAG_A.id]);
+  });
+
+  it("fails fast on blank frontmatter tag names", () => {
+    const { byName } = buildTagMaps([]);
+    expect(() =>
+      parseItemDocument(
+        `---
+title: X
+tags:
+  - "   "
+created: 2024-01-01T00:00:00.000Z
+updated: 2024-01-01T00:00:00.000Z
+---
+`,
+        {
+          itemId: ITEM_ID,
+          vaultId: VAULT_ID,
+          tagsByName: byName,
+        },
+      ),
+    ).toThrow(/blank tag name/);
+  });
+
   it("uses mtime fallbacks when FM dates are absent", () => {
     const { byName } = buildTagMaps([]);
     const md = `---

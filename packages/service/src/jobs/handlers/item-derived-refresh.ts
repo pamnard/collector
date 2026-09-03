@@ -5,6 +5,7 @@ import {
   runItemDerivedLocalizeRefresh,
   upsertItemIndexFromVault,
   pruneReleasedTagsAfterIndexRefresh,
+  releasedTagIdsFromChange,
   type VaultContext,
 } from "@collector/core";
 import {
@@ -63,6 +64,9 @@ export function createItemDerivedRefreshHandler(deps: {
         payload.itemId,
         payload.contentRevision,
         payload.fileMtimeMs,
+        {
+          previousTagIds: payload.previousTagIds,
+        },
       );
       await pruneReleasedTagsAfterIndexRefresh(
         ctx,
@@ -90,8 +94,25 @@ export function createItemDerivedRefreshHandler(deps: {
     }
 
     if (localizeOutcome === "media") {
-      // Media-only localize already ran syncIndexItemsFromFilesystem; tag rows
-      // were pinned on the write path. Skip a second full upsert.
+      // Media-only localize already ran syncIndexItemsFromFilesystem. Still
+      // prune tags released on the write path — pin may have updated
+      // item_tags before this job, and skipping upsert would leave orphans (#948).
+      if (payload.previousTagIds !== undefined) {
+        const [existingItem] = await ctx.index.listItemFilesByIds(
+          payload.vaultId,
+          [payload.itemId],
+        );
+        const releasedTagIds = releasedTagIdsFromChange(
+          payload.previousTagIds,
+          existingItem?.tag_ids ?? [],
+        );
+        await pruneReleasedTagsAfterIndexRefresh(
+          ctx,
+          payload.vaultPath,
+          payload.vaultId,
+          releasedTagIds,
+        );
+      }
       deps.onVaultPresentationChanged?.({
         vaultId: payload.vaultId,
         kind: "itemDerivedComplete",
@@ -118,6 +139,9 @@ export function createItemDerivedRefreshHandler(deps: {
       payload.itemId,
       contentRevision,
       fileStat.mtimeMs,
+      {
+        previousTagIds: payload.previousTagIds,
+      },
     );
 
     await pruneReleasedTagsAfterIndexRefresh(

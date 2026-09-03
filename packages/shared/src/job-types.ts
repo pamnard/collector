@@ -146,6 +146,8 @@ export const itemDerivedRefreshJobPayloadSchema = z.object({
   fileMtimeMs: z.number(),
   /** Optional URL hint for localize step (#768). */
   itemUrl: z.string().nullable().optional(),
+  /** Indexed tag ids before a deferred write pinned newer tag metadata. */
+  previousTagIds: z.array(z.string()).optional(),
 });
 export type ItemDerivedRefreshJobPayload = z.infer<
   typeof itemDerivedRefreshJobPayloadSchema

@@ -17,13 +17,15 @@ import {
   listItemsOnDisk,
   streamItemsByIds,
   upsertItem,
+  syncItemFromDisk,
   writeItemCanonicalSourceMarkdown,
   writeItemRawMarkdown,
 } from "../vault/item-operations.js";
 import { readItemRawMarkdown } from "../vault/item-io.js";
 import { itemMarkdownPath, itemMediaRoot } from "../vault/paths.js";
-import { writeTagsFile } from "../vault/tag-io.js";
+import { readTagsFile, writeTagsFile } from "../vault/tag-io.js";
 import { MemorySqlAdapter } from "../testing/memory-sql.js";
+import { seedTagFromDocumentWritePath } from "../testing/seed-tag.js";
 import { attachMediaFile } from "../vault/media-operations.js";
 
 class CountingFileSystemAdapter implements FileSystemAdapter {
@@ -380,6 +382,237 @@ describe("item operations", () => {
       existing,
     );
     expect(wrote).toBe(false);
+  });
+
+  it("writeItemCanonicalSourceMarkdown syncs index on wrote:false when catalog mutated (#948)", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-canonical-noop-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+
+    const legacyId = createId();
+    const itemId = `${createId()}.md`;
+    const created = "2024-01-01T00:00:00.000Z";
+    await writeTagsFile(fs, path, {
+      tags: [
+        {
+          id: legacyId,
+          name: "A/B",
+          color: null,
+          created_at: created,
+        },
+      ],
+    });
+    await ctx.index.upsertTag(
+      {
+        id: legacyId,
+        name: "A/B",
+        color: null,
+        created_at: created,
+      },
+      meta.id,
+    );
+
+    const rawLegacy = [
+      "---",
+      "title: Legacy",
+      "type: note",
+      "tags:",
+      "  - A/B",
+      `created: ${created}`,
+      `updated: ${created}`,
+      "---",
+      "",
+      "body",
+      "",
+    ].join("\n");
+    await fs.mkdir(path);
+    await fs.writeText(itemMarkdownPath(path, itemId), rawLegacy);
+    await ctx.index.upsertItemMetadata(
+      {
+        item: {
+          id: itemId,
+          vault_id: meta.id,
+          title: "Legacy",
+          description: "",
+          content_type: "note",
+          source_type: "manual",
+          metadata: {},
+          properties: {},
+          tag_ids: [],
+          collection_ids: [],
+          folder_path: "",
+          content_revision: 1,
+          word_count: 0,
+          character_count: 0,
+          created_at: created,
+          updated_at: created,
+        },
+        fileMtimeMs: Date.now(),
+      },
+      meta.id,
+    );
+
+    // First save rewrites FM to stored form.
+    const first = await writeItemCanonicalSourceMarkdown(
+      ctx,
+      path,
+      meta.id,
+      itemId,
+      rawLegacy,
+    );
+    expect(first.wrote).toBe(true);
+    const canonical = await readItemRawMarkdown(fs, path, itemId);
+
+    // Simulate drift: catalog back to legacy spelling, index loses item_tags.
+    await writeTagsFile(fs, path, {
+      tags: [
+        {
+          id: legacyId,
+          name: "A/B",
+          color: null,
+          created_at: created,
+        },
+      ],
+    });
+    await ctx.index.upsertTag(
+      {
+        id: legacyId,
+        name: "A/B",
+        color: null,
+        created_at: created,
+      },
+      meta.id,
+    );
+    await ctx.index.upsertItemMetadata(
+      {
+        item: {
+          ...first.item,
+          tag_ids: [],
+        },
+        fileMtimeMs: Date.now(),
+      },
+      meta.id,
+    );
+
+    const { item, wrote } = await writeItemCanonicalSourceMarkdown(
+      ctx,
+      path,
+      meta.id,
+      itemId,
+      canonical,
+    );
+    expect(wrote).toBe(false);
+    expect(item.tag_ids).toEqual([legacyId]);
+    expect(await readItemRawMarkdown(fs, path, itemId)).toBe(canonical);
+    expect((await readTagsFile(fs, path)).tags).toEqual([
+      expect.objectContaining({ id: legacyId, name: "ab" }),
+    ]);
+    const indexed = await listItemsByIds(ctx, path, [itemId]);
+    expect(indexed[0]?.tag_ids).toEqual([legacyId]);
+  });
+
+  it("syncItemFromDisk syncs catalog and index without rewriting markdown", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-sync-file-first-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, {
+      name: "Vault",
+    });
+
+    const existingTag = await seedTagFromDocumentWritePath(
+      ctx,
+      path,
+      meta.id,
+      "focus",
+    );
+    const itemId = `${createId()}.md`;
+    const created = "2024-01-01T00:00:00.000Z";
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Original",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        created_at: created,
+        updated_at: created,
+      },
+      content: "body",
+    });
+
+    const raw = [
+      "---",
+      "title: Original",
+      "type: note",
+      "tags:",
+      "  - focus",
+      "content_revision: 1",
+      `created: ${created}`,
+      `updated: ${created}`,
+      "---",
+      "",
+      "body",
+      "",
+    ].join("\n");
+    await fs.writeText(itemMarkdownPath(path, itemId), raw);
+
+    const synced = await syncItemFromDisk(ctx, path, meta.id, itemId);
+    expect(synced.tag_ids).toEqual([existingTag.id]);
+    expect(await readItemRawMarkdown(fs, path, itemId)).toBe(raw);
+
+    const indexed = await listItemsByIds(ctx, path, [itemId]);
+    expect(indexed[0]?.tag_ids).toEqual([existingTag.id]);
+  });
+
+  it("syncItemFromDisk short-circuits when catalog and index already match FM", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-vault-sync-short-"));
+    const sql = new MemorySqlAdapter();
+    const enqueued: string[] = [];
+    const ctx = {
+      fs,
+      index: new SqlVaultIndexStore(sql),
+      itemDerivedRefreshJobs: {
+        enqueue: async (
+          _vaultId: string,
+          _vaultPath: string,
+          itemId: string,
+        ) => {
+          enqueued.push(itemId);
+        },
+      },
+    };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const tag = await seedTagFromDocumentWritePath(ctx, path, meta.id, "focus");
+    const itemId = `${createId()}.md`;
+    const created = "2024-01-01T00:00:00.000Z";
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [tag.id],
+        collection_ids: [],
+        created_at: created,
+        updated_at: created,
+      },
+      content: "body",
+    });
+    enqueued.length = 0;
+
+    const synced = await syncItemFromDisk(ctx, path, meta.id, itemId);
+    expect(synced.tag_ids).toEqual([tag.id]);
+    expect(enqueued).toEqual([]);
   });
 
   it("listItemsByIds preserves order and skips missing items", async () => {

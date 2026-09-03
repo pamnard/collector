@@ -259,6 +259,7 @@ export function createServiceDomainRuntime(
     contentRevision: number,
     fileMtimeMs: number,
     itemUrl?: string | null,
+    previousTagIds?: string[],
   ): Promise<void> {
     await enqueueItemDerivedRefreshWithFailureReporting(
       { requireJobs, jobPermanentFailure },
@@ -269,6 +270,7 @@ export function createServiceDomainRuntime(
         contentRevision,
         fileMtimeMs,
         ...(itemUrl !== undefined ? { itemUrl } : {}),
+        ...(previousTagIds !== undefined ? { previousTagIds } : {}),
       },
     );
   }

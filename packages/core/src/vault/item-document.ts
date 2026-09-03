@@ -98,6 +98,9 @@ export function parseItemDocument(
   const seenTagIds = new Set<string>();
   const missingTagNames: string[] = [];
   for (const name of tagNames) {
+    if (!name.trim()) {
+      throw new Error(`Item document ${itemId} has blank tag name`);
+    }
     const tag = ctx.tagsByName.get(tagSimilarityKey(name));
     if (!tag) {
       missingTagNames.push(name);

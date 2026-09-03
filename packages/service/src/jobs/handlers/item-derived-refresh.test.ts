@@ -126,6 +126,9 @@ describe("itemDerivedRefresh job (#766 / #768)", () => {
       samplePayload.itemId,
       samplePayload.contentRevision,
       samplePayload.fileMtimeMs,
+      {
+        previousTagIds: undefined,
+      },
     );
     expect(prune).toHaveBeenCalledWith(
       expect.anything(),
@@ -204,6 +207,9 @@ describe("itemDerivedRefresh job (#766 / #768)", () => {
       samplePayload.itemId,
       4,
       diskMtimeMs,
+      {
+        previousTagIds: undefined,
+      },
     );
 
     localizeSpy.mockRestore();
@@ -254,6 +260,126 @@ describe("itemDerivedRefresh job (#766 / #768)", () => {
       "vault-1",
       [],
     );
+    upsertSpy.mockRestore();
+    pruneSpy.mockRestore();
+  });
+
+  it("passes previousTagIds hint through queued refresh for prune correctness", async () => {
+    const localizeSpy = vi
+      .spyOn(await import("@collector/core"), "runItemDerivedLocalizeRefresh")
+      .mockResolvedValue("noop");
+    const upsertSpy = vi
+      .spyOn(await import("@collector/core"), "upsertItemIndexFromVault")
+      .mockResolvedValue({ outcome: "upserted", releasedTagIds: ["released-tag"] });
+    const pruneSpy = vi
+      .spyOn(await import("@collector/core"), "pruneReleasedTagsAfterIndexRefresh")
+      .mockResolvedValue(undefined);
+
+    const handler = createItemDerivedRefreshHandler({
+      getContext: () =>
+        ({
+          fs: {
+            exists: async () => true,
+            stat: async () => ({ mtimeMs: samplePayload.fileMtimeMs }),
+            readText: async () =>
+              [
+                "---",
+                "title: Note",
+                `content_revision: ${samplePayload.contentRevision}`,
+                "---",
+                "",
+                "body",
+                "",
+              ].join("\n"),
+          },
+          index: {},
+        }) as never,
+      localizeRemoteDisplayAssets: vi.fn(),
+    });
+
+    await expect(
+      handler({
+        id: "job-prev-tags",
+        type: "itemDerivedRefresh",
+        attempts: 0,
+        payload: {
+          ...samplePayload,
+          previousTagIds: ["tag-a", "tag-b"],
+        },
+      }),
+    ).resolves.toEqual({ status: "ok" });
+
+    expect(upsertSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      samplePayload.vaultPath,
+      samplePayload.vaultId,
+      samplePayload.itemId,
+      samplePayload.contentRevision,
+      samplePayload.fileMtimeMs,
+      {
+        previousTagIds: ["tag-a", "tag-b"],
+      },
+    );
+    expect(pruneSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      samplePayload.vaultPath,
+      samplePayload.vaultId,
+      ["released-tag"],
+    );
+
+    localizeSpy.mockRestore();
+    upsertSpy.mockRestore();
+    pruneSpy.mockRestore();
+  });
+
+  it("media-only localize still prunes released tags from previousTagIds (#948)", async () => {
+    const localizeSpy = vi
+      .spyOn(await import("@collector/core"), "runItemDerivedLocalizeRefresh")
+      .mockResolvedValue("media");
+    const upsertSpy = vi
+      .spyOn(await import("@collector/core"), "upsertItemIndexFromVault")
+      .mockResolvedValue({ outcome: "upserted", releasedTagIds: [] });
+    const pruneSpy = vi
+      .spyOn(await import("@collector/core"), "pruneReleasedTagsAfterIndexRefresh")
+      .mockResolvedValue(undefined);
+
+    const handler = createItemDerivedRefreshHandler({
+      getContext: () =>
+        ({
+          fs: {
+            exists: async () => true,
+            stat: async () => ({ mtimeMs: samplePayload.fileMtimeMs }),
+          },
+          index: {
+            listItemFilesByIds: async () => [
+              { id: samplePayload.itemId, tag_ids: ["tag-kept"] },
+            ],
+          },
+        }) as never,
+      localizeRemoteDisplayAssets: vi.fn(),
+    });
+
+    await expect(
+      handler({
+        id: "job-media-prune",
+        type: "itemDerivedRefresh",
+        attempts: 0,
+        payload: {
+          ...samplePayload,
+          previousTagIds: ["tag-kept", "tag-released"],
+        },
+      }),
+    ).resolves.toEqual({ status: "ok" });
+
+    expect(upsertSpy).not.toHaveBeenCalled();
+    expect(pruneSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      samplePayload.vaultPath,
+      samplePayload.vaultId,
+      ["tag-released"],
+    );
+
+    localizeSpy.mockRestore();
     upsertSpy.mockRestore();
     pruneSpy.mockRestore();
   });

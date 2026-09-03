@@ -43,6 +43,17 @@ import { countTextStats } from "./text-stats.js";
  * keep the indexed content_revision / file_mtime_ms (deferIndexRefresh /
  * localize owns the snapshot bump). Tag ids still update.
  */
+function sameTagIds(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  const rightSet = new Set(right);
+  return left.every((id) => rightSet.has(id));
+}
+
 async function pinItemTagsToIndex(
   ctx: VaultContext,
   vaultPath: string,
@@ -80,6 +91,110 @@ async function pinItemTagsToIndex(
   );
 }
 
+/**
+ * Capture releases before pin, pin item_tags, then refresh and/or prune.
+ *
+ * - Always prune immediately from the pre-pin snapshot (same as main): orphan
+ *   catalog tags must not wait on a derived job that may fail permanently.
+ * - With `itemDerivedRefreshJobs`: also enqueue derived refresh with
+ *   `previousTagIds` (media-only localize prune insurance).
+ * - With `deferIndexRefresh`: prune immediately; caller owns derived enqueue.
+ */
+async function pinRefreshAndPruneItemTags(
+  ctx: VaultContext,
+  vaultPath: string,
+  vaultId: string,
+  item: ItemFile,
+  fileMtimeMs: number,
+  options?: { deferIndexRefresh?: boolean },
+): Promise<void> {
+  const [beforeItem] = await ctx.index.listItemFilesByIds(vaultId, [item.id]);
+  const previousTagIds = beforeItem?.tag_ids ?? [];
+  const released = releasedTagIdsFromChange(previousTagIds, item.tag_ids);
+  await pinItemTagsToIndex(ctx, vaultPath, vaultId, item, fileMtimeMs, {
+    preserveIndexSnapshot: options?.deferIndexRefresh === true,
+  });
+
+  if (options?.deferIndexRefresh === true) {
+    await pruneReleasedTagsAfterIndexRefresh(ctx, vaultPath, vaultId, released);
+    return;
+  }
+
+  await refreshItemIndexAfterWrite(
+    ctx,
+    vaultPath,
+    vaultId,
+    item,
+    ctx.itemDerivedRefreshJobs ? { previousTagIds } : undefined,
+  );
+  // Immediate prune from pre-pin snapshot even when refresh only enqueued a job.
+  await pruneReleasedTagsAfterIndexRefresh(ctx, vaultPath, vaultId, released);
+}
+
+async function syncParsedItemFromRawMarkdown(
+  ctx: VaultContext,
+  vaultPath: string,
+  vaultId: string,
+  itemId: string,
+  raw: string,
+  fileMtimeMs: number,
+  options?: { deferIndexRefresh?: boolean },
+): Promise<ItemFile> {
+  const item = await itemFileFromDocumentMarkdown(
+    ctx.fs,
+    vaultPath,
+    vaultId,
+    itemId,
+    raw,
+    fileMtimeMs,
+  );
+  // Raw write always refreshes: body/FTS may change even when tag_ids match.
+  await pinRefreshAndPruneItemTags(
+    ctx,
+    vaultPath,
+    vaultId,
+    item,
+    fileMtimeMs,
+    options,
+  );
+  return item;
+}
+
+/**
+ * After parse/ensure: short-circuit when item_tags already match, otherwise
+ * pin + refresh/prune. Shared by raw write, disk sync, and canonical no-op.
+ */
+async function reconcileParsedItemWithIndex(
+  ctx: VaultContext,
+  vaultPath: string,
+  vaultId: string,
+  item: ItemFile,
+  fileMtimeMs: number,
+  options?: { deferIndexRefresh?: boolean },
+): Promise<ItemFile> {
+  const [existing] = await ctx.index.listItemFilesByIds(vaultId, [item.id]);
+  if (existing && sameTagIds(existing.tag_ids, item.tag_ids)) {
+    await syncTagsToIndex(ctx, vaultPath, vaultId, { tagIds: item.tag_ids });
+    return {
+      ...item,
+      collection_ids: existing.collection_ids,
+    };
+  }
+
+  await pinRefreshAndPruneItemTags(
+    ctx,
+    vaultPath,
+    vaultId,
+    item,
+    fileMtimeMs,
+    options,
+  );
+  return {
+    ...item,
+    collection_ids: existing?.collection_ids ?? item.collection_ids,
+  };
+}
+
 export async function upsertItem(
   ctx: VaultContext,
   vaultPath: string,
@@ -114,18 +229,14 @@ export async function upsertItem(
   if (afterStat.mtimeMs === null) {
     throw new Error(`Cannot upsert item ${id}: missing file mtime after write`);
   }
-  // Capture releases before pin so prune still sees tags removed by this write
-  // (pin replaces item_tags first; refresh alone would compute an empty release set).
-  const [beforeItem] = await ctx.index.listItemFilesByIds(vaultId, [id]);
-  const released = releasedTagIdsFromChange(beforeItem?.tag_ids, item.tag_ids);
-  await pinItemTagsToIndex(ctx, vaultPath, vaultId, item, afterStat.mtimeMs, {
-    preserveIndexSnapshot: input.deferIndexRefresh === true,
-  });
-
-  if (!input.deferIndexRefresh) {
-    await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);
-  }
-  await pruneReleasedTagsAfterIndexRefresh(ctx, vaultPath, vaultId, released);
+  await pinRefreshAndPruneItemTags(
+    ctx,
+    vaultPath,
+    vaultId,
+    item,
+    afterStat.mtimeMs,
+    { deferIndexRefresh: input.deferIndexRefresh === true },
+  );
   return item;
 }
 
@@ -152,15 +263,6 @@ export async function writeItemRawMarkdown(
     throw new Error(`Cannot write item document ${id}: missing file mtime`);
   }
 
-  const item = await itemFileFromDocumentMarkdown(
-    ctx.fs,
-    vaultPath,
-    vaultId,
-    id,
-    raw,
-    existingStat.mtimeMs,
-  );
-
   await ctx.fs.writeText(docPath, raw);
   await ensureFileMtimeAdvanced(ctx.fs, docPath, existingStat.mtimeMs);
   await ctx.fs.touch(vaultPath);
@@ -169,27 +271,65 @@ export async function writeItemRawMarkdown(
   if (afterStat.mtimeMs === null) {
     throw new Error(`Cannot write item document ${id}: missing file mtime after write`);
   }
+  return syncParsedItemFromRawMarkdown(
+    ctx,
+    vaultPath,
+    vaultId,
+    id,
+    raw,
+    afterStat.mtimeMs,
+    options,
+  );
+}
 
-  // Pin tags before return so concurrent full tagCatalogPrune reconcile cannot
-  // drop freshly ensured catalog rows that still have zero item_tags refs.
-  // Capture releases before pin so prune still sees tags removed by this write.
-  const [beforeItem] = await ctx.index.listItemFilesByIds(vaultId, [id]);
-  const released = releasedTagIdsFromChange(beforeItem?.tag_ids, item.tag_ids);
-  await pinItemTagsToIndex(ctx, vaultPath, vaultId, item, afterStat.mtimeMs, {
-    preserveIndexSnapshot: options?.deferIndexRefresh === true,
-  });
-
-  if (!options?.deferIndexRefresh) {
-    await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);
+/**
+ * Re-parse the existing vault `.md` bytes and sync catalog + index without
+ * rewriting the document. Used for file-first tag/catalog/index reconciliation
+ * when a higher layer persists no-op bytes (#948).
+ */
+export async function syncItemFromDisk(
+  ctx: VaultContext,
+  vaultPath: string,
+  vaultId: string,
+  itemId: string,
+  options?: { deferIndexRefresh?: boolean },
+): Promise<ItemFile> {
+  const id = normalizeRelativePath(itemId);
+  const docPath = itemMarkdownPath(vaultPath, id);
+  if (!(await ctx.fs.exists(docPath))) {
+    throw new Error(`Item not found: ${id}`);
   }
-  await pruneReleasedTagsAfterIndexRefresh(ctx, vaultPath, vaultId, released);
-  return item;
+
+  const fileStat = await ctx.fs.stat(docPath);
+  if (fileStat.mtimeMs === null) {
+    throw new Error(`Cannot sync item document ${id}: missing file mtime`);
+  }
+  const raw = await ctx.fs.readText(docPath);
+  const item = await itemFileFromDocumentMarkdown(
+    ctx.fs,
+    vaultPath,
+    vaultId,
+    id,
+    raw,
+    fileStat.mtimeMs,
+  );
+  return reconcileParsedItemWithIndex(
+    ctx,
+    vaultPath,
+    vaultId,
+    item,
+    fileStat.mtimeMs,
+    options,
+  );
 }
 
 /**
  * UI source-editor save: parse frontmatter, ensure/normalize tags (#943),
  * re-serialize canonical frontmatter, write only when bytes differ from disk.
  * Import/sync paths keep using writeItemRawMarkdown (raw bytes contract).
+ *
+ * Even when bytes are unchanged (`wrote: false`), catalog + index still sync
+ * from the parsed file so ensure/rename cannot leave SQL behind (#948).
  */
 export async function writeItemCanonicalSourceMarkdown(
   ctx: VaultContext,
@@ -224,7 +364,15 @@ export async function writeItemCanonicalSourceMarkdown(
   const canonical = serializeItemDocument(item, body, maps.byId);
 
   if (canonical === existing) {
-    return { item, wrote: false };
+    const synced = await reconcileParsedItemWithIndex(
+      ctx,
+      vaultPath,
+      vaultId,
+      item,
+      existingStat.mtimeMs,
+      options,
+    );
+    return { item: synced, wrote: false };
   }
 
   await writeItemDocument(ctx.fs, vaultPath, item, body);
@@ -238,16 +386,14 @@ export async function writeItemCanonicalSourceMarkdown(
     );
   }
 
-  const [beforeItem] = await ctx.index.listItemFilesByIds(vaultId, [id]);
-  const released = releasedTagIdsFromChange(beforeItem?.tag_ids, item.tag_ids);
-  await pinItemTagsToIndex(ctx, vaultPath, vaultId, item, afterStat.mtimeMs, {
-    preserveIndexSnapshot: options?.deferIndexRefresh === true,
-  });
-
-  if (!options?.deferIndexRefresh) {
-    await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);
-  }
-  await pruneReleasedTagsAfterIndexRefresh(ctx, vaultPath, vaultId, released);
+  await pinRefreshAndPruneItemTags(
+    ctx,
+    vaultPath,
+    vaultId,
+    item,
+    afterStat.mtimeMs,
+    options,
+  );
   return { item, wrote: true };
 }
 
