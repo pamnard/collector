@@ -20,6 +20,17 @@ function tag(count: number): TagWithCount {
   };
 }
 
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
 describe("useSidebarTags", () => {
   afterEach(() => {
     cleanup();
@@ -60,5 +71,61 @@ describe("useSidebarTags", () => {
       expect(result.current).toEqual(second);
     });
     expect(listTags).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores an older tag refresh that resolves after a newer one", async () => {
+    const initial = [tag(3)];
+    const older = deferred<TagWithCount[]>();
+    const newer = deferred<TagWithCount[]>();
+    const stale = [tag(1)];
+    const fresh = [tag(4)];
+    const listTags = vi
+      .fn<() => Promise<TagWithCount[]>>()
+      .mockResolvedValueOnce(initial)
+      .mockImplementationOnce(() => older.promise)
+      .mockImplementationOnce(() => newer.promise);
+    const service = createDevMockCollectorService();
+    service.tags.listTags = listTags;
+    service.tags.subscribeTags = (onUpdate, _handlers, signal) => {
+      void service.tags.listTags().then((tags) => {
+        if (!signal?.aborted) {
+          onUpdate(tags);
+        }
+      });
+      return subscriptionFromTeardown(() => {});
+    };
+    setCollectorService(service, createDevMockUiSession(service));
+
+    const { result } = renderHook(() => useSidebarTags(1), {
+      wrapper: ({ children }) => <AlertBusProvider>{children}</AlertBusProvider>,
+    });
+
+    await waitFor(() => {
+      expect(result.current).toEqual(initial);
+    });
+
+    await act(async () => {
+      emitTagListRefresh();
+      emitTagListRefresh();
+    });
+
+    await act(async () => {
+      newer.resolve(fresh);
+      await newer.promise;
+    });
+
+    await waitFor(() => {
+      expect(result.current).toEqual(fresh);
+    });
+
+    await act(async () => {
+      older.resolve(stale);
+      await older.promise;
+    });
+
+    await waitFor(() => {
+      expect(result.current).toEqual(fresh);
+    });
+    expect(listTags).toHaveBeenCalledTimes(3);
   });
 });

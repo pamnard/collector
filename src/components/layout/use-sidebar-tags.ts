@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { TagWithCount } from "@collector/core";
 import { getCollectorService } from "../../services/collector-client";
 import { useAlerts } from "../alerts/AlertBusProvider";
@@ -11,6 +11,7 @@ const TAG_LIST_REFRESH_ERROR_ID = "tag-list-refresh-error";
 export function useSidebarTags(vaultRevision: number): TagWithCount[] {
   const [tags, setTags] = useState<TagWithCount[]>([]);
   const alerts = useAlerts();
+  const latestRefreshRequestRef = useRef(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -27,17 +28,19 @@ export function useSidebarTags(vaultRevision: number): TagWithCount[] {
   useEffect(() => {
     let active = true;
     const unsubscribe = subscribeTagListLive(() => {
+      const requestId = latestRefreshRequestRef.current + 1;
+      latestRefreshRequestRef.current = requestId;
       void getCollectorService()
         .tags.listTags()
         .then((next) => {
-          if (!active) {
+          if (!active || latestRefreshRequestRef.current !== requestId) {
             return;
           }
           alerts.dismiss(TAG_LIST_REFRESH_ERROR_ID);
           setTags(next);
         })
         .catch((error: unknown) => {
-          if (!active) {
+          if (!active || latestRefreshRequestRef.current !== requestId) {
             return;
           }
           alerts.upsert(TAG_LIST_REFRESH_ERROR_ID, {
