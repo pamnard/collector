@@ -84,15 +84,6 @@ describe("itemDerivedRefresh job (#766 / #768)", () => {
     const pruneSpy = vi
       .spyOn(await import("@collector/core"), "pruneReleasedTagsAfterIndexRefresh")
       .mockImplementation(prune);
-    const readItemFile = vi.fn(async () => ({
-      id: samplePayload.itemId,
-      folder_path: "Inbox",
-      content_revision: 3,
-      vault_id: samplePayload.vaultId,
-    }));
-    vi.spyOn(await import("@collector/core"), "readItemFile").mockImplementation(
-      readItemFile as never,
-    );
 
     const onVaultPresentationChanged = vi.fn();
     const handler = createItemDerivedRefreshHandler({
@@ -101,6 +92,16 @@ describe("itemDerivedRefresh job (#766 / #768)", () => {
           fs: {
             exists: async () => true,
             stat: async () => ({ mtimeMs: samplePayload.fileMtimeMs }),
+            readText: async () =>
+              [
+                "---",
+                "title: Note",
+                `content_revision: ${samplePayload.contentRevision}`,
+                "---",
+                "",
+                "body",
+                "",
+              ].join("\n"),
           },
           index: {},
         }) as never,
@@ -123,7 +124,7 @@ describe("itemDerivedRefresh job (#766 / #768)", () => {
       samplePayload.vaultPath,
       samplePayload.vaultId,
       samplePayload.itemId,
-      3,
+      samplePayload.contentRevision,
       samplePayload.fileMtimeMs,
     );
     expect(prune).toHaveBeenCalledWith(
@@ -138,6 +139,72 @@ describe("itemDerivedRefresh job (#766 / #768)", () => {
       itemId: samplePayload.itemId,
       folderPath: "Inbox",
     });
+
+    localizeSpy.mockRestore();
+    upsertSpy.mockRestore();
+    pruneSpy.mockRestore();
+  });
+
+  it("passes on-disk content_revision after markdown localize", async () => {
+    const localize = vi.fn(async () => "markdown" as const);
+    const upsert = vi.fn(async () => ({
+      outcome: "upserted" as const,
+      releasedTagIds: [] as string[],
+    }));
+    const localizeSpy = vi
+      .spyOn(await import("@collector/core"), "runItemDerivedLocalizeRefresh")
+      .mockImplementation(localize);
+    const upsertSpy = vi
+      .spyOn(await import("@collector/core"), "upsertItemIndexFromVault")
+      .mockImplementation(upsert);
+    const pruneSpy = vi
+      .spyOn(await import("@collector/core"), "pruneReleasedTagsAfterIndexRefresh")
+      .mockResolvedValue(undefined);
+
+    const diskMtimeMs = samplePayload.fileMtimeMs + 50;
+    const handler = createItemDerivedRefreshHandler({
+      getContext: () =>
+        ({
+          fs: {
+            exists: async () => true,
+            stat: async () => ({ mtimeMs: diskMtimeMs }),
+            readText: async () =>
+              [
+                "---",
+                "title: Note",
+                "content_revision: 4",
+                "---",
+                "",
+                "localized body",
+                "",
+              ].join("\n"),
+          },
+          index: {},
+        }) as never,
+      localizeRemoteDisplayAssets: vi.fn(),
+      onVaultPresentationChanged: vi.fn(),
+    });
+
+    await expect(
+      handler({
+        id: "job-localize",
+        type: "itemDerivedRefresh",
+        attempts: 0,
+        payload: {
+          ...samplePayload,
+          contentRevision: 3,
+        },
+      }),
+    ).resolves.toEqual({ status: "ok" });
+
+    expect(upsert).toHaveBeenCalledWith(
+      expect.anything(),
+      samplePayload.vaultPath,
+      samplePayload.vaultId,
+      samplePayload.itemId,
+      4,
+      diskMtimeMs,
+    );
 
     localizeSpy.mockRestore();
     upsertSpy.mockRestore();
@@ -206,12 +273,6 @@ describe("itemDerivedRefresh job (#766 / #768)", () => {
       await import("@collector/core"),
       "pruneReleasedTagsAfterIndexRefresh",
     ).mockResolvedValue(undefined);
-    vi.spyOn(await import("@collector/core"), "readItemFile").mockResolvedValue({
-      id: samplePayload.itemId,
-      folder_path: "Inbox",
-      content_revision: 3,
-      vault_id: samplePayload.vaultId,
-    } as never);
 
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
@@ -226,6 +287,16 @@ describe("itemDerivedRefresh job (#766 / #768)", () => {
             fs: {
               exists: async () => true,
               stat: async () => ({ mtimeMs: samplePayload.fileMtimeMs }),
+              readText: async () =>
+                [
+                  "---",
+                  "title: Note",
+                  `content_revision: ${samplePayload.contentRevision}`,
+                  "---",
+                  "",
+                  "body",
+                  "",
+                ].join("\n"),
             },
             index: {},
           }) as never,

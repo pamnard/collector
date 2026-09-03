@@ -89,7 +89,84 @@ describe("runItemDerivedLocalizeRefresh (#768)", () => {
     expect(onDisk).toContain("media/local/hero.png");
     expect(onDisk).toContain("content_revision: 2");
     const indexed = await index.listItemFilesByIds(meta.id, [itemId]);
+    // deferIndexRefresh pin updates tags only; snapshot revision stays until
+    // the derived job's full upsert.
     expect(indexed[0]?.content_revision).toBe(1);
+  });
+
+  it("after markdown localize, upsert with disk revision is not stale", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-localize-upsert-"));
+    const sql = new MemorySqlAdapter();
+    const index = new SqlVaultIndexStore(sql);
+    const ctx = { fs, index };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const folderPath = await resolveOrCreateInboxFolder(ctx, path);
+    const itemId = `${folderPath}/${crypto.randomUUID()}.md`;
+    const remoteUrl = "https://cdn.example/hero.png";
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Remote",
+        description: "",
+        url: null,
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: folderPath,
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-01T00:00:00.000Z",
+      },
+      content: `![hero](${remoteUrl})`,
+    });
+
+    const docPath = join(path, itemId);
+    const beforeStat = await fs.stat(docPath);
+    if (beforeStat.mtimeMs === null) {
+      throw new Error("missing mtime");
+    }
+
+    await runItemDerivedLocalizeRefresh(
+      ctx,
+      {
+        vaultId: meta.id,
+        vaultPath: path,
+        itemId,
+        contentRevision: 1,
+        fileMtimeMs: beforeStat.mtimeMs,
+      },
+      async ({ rawMarkdown }) => ({
+        text: rawMarkdown.replace(remoteUrl, "media/local/hero.png"),
+        changed: true,
+      }),
+    );
+
+    const afterStat = await fs.stat(docPath);
+    if (afterStat.mtimeMs === null) {
+      throw new Error("missing mtime after localize");
+    }
+    const { upsertItemIndexFromVault } = await import(
+      "./item-index-refresh.js"
+    );
+    const outcome = await upsertItemIndexFromVault(
+      ctx,
+      path,
+      meta.id,
+      itemId,
+      2,
+      afterStat.mtimeMs,
+    );
+    expect(outcome.outcome).toBe("upserted");
+    const indexed = await index.listItemFilesByIds(meta.id, [itemId]);
+    expect(indexed[0]?.content_revision).toBe(2);
+    expect(indexed[0]?.title).toBe("Remote");
   });
 
   it("skips stale jobs when a newer revision is already indexed", async () => {

@@ -31,6 +31,51 @@ import {
 } from "./item-index-refresh.js";
 import { countTextStats } from "./text-stats.js";
 
+/**
+ * Sync this item's tag catalog rows + item_tags so full tag reconcile cannot
+ * drop freshly ensured names before derived refresh finishes.
+ *
+ * When `preserveIndexSnapshot` is set and the item already has an index row,
+ * keep the indexed content_revision / file_mtime_ms (deferIndexRefresh /
+ * localize owns the snapshot bump). Tag ids still update.
+ */
+async function pinItemTagsToIndex(
+  ctx: VaultContext,
+  vaultPath: string,
+  vaultId: string,
+  item: ItemFile,
+  fileMtimeMs: number,
+  options?: { preserveIndexSnapshot?: boolean },
+): Promise<void> {
+  await syncTagsToIndex(ctx, vaultPath, vaultId, { tagIds: item.tag_ids });
+  const [existing] = await ctx.index.listItemFilesByIds(vaultId, [item.id]);
+  const preserve =
+    options?.preserveIndexSnapshot === true && existing !== undefined;
+  let fileMtimeForMeta = fileMtimeMs;
+  if (preserve) {
+    const [syncMeta] = await ctx.index.listItemSyncMetaByIds(vaultId, [
+      item.id,
+    ]);
+    if (syncMeta?.file_mtime_ms != null) {
+      fileMtimeForMeta = syncMeta.file_mtime_ms;
+    }
+  }
+  const pinned: ItemFile = {
+    ...item,
+    collection_ids: existing?.collection_ids ?? item.collection_ids,
+    ...(preserve
+      ? {
+          content_revision: existing.content_revision,
+          updated_at: existing.updated_at,
+        }
+      : {}),
+  };
+  await ctx.index.upsertItemMetadata(
+    { item: pinned, fileMtimeMs: fileMtimeForMeta },
+    vaultId,
+  );
+}
+
 export async function upsertItem(
   ctx: VaultContext,
   vaultPath: string,
@@ -59,6 +104,15 @@ export async function upsertItem(
   if (input.sourceRef) {
     await writeItemSourceRef(ctx.fs, vaultPath, item.id, input.sourceRef);
   }
+
+  const docPath = itemMarkdownPath(vaultPath, id);
+  const afterStat = await ctx.fs.stat(docPath);
+  if (afterStat.mtimeMs === null) {
+    throw new Error(`Cannot upsert item ${id}: missing file mtime after write`);
+  }
+  await pinItemTagsToIndex(ctx, vaultPath, vaultId, item, afterStat.mtimeMs, {
+    preserveIndexSnapshot: input.deferIndexRefresh === true,
+  });
 
   if (!input.deferIndexRefresh) {
     await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);
@@ -102,12 +156,16 @@ export async function writeItemRawMarkdown(
   await ensureFileMtimeAdvanced(ctx.fs, docPath, existingStat.mtimeMs);
   await ctx.fs.touch(vaultPath);
 
-  // ensureTagsByName (via parse) only updates tags.json; index FK needs tag rows.
-  // When derived jobs are wired, upsertItemIndexFromVault syncs tags for this item.
-  const deferTagSyncToDerivedJob = ctx.itemDerivedRefreshJobs != null;
-  if (!deferTagSyncToDerivedJob) {
-    await syncTagsToIndex(ctx, vaultPath, vaultId, { tagIds: item.tag_ids });
+  const afterStat = await ctx.fs.stat(docPath);
+  if (afterStat.mtimeMs === null) {
+    throw new Error(`Cannot write item document ${id}: missing file mtime after write`);
   }
+
+  // Pin tags before return so concurrent full tagCatalogPrune reconcile cannot
+  // drop freshly ensured catalog rows that still have zero item_tags refs.
+  await pinItemTagsToIndex(ctx, vaultPath, vaultId, item, afterStat.mtimeMs, {
+    preserveIndexSnapshot: options?.deferIndexRefresh === true,
+  });
 
   if (!options?.deferIndexRefresh) {
     await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);
