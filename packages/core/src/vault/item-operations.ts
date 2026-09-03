@@ -94,9 +94,10 @@ async function pinItemTagsToIndex(
 /**
  * Capture releases before pin, pin item_tags, then refresh and/or prune.
  *
- * - With `itemDerivedRefreshJobs`: enqueue derived refresh with `previousTagIds`
- *   (media-only localize must still prune — see item-derived-refresh).
- * - Without jobs: inline refresh + immediate prune from the pre-pin snapshot.
+ * - Always prune immediately from the pre-pin snapshot (same as main): orphan
+ *   catalog tags must not wait on a derived job that may fail permanently.
+ * - With `itemDerivedRefreshJobs`: also enqueue derived refresh with
+ *   `previousTagIds` (media-only localize prune insurance).
  * - With `deferIndexRefresh`: prune immediately; caller owns derived enqueue.
  */
 async function pinRefreshAndPruneItemTags(
@@ -119,14 +120,14 @@ async function pinRefreshAndPruneItemTags(
     return;
   }
 
-  if (ctx.itemDerivedRefreshJobs) {
-    await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item, {
-      previousTagIds,
-    });
-    return;
-  }
-
-  await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);
+  await refreshItemIndexAfterWrite(
+    ctx,
+    vaultPath,
+    vaultId,
+    item,
+    ctx.itemDerivedRefreshJobs ? { previousTagIds } : undefined,
+  );
+  // Immediate prune from pre-pin snapshot even when refresh only enqueued a job.
   await pruneReleasedTagsAfterIndexRefresh(ctx, vaultPath, vaultId, released);
 }
 
