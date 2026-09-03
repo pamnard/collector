@@ -19,6 +19,9 @@ packages/core/tmp
 # Agent/git worktrees (local isolation only)
 .worktrees/
 
+# Local one-off tooling / staging (never publish)
+local/
+
 # Editor directories and files
 docs/
 .cursor/
