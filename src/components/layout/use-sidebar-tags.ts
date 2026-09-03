@@ -25,20 +25,31 @@ export function useSidebarTags(vaultRevision: number): TagWithCount[] {
   }, [vaultRevision]);
 
   useEffect(() => {
-    return subscribeTagListLive(() => {
+    let active = true;
+    const unsubscribe = subscribeTagListLive(() => {
       void getCollectorService()
         .tags.listTags()
         .then((next) => {
+          if (!active) {
+            return;
+          }
           alerts.dismiss(TAG_LIST_REFRESH_ERROR_ID);
           setTags(next);
         })
         .catch((error: unknown) => {
+          if (!active) {
+            return;
+          }
           alerts.upsert(TAG_LIST_REFRESH_ERROR_ID, {
             tone: "danger",
             message: errorMessage(error),
           });
         });
     });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, [alerts]);
 
   return tags;

@@ -11,14 +11,23 @@ import { AlertBusProvider } from "../alerts/AlertBusProvider";
 import { emitTagListRefresh } from "../../lib/tag-list-live";
 import { useSidebarTags } from "./use-sidebar-tags";
 
+function tag(count: number): TagWithCount {
+  return {
+    id: "11111111-1111-4111-8111-111111111111",
+    name: "Research",
+    created_at: "2024-01-01T00:00:00.000Z",
+    item_count: count,
+  };
+}
+
 describe("useSidebarTags", () => {
   afterEach(() => {
     cleanup();
   });
 
   it("refetches tags on tag-list live refresh without vaultRevision bump", async () => {
-    const first: TagWithCount[] = [{ id: "t1", name: "Research", item_count: 2 }];
-    const second: TagWithCount[] = [{ id: "t1", name: "Research", item_count: 1 }];
+    const first = [tag(2)];
+    const second = [tag(1)];
     const listTags = vi
       .fn<() => Promise<TagWithCount[]>>()
       .mockResolvedValueOnce(first)
