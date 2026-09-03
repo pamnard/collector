@@ -25,6 +25,7 @@ import {
   moveItemToFolder,
   parseAndResolveTextLinks,
   parseDocumentMarkdown,
+  preferredStoredFormTagNames,
   readItemContent,
   readItemFile,
   readItemRawMarkdown,
@@ -37,6 +38,14 @@ import {
   writeItemRawMarkdown,
   type AdjacentItemAnchor,
 } from "@collector/core";
+
+function sameTagIdSet(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  const ids = new Set(left);
+  return right.every((id) => ids.has(id));
+}
 import { getBacklinksForTarget } from "./backlinks-reverse-cache.js";
 import type { ItemsSearchServiceDeps } from "./items-search.js";
 import type { VaultPresentationChangedPayload } from "./vault-presentation-changed.js";
@@ -367,23 +376,6 @@ export function createItemsCrud(
       currentContent = await readItemContent(ctx.fs, path, current.id);
     }
 
-    // Preferred FM spelling only when tags are unchanged (#949). Intentional
-    // input.tags must go through ensure + serialize tagStoredForm (#947) — do
-    // not pass raw input strings as preferred (that reintroduces catalog↔file drift).
-    let preferredTagNames: string[] | undefined;
-    if (input.tags === undefined && current.tag_ids.length > 0) {
-      const currentRawMarkdown = await readItemRawMarkdown(ctx.fs, path, current.id);
-      const parsedCurrentSource = parseDocumentMarkdown(currentRawMarkdown);
-      if (
-        Array.isArray(parsedCurrentSource.frontmatter.tags) &&
-        parsedCurrentSource.frontmatter.tags.every(
-          (tagName): tagName is string => typeof tagName === "string",
-        )
-      ) {
-        preferredTagNames = parsedCurrentSource.frontmatter.tags;
-      }
-    }
-
     let maps = await loadTagMaps(ctx.fs, path);
     let tagIds = current.tag_ids;
     if (input.tags !== undefined) {
@@ -401,6 +393,22 @@ export function createItemsCrud(
         seen.add(tag.id);
         tagIds.push(tag.id);
       }
+    }
+
+    // Prefer existing FM spelling when membership is unchanged (#949), including
+    // UI saves that always send catalog tag names. Membership changes → #947
+    // tagStoredForm only. Legacy FM names are dropped by preferredStoredFormTagNames.
+    let preferredTagNames: string[] | undefined;
+    if (tagIds.length > 0 && sameTagIdSet(tagIds, current.tag_ids)) {
+      const currentRawMarkdown = await readItemRawMarkdown(
+        ctx.fs,
+        path,
+        current.id,
+      );
+      const parsedCurrentSource = parseDocumentMarkdown(currentRawMarkdown);
+      preferredTagNames = preferredStoredFormTagNames(
+        parsedCurrentSource.frontmatter.tags,
+      );
     }
 
     const nextItem: ItemFile = {

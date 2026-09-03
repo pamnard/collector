@@ -208,6 +208,42 @@ describe("createItemsCrud metadata-only update (#776)", () => {
     expect(afterRaw).not.toContain("  - Index");
   });
 
+  it("UI-like save with catalog tag names preserves file FM spelling (#949)", async () => {
+    const seeded = await seedTaggedNote({
+      tmpPrefix: "collector-metadata-ui-tags-",
+      catalogTagName: "web-dev",
+      fileTagName: "web_dev",
+    });
+    const crud = createCrud(seeded);
+
+    // Item form always sends tags from listTags()/catalog (#949 review).
+    await crud.updateItem(seeded.itemId, {
+      title: "After",
+      tags: ["web-dev"],
+    });
+
+    const afterRaw = await readItemRawMarkdown(fs, seeded.path, seeded.itemId);
+    expect(afterRaw).toContain("title: After");
+    expect(afterRaw).toContain("  - web_dev");
+    expect(afterRaw).not.toContain("  - web-dev");
+  });
+
+  it("membership change does not keep prior FM spelling (#947)", async () => {
+    const seeded = await seedTaggedNote({
+      tmpPrefix: "collector-metadata-tag-swap-",
+      catalogTagName: "web-dev",
+      fileTagName: "web_dev",
+    });
+    const crud = createCrud(seeded);
+
+    await crud.updateItem(seeded.itemId, { tags: ["Research"] });
+
+    const afterRaw = await readItemRawMarkdown(fs, seeded.path, seeded.itemId);
+    expect(afterRaw).toContain("  - research");
+    expect(afterRaw).not.toContain("web_dev");
+    expect(afterRaw).not.toContain("web-dev");
+  });
+
   it("preserves file FM tag spelling on content-path updateItem (#949)", async () => {
     const seeded = await seedTaggedNote({
       tmpPrefix: "collector-content-tag-spell-",
