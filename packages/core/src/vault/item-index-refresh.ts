@@ -224,6 +224,7 @@ export async function refreshItemIndexAfterWrite(
       item.content_revision,
       fileStat.mtimeMs,
       item.url,
+      hints?.previousTagIds,
     );
     return;
   }

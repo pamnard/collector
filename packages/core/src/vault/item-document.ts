@@ -41,6 +41,10 @@ function tagNameKey(name: string): string {
   return name.toLowerCase();
 }
 
+function normalizeTagName(name: string): string {
+  return name.trim();
+}
+
 /** Portable fallback title: filename stem when frontmatter has no `title`. */
 export function titleFromItemPath(itemRelativePath: string): string {
   const base = basename(itemRelativePath);
@@ -88,15 +92,23 @@ export function parseItemDocument(
     );
   }
 
-  const tagNames = known.tags ?? [];
+  const tagNames = (known.tags ?? []).map(normalizeTagName);
   const tag_ids: string[] = [];
   const missingTagNames: string[] = [];
+  const seenTagIds = new Set<string>();
   for (const name of tagNames) {
+    if (!name) {
+      continue;
+    }
     const tag = ctx.tagsByName.get(tagNameKey(name));
     if (!tag) {
       missingTagNames.push(name);
       continue;
     }
+    if (seenTagIds.has(tag.id)) {
+      continue;
+    }
+    seenTagIds.add(tag.id);
     tag_ids.push(tag.id);
   }
 

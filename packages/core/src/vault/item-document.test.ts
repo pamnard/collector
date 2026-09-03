@@ -93,6 +93,48 @@ updated: 2024-01-01T00:00:00.000Z
     expect(result.item.tag_ids).toEqual([TAG_A.id]);
   });
 
+  it("trims tag names before resolving or reporting missing tags", () => {
+    const { byName } = buildTagMaps([TAG_A]);
+    const md = `---
+title: X
+tags:
+  - "  Focus  "
+  - "  Unknown  "
+created: 2024-01-01T00:00:00.000Z
+updated: 2024-01-01T00:00:00.000Z
+---
+`;
+    const result = parseItemDocument(md, {
+      itemId: ITEM_ID,
+      vaultId: VAULT_ID,
+      tagsByName: byName,
+    });
+    expect(result.tagNames).toEqual(["Focus", "Unknown"]);
+    expect(result.missingTagNames).toEqual(["Unknown"]);
+    expect(result.item.tag_ids).toEqual([TAG_A.id]);
+  });
+
+  it("deduplicates tag_ids by resolved tag id while preserving first-seen order", () => {
+    const { byName } = buildTagMaps([TAG_A, TAG_B]);
+    const md = `---
+title: X
+tags:
+  - Focus
+  - " focus "
+  - Research
+  - Focus
+created: 2024-01-01T00:00:00.000Z
+updated: 2024-01-01T00:00:00.000Z
+---
+`;
+    const result = parseItemDocumentResolved(md, {
+      itemId: ITEM_ID,
+      vaultId: VAULT_ID,
+      tagsByName: byName,
+    });
+    expect(result.item.tag_ids).toEqual([TAG_A.id, TAG_B.id]);
+  });
+
   it("uses mtime fallbacks when FM dates are absent", () => {
     const { byName } = buildTagMaps([]);
     const md = `---

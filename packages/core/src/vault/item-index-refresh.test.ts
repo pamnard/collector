@@ -399,7 +399,11 @@ describe("refreshItemIndexAfterWrite (#766)", () => {
   it("writeItemRawMarkdown enqueues derived refresh and pins metadata when jobs wired", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "collector-item-raw-enqueue-"));
     const sql = new MemorySqlAdapter();
-    const enqueued: Array<{ itemId: string; fileMtimeMs: number }> = [];
+    const enqueued: Array<{
+      itemId: string;
+      fileMtimeMs: number;
+      previousTagIds?: string[];
+    }> = [];
     const ctx = {
       fs,
       index: new SqlVaultIndexStore(sql),
@@ -410,8 +414,10 @@ describe("refreshItemIndexAfterWrite (#766)", () => {
           itemId: string,
           _contentRevision: number,
           fileMtimeMs: number,
+          _itemUrl?: string | null,
+          previousTagIds?: string[],
         ) => {
-          enqueued.push({ itemId, fileMtimeMs });
+          enqueued.push({ itemId, fileMtimeMs, previousTagIds });
         },
       },
     };
@@ -459,11 +465,83 @@ describe("refreshItemIndexAfterWrite (#766)", () => {
     expect(enqueued).toHaveLength(1);
     expect(enqueued[0]?.itemId).toBe(itemId);
     expect(enqueued[0]?.fileMtimeMs).toBeTypeOf("number");
+    expect(enqueued[0]?.previousTagIds).toEqual([]);
     // Metadata/tags are pinned on write so reconcile cannot drop catalog rows;
     // full FTS/content refresh still goes through the derived job.
     const indexed = await ctx.index.listItemFilesByIds(meta.id, [itemId]);
     expect(indexed).toHaveLength(1);
     expect(indexed[0]?.title).toBe("After");
+  });
+
+  it("queued derived refresh receives previousTagIds for released-tag prune", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-item-raw-prev-tags-"));
+    const sql = new MemorySqlAdapter();
+    const enqueued: Array<{ previousTagIds?: string[] }> = [];
+    const ctx = {
+      fs,
+      index: new SqlVaultIndexStore(sql),
+      itemDerivedRefreshJobs: {
+        enqueue: async (
+          _vaultId: string,
+          _vaultPath: string,
+          _itemId: string,
+          _contentRevision: number,
+          _fileMtimeMs: number,
+          _itemUrl?: string | null,
+          previousTagIds?: string[],
+        ) => {
+          enqueued.push({ previousTagIds });
+        },
+      },
+    };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const alpha = await seedTagFromDocumentWritePath(ctx, path, meta.id, "alpha");
+    const beta = await seedTagFromDocumentWritePath(ctx, path, meta.id, "beta");
+    const itemId = `${createId()}.md`;
+    const createdAt = "2024-01-01T00:00:00.000Z";
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Before",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [alpha.id, beta.id],
+        collection_ids: [],
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: createdAt,
+        updated_at: createdAt,
+      },
+      content: "old",
+    });
+
+    enqueued.length = 0;
+    const raw = [
+      "---",
+      "title: After",
+      "type: note",
+      "tags:",
+      "  - alpha",
+      "content_revision: 2",
+      `created: ${createdAt}`,
+      `updated: ${createdAt}`,
+      "---",
+      "",
+      "body",
+      "",
+    ].join("\n");
+
+    await writeItemRawMarkdown(ctx, path, meta.id, itemId, raw);
+    expect(enqueued).toEqual([
+      {
+        previousTagIds: [alpha.id, beta.id],
+      },
+    ]);
   });
 
   it("writeItemRawMarkdown syncs item tags even when derived jobs are wired", async () => {

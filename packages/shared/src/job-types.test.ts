@@ -101,6 +101,18 @@ describe("job type catalog (#629)", () => {
     expect(parsed.fileMtimeMs).toBe(1_700_000_000_000);
   });
 
+  it("itemDerivedRefresh payload accepts optional previousTagIds", () => {
+    const parsed = itemDerivedRefreshJobType.payload.parse({
+      vaultId: "v1",
+      vaultPath: "/vault",
+      itemId: "a.md",
+      contentRevision: 1,
+      fileMtimeMs: 1_700_000_000_000,
+      previousTagIds: ["tag-1", "tag-2"],
+    });
+    expect(parsed.previousTagIds).toEqual(["tag-1", "tag-2"]);
+  });
+
   it("importFolder declares a long-running non-retryable contract (#747)", () => {
     expect(importFolderJobType.timeoutMs).toBeGreaterThanOrEqual(
       60 * 60 * 1000,

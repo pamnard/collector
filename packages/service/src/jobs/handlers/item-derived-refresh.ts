@@ -63,6 +63,9 @@ export function createItemDerivedRefreshHandler(deps: {
         payload.itemId,
         payload.contentRevision,
         payload.fileMtimeMs,
+        {
+          previousTagIds: payload.previousTagIds,
+        },
       );
       await pruneReleasedTagsAfterIndexRefresh(
         ctx,
@@ -118,6 +121,9 @@ export function createItemDerivedRefreshHandler(deps: {
       payload.itemId,
       contentRevision,
       fileStat.mtimeMs,
+      {
+        previousTagIds: payload.previousTagIds,
+      },
     );
 
     await pruneReleasedTagsAfterIndexRefresh(
