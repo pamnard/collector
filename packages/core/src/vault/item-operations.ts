@@ -46,7 +46,7 @@ async function pinItemTagsToIndex(
   item: ItemFile,
   fileMtimeMs: number,
   options?: { preserveIndexSnapshot?: boolean },
-): Promise<void> {
+): Promise<string[]> {
   await syncTagsToIndex(ctx, vaultPath, vaultId, { tagIds: item.tag_ids });
   const [existing] = await ctx.index.listItemFilesByIds(vaultId, [item.id]);
   const preserve =
@@ -74,6 +74,7 @@ async function pinItemTagsToIndex(
     { item: pinned, fileMtimeMs: fileMtimeForMeta },
     vaultId,
   );
+  return existing?.tag_ids ?? [];
 }
 
 async function syncParsedItemFromRawMarkdown(
@@ -94,12 +95,21 @@ async function syncParsedItemFromRawMarkdown(
     fileMtimeMs,
   );
 
-  await pinItemTagsToIndex(ctx, vaultPath, vaultId, item, fileMtimeMs, {
+  const previousTagIds = await pinItemTagsToIndex(
+    ctx,
+    vaultPath,
+    vaultId,
+    item,
+    fileMtimeMs,
+    {
     preserveIndexSnapshot: options?.deferIndexRefresh === true,
-  });
+    },
+  );
 
   if (!options?.deferIndexRefresh) {
-    await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);
+    await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item, {
+      previousTagIds,
+    });
   }
   return item;
 }
@@ -138,12 +148,21 @@ export async function upsertItem(
   if (afterStat.mtimeMs === null) {
     throw new Error(`Cannot upsert item ${id}: missing file mtime after write`);
   }
-  await pinItemTagsToIndex(ctx, vaultPath, vaultId, item, afterStat.mtimeMs, {
+  const previousTagIds = await pinItemTagsToIndex(
+    ctx,
+    vaultPath,
+    vaultId,
+    item,
+    afterStat.mtimeMs,
+    {
     preserveIndexSnapshot: input.deferIndexRefresh === true,
-  });
+    },
+  );
 
   if (!input.deferIndexRefresh) {
-    await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item);
+    await refreshItemIndexAfterWrite(ctx, vaultPath, vaultId, item, {
+      previousTagIds,
+    });
   }
   return item;
 }

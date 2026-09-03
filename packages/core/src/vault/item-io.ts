@@ -93,7 +93,7 @@ export async function loadTagMaps(
 }
 
 /**
- * Ensure tag names exist in tags.json; returns refreshed maps.
+ * Ensure tag names exist in tags.json and align stored spellings to the file.
  * Creates new Tag records for missing names (portable import).
  * When `current` already has every name, avoids a disk read (index sync).
  * When creating, re-reads disk under the vault catalog lock so a stale map
@@ -183,7 +183,8 @@ async function parseDocumentWithTags(
 }
 
 /**
- * Parse raw document markdown into ItemFile, creating missing tags as needed.
+ * Parse raw document markdown into ItemFile, creating missing tags as needed
+ * and making catalog stored names follow frontmatter spellings.
  * Used by batch sync / portable import paths that already have the file contents.
  */
 export async function itemFileFromDocumentMarkdown(

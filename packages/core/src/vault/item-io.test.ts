@@ -134,6 +134,17 @@ describe("item-io", () => {
     expect(resolved.byName.get("research")?.id).toBe(concurrent.id);
     const tagsAfter = await readTagsFile(fs, path);
     expect(tagsAfter.tags.filter((t) => t.name === "Research")).toHaveLength(1);
+
+    const renamed = await ensureTagsByName(fs, path, ["research"], resolved);
+    expect(renamed.byName.get("research")?.id).toBe(concurrent.id);
+    expect((await readTagsFile(fs, path)).tags).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: concurrent.id,
+          name: "research",
+        }),
+      ]),
+    );
   });
 
   it("itemFileFromDocumentMarkdown creates missing tags and updates holder", async () => {
