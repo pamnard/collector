@@ -1,11 +1,8 @@
 /**
- * One-shot auto-extract markers in item.metadata.extract_auto.
- * Keyed by shortcode — auto job skips shortcodes already present.
+ * Pure helpers for itemExtractAuto shortcode attempt maps.
  */
 
 import type { ExtractCandidate } from "@collector/api";
-
-export const EXTRACT_AUTO_METADATA_KEY = "extract_auto";
 
 export type ExtractAutoAttempt = {
   attempted_at: string;
@@ -13,7 +10,7 @@ export type ExtractAutoAttempt = {
   error?: string;
 };
 
-type ExtractAutoMap = Record<string, ExtractAutoAttempt>;
+export type ExtractAutoMap = Record<string, ExtractAutoAttempt>;
 
 /** Shortcode from candidate meta (Instagram and peers). */
 export function extractAutoShortcode(
@@ -26,13 +23,7 @@ export function extractAutoShortcode(
   return raw;
 }
 
-export function readExtractAutoMap(
-  metadata: Record<string, unknown> | undefined | null,
-): ExtractAutoMap {
-  if (!metadata) {
-    return {};
-  }
-  const raw = metadata[EXTRACT_AUTO_METADATA_KEY];
+export function parseExtractAutoMap(raw: unknown): ExtractAutoMap {
   if (raw === null || raw === undefined || typeof raw !== "object" || Array.isArray(raw)) {
     return {};
   }
@@ -59,12 +50,11 @@ export function readExtractAutoMap(
   return out;
 }
 
-/** Candidates not yet recorded in extract_auto (missing shortcode → skipped). */
+/** Candidates not yet recorded (missing shortcode → skipped). */
 export function filterUntriedExtractCandidates(
   candidates: ExtractCandidate[],
-  metadata: Record<string, unknown> | undefined | null,
+  tried: ExtractAutoMap,
 ): ExtractCandidate[] {
-  const tried = readExtractAutoMap(metadata);
   return candidates.filter((candidate) => {
     const shortcode = extractAutoShortcode(candidate);
     if (!shortcode) {
@@ -72,19 +62,4 @@ export function filterUntriedExtractCandidates(
     }
     return !Object.prototype.hasOwnProperty.call(tried, shortcode);
   });
-}
-
-export function mergeExtractAutoAttempt(
-  metadata: Record<string, unknown>,
-  shortcode: string,
-  attempt: ExtractAutoAttempt,
-): Record<string, unknown> {
-  const prev = readExtractAutoMap(metadata);
-  return {
-    ...metadata,
-    [EXTRACT_AUTO_METADATA_KEY]: {
-      ...prev,
-      [shortcode]: attempt,
-    },
-  };
 }

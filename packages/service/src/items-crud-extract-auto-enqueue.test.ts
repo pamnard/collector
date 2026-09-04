@@ -16,7 +16,6 @@ import {
   itemExtractAutoJobType,
 } from "@collector/shared";
 import { MemorySqlAdapter } from "../../core/src/testing/memory-sql.js";
-import { EXTRACT_AUTO_METADATA_KEY } from "./extract/extract-auto-metadata.js";
 import { createItemsCrud } from "./items-crud.js";
 import { enqueueItemExtractAuto } from "./jobs/handlers/item-extract-auto.js";
 import { createJobQueue, type JobQueue } from "./jobs/job-queue.js";
@@ -154,21 +153,15 @@ describe("createItemsCrud extract auto enqueue", () => {
     const { ctx, crud, meta, path, queue } = await setupVaultAndCrud();
     const seeded = await seedNote(ctx, path, meta.id, "body\n");
 
-    const attempt = {
-      attempted_at: "2026-01-01T00:00:00.000Z",
-      ok: true as const,
-    };
     const updated = await crud.updateItem(seeded.id, {
       metadata: {
-        [EXTRACT_AUTO_METADATA_KEY]: {
-          X: attempt,
-        },
+        custom_flag: true,
       },
     });
 
     const fromDisk = await readItemFile(fs, path, updated.id, meta.id);
     expect(fromDisk.metadata).toMatchObject({
-      [EXTRACT_AUTO_METADATA_KEY]: { X: attempt },
+      custom_flag: true,
     });
     const raw = await readItemRawMarkdown(fs, path, updated.id);
     expect(raw).toContain("body");

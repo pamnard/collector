@@ -26,7 +26,10 @@ import {
   type VaultMeta,
 } from "@collector/shared";
 import { MemorySqlAdapter } from "../../../../core/src/testing/memory-sql.js";
-import { EXTRACT_AUTO_METADATA_KEY } from "../../extract/extract-auto-metadata.js";
+import {
+  createExtractAutoAttemptStore,
+  type ExtractAutoAttemptStore,
+} from "../../extract/extract-auto-attempt-store.js";
 import { createInstagramExtractorPlugin } from "../../extract/instagram/instagram-extractor-plugin.js";
 import { OFFLINE_PUBLIC_LOOKUP } from "../../extract/offline-public-lookup.js";
 
@@ -153,8 +156,10 @@ type Harness = {
   ctx: VaultContext;
   vault: VaultMeta;
   vaultPath: string;
+  dataDir: string;
   itemId: string;
   handler: ReturnType<typeof createItemExtractAutoHandler>;
+  extractAutoAttempts: ExtractAutoAttemptStore;
   jobPermanentFailure: JobPermanentFailureStore;
   payload: ItemExtractAutoJobPayload;
 };
@@ -250,12 +255,12 @@ describe("createItemExtractAutoHandler", () => {
       createCatalog: () => [plugin],
     });
     const jobPermanentFailure = createJobPermanentFailureStore();
+    const extractAutoAttempts = createExtractAutoAttemptStore({ fs, dataDir });
     const handler = createItemExtractAutoHandler({
-      getItemById: (id) => crud.getItemById(id),
-      updateItem: (id, patch) => crud.updateItem(id, patch),
       discoverExtractCandidates: (id) => extract.discoverExtractCandidates(id),
       extractItemCandidate: (id, candidate) =>
         extract.extractItemCandidate(id, candidate),
+      extractAutoAttempts,
       jobPermanentFailure,
     });
 
@@ -263,8 +268,10 @@ describe("createItemExtractAutoHandler", () => {
       ctx,
       vault,
       vaultPath,
+      dataDir,
       itemId,
       handler,
+      extractAutoAttempts,
       jobPermanentFailure,
       payload: {
         vaultId: vault.id,
@@ -291,14 +298,17 @@ describe("createItemExtractAutoHandler", () => {
 
     expect(result).toEqual({ status: "ok" });
     const after = await readItemFile(fs, h.vaultPath, h.itemId, h.vault.id);
-    expect(after.metadata[EXTRACT_AUTO_METADATA_KEY]).toBeUndefined();
+    expect(after.metadata.extract_auto).toBeUndefined();
+    expect(await h.extractAutoAttempts.readItemAttempts(h.vault.id, h.itemId)).toEqual(
+      {},
+    );
     expect(await readItemRawMarkdown(fs, h.vaultPath, h.itemId)).toBe(before);
     expect(await listItemMediaWithPaths(h.ctx, h.vaultPath, h.itemId)).toEqual(
       [],
     );
   });
 
-  it("extracts Instagram fixture into vault note + media and marks extract_auto ok", async () => {
+  it("extracts Instagram fixture into vault note + media and marks attempt in host store", async () => {
     const h = await openHarness({
       body: `Keep preamble\n\n${OK_URL}\n`,
     });
@@ -311,19 +321,21 @@ describe("createItemExtractAutoHandler", () => {
     expect(item.title).toBe("Morning ride");
     expect(item.url).toBe(OK_URL);
     expect(item.content_type).toBe("note");
+    expect(item.metadata.extract_auto).toBeUndefined();
 
     const raw = await readItemRawMarkdown(fs, h.vaultPath, h.itemId);
     expect(raw).toContain("Keep preamble");
     expect(raw).toContain("Morning ride");
+    expect(raw).not.toMatch(/extract_auto/);
     // Frontmatter url stays Instagram; body must not still hold the capture link.
     const body = raw.replace(/^---[\s\S]*?---\n/, "");
     expect(body).not.toContain(OK_URL);
     expect(body).not.toContain("instagram.com");
 
-    const auto = item.metadata[EXTRACT_AUTO_METADATA_KEY] as Record<
-      string,
-      { ok: boolean; attempted_at: string }
-    >;
+    const auto = await h.extractAutoAttempts.readItemAttempts(
+      h.vault.id,
+      h.itemId,
+    );
     expect(auto[OK_SHORTCODE]?.ok).toBe(true);
     expect(typeof auto[OK_SHORTCODE]?.attempted_at).toBe("string");
 
@@ -334,7 +346,7 @@ describe("createItemExtractAutoHandler", () => {
     expect(await fs.readBinary(media[0]!.absolute_path)).toEqual(JPEG);
   });
 
-  it("on extract failure marks extract_auto fail, notifies, leaves body and media untouched", async () => {
+  it("on extract failure marks host store fail, notifies, leaves body and media untouched", async () => {
     const failures: unknown[] = [];
     const h = await openHarness({ body: `${FAIL_URL}\n` });
     h.jobPermanentFailure.subscribe((payload) => {
@@ -347,15 +359,17 @@ describe("createItemExtractAutoHandler", () => {
 
     const item = await readItemFile(fs, h.vaultPath, h.itemId, h.vault.id);
     expect(item.title).toBe("Capture");
-    const auto = item.metadata[EXTRACT_AUTO_METADATA_KEY] as Record<
-      string,
-      { ok: boolean; error?: string }
-    >;
+    expect(item.metadata.extract_auto).toBeUndefined();
+    const auto = await h.extractAutoAttempts.readItemAttempts(
+      h.vault.id,
+      h.itemId,
+    );
     expect(auto[FAIL_SHORTCODE]?.ok).toBe(false);
     expect(auto[FAIL_SHORTCODE]?.error).toMatch(/login_wall/i);
 
     const raw = await readItemRawMarkdown(fs, h.vaultPath, h.itemId);
     expect(raw).toContain(FAIL_URL);
+    expect(raw).not.toMatch(/extract_auto/);
     expect(await listItemMediaWithPaths(h.ctx, h.vaultPath, h.itemId)).toEqual(
       [],
     );
@@ -372,28 +386,25 @@ describe("createItemExtractAutoHandler", () => {
     expect(notified.error).toContain(h.itemId);
   });
 
-  it("skips shortcodes already recorded in extract_auto (no second import)", async () => {
+  it("skips shortcodes already recorded in host store (no second import)", async () => {
     const h = await openHarness({
       body: `${OK_URL}\n`,
-      metadata: {
-        [EXTRACT_AUTO_METADATA_KEY]: {
-          [OK_SHORTCODE]: {
-            attempted_at: "2026-01-01T00:00:00.000Z",
-            ok: false,
-            error: "prev",
-          },
-        },
-      },
+    });
+    await h.extractAutoAttempts.recordAttempt(h.vault.id, h.itemId, OK_SHORTCODE, {
+      attempted_at: "2026-01-01T00:00:00.000Z",
+      ok: false,
+      error: "prev",
     });
 
     await h.handler(job("job-skip", h.payload));
 
     const item = await readItemFile(fs, h.vaultPath, h.itemId, h.vault.id);
     expect(item.title).toBe("Capture");
-    const auto = item.metadata[EXTRACT_AUTO_METADATA_KEY] as Record<
-      string,
-      { ok: boolean; error?: string }
-    >;
+    expect(item.metadata.extract_auto).toBeUndefined();
+    const auto = await h.extractAutoAttempts.readItemAttempts(
+      h.vault.id,
+      h.itemId,
+    );
     expect(auto[OK_SHORTCODE]).toEqual({
       attempted_at: "2026-01-01T00:00:00.000Z",
       ok: false,
@@ -404,6 +415,33 @@ describe("createItemExtractAutoHandler", () => {
     );
     const raw = await readItemRawMarkdown(fs, h.vaultPath, h.itemId);
     expect(raw).toContain(OK_URL);
+  });
+
+  it("ignores leftover note frontmatter extract_auto and records only in host store", async () => {
+    const h = await openHarness({
+      body: `${OK_URL}\n`,
+      metadata: {
+        extract_auto: {
+          [OK_SHORTCODE]: {
+            attempted_at: "2026-01-01T00:00:00.000Z",
+            ok: false,
+            error: "stale",
+          },
+        },
+      },
+    });
+
+    await h.handler(job("job-legacy-meta", h.payload));
+
+    const item = await readItemFile(fs, h.vaultPath, h.itemId, h.vault.id);
+    const auto = await h.extractAutoAttempts.readItemAttempts(
+      h.vault.id,
+      h.itemId,
+    );
+    expect(auto[OK_SHORTCODE]?.ok).toBe(true);
+    expect(JSON.stringify(item.metadata.extract_auto ?? null)).not.toContain(
+      '"ok":true',
+    );
   });
 
   it("tries untried shortcodes independently against the vault", async () => {
@@ -418,10 +456,11 @@ describe("createItemExtractAutoHandler", () => {
     await h.handler(job("job-multi", h.payload));
 
     const item = await readItemFile(fs, h.vaultPath, h.itemId, h.vault.id);
-    const auto = item.metadata[EXTRACT_AUTO_METADATA_KEY] as Record<
-      string,
-      { ok: boolean }
-    >;
+    expect(item.metadata.extract_auto).toBeUndefined();
+    const auto = await h.extractAutoAttempts.readItemAttempts(
+      h.vault.id,
+      h.itemId,
+    );
     expect(auto[OK_SHORTCODE]?.ok).toBe(true);
     expect(auto[FAIL_SHORTCODE]?.ok).toBe(false);
 
