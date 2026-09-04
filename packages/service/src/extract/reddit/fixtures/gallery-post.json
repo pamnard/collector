@@ -1,0 +1,52 @@
+[
+  {
+    "kind": "Listing",
+    "data": {
+      "children": [
+        {
+          "kind": "t3",
+          "data": {
+            "id": "gal001",
+            "subreddit": "pics",
+            "title": "Two photos",
+            "selftext": "",
+            "author": "gallery_fan",
+            "permalink": "/r/pics/comments/gal001/two_photos/",
+            "url": "https://www.reddit.com/gallery/gal001",
+            "is_self": false,
+            "is_video": false,
+            "is_gallery": true,
+            "gallery_data": {
+              "items": [
+                { "media_id": "mediaA", "id": 1 },
+                { "media_id": "mediaB", "id": 2 }
+              ]
+            },
+            "media_metadata": {
+              "mediaA": {
+                "status": "valid",
+                "e": "Image",
+                "s": {
+                  "u": "https://preview.redd.it/mediaA.jpg?width=1000&amp;format=pjpg"
+                }
+              },
+              "mediaB": {
+                "status": "valid",
+                "e": "Image",
+                "s": {
+                  "u": "https://preview.redd.it/mediaB.jpg?width=1000&amp;format=pjpg"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "kind": "Listing",
+    "data": {
+      "children": []
+    }
+  }
+]

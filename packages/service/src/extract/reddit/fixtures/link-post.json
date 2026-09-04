@@ -1,0 +1,32 @@
+[
+  {
+    "kind": "Listing",
+    "data": {
+      "children": [
+        {
+          "kind": "t3",
+          "data": {
+            "id": "link01",
+            "subreddit": "worldnews",
+            "title": "External article",
+            "selftext": "",
+            "author": "newsbot",
+            "permalink": "/r/worldnews/comments/link01/external_article/",
+            "url": "https://example.com/news/story",
+            "url_overridden_by_dest": "https://example.com/news/story",
+            "is_self": false,
+            "is_video": false,
+            "is_gallery": false,
+            "post_hint": "link"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "kind": "Listing",
+    "data": {
+      "children": []
+    }
+  }
+]

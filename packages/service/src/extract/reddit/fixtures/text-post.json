@@ -1,0 +1,31 @@
+[
+  {
+    "kind": "Listing",
+    "data": {
+      "children": [
+        {
+          "kind": "t3",
+          "data": {
+            "id": "text01",
+            "subreddit": "askscience",
+            "title": "Why is the sky blue?",
+            "selftext": "I was wondering about Rayleigh scattering.\n\nThanks!",
+            "author": "curious_user",
+            "permalink": "/r/askscience/comments/text01/why_is_the_sky_blue/",
+            "url": "https://www.reddit.com/r/askscience/comments/text01/why_is_the_sky_blue/",
+            "is_self": true,
+            "is_video": false,
+            "is_gallery": false,
+            "post_hint": "self"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "kind": "Listing",
+    "data": {
+      "children": []
+    }
+  }
+]

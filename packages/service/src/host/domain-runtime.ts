@@ -80,6 +80,7 @@ import { createExtractPluginRegistry } from "../extract-plugin-registry.js";
 import { createExtractAutoAttemptStore } from "../extract/extract-auto-attempt-store.js";
 import { createInstagramExtractorPlugin } from "../extract/instagram/instagram-extractor-plugin.js";
 import { createPinterestExtractorPlugin } from "../extract/pinterest/pinterest-extractor-plugin.js";
+import { createRedditExtractorPlugin } from "../extract/reddit/reddit-extractor-plugin.js";
 import { createTwitterExtractorPlugin } from "../extract/twitter/twitter-extractor-plugin.js";
 import { createYoutubeExtractorPlugin } from "../extract/youtube/youtube-extractor-plugin.js";
 import {
@@ -498,6 +499,13 @@ export function createServiceDomainRuntime(
       mediaCover.attachMediaFiles(itemId, files),
   });
 
+  const redditExtractor = createRedditExtractorPlugin({
+    getItemById: (itemId) => itemsSearch.getItemById(itemId),
+    updateItem: (itemId, input) => itemsSearch.updateItem(itemId, input),
+    attachMediaFiles: (itemId, files) =>
+      mediaCover.attachMediaFiles(itemId, files),
+  });
+
   const extract = createExtractPluginRegistry({
     getItemById: (itemId) => itemsSearch.getItemById(itemId),
     createCatalog: () => [
@@ -505,6 +513,7 @@ export function createServiceDomainRuntime(
       pinterestExtractor,
       youtubeExtractor,
       twitterExtractor,
+      redditExtractor,
     ],
   });
 
