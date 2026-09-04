@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { NodeFileSystemAdapter } from "@collector/core/node";
 import {
-  EXTRACT_AUTO_STATE_DIR,
   createExtractAutoAttemptStore,
 } from "./extract-auto-attempt-store.js";
 
@@ -56,7 +55,7 @@ describe("createExtractAutoAttemptStore", () => {
     });
     expect(await store.readItemAttempts("vault-1", "other.md")).toEqual({});
 
-    const path = join(dataDir, EXTRACT_AUTO_STATE_DIR, "vault-1.json");
+    const path = join(dataDir, "extract-auto", "vault-1.json");
     expect(await fs.exists(path)).toBe(true);
     const disk = JSON.parse(await fs.readText(path)) as {
       schema_version: number;

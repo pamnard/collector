@@ -3,8 +3,8 @@ import type { ExtractCandidate } from "@collector/api";
 import {
   extractAutoShortcode,
   filterUntriedExtractCandidates,
-  mergeExtractAutoAttempt,
   parseExtractAutoMap,
+  type ExtractAutoMap,
 } from "./extract-auto-metadata.js";
 
 function candidate(
@@ -19,35 +19,14 @@ function candidate(
 }
 
 describe("extract-auto-metadata", () => {
-  it("parses and merges extract_auto attempt maps", () => {
-    const map = mergeExtractAutoAttempt(
-      {},
-      "AbC",
-      { attempted_at: "2026-01-01T00:00:00.000Z", ok: true },
-    );
-    expect(parseExtractAutoMap(map)).toEqual({
-      AbC: { attempted_at: "2026-01-01T00:00:00.000Z", ok: true },
-    });
-    expect(parseExtractAutoMap(map).AbC).toBeDefined();
-    expect(parseExtractAutoMap(map).other).toBeUndefined();
-
-    const withFail = mergeExtractAutoAttempt(map, "XyZ", {
-      attempted_at: "2026-01-02T00:00:00.000Z",
-      ok: false,
-      error: "boom",
-    });
-    expect(withFail).toMatchObject({
-      AbC: { ok: true },
-      XyZ: { ok: false, error: "boom" },
-    });
-  });
-
   it("filters untried shortcodes and skips candidates without shortcode", () => {
-    const tried = mergeExtractAutoAttempt(
-      {},
-      "Tried",
-      { attempted_at: "2026-01-01T00:00:00.000Z", ok: false, error: "x" },
-    );
+    const tried: ExtractAutoMap = {
+      Tried: {
+        attempted_at: "2026-01-01T00:00:00.000Z",
+        ok: false,
+        error: "x",
+      },
+    };
     const pending = filterUntriedExtractCandidates(
       [
         candidate("Tried"),

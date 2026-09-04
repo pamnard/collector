@@ -439,7 +439,6 @@ describe("createItemExtractAutoHandler", () => {
       h.itemId,
     );
     expect(auto[OK_SHORTCODE]?.ok).toBe(true);
-    // Leftover frontmatter may remain or be cleared by extract updates — never rewritten to ok.
     expect(JSON.stringify(item.metadata.extract_auto ?? null)).not.toContain(
       '"ok":true',
     );

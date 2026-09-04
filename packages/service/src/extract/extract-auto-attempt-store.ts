@@ -1,21 +1,20 @@
 /**
- * Host data-dir store for itemExtractAuto one-shot markers (#956).
- * Path: `{dataDir}/extract-auto/{vaultId}.json` — never note frontmatter.
+ * Host data-dir store for itemExtractAuto one-shot markers.
+ * Path: `{dataDir}/extract-auto/{vaultId}.json`.
  */
 
 import type { FileSystemAdapter } from "@collector/core";
 import {
-  mergeExtractAutoAttempt,
   parseExtractAutoMap,
   type ExtractAutoAttempt,
   type ExtractAutoMap,
 } from "./extract-auto-metadata.js";
 
-export const EXTRACT_AUTO_STATE_DIR = "extract-auto";
+const EXTRACT_AUTO_STATE_DIR = "extract-auto";
 
 type VaultExtractAutoStateFile = {
   schema_version: 1;
-  items: Record<string, ExtractAutoMap>;
+  items: Record<string, unknown>;
 };
 
 export type ExtractAutoAttemptStore = {
@@ -40,7 +39,10 @@ export function createExtractAutoAttemptStore(deps: {
     if (!(await deps.fs.exists(path))) {
       return { schema_version: 1, items: {} };
     }
-    const raw = JSON.parse(await deps.fs.readText(path)) as VaultExtractAutoStateFile;
+    const raw = JSON.parse(await deps.fs.readText(path)) as {
+      schema_version?: unknown;
+      items?: unknown;
+    };
     if (
       raw.schema_version !== 1 ||
       typeof raw.items !== "object" ||
@@ -51,7 +53,10 @@ export function createExtractAutoAttemptStore(deps: {
         `extract-auto state corrupt at ${path}: expected schema_version 1 with items`,
       );
     }
-    return raw;
+    return {
+      schema_version: 1,
+      items: raw.items as Record<string, unknown>,
+    };
   };
 
   const saveState = async (
@@ -75,7 +80,7 @@ export function createExtractAutoAttemptStore(deps: {
     async recordAttempt(vaultId, itemId, shortcode, attempt) {
       const state = await loadState(vaultId);
       const prev = parseExtractAutoMap(state.items[itemId]);
-      state.items[itemId] = mergeExtractAutoAttempt(prev, shortcode, attempt);
+      state.items[itemId] = { ...prev, [shortcode]: attempt };
       await saveState(vaultId, state);
     },
   };

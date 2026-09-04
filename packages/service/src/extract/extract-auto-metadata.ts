@@ -1,6 +1,5 @@
 /**
- * One-shot auto-extract attempt markers (keyed by shortcode).
- * Persistence lives in host data-dir — never in note frontmatter.
+ * Pure helpers for itemExtractAuto shortcode attempt maps.
  */
 
 import type { ExtractCandidate } from "@collector/api";
@@ -63,15 +62,4 @@ export function filterUntriedExtractCandidates(
     }
     return !Object.prototype.hasOwnProperty.call(tried, shortcode);
   });
-}
-
-export function mergeExtractAutoAttempt(
-  map: ExtractAutoMap,
-  shortcode: string,
-  attempt: ExtractAutoAttempt,
-): ExtractAutoMap {
-  return {
-    ...map,
-    [shortcode]: attempt,
-  };
 }
