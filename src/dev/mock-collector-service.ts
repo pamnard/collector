@@ -13,6 +13,7 @@ import type {
   ImportDroppedFilesResult,
   ImportFolderInput,
   ImportFolderJobSnapshot,
+  MediaWithPath,
   NavFilter as ApiNavFilter,
   Subscription,
   SyncNowResult,
@@ -389,7 +390,7 @@ export function createDevMockCollectorService(): CollectorService {
       attachMediaFiles: async (
         _itemId: string,
         _files: AttachMediaFileInput[],
-      ): Promise<MediaFileMeta[]> => refuseUnsupported(),
+      ): Promise<MediaWithPath[]> => refuseUnsupported(),
       replaceItemMedia: async (
         _itemId: string,
         _mediaId: string,

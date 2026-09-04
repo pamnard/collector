@@ -62,7 +62,7 @@ describe("createHostItemsPort (#923)", () => {
     }
   });
 
-  it("create/search/get/update/delete round-trip over startServiceHost wire", async () => {
+  it("create/search/get/update/delete round-trip over startServiceHost wire", { timeout: 60_000 }, async () => {
     const dataDir = tempDataDir("collector-items-port-");
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
@@ -95,12 +95,22 @@ describe("createHostItemsPort (#923)", () => {
           { timeout: 10_000 },
         );
 
-        const searched = await port.searchItems("port_wire_note_alpha", "all", {
-          limit: 24,
-          offset: 0,
+        // FTS lags metadata index — wait for derived + search hit.
+        await port.waitDerived(created.id, created.content_revision, {
+          timeoutMs: 15_000,
         });
-        expect(searched.items.some((item) => item.id === created.id)).toBe(
-          true,
+        let searched!: Awaited<ReturnType<typeof port.searchItems>>;
+        await vi.waitFor(
+          async () => {
+            searched = await port.searchItems("port_wire_note_alpha", "all", {
+              limit: 24,
+              offset: 0,
+            });
+            expect(
+              searched.items.some((item) => item.id === created.id),
+            ).toBe(true);
+          },
+          { timeout: 10_000 },
         );
         expect(
           searched.items.find((item) => item.id === created.id)?.title,

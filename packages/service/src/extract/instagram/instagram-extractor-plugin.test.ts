@@ -12,6 +12,8 @@ import {
   INSTAGRAM_PLUGIN_ID,
   createInstagramExtractorPlugin,
 } from "./instagram-extractor-plugin.js";
+import { OFFLINE_PUBLIC_LOOKUP } from "../offline-public-lookup.js";
+
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
@@ -199,6 +201,7 @@ describe("createInstagramExtractorPlugin (#318)", () => {
         return [];
       },
       fetchImpl: createFixtureFetch(),
+      lookupAddresses: OFFLINE_PUBLIC_LOOKUP,
     });
 
     await plugin.extract({
@@ -249,6 +252,7 @@ describe("createInstagramExtractorPlugin (#318)", () => {
         return [];
       },
       fetchImpl: createFixtureFetch(),
+      lookupAddresses: OFFLINE_PUBLIC_LOOKUP,
     });
 
     await expect(
@@ -288,6 +292,7 @@ describe("createInstagramExtractorPlugin (#318)", () => {
         fetchCalls += 1;
         throw new Error("fetch must not run when body has no Instagram URL");
       },
+      lookupAddresses: OFFLINE_PUBLIC_LOOKUP,
     });
 
     await expect(
@@ -320,6 +325,7 @@ describe("createInstagramExtractorPlugin (#318)", () => {
         return [];
       },
       fetchImpl: createFixtureFetch({ cdn: "fail" }),
+      lookupAddresses: OFFLINE_PUBLIC_LOOKUP,
     });
 
     await expect(

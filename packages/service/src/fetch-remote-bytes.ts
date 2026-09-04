@@ -1,13 +1,17 @@
 /**
- * Download remote bytes for display-asset localization (#739).
+ * Download remote bytes for display-asset localization and extract attach.
  * Fail hard — no silent empty body / keep-remote.
- * Hard size cap + basic SSRF / content-type gates (same class as Telegram downloads).
+ * Hard size cap + SSRF gates (literal + DNS-resolved addresses, every redirect hop).
+ * Markdown `![](…)` embeds may be image or video — both must land on disk.
  */
 
+import { promises as dns } from "node:dns";
+import { isIP } from "node:net";
 import { normalizeRemoteHttpUrl } from "@collector/core";
 
-export const REMOTE_DISPLAY_ASSET_MAX_BYTES = 20 * 1024 * 1024;
-const DEFAULT_TIMEOUT_MS = 30_000;
+/** Article/reel videos exceed the old 20 MiB image-only cap. */
+export const REMOTE_DISPLAY_ASSET_MAX_BYTES = 100 * 1024 * 1024;
+const DEFAULT_TIMEOUT_MS = 60_000;
 const MAX_REDIRECTS = 5;
 
 const BLOCKED_HOSTS = new Set([
@@ -16,37 +20,112 @@ const BLOCKED_HOSTS = new Set([
   "metadata.google",
 ]);
 
-function normalizeFetchUrl(url: string): URL {
+/** Resolve hostname → address strings (IPv4 / IPv6). Injectable for SSRF tests. */
+export type LookupHostAddresses = (
+  hostname: string,
+) => Promise<readonly string[]>;
+
+export type FetchRemoteBytesOptions = {
+  timeoutMs?: number;
+  maxBytes?: number;
+  fetchImpl?: typeof fetch;
+  /** Extra request headers (e.g. Referer for CDN). */
+  headers?: Record<string, string>;
+  /** Error / log prefix (default `fetchRemoteBytes`). */
+  label?: string;
+  /** Override DNS resolution (defaults to `dns.lookup` all records). */
+  lookupAddresses?: LookupHostAddresses;
+};
+
+async function defaultLookupAddresses(
+  hostname: string,
+): Promise<readonly string[]> {
+  const records = await dns.lookup(hostname, { all: true, verbatim: true });
+  return records.map((record) => record.address);
+}
+
+async function normalizeFetchUrl(
+  url: string,
+  label: string,
+  lookup: LookupHostAddresses,
+): Promise<URL> {
   let parsed: URL;
   try {
     parsed = new URL(normalizeRemoteHttpUrl(url));
   } catch (error) {
     throw new Error(
-      `fetchRemoteBytes: invalid URL ${url}: ${
+      `${label}: invalid URL ${url}: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error(
-      `fetchRemoteBytes: only http(s) allowed, got ${parsed.protocol} (${url})`,
+      `${label}: only http(s) allowed, got ${parsed.protocol} (${url})`,
     );
   }
-  assertHostnameAllowed(parsed.hostname);
+  await assertHostnameAllowed(parsed.hostname, label, lookup);
   return parsed;
 }
 
-function assertHostnameAllowed(hostname: string): void {
+async function assertHostnameAllowed(
+  hostname: string,
+  label: string,
+  lookup: LookupHostAddresses,
+): Promise<void> {
   const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
   if (BLOCKED_HOSTS.has(host) || host.endsWith(".localhost")) {
-    throw new Error(`fetchRemoteBytes: blocked host ${hostname}`);
+    throw new Error(`${label}: blocked host ${hostname}`);
   }
-  if (host === "::1" || host === "0:0:0:0:0:0:0:1") {
-    throw new Error(`fetchRemoteBytes: blocked host ${hostname}`);
+
+  const ipVersion = isIP(host);
+  if (ipVersion === 4) {
+    if (isBlockedIpv4(host)) {
+      throw new Error(`${label}: blocked address ${hostname}`);
+    }
+    return;
   }
-  if (isBlockedIpv4(host)) {
-    throw new Error(`fetchRemoteBytes: blocked address ${hostname}`);
+  if (ipVersion === 6) {
+    if (isBlockedIpv6(host)) {
+      throw new Error(`${label}: blocked address ${hostname}`);
+    }
+    return;
   }
+
+  let addresses: readonly string[];
+  try {
+    addresses = await lookup(host);
+  } catch (error) {
+    throw new Error(
+      `${label}: DNS lookup failed for ${hostname}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  if (addresses.length === 0) {
+    throw new Error(
+      `${label}: DNS lookup returned no addresses for ${hostname}`,
+    );
+  }
+  for (const address of addresses) {
+    if (isBlockedIpAddress(address)) {
+      throw new Error(
+        `${label}: blocked address ${address} for host ${hostname}`,
+      );
+    }
+  }
+}
+
+function isBlockedIpAddress(address: string): boolean {
+  const host = address.replace(/^\[|\]$/g, "").toLowerCase();
+  const version = isIP(host);
+  if (version === 4) {
+    return isBlockedIpv4(host);
+  }
+  if (version === 6) {
+    return isBlockedIpv6(host);
+  }
+  return true;
 }
 
 function isBlockedIpv4(host: string): boolean {
@@ -69,32 +148,117 @@ function isBlockedIpv4(host: string): boolean {
   return false;
 }
 
-function assertImageContentType(contentType: string | null, url: string): void {
+function isBlockedIpv6(host: string): boolean {
+  const normalized = host.toLowerCase();
+  if (
+    normalized === "::1" ||
+    normalized === "0:0:0:0:0:0:0:1" ||
+    normalized === "::" ||
+    normalized === "0:0:0:0:0:0:0:0"
+  ) {
+    return true;
+  }
+
+  // IPv4-mapped / IPv4-compatible with dotted quad (before URL/normalization).
+  const v4Mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(normalized);
+  if (v4Mapped?.[1]) {
+    return isBlockedIpv4(v4Mapped[1]);
+  }
+  const v4Compat = /^::(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(normalized);
+  if (v4Compat?.[1]) {
+    return isBlockedIpv4(v4Compat[1]);
+  }
+
+  const hextets = expandIpv6Hextets(normalized);
+  if (hextets === null) {
+    return true;
+  }
+
+  // ::ffff:AABB:CCDD → IPv4 A.B.C.D (URL often rewrites ::ffff:127.0.0.1 this way).
+  if (
+    hextets.slice(0, 5).every((h) => Number.parseInt(h, 16) === 0) &&
+    Number.parseInt(hextets[5]!, 16) === 0xffff
+  ) {
+    const hi = Number.parseInt(hextets[6]!, 16);
+    const lo = Number.parseInt(hextets[7]!, 16);
+    if (!Number.isFinite(hi) || !Number.isFinite(lo)) {
+      return true;
+    }
+    const embedded = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+    return isBlockedIpv4(embedded);
+  }
+
+  const first = Number.parseInt(hextets[0]!, 16);
+  // fe80::/10 link-local
+  if ((first & 0xffc0) === 0xfe80) {
+    return true;
+  }
+  // fc00::/7 unique local
+  if ((first & 0xfe00) === 0xfc00) {
+    return true;
+  }
+  // ff00::/8 multicast
+  if ((first & 0xff00) === 0xff00) {
+    return true;
+  }
+  return false;
+}
+
+/** Expand IPv6 into 8 hextet strings, or null if unparseable. */
+function expandIpv6Hextets(host: string): string[] | null {
+  if (host.includes(".")) {
+    return null;
+  }
+  const sides = host.split("::");
+  if (sides.length > 2) {
+    return null;
+  }
+  const head = sides[0] === "" ? [] : sides[0]!.split(":");
+  const tail =
+    sides.length === 1 || sides[1] === "" ? [] : sides[1]!.split(":");
+  if (head.some((h) => h.length === 0) || tail.some((t) => t.length === 0)) {
+    return null;
+  }
+  const missing = 8 - head.length - tail.length;
+  if (sides.length === 2) {
+    if (missing < 0) {
+      return null;
+    }
+    return [...head, ...Array.from({ length: missing }, () => "0"), ...tail];
+  }
+  if (head.length !== 8) {
+    return null;
+  }
+  return head;
+}
+
+function assertDisplayAssetContentType(
+  contentType: string | null,
+  url: string,
+  label: string,
+): void {
   if (!contentType) {
     return;
   }
   const mime = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
   if (
     mime.startsWith("image/") ||
+    mime.startsWith("video/") ||
     mime === "application/octet-stream" ||
     mime === "binary/octet-stream"
   ) {
     return;
   }
-  throw new Error(
-    `fetchRemoteBytes: non-image Content-Type ${mime} from ${url}`,
-  );
+  throw new Error(`${label}: unsupported Content-Type ${mime} from ${url}`);
 }
 
 function looksLikeImageMagic(bytes: Uint8Array): boolean {
   if (bytes.byteLength < 3) {
     return false;
   }
-  // JPEG
   if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
     return true;
   }
-  // PNG
   if (
     bytes[0] === 0x89 &&
     bytes[1] === 0x50 &&
@@ -103,11 +267,9 @@ function looksLikeImageMagic(bytes: Uint8Array): boolean {
   ) {
     return true;
   }
-  // GIF
   if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) {
     return true;
   }
-  // WEBP (RIFF....WEBP)
   if (
     bytes.byteLength >= 12 &&
     bytes[0] === 0x52 &&
@@ -124,17 +286,44 @@ function looksLikeImageMagic(bytes: Uint8Array): boolean {
   return false;
 }
 
+function looksLikeVideoMagic(bytes: Uint8Array): boolean {
+  if (
+    bytes.byteLength >= 8 &&
+    bytes[4] === 0x66 &&
+    bytes[5] === 0x74 &&
+    bytes[6] === 0x79 &&
+    bytes[7] === 0x70
+  ) {
+    return true;
+  }
+  if (
+    bytes.byteLength >= 4 &&
+    bytes[0] === 0x1a &&
+    bytes[1] === 0x45 &&
+    bytes[2] === 0xdf &&
+    bytes[3] === 0xa3
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function looksLikeDisplayAssetMagic(bytes: Uint8Array): boolean {
+  return looksLikeImageMagic(bytes) || looksLikeVideoMagic(bytes);
+}
+
 async function readBodyCapped(
   response: Response,
   maxBytes: number,
   url: string,
+  label: string,
 ): Promise<Uint8Array> {
   const declared = response.headers.get("content-length");
   if (declared) {
     const size = Number(declared);
     if (Number.isFinite(size) && size > maxBytes) {
       throw new Error(
-        `fetchRemoteBytes: content-length ${size} exceeds limit ${maxBytes} (${url})`,
+        `${label}: content-length ${size} exceeds limit ${maxBytes} (${url})`,
       );
     }
   }
@@ -143,7 +332,7 @@ async function readBodyCapped(
     const buffer = new Uint8Array(await response.arrayBuffer());
     if (buffer.byteLength > maxBytes) {
       throw new Error(
-        `fetchRemoteBytes: body ${buffer.byteLength} exceeds limit ${maxBytes} (${url})`,
+        `${label}: body ${buffer.byteLength} exceeds limit ${maxBytes} (${url})`,
       );
     }
     return buffer;
@@ -163,9 +352,7 @@ async function readBodyCapped(
     total += value.byteLength;
     if (total > maxBytes) {
       await reader.cancel();
-      throw new Error(
-        `fetchRemoteBytes: body exceeds limit ${maxBytes} (${url})`,
-      );
+      throw new Error(`${label}: body exceeds limit ${maxBytes} (${url})`);
     }
     chunks.push(value);
   }
@@ -180,17 +367,16 @@ async function readBodyCapped(
 
 export async function fetchRemoteBytes(
   url: string,
-  options?: {
-    timeoutMs?: number;
-    maxBytes?: number;
-    fetchImpl?: typeof fetch;
-  },
+  options?: FetchRemoteBytesOptions,
 ): Promise<Uint8Array> {
+  const label = options?.label ?? "fetchRemoteBytes";
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxBytes = options?.maxBytes ?? REMOTE_DISPLAY_ASSET_MAX_BYTES;
   const fetchImpl = options?.fetchImpl ?? fetch;
+  const requestHeaders = options?.headers;
+  const lookup = options?.lookupAddresses ?? defaultLookupAddresses;
 
-  let current = normalizeFetchUrl(url);
+  let current = await normalizeFetchUrl(url, label, lookup);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -200,6 +386,7 @@ export async function fetchRemoteBytes(
         method: "GET",
         redirect: "manual",
         signal: controller.signal,
+        ...(requestHeaders === undefined ? {} : { headers: requestHeaders }),
       });
 
       if (
@@ -210,41 +397,52 @@ export async function fetchRemoteBytes(
         const location = response.headers.get("location");
         if (!location) {
           throw new Error(
-            `fetchRemoteBytes: redirect without Location from ${current.href}`,
+            `${label}: redirect without Location from ${current.href}`,
           );
         }
-        current = normalizeFetchUrl(new URL(location, current).href);
+        current = await normalizeFetchUrl(
+          new URL(location, current).href,
+          label,
+          lookup,
+        );
         continue;
       }
 
       if (!response.ok) {
         throw new Error(
-          `fetchRemoteBytes: ${current.href} returned ${response.status} ${response.statusText}`,
+          `${label}: ${current.href} returned ${response.status} ${response.statusText}`,
         );
       }
 
-      assertImageContentType(response.headers.get("content-type"), current.href);
-      const buffer = await readBodyCapped(response, maxBytes, current.href);
+      assertDisplayAssetContentType(
+        response.headers.get("content-type"),
+        current.href,
+        label,
+      );
+      const buffer = await readBodyCapped(
+        response,
+        maxBytes,
+        current.href,
+        label,
+      );
       if (buffer.byteLength === 0) {
-        throw new Error(`fetchRemoteBytes: empty body from ${current.href}`);
+        throw new Error(`${label}: empty body from ${current.href}`);
       }
-      if (!looksLikeImageMagic(buffer)) {
+      if (!looksLikeDisplayAssetMagic(buffer)) {
         throw new Error(
-          `fetchRemoteBytes: response is not a recognized image from ${current.href}`,
+          `${label}: response is not a recognized image/video from ${current.href}`,
         );
       }
       return buffer;
     }
 
     throw new Error(
-      `fetchRemoteBytes: too many redirects (max ${MAX_REDIRECTS}) for ${url}`,
+      `${label}: too many redirects (max ${MAX_REDIRECTS}) for ${url}`,
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error("fetchRemoteBytes failed", { url, error: message });
-    throw error instanceof Error
-      ? error
-      : new Error(`fetchRemoteBytes: ${message}`);
+    console.error(`${label} failed`, { url, error: message });
+    throw error instanceof Error ? error : new Error(`${label}: ${message}`);
   } finally {
     clearTimeout(timer);
   }

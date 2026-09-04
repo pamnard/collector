@@ -69,7 +69,7 @@ describe("createHostMediaPort (#923)", () => {
     }
   });
 
-  it("attach/list/cover/replace/delete round-trip over startServiceHost wire", async () => {
+  it("attach/list/cover/replace/delete round-trip over startServiceHost wire", { timeout: 60_000 }, async () => {
     const dataDir = tempDataDir("collector-media-port-");
     const host = await startServiceHost({ dataDir, port: 0 });
     try {
@@ -100,6 +100,8 @@ describe("createHostMediaPort (#923)", () => {
         ]);
         expect(attached).toHaveLength(1);
         expect(attached[0]!.filename).toBe("dot.png");
+        expect(attached[0]!.absolute_path.length).toBeGreaterThan(0);
+        expect(attached[0]!.absolute_path).toContain(attached[0]!.id);
         const mediaId = attached[0]!.id;
 
         const listed = await port.listItemMedia(item.id);

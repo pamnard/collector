@@ -26,7 +26,7 @@ import {
 class CountingFileSystemAdapter extends NodeFileSystemAdapter {
   statCount = 0;
 
-  override async stat(path: string): Promise<{ mtimeMs: number | null }> {
+  override async stat(path: string): Promise<{ mtimeMs: number | null; sizeBytes: number | null }> {
     this.statCount += 1;
     return super.stat(path);
   }

@@ -54,7 +54,7 @@ describe("recoverItemDiskMtimeMs", () => {
     let touchCount = 0;
     fs.stat = async (path: string) => {
       if (path === docPath && !touched) {
-        return { mtimeMs: null };
+        return { mtimeMs: null, sizeBytes: null };
       }
       return originalStat(path);
     };

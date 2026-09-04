@@ -4,7 +4,10 @@ import {
   clearHostMediaCredentials,
   setHostMediaCredentials,
 } from "../../utils/asset-src";
-import { resolveMarkdownImageSrc } from "./MarkdownImage";
+import {
+  isMarkdownVideoSrc,
+  resolveMarkdownImageSrc,
+} from "./MarkdownImage";
 
 describe("resolveMarkdownImageSrc (#590 / #739)", () => {
   beforeEach(() => {
@@ -26,5 +29,17 @@ describe("resolveMarkdownImageSrc (#590 / #739)", () => {
       ),
     );
     expect(src).toContain("/media/file?");
+  });
+});
+
+describe("isMarkdownVideoSrc", () => {
+  it("detects local and remote video paths", () => {
+    expect(isMarkdownVideoSrc("/vault/media/clip.mp4")).toBe(true);
+    expect(
+      isMarkdownVideoSrc(
+        "https://video.twimg.com/amplify_video/1/vid/avc1/1000x720/b.mp4?tag=29",
+      ),
+    ).toBe(true);
+    expect(isMarkdownVideoSrc("/vault/media/photo.jpg")).toBe(false);
   });
 });

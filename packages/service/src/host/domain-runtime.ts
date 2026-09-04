@@ -79,6 +79,7 @@ import { createSyncPluginRuntime } from "./domain-runtime/sync-plugins.js";
 import { createExtractPluginRegistry } from "../extract-plugin-registry.js";
 import { createInstagramExtractorPlugin } from "../extract/instagram/instagram-extractor-plugin.js";
 import { createPinterestExtractorPlugin } from "../extract/pinterest/pinterest-extractor-plugin.js";
+import { createTwitterExtractorPlugin } from "../extract/twitter/twitter-extractor-plugin.js";
 import { createYoutubeExtractorPlugin } from "../extract/youtube/youtube-extractor-plugin.js";
 import {
   createVaultSyncController,
@@ -489,12 +490,20 @@ export function createServiceDomainRuntime(
       mediaCover.attachMediaFiles(itemId, files),
   });
 
+  const twitterExtractor = createTwitterExtractorPlugin({
+    getItemById: (itemId) => itemsSearch.getItemById(itemId),
+    updateItem: (itemId, input) => itemsSearch.updateItem(itemId, input),
+    attachMediaFiles: (itemId, files) =>
+      mediaCover.attachMediaFiles(itemId, files),
+  });
+
   const extract = createExtractPluginRegistry({
     getItemById: (itemId) => itemsSearch.getItemById(itemId),
     createCatalog: () => [
       instagramExtractor,
       pinterestExtractor,
       youtubeExtractor,
+      twitterExtractor,
     ],
   });
 

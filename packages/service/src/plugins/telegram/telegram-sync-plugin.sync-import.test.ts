@@ -226,7 +226,13 @@ describe("createTelegramSyncPlugin sync-import live vault (#922)", () => {
         file_path: `photos/${fileId}.jpg`,
         file_size: 4,
       })),
-      downloadFile: vi.fn(async () => new Uint8Array([9, 9, 9, 9])),
+      downloadFile: vi.fn(async (_t: string, filePath: string) => {
+        // Distinct payloads — attach is content-idempotent.
+        if (filePath.includes("p1")) {
+          return new Uint8Array([1, 1, 1, 1]);
+        }
+        return new Uint8Array([2, 2, 2, 2]);
+      }),
     });
 
     const plugin = createTelegramSyncPlugin({

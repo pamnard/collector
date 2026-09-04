@@ -31,14 +31,14 @@ export function createHostMediaPort(ctx: HostSessionCtx): MediaPort {
     attachMediaFiles: async (
       itemId: string,
       files: AttachMediaFileInput[],
-    ): Promise<MediaFileMeta[]> =>
+    ): Promise<MediaWithPath[]> =>
       transport.request("attachMediaFiles", {
         itemId,
         files: files.map((file) => ({
           filename: file.name,
           dataBase64: bytesToBase64(file.bytes),
         })),
-      }) as Promise<MediaFileMeta[]>,
+      }) as Promise<MediaWithPath[]>,
     replaceItemMedia: async (
       itemId: string,
       mediaId: string,

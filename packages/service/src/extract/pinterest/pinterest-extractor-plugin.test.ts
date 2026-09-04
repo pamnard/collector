@@ -13,9 +13,11 @@ import type {
 } from "@collector/api";
 import {
   PINTEREST_PLUGIN_ID,
-  companionBodyUrlKeys,
   createPinterestExtractorPlugin,
 } from "./pinterest-extractor-plugin.js";
+import { OFFLINE_PUBLIC_LOOKUP } from "../offline-public-lookup.js";
+
+import { companionBodyUrlKeys } from "../companion-body-url-keys.js";
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
@@ -124,6 +126,7 @@ describe("createPinterestExtractorPlugin (#34)", () => {
         ],
         "111222333444",
         "111222333444",
+        "pinit:",
       ).sort(),
     ).toEqual(["111222333444", "pinit:AbCdEf12"]);
   });
@@ -174,6 +177,7 @@ describe("createPinterestExtractorPlugin (#34)", () => {
         return [];
       },
       fetchImpl: createFixtureFetch(),
+      lookupAddresses: OFFLINE_PUBLIC_LOOKUP,
     });
 
     const candidates = plugin.discover({ body: note.content ?? "" });
@@ -195,6 +199,7 @@ describe("createPinterestExtractorPlugin (#34)", () => {
       updateItem: async () => unusedVault(),
       attachMediaFiles: async () => unusedVault(),
       fetchImpl: createFixtureFetch(),
+      lookupAddresses: OFFLINE_PUBLIC_LOOKUP,
     });
 
     await expect(
@@ -216,6 +221,7 @@ describe("createPinterestExtractorPlugin (#34)", () => {
       updateItem: async () => unusedVault(),
       attachMediaFiles: async () => unusedVault(),
       fetchImpl: createFixtureFetch({ cdn: "fail" }),
+      lookupAddresses: OFFLINE_PUBLIC_LOOKUP,
     });
 
     await expect(
@@ -236,6 +242,7 @@ describe("createPinterestExtractorPlugin (#34)", () => {
       updateItem: async () => unusedVault(),
       attachMediaFiles: async () => unusedVault(),
       fetchImpl: createFixtureFetch(),
+      lookupAddresses: OFFLINE_PUBLIC_LOOKUP,
     });
 
     await expect(

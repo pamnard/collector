@@ -269,7 +269,7 @@ describe("syncIndexItemsFromFilesystem", () => {
     fs.stat = async (filePath: string) => {
       if (filePath === docPath) {
         deletedAfterExists = true;
-        return { mtimeMs: null };
+        return { mtimeMs: null, sizeBytes: null };
       }
       return originalStat(filePath);
     };
@@ -388,7 +388,7 @@ describe("syncIndexItemsFromFilesystem", () => {
     let touched = false;
     fs.stat = async (filePath: string) => {
       if (filePath === healPath && !touched) {
-        return { mtimeMs: null };
+        return { mtimeMs: null, sizeBytes: null };
       }
       return originalStat(filePath);
     };
@@ -447,7 +447,7 @@ describe("syncIndexItemsFromFilesystem", () => {
     const originalTouch = fs.touch.bind(fs);
     fs.stat = async (filePath: string) => {
       if (filePath === docPath) {
-        return { mtimeMs: null };
+        return { mtimeMs: null, sizeBytes: null };
       }
       return originalStat(filePath);
     };
@@ -531,7 +531,7 @@ describe("syncIndexItemsFromFilesystem", () => {
     const originalTouch = fs.touch.bind(fs);
     fs.stat = async (filePath: string) => {
       if (filePath === badPath) {
-        return { mtimeMs: null };
+        return { mtimeMs: null, sizeBytes: null };
       }
       return originalStat(filePath);
     };

@@ -11,6 +11,18 @@ import {
 } from "./paths.js";
 import { listMediaFiles, mediaFilePath } from "./media-io.js";
 
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.byteLength !== right.byteLength) {
+    return false;
+  }
+  for (let i = 0; i < left.byteLength; i++) {
+    if (left[i] !== right[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export interface MediaWithPath extends MediaFileMeta {
   absolute_path: string;
 }
@@ -69,12 +81,36 @@ async function ensureItemIndexedForMedia(
   }
 }
 
+/**
+ * Attach bytes to an item. Idempotent by content: if the note already has a
+ * file with the same bytes, return that entry (no second disk write / id).
+ */
 export async function attachMediaFile(
   ctx: VaultContext,
   vaultPath: string,
   itemId: string,
   input: { filename: string; data: Uint8Array; mediaType?: MediaFileMeta["media_type"] },
 ): Promise<MediaFileMeta> {
+  const existing = await listMediaFiles(ctx.fs, vaultPath, itemId);
+  for (const file of existing) {
+    const path = mediaFilePath(vaultPath, itemId, file.id, file.filename);
+    const fileStat = await ctx.fs.stat(path);
+    // Adapter returns nulls when the path is missing — skip without a separate exists().
+    if (fileStat.mtimeMs == null) {
+      continue;
+    }
+    if (
+      fileStat.sizeBytes != null &&
+      fileStat.sizeBytes !== input.data.byteLength
+    ) {
+      continue;
+    }
+    const onDisk = await ctx.fs.readBinary(path);
+    if (sameBytes(onDisk, input.data)) {
+      return file;
+    }
+  }
+
   const mediaId = createId();
   const mediaType = input.mediaType ?? inferMediaType(input.filename);
   const entry: MediaFileMeta = {

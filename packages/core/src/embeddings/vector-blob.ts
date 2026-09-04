@@ -1,21 +1,20 @@
-/** Pack a float32 vector into a Buffer for SQLite BLOB storage. */
-export function vectorToBlob(vector: Float32Array): Buffer {
-  return Buffer.from(
-    vector.buffer,
-    vector.byteOffset,
-    vector.byteLength,
+/** Pack a float32 vector into bytes for SQLite BLOB storage (browser-safe). */
+export function vectorToBlob(vector: Float32Array): Uint8Array {
+  const out = new Uint8Array(vector.byteLength);
+  out.set(
+    new Uint8Array(vector.buffer, vector.byteOffset, vector.byteLength),
   );
+  return out;
 }
 
-/** Unpack a SQLite BLOB into a Float32Array (one copy — safe if Buffer is pooled). */
-export function blobToVector(blob: Buffer | Uint8Array): Float32Array {
-  const src = blob instanceof Buffer ? blob : Buffer.from(blob);
-  if (src.byteLength % 4 !== 0) {
+/** Unpack a SQLite BLOB into a Float32Array (copy — safe if the blob is pooled). */
+export function blobToVector(blob: Uint8Array): Float32Array {
+  if (blob.byteLength % 4 !== 0) {
     throw new Error(
-      `item embedding blob length ${src.byteLength} is not a multiple of 4`,
+      `item embedding blob length ${blob.byteLength} is not a multiple of 4`,
     );
   }
-  const copy = new ArrayBuffer(src.byteLength);
-  new Uint8Array(copy).set(src);
+  const copy = new ArrayBuffer(blob.byteLength);
+  new Uint8Array(copy).set(blob);
   return new Float32Array(copy);
 }

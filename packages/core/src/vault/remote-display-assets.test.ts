@@ -299,7 +299,10 @@ describe("localizeRemoteDisplayAssets (#739)", () => {
         fetched.push(url);
         try {
           await new Promise((resolve) => setTimeout(resolve, 25));
-          return new Uint8Array([1, 2, 3, 4]);
+          // Distinct bytes per URL — attach is content-idempotent; identical
+          // payloads would collapse to one media row and one rewrite target.
+          const marker = url.charCodeAt(url.length - 5);
+          return new Uint8Array([1, 2, 3, 4, marker]);
         } finally {
           inFlight -= 1;
         }

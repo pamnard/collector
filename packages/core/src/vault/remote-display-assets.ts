@@ -1,9 +1,9 @@
 /**
  * Localize remote display assets into the note media folder (#739).
  *
- * Product rule: covers, gallery files, and markdown images must live on disk
- * under `media/<noteUuid>/`. Remote http(s) is never a valid standing display
- * source. `item.url` (content link) may remain remote.
+ * Product rule: covers, gallery files, and markdown `![](…)` embeds (image or
+ * video) must live on disk under `media/<noteUuid>/`. Remote http(s) is never a
+ * valid standing display source. `item.url` (content link) may remain remote.
  */
 
 import {

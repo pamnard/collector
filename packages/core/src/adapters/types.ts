@@ -42,7 +42,7 @@ export interface FileSystemAdapter {
   readDir(path: string): Promise<string[]>;
   /** Like `readDir`, but includes whether each entry is a directory. */
   readDirEntries(path: string): Promise<VaultDirEntry[]>;
-  stat(path: string): Promise<{ mtimeMs: number | null }>;
+  stat(path: string): Promise<{ mtimeMs: number | null; sizeBytes: number | null }>;
   /**
    * Bump path atime/mtime to now, or to `mtimeMs` when provided.
    * Explicit mtime is required so rapid item rewrites can advance past a

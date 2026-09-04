@@ -76,12 +76,14 @@ export function createNodeFileSystemAdapter() {
         isDirectory: entry.isDirectory(),
       }));
     },
-    async stat(path: string): Promise<{ mtimeMs: number | null }> {
+    async stat(
+      path: string,
+    ): Promise<{ mtimeMs: number | null; sizeBytes: number | null }> {
       try {
         const stats = await stat(path);
-        return { mtimeMs: stats.mtimeMs };
+        return { mtimeMs: stats.mtimeMs, sizeBytes: stats.size };
       } catch {
-        return { mtimeMs: null };
+        return { mtimeMs: null, sizeBytes: null };
       }
     },
     async touch(path: string, mtimeMs?: number): Promise<void> {
