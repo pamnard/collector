@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta property="og:title" content="Deep dive into notes" />
+  <meta property="og:description" content="Short teaser only" />
+  <!-- og:image deliberately absent — media must come from article payload -->
+  <title>Deep dive into notes</title>
+</head>
+<body>
+  <script id="collector-twitter-article" type="application/json">
+  {
+    "title": "Deep dive into notes",
+    "text": "Full article body paragraph one.\n\nParagraph two with more detail.",
+    "media": [
+      {
+        "kind": "image",
+        "url": "https://pbs.twimg.com/media/fixture-article.jpg"
+      }
+    ]
+  }
+  </script>
+  <div class="article-body">
+    <p>Full article body paragraph one.</p>
+    <p>Paragraph two with more detail.</p>
+  </div>
+</body>
+</html>

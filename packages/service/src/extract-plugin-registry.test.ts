@@ -26,6 +26,8 @@ import {
   INSTAGRAM_PLUGIN_ID,
   createInstagramExtractorPlugin,
 } from "./extract/instagram/instagram-extractor-plugin.js";
+import { OFFLINE_PUBLIC_LOOKUP } from "./extract/offline-public-lookup.js";
+
 import {
   PINTEREST_PLUGIN_ID,
   createPinterestExtractorPlugin,
@@ -215,6 +217,7 @@ describe("createExtractPluginRegistry (#849 / #899)", () => {
           updateItem: (id, patch) => crud.updateItem(id, patch),
           attachMediaFiles: attachFiles,
           fetchImpl: createFixtureFetch(),
+          lookupAddresses: OFFLINE_PUBLIC_LOOKUP,
         }),
       ];
     } else if (mode === "pinterest") {
@@ -224,6 +227,7 @@ describe("createExtractPluginRegistry (#849 / #899)", () => {
           updateItem: (id, patch) => crud.updateItem(id, patch),
           attachMediaFiles: attachFiles,
           fetchImpl: createPinterestFixtureFetch(),
+          lookupAddresses: OFFLINE_PUBLIC_LOOKUP,
         }),
       ];
     } else if (mode === "youtube") {

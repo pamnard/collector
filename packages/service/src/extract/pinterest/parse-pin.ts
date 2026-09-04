@@ -133,7 +133,8 @@ export function parsePinResourceData(
 }
 
 /**
- * Extract `__PWS_DATA__` / og:* fallbacks from pin HTML.
+ * Extract `__PWS_DATA__` pin fields from pin HTML.
+ * Open Graph is not used for media (or as a pin media fallback).
  */
 export function parsePinFromHtml(
   html: string,
@@ -145,19 +146,6 @@ export function parsePinFromHtml(
     if (fromPws) {
       return fromPws;
     }
-  }
-
-  const ogImage = extractMetaContent(html, "og:image");
-  const ogTitle = extractMetaContent(html, "og:title");
-  const ogDescription = extractMetaContent(html, "og:description");
-  if (ogImage) {
-    return {
-      pinId: expectedPinId,
-      authorUsername: null,
-      title: ogTitle,
-      description: ogDescription,
-      media: [{ kind: "image", url: ogImage }],
-    };
   }
 
   return null;
@@ -237,20 +225,6 @@ function findPinInPwsData(
     }
   }
   return null;
-}
-
-function extractMetaContent(html: string, property: string): string | null {
-  const re = new RegExp(
-    `<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']+)["']`,
-    "i",
-  );
-  const alt = new RegExp(
-    `<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${property}["']`,
-    "i",
-  );
-  const match = re.exec(html) ?? alt.exec(html);
-  const value = match?.[1]?.trim();
-  return value && value.length > 0 ? value : null;
 }
 
 export function toFetchSuccess(

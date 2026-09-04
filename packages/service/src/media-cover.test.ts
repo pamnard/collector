@@ -323,12 +323,11 @@ describe("createMediaCoverService", () => {
 
   it("serializes concurrent preferred-cover enqueues for one item (#875)", async () => {
     const { ctx, vault, vaultPath, itemId } = await openVault();
-    const png = await tinyPng();
     const { service, enqueued } = createService({ ctx, vault, vaultPath });
     const [first, second, third] = await service.attachMediaFiles(itemId, [
-      { name: "a.png", bytes: png },
-      { name: "b.png", bytes: png },
-      { name: "c.png", bytes: png },
+      { name: "a.png", bytes: await tinyPng(32, 32) },
+      { name: "b.png", bytes: await tinyPng(40, 40) },
+      { name: "c.png", bytes: await tinyPng(48, 48) },
     ]);
     enqueued.length = 0;
 

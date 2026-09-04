@@ -85,7 +85,7 @@ class CountingFileSystemAdapter implements FileSystemAdapter {
     return this.inner.readDirEntries(path);
   }
 
-  async stat(path: string): Promise<{ mtimeMs: number | null }> {
+  async stat(path: string): Promise<{ mtimeMs: number | null; sizeBytes: number | null }> {
     this.statCount += 1;
     return this.inner.stat(path);
   }

@@ -13,7 +13,7 @@ export function inferMediaType(filename: string): MediaType {
   if (["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "avif"].includes(ext)) {
     return "image";
   }
-  if (["mp4", "webm", "mov", "mkv", "avi"].includes(ext)) {
+  if (["mp4", "webm", "mov", "mkv", "avi", "ogv"].includes(ext)) {
     return "video";
   }
   if (ext === "pdf") {

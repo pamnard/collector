@@ -28,6 +28,8 @@ import {
 import { MemorySqlAdapter } from "../../../../core/src/testing/memory-sql.js";
 import { EXTRACT_AUTO_METADATA_KEY } from "../../extract/extract-auto-metadata.js";
 import { createInstagramExtractorPlugin } from "../../extract/instagram/instagram-extractor-plugin.js";
+import { OFFLINE_PUBLIC_LOOKUP } from "../../extract/offline-public-lookup.js";
+
 import { createExtractPluginRegistry } from "../../extract-plugin-registry.js";
 import { createItemsCrud } from "../../items-crud.js";
 import {
@@ -241,6 +243,7 @@ describe("createItemExtractAutoHandler", () => {
       updateItem: (id, patch) => crud.updateItem(id, patch),
       attachMediaFiles,
       fetchImpl: createFixtureFetch(),
+      lookupAddresses: OFFLINE_PUBLIC_LOOKUP,
     });
     const extract = createExtractPluginRegistry({
       getItemById: (id) => crud.getItemById(id),

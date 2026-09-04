@@ -12,6 +12,7 @@ const NODE_ONLY_BASENAMES = new Set([
 
 function isExcluded(basename: string): boolean {
   if (basename.endsWith(".test.ts")) return true;
+  if (basename.endsWith("-test-harness.ts")) return true;
   if (NODE_ONLY_BASENAMES.has(basename)) return true;
   if (basename.startsWith("node-") && basename.endsWith(".ts")) return true;
   return false;

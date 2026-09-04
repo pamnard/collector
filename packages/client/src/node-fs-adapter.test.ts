@@ -33,6 +33,7 @@ describe("createNodeFileSystemAdapter (#383)", () => {
   it("stat missing path returns mtimeMs null", async () => {
     expect(await fs.stat(join(root, "missing.bin"))).toEqual({
       mtimeMs: null,
+      sizeBytes: null,
     });
   });
 

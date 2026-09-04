@@ -12,6 +12,9 @@ import type {
   UpdateItemInput,
 } from "@collector/api";
 import { fetchExtractMediaBytes } from "../../fetch-extract-media-bytes.js";
+import type { LookupHostAddresses } from "../../fetch-remote-bytes.js";
+import { companionBodyUrlKeys } from "../companion-body-url-keys.js";
+import { cdnDownloadHeaders } from "../cdn-download-headers.js";
 import { fetchPinterestPin } from "./fetch.js";
 import { PINTEREST_WEB_ORIGIN } from "./http.js";
 import { mergePinterestIntoNote } from "./merge.js";
@@ -27,33 +30,7 @@ import type {
 
 export const PINTEREST_PLUGIN_ID = "pinterest";
 
-const CDN_DOWNLOAD_HEADERS: Record<string, string> = {
-  Referer: `${PINTEREST_WEB_ORIGIN}/`,
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-};
-
-/**
- * Keys to strip from the note body after a successful fetch.
- * Always includes the attempted shortcode + resolved pin id. Also strips a
- * lone companion `pin.it` / full-pin pair when the note has exactly those two
- * pending candidates (same pin shared as short + canonical link).
- */
-export function companionBodyUrlKeys(
-  pending: { shortcode: string }[],
-  shortcode: string,
-  pinId: string,
-): string[] {
-  const keys = new Set<string>([shortcode, pinId]);
-  const others = pending.filter((entry) => entry.shortcode !== shortcode);
-  if (others.length === 1 && others[0]) {
-    const other = others[0].shortcode;
-    if (other === pinId || other.startsWith("pinit:")) {
-      keys.add(other);
-    }
-  }
-  return [...keys];
-}
+const CDN_DOWNLOAD_HEADERS = cdnDownloadHeaders(PINTEREST_WEB_ORIGIN);
 
 export type PinterestExtractorPluginDeps = {
   getItemById: (itemId: string) => Promise<GetItemResult>;
@@ -73,9 +50,12 @@ export type PinterestExtractorPluginDeps = {
     options?: {
       fetchImpl?: PinterestHttpFetch;
       headers?: Record<string, string>;
+      lookupAddresses?: LookupHostAddresses;
     },
   ) => Promise<Uint8Array>;
   fetchImpl?: PinterestHttpFetch;
+  /** Offline tests: stub DNS for fixture CDN hosts. */
+  lookupAddresses?: LookupHostAddresses;
 };
 
 export function createPinterestExtractorPlugin(
@@ -141,6 +121,7 @@ export function createPinterestExtractorPlugin(
         pending,
         shortcode,
         fetchResult.value.pinId,
+        "pinit:",
       );
       const merged = mergePinterestIntoNote(
         { body },
@@ -159,6 +140,7 @@ export function createPinterestExtractorPlugin(
         const bytes = await runDownload(intent.sourceUrl, {
           fetchImpl: deps.fetchImpl,
           headers: CDN_DOWNLOAD_HEADERS,
+          lookupAddresses: deps.lookupAddresses,
         });
         files.push({ name: intent.filename, bytes });
       }

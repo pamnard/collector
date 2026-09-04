@@ -11,7 +11,7 @@ type EmbeddingSqlRow = {
   content_revision: number;
   input_fingerprint: string;
   dims: number;
-  vector: Buffer | Uint8Array;
+  vector: Uint8Array;
   updated_at: string;
 };
 

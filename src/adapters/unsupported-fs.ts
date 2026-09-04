@@ -41,7 +41,7 @@ export class UnsupportedBrowserFsAdapter implements FileSystemAdapter {
   readDirEntries(): Promise<never> {
     return fail();
   }
-  stat(): Promise<{ mtimeMs: number | null }> {
+  stat(): Promise<{ mtimeMs: number | null; sizeBytes: number | null }> {
     return fail();
   }
   touch(): Promise<void> {

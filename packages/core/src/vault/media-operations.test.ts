@@ -217,8 +217,10 @@ describe("media operations", () => {
         updated_at: new Date().toISOString(),
       },
       content: "m",
-      deferIndexRefresh: true,
     });
+    // Disk note remains; index row gone — models race before catch-up (#828).
+    // (deferIndexRefresh still pins metadata today; drop the row explicitly.)
+    await ctx.index.deleteItem(itemId);
 
     const [before] = await ctx.index.listItemSyncMetaByIds(meta.id, [itemId]);
     expect(before).toBeUndefined();
@@ -232,6 +234,117 @@ describe("media operations", () => {
     const [after] = await ctx.index.listItemSyncMetaByIds(meta.id, [itemId]);
     expect(after).toBeTruthy();
     expect(await listItemMediaWithPaths(ctx, path, itemId)).toHaveLength(1);
+  });
+
+  it("attachMediaFile is idempotent by content across different filenames", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-media-dedup-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemId = `${createId()}.md`;
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Dedup note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    });
+
+    const pngBytes = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]);
+    const first = await attachMediaFile(ctx, path, itemId, {
+      filename: "from-plugin.png",
+      data: pngBytes,
+    });
+    const second = await attachMediaFile(ctx, path, itemId, {
+      filename: "from-localize.png",
+      data: pngBytes,
+    });
+    expect(second.id).toBe(first.id);
+    expect(second.filename).toBe(first.filename);
+    expect(await listItemMediaWithPaths(ctx, path, itemId)).toHaveLength(1);
+
+    const other = await attachMediaFile(ctx, path, itemId, {
+      filename: "other.png",
+      data: Uint8Array.from([137, 80, 78, 71, 0, 0, 0, 0]),
+    });
+    expect(other.id).not.toBe(first.id);
+    expect(await listItemMediaWithPaths(ctx, path, itemId)).toHaveLength(2);
+  });
+
+  it("skips readBinary when existing media sizeBytes differs from incoming", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-media-size-skip-"));
+    const baseFs = new NodeFileSystemAdapter();
+    let readBinaryCalls = 0;
+    const trackingFs = new Proxy(baseFs, {
+      get(target, prop, receiver) {
+        if (prop === "readBinary") {
+          return async (path: string) => {
+            readBinaryCalls += 1;
+            return target.readBinary(path);
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function"
+          ? (value as (...args: unknown[]) => unknown).bind(target)
+          : value;
+      },
+    });
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs: trackingFs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemId = `${createId()}.md`;
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Size skip",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    });
+
+    await attachMediaFile(ctx, path, itemId, {
+      filename: "small.png",
+      data: Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    });
+    readBinaryCalls = 0;
+
+    const larger = Uint8Array.from([
+      137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0,
+    ]);
+    const attached = await attachMediaFile(ctx, path, itemId, {
+      filename: "large.png",
+      data: larger,
+    });
+    expect(attached.filename).toBe("large.png");
+    expect(readBinaryCalls).toBe(0);
+    expect(await listItemMediaWithPaths(ctx, path, itemId)).toHaveLength(2);
   });
 
   it("fails loud when catch-up cannot place the item in the index (#828)", async () => {
@@ -262,8 +375,8 @@ describe("media operations", () => {
         updated_at: new Date().toISOString(),
       },
       content: "m",
-      deferIndexRefresh: true,
     });
+    await index.deleteItem(itemId);
 
     // Simulate catch-up upsert that never lands a row (e.g. repeated stale TOCTOU).
     const realUpsertItem = index.upsertItem.bind(index);

@@ -20,7 +20,7 @@ export interface MediaPort {
   attachMediaFiles(
     itemId: string,
     files: AttachMediaFileInput[],
-  ): Promise<MediaFileMeta[]>;
+  ): Promise<MediaWithPath[]>;
   replaceItemMedia(
     itemId: string,
     mediaId: string,

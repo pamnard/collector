@@ -12,6 +12,8 @@ import type {
   UpdateItemInput,
 } from "@collector/api";
 import { fetchExtractMediaBytes } from "../../fetch-extract-media-bytes.js";
+import type { LookupHostAddresses } from "../../fetch-remote-bytes.js";
+import { cdnDownloadHeaders } from "../cdn-download-headers.js";
 import { discoverInstagramCandidates, parseInstagramShortcode } from "./instagram-url-discover.js";
 import { fetchInstagramMedia } from "./fetch.js";
 import { IG_WEB_ORIGIN } from "./http.js";
@@ -24,11 +26,7 @@ import type {
 
 export const INSTAGRAM_PLUGIN_ID = "instagram";
 
-const CDN_DOWNLOAD_HEADERS: Record<string, string> = {
-  Referer: `${IG_WEB_ORIGIN}/`,
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-};
+const CDN_DOWNLOAD_HEADERS = cdnDownloadHeaders(IG_WEB_ORIGIN);
 
 export type InstagramExtractorPluginDeps = {
   getItemById: (itemId: string) => Promise<GetItemResult>;
@@ -48,9 +46,12 @@ export type InstagramExtractorPluginDeps = {
     options?: {
       fetchImpl?: InstagramHttpFetch;
       headers?: Record<string, string>;
+      lookupAddresses?: LookupHostAddresses;
     },
   ) => Promise<Uint8Array>;
   fetchImpl?: InstagramHttpFetch;
+  /** Offline tests: stub DNS for fixture CDN hosts. */
+  lookupAddresses?: LookupHostAddresses;
 };
 
 export function createInstagramExtractorPlugin(
@@ -125,6 +126,7 @@ export function createInstagramExtractorPlugin(
         const bytes = await runDownload(intent.sourceUrl, {
           fetchImpl: deps.fetchImpl,
           headers: CDN_DOWNLOAD_HEADERS,
+          lookupAddresses: deps.lookupAddresses,
         });
         files.push({ name: intent.filename, bytes });
       }

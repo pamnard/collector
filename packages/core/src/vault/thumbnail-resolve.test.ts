@@ -84,7 +84,7 @@ describe("resolveItemThumbnailPathsBatch", () => {
           isDirectory: false,
         }));
       },
-      async stat(): Promise<{ mtimeMs: number | null }> {
+      async stat(): Promise<{ mtimeMs: number | null; sizeBytes: number | null }> {
         throw new Error("unexpected stat probe");
       },
     };

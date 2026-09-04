@@ -22,6 +22,7 @@ import {
   deleteMediaFile,
   DISK_ITEM_READ_CONCURRENCY,
   listItemMediaWithPaths,
+  mediaFilePath,
   readItemCoverSize,
   readItemFile,
   replaceMediaFile,
@@ -115,7 +116,7 @@ export interface MediaCoverService {
   attachMediaFiles(
     itemId: string,
     files: AttachMediaFileInput[],
-  ): Promise<MediaFileMeta[]>;
+  ): Promise<MediaWithPath[]>;
   replaceItemMedia(
     itemId: string,
     mediaId: string,
@@ -406,17 +407,19 @@ export function createMediaCoverService(
   const attachMediaFiles = async (
     itemId: string,
     files: AttachMediaFileInput[],
-  ): Promise<MediaFileMeta[]> => {
+  ): Promise<MediaWithPath[]> => {
     const { path } = await deps.resolveActiveVault();
     const ctx = deps.getContext();
-    const attached: MediaFileMeta[] = [];
+    const attached: MediaWithPath[] = [];
     for (const file of files) {
-      attached.push(
-        await attachMediaFile(ctx, path, itemId, {
-          filename: file.name,
-          data: file.bytes,
-        }),
-      );
+      const meta = await attachMediaFile(ctx, path, itemId, {
+        filename: file.name,
+        data: file.bytes,
+      });
+      attached.push({
+        ...meta,
+        absolute_path: mediaFilePath(path, itemId, meta.id, meta.filename),
+      });
     }
     await afterMediaPresentationChange(itemId);
     return attached;
