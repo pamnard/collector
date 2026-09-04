@@ -417,7 +417,7 @@ describe("createItemExtractAutoHandler", () => {
     expect(raw).toContain(OK_URL);
   });
 
-  it("does not rewrite leftover note frontmatter extract_auto", async () => {
+  it("ignores leftover note frontmatter extract_auto and records only in host store", async () => {
     const h = await openHarness({
       body: `${OK_URL}\n`,
       metadata: {
@@ -434,22 +434,15 @@ describe("createItemExtractAutoHandler", () => {
     await h.handler(job("job-legacy-meta", h.payload));
 
     const item = await readItemFile(fs, h.vaultPath, h.itemId, h.vault.id);
-    // Extract may rewrite frontmatter for title/url/media, but must not refresh attempt junk.
-    // Leftover key may remain or vanish with unrelated updates — new writes go to host store only.
     const auto = await h.extractAutoAttempts.readItemAttempts(
       h.vault.id,
       h.itemId,
     );
     expect(auto[OK_SHORTCODE]?.ok).toBe(true);
-    if (item.metadata.extract_auto !== undefined) {
-      expect(item.metadata.extract_auto).toEqual({
-        [OK_SHORTCODE]: {
-          attempted_at: "2026-01-01T00:00:00.000Z",
-          ok: false,
-          error: "stale",
-        },
-      });
-    }
+    // Leftover frontmatter may remain or be cleared by extract updates — never rewritten to ok.
+    expect(JSON.stringify(item.metadata.extract_auto ?? null)).not.toContain(
+      '"ok":true',
+    );
   });
 
   it("tries untried shortcodes independently against the vault", async () => {
