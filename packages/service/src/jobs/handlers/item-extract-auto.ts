@@ -1,23 +1,18 @@
 /**
  * One-shot auto extract after note body write.
- * Discover → skip marked shortcodes → extract → mark metadata; fail → AlertStack.
+ * Discover → skip marked shortcodes → extract → mark host store; fail → AlertStack.
  */
 
-import type {
-  ExtractPort,
-  GetItemResult,
-  UpdateItemInput,
-} from "@collector/api";
-import type { ItemFile } from "@collector/shared";
+import type { ExtractPort } from "@collector/api";
 import {
   itemExtractAutoIdempotencyKey,
   itemExtractAutoJobType,
   type ItemExtractAutoJobPayload,
 } from "@collector/shared";
+import type { ExtractAutoAttemptStore } from "../../extract/extract-auto-attempt-store.js";
 import {
   extractAutoShortcode,
   filterUntriedExtractCandidates,
-  mergeExtractAutoAttempt,
 } from "../../extract/extract-auto-metadata.js";
 import {
   notifyJobPermanentFailure,
@@ -30,10 +25,9 @@ import type { JobHandlerResult } from "../job-types.js";
 export type ItemExtractAutoEnqueueInput = ItemExtractAutoJobPayload;
 
 export type ItemExtractAutoHandlerDeps = {
-  getItemById: (itemId: string) => Promise<GetItemResult>;
-  updateItem: (itemId: string, input: UpdateItemInput) => Promise<ItemFile>;
   discoverExtractCandidates: ExtractPort["discoverExtractCandidates"];
   extractItemCandidate: ExtractPort["extractItemCandidate"];
+  extractAutoAttempts: ExtractAutoAttemptStore;
   jobPermanentFailure: JobPermanentFailureStore;
 };
 
@@ -57,19 +51,21 @@ export function createItemExtractAutoHandler(
   deps: ItemExtractAutoHandlerDeps,
 ): TypedJobHandler<typeof itemExtractAutoJobType.payload> {
   return async (job): Promise<JobHandlerResult> => {
-    const { itemId } = job.payload;
+    const { vaultId, itemId } = job.payload;
     const candidates = await deps.discoverExtractCandidates(itemId);
     if (candidates.length === 0) {
       return { status: "ok" };
     }
 
-    const { item } = await deps.getItemById(itemId);
-    const pending = filterUntriedExtractCandidates(candidates, item.metadata);
+    const tried = await deps.extractAutoAttempts.readItemAttempts(
+      vaultId,
+      itemId,
+    );
+    const pending = filterUntriedExtractCandidates(candidates, tried);
     if (pending.length === 0) {
       return { status: "ok" };
     }
 
-    let metadata = item.metadata ?? {};
     for (const candidate of pending) {
       const shortcode = extractAutoShortcode(candidate);
       if (!shortcode) {
@@ -80,13 +76,13 @@ export function createItemExtractAutoHandler(
       const attempted_at = new Date().toISOString();
       try {
         await deps.extractItemCandidate(itemId, candidate);
-        metadata = mergeExtractAutoAttempt(metadata, shortcode, {
+        await deps.extractAutoAttempts.recordAttempt(vaultId, itemId, shortcode, {
           attempted_at,
           ok: true,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        metadata = mergeExtractAutoAttempt(metadata, shortcode, {
+        await deps.extractAutoAttempts.recordAttempt(vaultId, itemId, shortcode, {
           attempted_at,
           ok: false,
           error: message,
@@ -100,7 +96,6 @@ export function createItemExtractAutoHandler(
           message,
         );
       }
-      await deps.updateItem(itemId, { metadata });
     }
 
     return { status: "ok" };
