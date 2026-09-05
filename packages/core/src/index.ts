@@ -240,6 +240,7 @@ export type { NormalizedTagName } from "./vault/tag-normalize.js";
 export { mergeTagSimilarityClones } from "./vault/tag-catalog-similarity.js";
 export {
   attachMediaFile,
+  attachMediaFileFromPath,
   deleteMediaFile,
   listItemMediaWithPaths,
   replaceMediaFile,

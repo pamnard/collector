@@ -9,3 +9,4 @@ export * from "./media.js";
 export * from "./host-urls.js";
 export * from "./media-derive.js";
 export * from "./job-types.js";
+export * from "./video-cover-seek.js";

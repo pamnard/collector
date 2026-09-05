@@ -2,7 +2,7 @@
  * Node domain-host cover generation (#255 / #267).
  * Browser path uses canvas in `src/services/thumbnail-service.ts`.
  *
- * Video seek matches browser: min(0.5s, duration/2), else 0.
+ * Video cover seek: 5% of duration (shared `@collector/shared` policy).
  */
 
 import { execFile } from "node:child_process";
@@ -18,8 +18,14 @@ import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { GeneratedCover, MediaType } from "@collector/shared";
-import { COVER_WEBP_MAX_EDGE, coverPixelSizeSchema } from "@collector/shared";
+import {
+  COVER_WEBP_MAX_EDGE,
+  coverPixelSizeSchema,
+  seekTargetSeconds,
+} from "@collector/shared";
 import sharp from "sharp";
+
+export { seekTargetSeconds };
 
 const execFileAsync = promisify(execFile);
 
@@ -106,14 +112,6 @@ function parseDurationSeconds(ffmpegStderr: string): number | null {
   return hours * 3600 + minutes * 60 + seconds;
 }
 
-/** Same seek policy as `src/services/thumbnail-service.ts`. */
-export function seekTargetSeconds(duration: number | null): number {
-  if (duration !== null && Number.isFinite(duration) && duration > 0) {
-    return Math.min(0.5, duration / 2);
-  }
-  return 0;
-}
-
 async function probeDurationSeconds(
   ffmpegBin: string,
   inputPath: string,
@@ -177,8 +175,30 @@ async function imageBytesToCoverWebp(data: Uint8Array): Promise<GeneratedCover> 
   };
 }
 
-async function generateCoverFromVideo(
-  data: Uint8Array,
+async function ensureFfmpegRunnable(
+  ffmpegBin: string,
+  filename: string,
+): Promise<boolean> {
+  try {
+    await execFileAsync(ffmpegBin, ["-version"], {
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+    });
+    return true;
+  } catch {
+    console.error("[node-cover] video cover soft-fail: ffmpeg -version failed", {
+      filename,
+      ffmpegBin,
+    });
+    return false;
+  }
+}
+
+/**
+ * Extract cover from a video already on disk (no heap buffer of the whole file).
+ */
+export async function generateCoverFromVideoPath(
+  inputPath: string,
   filename: string,
 ): Promise<GeneratedCover | null> {
   const ffmpegBin = resolveFfmpegBinary();
@@ -189,42 +209,40 @@ async function generateCoverFromVideo(
     return null;
   }
 
-  const ext = extname(filename).toLowerCase() || ".mp4";
+  if (!(await ensureFfmpegRunnable(ffmpegBin, filename))) {
+    return null;
+  }
+
   const dir = mkdtempSync(join(tmpdir(), "collector-video-cover-"));
-  const inputPath = join(dir, `input${ext}`);
   const framePath = join(dir, "frame.png");
-
   try {
-    writeFileSync(inputPath, data);
-
-    try {
-      await execFileAsync(ffmpegBin, ["-version"], {
-        encoding: "utf8",
-        maxBuffer: 1024 * 1024,
-      });
-    } catch {
-      // Missing binary / not on PATH — soft-fail like browser decode miss.
-      console.error("[node-cover] video cover soft-fail: ffmpeg -version failed", {
-        filename,
-        ffmpegBin,
-      });
-      return null;
-    }
-
     const duration = await probeDurationSeconds(ffmpegBin, inputPath);
     const seek = seekTargetSeconds(duration);
     await extractVideoFramePng(ffmpegBin, inputPath, framePath, seek);
-
     const frame = readFileSync(framePath);
     return imageBytesToCoverWebp(new Uint8Array(frame));
   } catch (error) {
-    // Decode / seek / encode failure — soft-fail like browser path.
     console.error("[node-cover] video cover soft-fail: decode/seek/encode", {
       filename,
       ffmpegBin,
       error: error instanceof Error ? error.message : String(error),
     });
     return null;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+async function generateCoverFromVideo(
+  data: Uint8Array,
+  filename: string,
+): Promise<GeneratedCover | null> {
+  const ext = extname(filename).toLowerCase() || ".mp4";
+  const dir = mkdtempSync(join(tmpdir(), "collector-video-cover-buf-"));
+  const inputPath = join(dir, `input${ext}`);
+  try {
+    writeFileSync(inputPath, data);
+    return await generateCoverFromVideoPath(inputPath, filename);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -241,6 +259,23 @@ export async function generateCoverFromMedia(
 
   if (mediaType === "video") {
     return generateCoverFromVideo(data, filename);
+  }
+
+  return null;
+}
+
+export async function generateCoverFromMediaPath(
+  absolutePath: string,
+  filename: string,
+  mediaType: MediaType,
+): Promise<GeneratedCover | null> {
+  if (mediaType === "image") {
+    const data = new Uint8Array(readFileSync(absolutePath));
+    return imageBytesToCoverWebp(data);
+  }
+
+  if (mediaType === "video") {
+    return generateCoverFromVideoPath(absolutePath, filename);
   }
 
   return null;

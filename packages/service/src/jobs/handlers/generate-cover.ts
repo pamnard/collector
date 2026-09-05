@@ -22,6 +22,13 @@ export type GenerateCoverFromMedia = (
   mediaType: MediaType,
 ) => Promise<GeneratedCover | null>;
 
+/** Prefer for video — ffmpeg reads the file path (no whole-file heap buffer). */
+export type GenerateCoverFromMediaPath = (
+  absolutePath: string,
+  filename: string,
+  mediaType: MediaType,
+) => Promise<GeneratedCover | null>;
+
 function isEnoent(error: unknown): boolean {
   return (
     typeof error === "object" &&
@@ -34,6 +41,11 @@ export function createGenerateCoverHandler(deps: {
   getContext: () => VaultContext;
   resolveVaultPath: (vaultId: string) => Promise<string>;
   generateCoverFromMedia: GenerateCoverFromMedia;
+  /**
+   * When set, video covers use the on-disk path (large YouTube attaches).
+   * Images still go through {@link generateCoverFromMedia} unless this handles them.
+   */
+  generateCoverFromMediaPath?: GenerateCoverFromMediaPath;
   /** Drop host thumbnail path cache after on-disk cover write (#856). */
   invalidateThumbnailPathCache?: (itemId: string) => void;
   onVaultPresentationChanged?: (
@@ -52,22 +64,38 @@ export function createGenerateCoverHandler(deps: {
     const vaultPath = await deps.resolveVaultPath(vaultId);
     const ctx = deps.getContext();
 
-    let data: Uint8Array;
-    try {
-      data = await ctx.fs.readBinary(absolutePath);
-    } catch (error) {
-      // Rapid multi-delete can remove the candidate before this job runs (#875).
-      if (isEnoent(error)) {
-        return { status: "ok" };
+    let cover: GeneratedCover | null;
+    if (mediaType === "video" && deps.generateCoverFromMediaPath) {
+      try {
+        cover = await deps.generateCoverFromMediaPath(
+          absolutePath,
+          filename,
+          mediaType,
+        );
+      } catch (error) {
+        if (isEnoent(error)) {
+          return { status: "ok" };
+        }
+        throw error;
       }
-      throw error;
-    }
+    } else {
+      let data: Uint8Array;
+      try {
+        data = await ctx.fs.readBinary(absolutePath);
+      } catch (error) {
+        // Rapid multi-delete can remove the candidate before this job runs (#875).
+        if (isEnoent(error)) {
+          return { status: "ok" };
+        }
+        throw error;
+      }
 
-    const cover = await deps.generateCoverFromMedia(
-      data,
-      filename,
-      mediaType,
-    );
+      cover = await deps.generateCoverFromMedia(
+        data,
+        filename,
+        mediaType,
+      );
+    }
     if (!cover) {
       return {
         status: "fail",

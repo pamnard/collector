@@ -69,6 +69,13 @@ describe("generateCover job (#636 / #640)", () => {
         size: { width: 320, height: 240 },
       }) as const,
   );
+  const generateCoverFromMediaPath = vi.fn(
+    async () =>
+      ({
+        data: new Uint8Array([7, 7, 7]),
+        size: { width: 160, height: 90 },
+      }) as const,
+  );
   const onVaultPresentationChanged = vi.fn();
   const invalidateThumbnailPathCache = vi.fn();
 
@@ -92,6 +99,11 @@ describe("generateCover job (#636 / #640)", () => {
       data: new Uint8Array([9, 9, 9]),
       size: { width: 320, height: 240 },
     });
+    generateCoverFromMediaPath.mockReset();
+    generateCoverFromMediaPath.mockResolvedValue({
+      data: new Uint8Array([7, 7, 7]),
+      size: { width: 160, height: 90 },
+    });
     onVaultPresentationChanged.mockClear();
     invalidateThumbnailPathCache.mockClear();
   });
@@ -108,6 +120,7 @@ describe("generateCover job (#636 / #640)", () => {
       getContext: () => ({ fs: { readBinary } }) as never,
       resolveVaultPath,
       generateCoverFromMedia,
+      generateCoverFromMediaPath,
       invalidateThumbnailPathCache,
       onVaultPresentationChanged,
     });
@@ -129,6 +142,7 @@ describe("generateCover job (#636 / #640)", () => {
       "a.png",
       "image",
     );
+    expect(generateCoverFromMediaPath).not.toHaveBeenCalled();
     expect(listItemMediaWithPaths).toHaveBeenCalledWith(
       expect.objectContaining({ fs: { readBinary } }),
       "/vault",
@@ -150,6 +164,50 @@ describe("generateCover job (#636 / #640)", () => {
       itemId: "note.md",
       folderPath: "",
     });
+  });
+
+  it("uses path cover for video without readBinary", async () => {
+    listItemMediaWithPaths.mockResolvedValueOnce([
+      {
+        id: "m-vid",
+        media_type: "video",
+        filename: "clip.mp4",
+        absolute_path: "/vault/note.media/clip.mp4",
+      },
+    ]);
+
+    await expect(
+      handler()({
+        id: "job-vid",
+        type: "generateCover",
+        attempts: 0,
+        payload: {
+          vaultId: "vault-1",
+          itemId: "note.md",
+          mediaId: "m-vid",
+          absolutePath: "/vault/note.media/clip.mp4",
+          filename: "clip.mp4",
+          mediaType: "video",
+        },
+      }),
+    ).resolves.toEqual({ status: "ok" });
+
+    expect(readBinary).not.toHaveBeenCalled();
+    expect(generateCoverFromMedia).not.toHaveBeenCalled();
+    expect(generateCoverFromMediaPath).toHaveBeenCalledWith(
+      "/vault/note.media/clip.mp4",
+      "clip.mp4",
+      "video",
+    );
+    expect(applyItemCover).toHaveBeenCalledWith(
+      expect.anything(),
+      "/vault",
+      "vault-1",
+      "note.md",
+      new Uint8Array([7, 7, 7]),
+      { width: 160, height: 90 },
+      { sourceMediaId: "m-vid", sourceFilename: "clip.mp4" },
+    );
   });
 
   it("returns retryable fail when cover generation yields null", async () => {

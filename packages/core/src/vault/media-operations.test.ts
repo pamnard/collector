@@ -8,6 +8,7 @@ import { createVault } from "../vault/vault-operations.js";
 import { upsertItem } from "../vault/item-operations.js";
 import {
   attachMediaFile,
+  attachMediaFileFromPath,
   deleteMediaFile,
   listItemMediaWithPaths,
   replaceMediaFile,
@@ -87,6 +88,48 @@ describe("media operations", () => {
     await deleteMediaFile(ctx, path, itemId, media.id);
     expect(await listItemMediaWithPaths(ctx, path, itemId)).toHaveLength(0);
     expect(await fs.exists(itemMediaManifestPath(path, itemId))).toBe(false);
+  });
+
+  it("attachMediaFileFromPath copies source file onto disk", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "collector-media-from-path-"));
+    const sql = new MemorySqlAdapter();
+    const ctx = { fs, index: new SqlVaultIndexStore(sql) };
+    const { meta, path } = await createVault(ctx, dataDir, { name: "Vault" });
+    const itemId = `${createId()}.md`;
+
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Path attach",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    });
+
+    const sourcePath = join(dataDir, "source-clip.bin");
+    const payload = Uint8Array.from([1, 2, 3, 4, 5, 6, 7, 8]);
+    await fs.writeBinary(sourcePath, payload);
+
+    const media = await attachMediaFileFromPath(ctx, path, itemId, {
+      filename: "clip.mp4",
+      absolutePath: sourcePath,
+    });
+    expect(media.filename).toBe("clip.mp4");
+    const listed = await listItemMediaWithPaths(ctx, path, itemId);
+    expect(listed).toHaveLength(1);
+    expect(await fs.readBinary(listed[0]!.absolute_path)).toEqual(payload);
   });
 
   it("lists bare shot.png dropped into media/<uuid>/ (#277/#279)", async () => {

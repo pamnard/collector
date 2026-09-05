@@ -13,9 +13,12 @@ export type YoutubeFetchSuccess = {
    * `null` = absent (caller must not invent empty success text).
    */
   transcript: string | null;
-  videoBytes: Uint8Array;
+  /** Absolute path to the merged video file on disk (caller attaches then releases). */
+  videoPath: string;
   /** Suggested attachment filename (e.g. `{videoId}.mp4`). */
   videoFilename: string;
+  /** Remove temp download directory after attach (or on failure after fetch). */
+  release: () => void;
 };
 
 export type YoutubeFetchErrorCode =
@@ -26,7 +29,9 @@ export type YoutubeFetchErrorCode =
   | "no_video"
   | "no_title"
   | "invalid_url"
-  | "file_too_large";
+  | "no_duration"
+  | "no_audio"
+  | "incomplete_download";
 
 export type YoutubeFetchResult =
   | { ok: true; value: YoutubeFetchSuccess }
@@ -53,12 +58,14 @@ export type FetchYoutubeOptions = {
   nodeBinary?: string;
   /** Override process spawn (unit tests). */
   execFileImpl?: YoutubeExecFile;
+  /** Override audio-stream probe (unit tests). */
+  probeHasAudioImpl?: (videoPath: string) => Promise<boolean>;
 };
 
 export type YoutubeMediaIntent = {
   kind: "video";
   filename: string;
-  bytes: Uint8Array;
+  absolutePath: string;
 };
 
 export type YoutubeMergeResult = {

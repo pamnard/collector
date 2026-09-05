@@ -21,7 +21,7 @@ import { createDashboardSnapshotService } from "../dashboard-snapshot.js";
 import { createItemEmbeddingsService } from "../embeddings/item-embeddings-service.js";
 import { createEmbeddingReconcileScheduler } from "../embeddings/embedding-reconcile-scheduler.js";
 import { createVaultPresentationChangedStore } from "../vault-presentation-changed.js";
-import { generateCoverFromMedia } from "./node-cover.js";
+import { generateCoverFromMedia, generateCoverFromMediaPath } from "./node-cover.js";
 import { NodeSqliteExecutor } from "./node-sql.js";
 import { createNodeVaultFilesystemWatcher } from "./vault-fs-watcher.js";
 import { createVaultLayoutGuardRunner } from "../vault-layout-guard-runner.js";
@@ -404,6 +404,7 @@ export function createServiceDomainRuntime(
     getContext,
     resolveVaultPath: requireActiveVaultPath,
     generateCoverFromMedia,
+    generateCoverFromMediaPath,
     invalidateThumbnailPathCache: (itemId) =>
       mediaCover.invalidateThumbnailPathCache(itemId),
     onVaultPresentationChanged: (payload) =>
@@ -488,8 +489,8 @@ export function createServiceDomainRuntime(
   const youtubeExtractor = createYoutubeExtractorPlugin({
     getItemById: (itemId) => itemsSearch.getItemById(itemId),
     updateItem: (itemId, input) => itemsSearch.updateItem(itemId, input),
-    attachMediaFiles: (itemId, files) =>
-      mediaCover.attachMediaFiles(itemId, files),
+    attachMediaFromPath: (itemId, file) =>
+      mediaCover.attachMediaFromPath(itemId, file),
   });
 
   const twitterExtractor = createTwitterExtractorPlugin({

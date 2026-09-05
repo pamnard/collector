@@ -1,6 +1,7 @@
 import {
   access,
   constants,
+  copyFile,
   mkdir,
   readFile,
   readdir,
@@ -60,6 +61,10 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
 
   async writeBinary(path: string, content: Uint8Array): Promise<void> {
     await writeFile(path, content);
+  }
+
+  async copyFile(from: string, to: string): Promise<void> {
+    await copyFile(from, to);
   }
 
   async mkdir(path: string): Promise<void> {

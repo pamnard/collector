@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import sharp from "sharp";
 import {
   generateCoverFromMedia,
+  generateCoverFromMediaPath,
   resolveFfmpegBinary,
   resolveServiceHostDir,
   seekTargetSeconds,
@@ -25,44 +26,40 @@ function ffmpegAvailable(): boolean {
   }
 }
 
-function makeTinyMp4(): Uint8Array {
+function makeTinyMp4(): { bytes: Uint8Array; path: string; dir: string } {
   const bin = resolveFfmpegBinary();
   if (!bin) {
     throw new Error("ffmpeg binary required to build video fixture");
   }
   const dir = mkdtempSync(join(tmpdir(), "collector-cover-fixture-"));
   const out = join(dir, "clip.mp4");
-  try {
-    execFileSync(
-      bin,
-      [
-        "-y",
-        "-f",
-        "lavfi",
-        "-i",
-        "color=c=blue:s=320x240:d=1",
-        "-c:v",
-        "libx264",
-        "-t",
-        "1",
-        "-pix_fmt",
-        "yuv420p",
-        out,
-      ],
-      { stdio: "ignore" },
-    );
-    return new Uint8Array(readFileSync(out));
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  execFileSync(
+    bin,
+    [
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=blue:s=320x240:d=1",
+      "-c:v",
+      "libx264",
+      "-t",
+      "1",
+      "-pix_fmt",
+      "yuv420p",
+      out,
+    ],
+    { stdio: "ignore" },
+  );
+  return { bytes: new Uint8Array(readFileSync(out)), path: out, dir };
 }
 
 describe("seekTargetSeconds", () => {
-  it("matches browser policy", () => {
+  it("seeks to five percent of duration", () => {
     expect(seekTargetSeconds(null)).toBe(0);
     expect(seekTargetSeconds(0)).toBe(0);
-    expect(seekTargetSeconds(0.4)).toBe(0.2);
-    expect(seekTargetSeconds(10)).toBe(0.5);
+    expect(seekTargetSeconds(100)).toBe(5);
+    expect(seekTargetSeconds(8 * 3600)).toBe(8 * 3600 * 0.05);
   });
 });
 
@@ -140,15 +137,45 @@ describe("generateCoverFromMedia (node)", () => {
       );
     }
 
-    const mp4 = makeTinyMp4();
-    const cover = await generateCoverFromMedia(mp4, "clip.mp4", "video");
+    const fixture = makeTinyMp4();
+    try {
+      const cover = await generateCoverFromMedia(
+        fixture.bytes,
+        "clip.mp4",
+        "video",
+      );
 
-    expect(cover).not.toBeNull();
-    const meta = await sharp(Buffer.from(cover!.data)).metadata();
-    expect(meta.format).toBe("webp");
-    expect(meta.width).toBeLessThanOrEqual(480);
-    expect(meta.height).toBeLessThanOrEqual(480);
-    expect(cover!.size).toEqual({ width: meta.width, height: meta.height });
+      expect(cover).not.toBeNull();
+      const meta = await sharp(Buffer.from(cover!.data)).metadata();
+      expect(meta.format).toBe("webp");
+      expect(meta.width).toBeLessThanOrEqual(480);
+      expect(meta.height).toBeLessThanOrEqual(480);
+      expect(cover!.size).toEqual({ width: meta.width, height: meta.height });
+    } finally {
+      rmSync(fixture.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("extracts a video cover from an on-disk path without buffering bytes", async () => {
+    if (!ffmpegAvailable()) {
+      throw new Error(
+        "ffmpeg required for path cover test (install ffmpeg or set COLLECTOR_FFMPEG)",
+      );
+    }
+
+    const fixture = makeTinyMp4();
+    try {
+      const cover = await generateCoverFromMediaPath(
+        fixture.path,
+        "clip.mp4",
+        "video",
+      );
+      expect(cover).not.toBeNull();
+      const meta = await sharp(Buffer.from(cover!.data)).metadata();
+      expect(meta.format).toBe("webp");
+    } finally {
+      rmSync(fixture.dir, { recursive: true, force: true });
+    }
   });
 
   it("soft-fails to null when COLLECTOR_FFMPEG points at a missing binary", async () => {

@@ -9,6 +9,12 @@ export type {
 } from "./types.js";
 
 export { fetchYoutubeVideo } from "./fetch.js";
+export {
+  youtubeFormatForMaxHeight,
+  youtubeMaxHeightForDurationSeconds,
+  YOUTUBE_DURATION_720_MAX_SECONDS,
+  type YoutubeMaxHeight,
+} from "./duration-height.js";
 
 export {
   YOUTUBE_TITLE_MAX_LENGTH,
@@ -28,5 +34,6 @@ export {
 export {
   YOUTUBE_PLUGIN_ID,
   createYoutubeExtractorPlugin,
+  type YoutubeAttachFromPathInput,
   type YoutubeExtractorPluginDeps,
 } from "./youtube-extractor-plugin.js";
