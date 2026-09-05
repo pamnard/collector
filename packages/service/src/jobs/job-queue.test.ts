@@ -473,7 +473,8 @@ describe("createJobQueue (#628 / #629)", () => {
     const failures: Array<{
       id: string;
       type: string;
-      error: string;
+      summary: string;
+      detail?: string;
       attempts: number;
     }> = [];
     const queue = await createJobQueue({
@@ -496,7 +497,8 @@ describe("createJobQueue (#628 / #629)", () => {
     expect(failures[0]).toMatchObject({
       id,
       type: "__test_noop",
-      error: "noop permanent fail",
+      summary: "Задача «__test_noop» не выполнилась",
+      detail: "noop permanent fail",
     });
     await queue.stop();
   });

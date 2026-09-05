@@ -33,16 +33,22 @@ export type ItemExtractAutoHandlerDeps = {
 
 function reportShortcodeFailure(
   store: JobPermanentFailureStore,
-  jobId: string,
+  _jobId: string,
   itemId: string,
   shortcode: string,
   candidateUrl: string,
   error: string,
 ): void {
   notifyJobPermanentFailure(store, {
-    id: `${jobId}:${shortcode}:${crypto.randomUUID()}`,
+    id: `itemExtractAuto:${itemId}:${shortcode}`,
     type: itemExtractAutoJobType.id,
-    error: `Автоимпорт не удался для заметки ${itemId} (${shortcode}, ${candidateUrl}): ${error}`,
+    summary: "Автоимпорт не удался",
+    detail: [
+      `itemId: ${itemId}`,
+      `shortcode: ${shortcode}`,
+      `url: ${candidateUrl}`,
+      error,
+    ].join("\n"),
     attempts: 1,
   });
 }

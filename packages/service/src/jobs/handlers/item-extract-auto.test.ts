@@ -378,12 +378,14 @@ describe("createItemExtractAutoHandler", () => {
     const notified = failures[0] as {
       type: string;
       attempts: number;
-      error: string;
+      summary: string;
+      detail?: string;
     };
     expect(notified.type).toBe("itemExtractAuto");
     expect(notified.attempts).toBe(1);
-    expect(notified.error).toContain(FAIL_SHORTCODE);
-    expect(notified.error).toContain(h.itemId);
+    expect(notified.summary).toBe("Автоимпорт не удался");
+    expect(notified.detail).toContain(FAIL_SHORTCODE);
+    expect(notified.detail).toContain(h.itemId);
   });
 
   it("skips shortcodes already recorded in host store (no second import)", async () => {
@@ -470,7 +472,7 @@ describe("createItemExtractAutoHandler", () => {
     expect(media[0]!.filename).toBe(`${OK_SHORTCODE}.jpg`);
 
     expect(failures).toHaveLength(1);
-    expect((failures[0] as { error: string }).error).toContain(FAIL_SHORTCODE);
+    expect((failures[0] as { detail?: string }).detail).toContain(FAIL_SHORTCODE);
   });
 
   it("coalesces repeated extract-auto jobs for the same content revision", async () => {

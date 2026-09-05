@@ -14,17 +14,17 @@ describe("createJobPermanentFailureStore (#630)", () => {
     store.notify({
       id: "j1",
       type: "__test_noop",
-      error: "boom",
+      summary: "boom",
       attempts: 1,
     });
     expect(seen).toEqual([
-      { id: "j1", type: "__test_noop", error: "boom", attempts: 1 },
+      { id: "j1", type: "__test_noop", summary: "boom", attempts: 1 },
     ]);
     sub.unsubscribe();
     store.notify({
       id: "j2",
       type: "__test_noop",
-      error: "again",
+      summary: "again",
       attempts: 2,
     });
     expect(seen).toHaveLength(1);
@@ -37,7 +37,8 @@ describe("reportEnqueueFailure (#639)", () => {
     const seen: Array<{
       id: string;
       type: string;
-      error: string;
+      summary: string;
+      detail?: string;
       attempts: number;
     }> = [];
     store.subscribe((payload) => {
@@ -53,7 +54,8 @@ describe("reportEnqueueFailure (#639)", () => {
       {
         id: "enqueue-failed:vaultIndexSync:fixed-id",
         type: "vaultIndexSync",
-        error: "enqueue failed: db locked",
+        summary: "Не удалось поставить задачу в очередь",
+        detail: "vaultIndexSync: db locked",
         attempts: 0,
       },
     ]);

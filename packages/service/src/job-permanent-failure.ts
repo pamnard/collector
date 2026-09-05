@@ -43,7 +43,8 @@ export function notifyJobPermanentFailure(
   console.error(`[jobs] ${logKind}`, {
     jobId: info.id,
     type: info.type,
-    error: info.error,
+    summary: info.summary,
+    detail: info.detail,
     attempts: info.attempts,
   });
   store.notify(info);
@@ -65,7 +66,8 @@ export function reportEnqueueFailure(
     {
       id: `enqueue-failed:${type}:${createId()}`,
       type,
-      error: `enqueue failed: ${message}`,
+      summary: "Не удалось поставить задачу в очередь",
+      detail: `${type}: ${message}`,
       attempts: 0,
     },
     "enqueue failure",

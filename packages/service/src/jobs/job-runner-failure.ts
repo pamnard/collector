@@ -10,13 +10,15 @@ export function reportPermanentFailure(
   const info: JobPermanentFailure = {
     id: job.id,
     type: job.type,
-    error,
+    summary: `Задача «${job.type}» не выполнилась`,
+    detail: error,
     attempts,
   };
   console.error("[jobs] permanent failure", {
     jobId: info.id,
     type: info.type,
-    error: info.error,
+    summary: info.summary,
+    detail: info.detail,
     attempts: info.attempts,
   });
   onPermanentFailure?.(info);

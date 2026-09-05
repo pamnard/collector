@@ -36,7 +36,8 @@ describe("subscribeJobPermanentFailureAlerts (#640)", () => {
     listener?.({
       id: "j1",
       type: "__test_noop",
-      error: "noop permanent fail",
+      summary: "noop permanent fail",
+      detail: "tech dump",
       attempts: 1,
     });
 
@@ -46,7 +47,8 @@ describe("subscribeJobPermanentFailureAlerts (#640)", () => {
         input: {
           tone: "danger",
           dismissible: true,
-          message: "__test_noop: noop permanent fail",
+          message: "noop permanent fail",
+          detail: "tech dump",
         },
       },
     ]);
@@ -55,7 +57,7 @@ describe("subscribeJobPermanentFailureAlerts (#640)", () => {
     listener?.({
       id: "j2",
       type: "__test_noop",
-      error: "late",
+      summary: "late",
       attempts: 1,
     });
     assert.equal(upserted.length, 1);

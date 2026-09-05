@@ -13,7 +13,8 @@ export function subscribeJobPermanentFailureAlerts(
     alerts.upsert(`job-failed-${failure.id}`, {
       tone: "danger",
       dismissible: true,
-      message: `${failure.type}: ${failure.error}`,
+      message: failure.summary,
+      detail: failure.detail,
     });
   }).unsubscribe;
 }
