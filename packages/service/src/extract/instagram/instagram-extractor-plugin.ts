@@ -14,6 +14,7 @@ import type {
 import { fetchExtractMediaBytes } from "../../fetch-extract-media-bytes.js";
 import type { LookupHostAddresses } from "../../fetch-remote-bytes.js";
 import { cdnDownloadHeaders } from "../cdn-download-headers.js";
+import { downloadCdnMediaIntents } from "../download-cdn-media-intents.js";
 import { discoverInstagramCandidates, parseInstagramShortcode } from "./instagram-url-discover.js";
 import { fetchInstagramMedia } from "./fetch.js";
 import { IG_WEB_ORIGIN } from "./http.js";
@@ -121,15 +122,15 @@ export function createInstagramExtractorPlugin(
       }
 
       // Download all CDN bytes before any vault write so failures leave the note intact.
-      const files: AttachMediaFileInput[] = [];
-      for (const intent of merged.mediaIntents) {
-        const bytes = await runDownload(intent.sourceUrl, {
-          fetchImpl: deps.fetchImpl,
-          headers: CDN_DOWNLOAD_HEADERS,
-          lookupAddresses: deps.lookupAddresses,
-        });
-        files.push({ name: intent.filename, bytes });
-      }
+      const files = await downloadCdnMediaIntents(
+        merged.mediaIntents,
+        (sourceUrl) =>
+          runDownload(sourceUrl, {
+            fetchImpl: deps.fetchImpl,
+            headers: CDN_DOWNLOAD_HEADERS,
+            lookupAddresses: deps.lookupAddresses,
+          }),
+      );
 
       await deps.updateItem(itemId, {
         title: merged.title,
