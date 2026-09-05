@@ -8,6 +8,7 @@ export type AlertEntry = {
   id: string;
   tone: AlertTone;
   message: ReactNode;
+  detail?: string;
   dismissible: boolean;
   onDismiss?: () => void;
 };
@@ -16,6 +17,7 @@ export type PushAlertInput = {
   id?: string;
   tone: AlertTone;
   message: ReactNode;
+  detail?: string;
   dismissible?: boolean;
   onDismiss?: () => void;
 };
@@ -60,6 +62,7 @@ export function createAlertStore(): AlertStore {
         id,
         tone: input.tone,
         message: input.message,
+        detail: input.detail,
         dismissible: input.dismissible ?? true,
         onDismiss: input.onDismiss,
       });

@@ -17,6 +17,7 @@ export function AlertHost() {
         <Alert
           key={entry.id}
           tone={entry.tone}
+          detail={entry.detail}
           onDismiss={
             entry.dismissible
               ? () => {

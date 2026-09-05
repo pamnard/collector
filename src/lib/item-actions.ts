@@ -112,10 +112,14 @@ export async function runItemImport(
   itemId: string,
   candidate: ExtractCandidate,
 ): Promise<ItemFile | undefined> {
+  const shortcode =
+    candidate.meta?.shortcode?.trim() ||
+    candidate.url;
   return runWithBusyAlert(alerts, {
     busyId: ITEM_IMPORT_BUSY_ID,
-    errorId: ITEM_IMPORT_ERROR_ID,
+    errorId: `job-failed-itemExtractAuto:${itemId}:${shortcode}`,
     label: "Импортирую…",
+    errorSummary: "Импорт не удался",
     run: async () => {
       await getCollectorService().extract.extractItemCandidate(
         itemId,

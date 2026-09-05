@@ -78,4 +78,15 @@ describe("createAlertStore", () => {
       false,
     );
   });
+
+  it("preserves optional detail", () => {
+    const store = createAlertStore();
+    store.push({
+      id: "d",
+      tone: "danger",
+      message: "short",
+      detail: "tech dump",
+    });
+    assert.equal(store.getSnapshot()[0]?.detail, "tech dump");
+  });
 });

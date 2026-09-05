@@ -83,11 +83,17 @@ describe("enqueueItemDerivedRefreshWithFailureReporting (#776 / #886)", () => {
 
   it("surfaces enqueue failure via permanent-failure contract", async () => {
     const store = createJobPermanentFailureStore();
-    const seen: Array<{ type: string; error: string; attempts: number }> = [];
+    const seen: Array<{
+      type: string;
+      summary: string;
+      detail?: string;
+      attempts: number;
+    }> = [];
     store.subscribe((payload) => {
       seen.push({
         type: payload.type,
-        error: payload.error,
+        summary: payload.summary,
+        detail: payload.detail,
         attempts: payload.attempts,
       });
     });
@@ -106,7 +112,8 @@ describe("enqueueItemDerivedRefreshWithFailureReporting (#776 / #886)", () => {
     expect(seen).toEqual([
       {
         type: "itemDerivedRefresh",
-        error: "enqueue failed: queue full",
+        summary: "Не удалось поставить задачу в очередь",
+        detail: "itemDerivedRefresh: queue full",
         attempts: 0,
       },
     ]);

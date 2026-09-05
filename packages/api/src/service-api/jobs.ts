@@ -18,7 +18,10 @@ export interface JobStats extends JobStatusCounts {
 export interface JobPermanentFailure {
   id: string;
   type: string;
-  error: string;
+  /** Short user-facing text for AlertStack. */
+  summary: string;
+  /** Optional technical dump; UI shows under chevron expand. */
+  detail?: string;
   attempts: number;
 }
 

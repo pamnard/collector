@@ -218,7 +218,8 @@ describe("createHostJobsPort (#630)", () => {
               expect.objectContaining({
                 id,
                 type: "__test_noop",
-                error: "noop permanent fail",
+                summary: "Задача «__test_noop» не выполнилась",
+                detail: "noop permanent fail",
                 attempts: expect.any(Number),
               }),
             ]);
