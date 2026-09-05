@@ -14,15 +14,12 @@ import type {
   MediaWithPath,
   UpdateItemInput,
 } from "@collector/api";
-import {
-  DISK_ITEM_READ_CONCURRENCY,
-  rewriteMarkdownRemoteImageUrls,
-  runWithConcurrency,
-} from "@collector/core";
+import { rewriteMarkdownRemoteImageUrls } from "@collector/core";
 import { fetchExtractMediaBytes } from "../../fetch-extract-media-bytes.js";
 import type { LookupHostAddresses } from "../../fetch-remote-bytes.js";
 import { companionBodyUrlKeys } from "../companion-body-url-keys.js";
 import { cdnDownloadHeaders } from "../cdn-download-headers.js";
+import { downloadCdnMediaIntents } from "../download-cdn-media-intents.js";
 import { fetchTwitterContent } from "./fetch.js";
 import { TWITTER_WEB_ORIGIN } from "./http.js";
 import { mergeTwitterIntoNote } from "./merge.js";
@@ -166,24 +163,15 @@ export function createTwitterExtractorPlugin(
         { bodyUrlKeys },
       );
 
-      const downloaded = await runWithConcurrency(
-        merged.mediaIntents.length,
-        DISK_ITEM_READ_CONCURRENCY,
-        (index) => {
-          const intent = merged.mediaIntents[index]!;
-          return runDownload(intent.sourceUrl, {
+      // Download all CDN bytes before any vault write so failures leave the note intact.
+      const files = await downloadCdnMediaIntents(
+        merged.mediaIntents,
+        (sourceUrl) =>
+          runDownload(sourceUrl, {
             fetchImpl: deps.fetchImpl,
             headers: CDN_DOWNLOAD_HEADERS,
             lookupAddresses: deps.lookupAddresses,
-          });
-        },
-      );
-
-      const files: AttachMediaFileInput[] = merged.mediaIntents.map(
-        (intent, index) => ({
-          name: intent.filename,
-          bytes: downloaded[index]!,
-        }),
+          }),
       );
 
       let nextBody = merged.body;
