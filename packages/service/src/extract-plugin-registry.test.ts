@@ -3,7 +3,7 @@
  * (not discoverCalls / extractCalls theater). Assert candidates + vault writes.
  */
 
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,8 +12,10 @@ import type { ExtractorPlugin } from "@collector/api";
 import {
   SqlVaultIndexStore,
   attachMediaFile,
+  attachMediaFileFromPath,
   createVault,
   listItemMediaWithPaths,
+  mediaFilePath,
   readItemFile,
   readItemRawMarkdown,
   resolveOrCreateInboxFolder,
@@ -231,11 +233,29 @@ describe("createExtractPluginRegistry (#849 / #899)", () => {
         }),
       ];
     } else if (mode === "youtube") {
+      const ytDir = mkdtempSync(join(tmpdir(), "collector-yt-reg-"));
+      dirs.push(ytDir);
+      const ytPath = join(ytDir, `${OK_YT_ID}.mp4`);
+      writeFileSync(ytPath, SAMPLE_MP4);
       catalog = [
         createYoutubeExtractorPlugin({
           getItemById: (id) => crud.getItemById(id),
           updateItem: (id, patch) => crud.updateItem(id, patch),
-          attachMediaFiles: attachFiles,
+          attachMediaFromPath: async (id, file) => {
+            const meta = await attachMediaFileFromPath(ctx, vaultPath, id, {
+              filename: file.name,
+              absolutePath: file.absolutePath,
+            });
+            return {
+              ...meta,
+              absolute_path: mediaFilePath(
+                vaultPath,
+                id,
+                meta.id,
+                meta.filename,
+              ),
+            };
+          },
           fetchYoutubeImpl: async () => ({
             ok: true,
             value: {
@@ -243,8 +263,9 @@ describe("createExtractPluginRegistry (#849 / #899)", () => {
               videoId: OK_YT_ID,
               title: "Never Gonna Give You Up",
               transcript: "We're no strangers to love",
-              videoBytes: SAMPLE_MP4,
+              videoPath: ytPath,
               videoFilename: `${OK_YT_ID}.mp4`,
+              release: () => undefined,
             },
           }),
         }),

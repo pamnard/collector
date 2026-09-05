@@ -129,6 +129,50 @@ export async function attachMediaFile(
   return entry;
 }
 
+/**
+ * Attach a file already on disk by copying into the item media tree.
+ * Does not buffer the whole payload in heap (large YouTube extracts).
+ */
+export async function attachMediaFileFromPath(
+  ctx: VaultContext,
+  vaultPath: string,
+  itemId: string,
+  input: {
+    filename: string;
+    absolutePath: string;
+    mediaType?: MediaFileMeta["media_type"];
+  },
+): Promise<MediaFileMeta> {
+  const sourceStat = await ctx.fs.stat(input.absolutePath);
+  if (sourceStat.mtimeMs == null || sourceStat.sizeBytes == null) {
+    throw new Error(
+      `attachMediaFileFromPath: source missing or unreadable: ${input.absolutePath}`,
+    );
+  }
+  if (sourceStat.sizeBytes === 0) {
+    throw new Error(
+      `attachMediaFileFromPath: source is empty: ${input.absolutePath}`,
+    );
+  }
+
+  const mediaId = createId();
+  const mediaType = input.mediaType ?? inferMediaType(input.filename);
+  const entry: MediaFileMeta = {
+    id: mediaId,
+    item_id: itemId,
+    filename: input.filename,
+    media_type: mediaType,
+    created_at: nowIso(),
+  };
+
+  const destination = mediaFilePath(vaultPath, itemId, mediaId, input.filename);
+  await ctx.fs.mkdir(itemMediaRoot(vaultPath, itemId));
+  await ctx.fs.copyFile(input.absolutePath, destination);
+  await ensureItemIndexedForMedia(ctx, vaultPath, itemId);
+  await ctx.index.upsertMedia(entry);
+  return entry;
+}
+
 export async function listItemMediaWithPaths(
   ctx: VaultContext,
   vaultPath: string,

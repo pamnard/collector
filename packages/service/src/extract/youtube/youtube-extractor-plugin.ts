@@ -1,11 +1,10 @@
 /**
  * YouTube ExtractorPlugin assembly (#317).
- * Wires discover → yt-dlp fetch → merge → attachMediaFiles → updateItem.
+ * Wires discover → yt-dlp fetch → merge → attachMediaFromPath → updateItem.
  * Attach runs before body strip so a failed attach leaves the URL for retry.
  */
 
 import type {
-  AttachMediaFileInput,
   ExtractCandidate,
   ExtractorPlugin,
   GetItemResult,
@@ -24,12 +23,17 @@ import {
 
 export const YOUTUBE_PLUGIN_ID = "youtube";
 
+export type YoutubeAttachFromPathInput = {
+  name: string;
+  absolutePath: string;
+};
+
 export type YoutubeExtractorPluginDeps = {
   getItemById: (itemId: string) => Promise<GetItemResult>;
   updateItem: (itemId: string, input: UpdateItemInput) => Promise<unknown>;
-  attachMediaFiles: (
+  attachMediaFromPath: (
     itemId: string,
-    files: AttachMediaFileInput[],
+    file: YoutubeAttachFromPathInput,
   ) => Promise<unknown>;
   /** Override for offline tests. */
   fetchYoutubeImpl?: (
@@ -91,27 +95,34 @@ export function createYoutubeExtractorPlugin(
         );
       }
 
-      const merged = mergeYoutubeIntoNote(
-        { body },
-        fetchResult.value,
-        { bodyUrlKeys: [videoId] },
-      );
+      try {
+        const merged = mergeYoutubeIntoNote(
+          { body },
+          fetchResult.value,
+          { bodyUrlKeys: [videoId] },
+        );
 
-      const files: AttachMediaFileInput[] = merged.mediaIntents.map(
-        (intent) => ({
+        const intent = merged.mediaIntents[0];
+        if (intent === undefined) {
+          throw new Error(
+            `YouTube extract refused: no media intent for ${videoId}`,
+          );
+        }
+
+        // Attach first: if this throws, body URL remains for a retry.
+        await deps.attachMediaFromPath(itemId, {
           name: intent.filename,
-          bytes: intent.bytes,
-        }),
-      );
-
-      // Attach first: if this throws, body URL remains for a retry.
-      await deps.attachMediaFiles(itemId, files);
-      await deps.updateItem(itemId, {
-        title: merged.title,
-        content: merged.body,
-        url: merged.url,
-        content_type: "note",
-      });
+          absolutePath: intent.absolutePath,
+        });
+        await deps.updateItem(itemId, {
+          title: merged.title,
+          content: merged.body,
+          url: merged.url,
+          content_type: "note",
+        });
+      } finally {
+        fetchResult.value.release();
+      }
     },
   };
 }

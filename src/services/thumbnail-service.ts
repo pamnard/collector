@@ -1,4 +1,5 @@
 import type { MediaType, GeneratedCover } from "@collector/shared";
+import { seekTargetSeconds } from "@collector/shared";
 
 const IMAGE_MIME: Record<string, string> = {
   jpg: "image/jpeg",
@@ -118,9 +119,11 @@ async function generateCoverFromVideo(
       video.onerror = () => reject(new Error("Failed to decode video"));
     });
 
-    const seekTarget = Number.isFinite(video.duration) && video.duration > 0
-      ? Math.min(0.5, video.duration / 2)
-      : 0;
+    const duration =
+      Number.isFinite(video.duration) && video.duration > 0
+        ? video.duration
+        : null;
+    const seekTarget = seekTargetSeconds(duration);
 
     video.currentTime = seekTarget;
     await new Promise<void>((resolve, reject) => {

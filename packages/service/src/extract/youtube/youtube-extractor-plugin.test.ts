@@ -6,21 +6,17 @@ import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import type {
-  AttachMediaFileInput,
-  GetItemResult,
-  UpdateItemInput,
-} from "@collector/api";
+import type { GetItemResult, UpdateItemInput } from "@collector/api";
 import { resolveYtdlpBinary } from "./resolve-ytdlp.js";
 import {
   YOUTUBE_PLUGIN_ID,
   createYoutubeExtractorPlugin,
+  type YoutubeAttachFromPathInput,
 } from "./youtube-extractor-plugin.js";
 import type { YoutubeFetchResult } from "./types.js";
 
 const OK_ID = "dQw4w9WgXcQ";
 const OK_URL = `https://www.youtube.com/watch?v=${OK_ID}`;
-const SAMPLE_BYTES = new Uint8Array([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70]);
 
 function fakeNote(input: {
   id?: string;
@@ -55,14 +51,17 @@ function fakeNote(input: {
 type VaultWrite = {
   order: string[];
   updates: Array<{ itemId: string; input: UpdateItemInput }>;
-  attaches: Array<{ itemId: string; files: AttachMediaFileInput[] }>;
+  attaches: Array<{ itemId: string; file: YoutubeAttachFromPathInput }>;
 };
 
 function emptyWrites(): VaultWrite {
   return { order: [], updates: [], attaches: [] };
 }
 
-function okFetch(transcript: string | null): YoutubeFetchResult {
+function okFetch(
+  transcript: string | null,
+  videoPath: string,
+): YoutubeFetchResult {
   return {
     ok: true,
     value: {
@@ -70,14 +69,16 @@ function okFetch(transcript: string | null): YoutubeFetchResult {
       videoId: OK_ID,
       title: "Never Gonna Give You Up",
       transcript,
-      videoBytes: SAMPLE_BYTES,
+      videoPath,
       videoFilename: `${OK_ID}.mp4`,
+      release: () => undefined,
     },
   };
 }
 
 describe("createYoutubeExtractorPlugin (#317)", () => {
   const envDirs: string[] = [];
+  let samplePath = "";
 
   afterEach(() => {
     for (const dir of envDirs.splice(0)) {
@@ -86,11 +87,23 @@ describe("createYoutubeExtractorPlugin (#317)", () => {
     delete process.env.COLLECTOR_YT_DLP;
   });
 
+  function ensureSampleVideo(): string {
+    if (samplePath) {
+      return samplePath;
+    }
+    const dir = join(tmpdir(), `collector-yt-plugin-${Date.now()}`);
+    envDirs.push(dir);
+    mkdirSync(dir, { recursive: true });
+    samplePath = join(dir, `${OK_ID}.mp4`);
+    writeFileSync(samplePath, Buffer.from([0x00, 0x00, 0x00, 0x18]));
+    return samplePath;
+  }
+
   it("discover returns youtube candidates from body", () => {
     const plugin = createYoutubeExtractorPlugin({
       getItemById: async () => fakeNote({ body: "" }),
       updateItem: async () => undefined,
-      attachMediaFiles: async () => undefined,
+      attachMediaFromPath: async () => undefined,
     });
     expect(
       plugin.discover({
@@ -108,6 +121,7 @@ describe("createYoutubeExtractorPlugin (#317)", () => {
 
   it("extract attaches before updateItem (strip URL only after attach)", async () => {
     const writes = emptyWrites();
+    const path = ensureSampleVideo();
     const plugin = createYoutubeExtractorPlugin({
       getItemById: async () =>
         fakeNote({ body: `Keep\n\n${OK_URL}\n` }),
@@ -116,12 +130,12 @@ describe("createYoutubeExtractorPlugin (#317)", () => {
         writes.updates.push({ itemId, input });
         return undefined;
       },
-      attachMediaFiles: async (itemId, files) => {
+      attachMediaFromPath: async (itemId, file) => {
         writes.order.push("attach");
-        writes.attaches.push({ itemId, files });
+        writes.attaches.push({ itemId, file });
         return undefined;
       },
-      fetchYoutubeImpl: async () => okFetch("Line one\nLine two"),
+      fetchYoutubeImpl: async () => okFetch("Line one\nLine two", path),
     });
 
     await plugin.extract({
@@ -136,11 +150,14 @@ describe("createYoutubeExtractorPlugin (#317)", () => {
     expect(writes.order).toEqual(["attach", "update"]);
     expect(writes.updates[0]?.input.title).toBe("Never Gonna Give You Up");
     expect(writes.updates[0]?.input.content).not.toContain("youtube.com");
-    expect(writes.attaches[0]?.files[0]?.bytes).toEqual(SAMPLE_BYTES);
+    expect(writes.attaches[0]?.file.absolutePath).toBe(path);
+    expect(writes.attaches[0]?.file.name).toBe(`${OK_ID}.mp4`);
   });
 
   it("leaves body URL when attach fails so extract can retry", async () => {
     const writes = emptyWrites();
+    const path = ensureSampleVideo();
+    let released = false;
     const plugin = createYoutubeExtractorPlugin({
       getItemById: async () => fakeNote({ body: `${OK_URL}\n` }),
       updateItem: async (itemId, input) => {
@@ -148,11 +165,25 @@ describe("createYoutubeExtractorPlugin (#317)", () => {
         writes.updates.push({ itemId, input });
         return undefined;
       },
-      attachMediaFiles: async () => {
+      attachMediaFromPath: async () => {
         writes.order.push("attach");
         throw new Error("attach boom");
       },
-      fetchYoutubeImpl: async () => okFetch(null),
+      fetchYoutubeImpl: async () => {
+        const base = okFetch(null, path);
+        if (!base.ok) {
+          return base;
+        }
+        return {
+          ok: true,
+          value: {
+            ...base.value,
+            release: () => {
+              released = true;
+            },
+          },
+        };
+      },
     });
 
     await expect(
@@ -167,21 +198,23 @@ describe("createYoutubeExtractorPlugin (#317)", () => {
     ).rejects.toThrow(/attach boom/);
     expect(writes.order).toEqual(["attach"]);
     expect(writes.updates).toHaveLength(0);
+    expect(released).toBe(true);
   });
 
   it("extract succeeds without transcript and still strips URL", async () => {
     const writes = emptyWrites();
+    const path = ensureSampleVideo();
     const plugin = createYoutubeExtractorPlugin({
       getItemById: async () => fakeNote({ body: `${OK_URL}\n` }),
       updateItem: async (itemId, input) => {
         writes.updates.push({ itemId, input });
         return undefined;
       },
-      attachMediaFiles: async (itemId, files) => {
-        writes.attaches.push({ itemId, files });
+      attachMediaFromPath: async (itemId, file) => {
+        writes.attaches.push({ itemId, file });
         return undefined;
       },
-      fetchYoutubeImpl: async () => okFetch(null),
+      fetchYoutubeImpl: async () => okFetch(null, path),
     });
 
     await plugin.extract({
@@ -195,7 +228,7 @@ describe("createYoutubeExtractorPlugin (#317)", () => {
 
     expect(writes.updates[0]?.input.title).toBe("Never Gonna Give You Up");
     expect(writes.updates[0]?.input.content).not.toContain("youtube.com");
-    expect(writes.attaches[0]?.files).toHaveLength(1);
+    expect(writes.attaches).toHaveLength(1);
   });
 
   it("refuses extract when URL already gone from body", async () => {
@@ -204,7 +237,7 @@ describe("createYoutubeExtractorPlugin (#317)", () => {
       updateItem: async () => {
         throw new Error("vault write must not run");
       },
-      attachMediaFiles: async () => {
+      attachMediaFromPath: async () => {
         throw new Error("attach must not run");
       },
       fetchYoutubeImpl: async () => {

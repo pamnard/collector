@@ -19,7 +19,7 @@ import type {
 export const YOUTUBE_TITLE_MAX_LENGTH = 500;
 
 /**
- * Media attachment intents from an already-downloaded video.
+ * Media attachment intents from an already-downloaded video on disk.
  */
 export function listYoutubeMediaIntents(
   fetch: YoutubeFetchSuccess,
@@ -28,7 +28,7 @@ export function listYoutubeMediaIntents(
     {
       kind: "video",
       filename: fetch.videoFilename,
-      bytes: fetch.videoBytes,
+      absolutePath: fetch.videoPath,
     },
   ];
 }

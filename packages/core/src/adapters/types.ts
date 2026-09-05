@@ -38,6 +38,11 @@ export interface FileSystemAdapter {
   writeTextExclusive(path: string, content: string): Promise<void>;
   readBinary(path: string): Promise<Uint8Array>;
   writeBinary(path: string, content: Uint8Array): Promise<void>;
+  /**
+   * Copy a file on disk without buffering the whole payload in heap.
+   * Used for large media attaches (e.g. YouTube extract).
+   */
+  copyFile(from: string, to: string): Promise<void>;
   mkdir(path: string): Promise<void>;
   readDir(path: string): Promise<string[]>;
   /** Like `readDir`, but includes whether each entry is a directory. */

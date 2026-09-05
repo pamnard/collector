@@ -32,6 +32,9 @@ export class UnsupportedBrowserFsAdapter implements FileSystemAdapter {
   writeBinary(): Promise<void> {
     return fail();
   }
+  copyFile(): Promise<void> {
+    return fail();
+  }
   mkdir(): Promise<void> {
     return fail();
   }

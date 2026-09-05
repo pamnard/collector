@@ -7,7 +7,7 @@ import {
 } from "./merge.js";
 import type { YoutubeFetchSuccess } from "./types.js";
 
-const SAMPLE_BYTES = new Uint8Array([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70]);
+const SAMPLE_PATH = "/tmp/collector-yt-fixture/dQw4w9WgXcQ.mp4";
 
 function sampleFetch(
   overrides: Partial<YoutubeFetchSuccess> = {},
@@ -17,8 +17,9 @@ function sampleFetch(
     videoId: "dQw4w9WgXcQ",
     title: "Never Gonna Give You Up",
     transcript: "We're no strangers to love\nYou know the rules",
-    videoBytes: SAMPLE_BYTES,
+    videoPath: SAMPLE_PATH,
     videoFilename: "dQw4w9WgXcQ.mp4",
+    release: () => undefined,
     ...overrides,
   };
 }
@@ -76,13 +77,13 @@ describe("mergeYoutubeIntoNote body (#317)", () => {
     expect(merged.body).not.toContain("strangers");
   });
 
-  it("lists stable media filename from fetch", () => {
+  it("lists stable media path from fetch", () => {
     const intents = listYoutubeMediaIntents(sampleFetch());
     expect(intents).toEqual([
       {
         kind: "video",
         filename: "dQw4w9WgXcQ.mp4",
-        bytes: SAMPLE_BYTES,
+        absolutePath: SAMPLE_PATH,
       },
     ]);
   });

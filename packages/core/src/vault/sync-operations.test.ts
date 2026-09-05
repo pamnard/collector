@@ -70,6 +70,10 @@ class CountingFileSystemAdapter implements FileSystemAdapter {
     return this.inner.writeBinary(path, content);
   }
 
+  copyFile(from: string, to: string): Promise<void> {
+    return this.inner.copyFile(from, to);
+  }
+
   mkdir(path: string): Promise<void> {
     return this.inner.mkdir(path);
   }

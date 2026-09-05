@@ -18,6 +18,7 @@ import type {
 } from "@collector/shared";
 import {
   attachMediaFile,
+  attachMediaFileFromPath,
   clearItemCover,
   deleteMediaFile,
   DISK_ITEM_READ_CONCURRENCY,
@@ -117,6 +118,13 @@ export interface MediaCoverService {
     itemId: string,
     files: AttachMediaFileInput[],
   ): Promise<MediaWithPath[]>;
+  /**
+   * Host-only large-file attach: copy from an absolute path without heap buffer.
+   */
+  attachMediaFromPath(
+    itemId: string,
+    file: { name: string; absolutePath: string },
+  ): Promise<MediaWithPath>;
   replaceItemMedia(
     itemId: string,
     mediaId: string,
@@ -425,6 +433,24 @@ export function createMediaCoverService(
     return attached;
   };
 
+  const attachMediaFromPath = async (
+    itemId: string,
+    file: { name: string; absolutePath: string },
+  ): Promise<MediaWithPath> => {
+    const { path } = await deps.resolveActiveVault();
+    const ctx = deps.getContext();
+    const meta = await attachMediaFileFromPath(ctx, path, itemId, {
+      filename: file.name,
+      absolutePath: file.absolutePath,
+    });
+    const withPath: MediaWithPath = {
+      ...meta,
+      absolute_path: mediaFilePath(path, itemId, meta.id, meta.filename),
+    };
+    await afterMediaPresentationChange(itemId);
+    return withPath;
+  };
+
   const replaceItemMedia = async (
     itemId: string,
     mediaId: string,
@@ -469,6 +495,7 @@ export function createMediaCoverService(
       return item;
     },
     attachMediaFiles,
+    attachMediaFromPath,
     replaceItemMedia,
     deleteItemMedia,
     invalidateThumbnailPathCache,
