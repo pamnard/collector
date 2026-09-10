@@ -284,6 +284,7 @@ export {
 export {
   extractMarkdownRemoteImageRefs,
   filenameFromRemoteImageUrl,
+  isRemoteMediaUrl,
   localizeRemoteDisplayAssets,
   mightNeedRemoteDisplayAssetLocalization,
   rewriteMarkdownRemoteImageUrls,
@@ -294,6 +295,7 @@ export type {
   LocalizeRemoteDisplayAssetsOptions,
   LocalizeRemoteDisplayAssetsResult,
   MarkdownRemoteImageRef,
+  MarkdownRemoteMediaRefKind,
 } from "./vault/remote-display-assets.js";
 export {
   resolveCoverSourceDisplayPath,

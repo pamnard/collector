@@ -13,6 +13,7 @@ import { itemCoverPath, itemCoverSizePath } from "./paths.js";
 import { listMediaFiles } from "./media-io.js";
 import {
   extractMarkdownRemoteImageRefs,
+  isRemoteMediaUrl,
   localizeRemoteDisplayAssets,
   rewriteMarkdownRemoteImageUrls,
 } from "./remote-display-assets.js";
@@ -21,6 +22,26 @@ import { readItemRawMarkdown } from "./item-io.js";
 import { serializeDocumentMarkdown } from "./frontmatter.js";
 
 describe("remote display asset helpers (#739)", () => {
+  it("classifies media URLs by extension and Reddit CDN", () => {
+    expect(
+      isRemoteMediaUrl(
+        "https://preview.redd.it/4p686rvjmlgh1.png?width=914&amp;format=png",
+      ),
+    ).toBe(true);
+    expect(isRemoteMediaUrl("https://i.redd.it/abc123")).toBe(true);
+    expect(isRemoteMediaUrl("https://cdn.example/shot.webp")).toBe(true);
+    expect(isRemoteMediaUrl("https://cdn.example/clip.mp4")).toBe(true);
+    expect(
+      isRemoteMediaUrl(
+        "https://www.reddit.com/r/ObsidianMD/comments/1vbxnmo/title/",
+      ),
+    ).toBe(false);
+    expect(isRemoteMediaUrl("https://github.com/ElsaTam/obsidian-extended-graph")).toBe(
+      false,
+    );
+    expect(isRemoteMediaUrl("https://v.redd.it/abc123")).toBe(false);
+  });
+
   it("extracts remote markdown images and skips code", () => {
     const body = [
       "Intro",
@@ -41,6 +62,42 @@ describe("remote display asset helpers (#739)", () => {
     ]);
   });
 
+  it("extracts bare media URLs, media hyperlinks, and decodes entities for fetch", () => {
+    const bare =
+      "https://preview.redd.it/4p686rvjmlgh1.png?width=914&amp;format=png&amp;auto=webp&amp;s=abc";
+    const linked =
+      "https://preview.redd.it/eocun9oheogh1.png?width=944&amp;format=png&amp;auto=webp&amp;s=def";
+    const body = [
+      "Intro",
+      "",
+      bare,
+      "",
+      `[Sorry for the language](${linked})`,
+      "",
+      "See https://www.reddit.com/r/ObsidianMD/comments/1vbxnmo/title/",
+      "and https://github.com/ElsaTam/obsidian-extended-graph",
+      "",
+      "```",
+      "https://cdn.example/skip.png",
+      "```",
+    ].join("\n");
+    const refs = extractMarkdownRemoteImageRefs(body);
+    expect(refs.map((r) => ({ rawUrl: r.rawUrl, kind: r.kind, fetchUrl: r.fetchUrl }))).toEqual([
+      {
+        rawUrl: bare,
+        kind: "bare",
+        fetchUrl:
+          "https://preview.redd.it/4p686rvjmlgh1.png?width=914&format=png&auto=webp&s=abc",
+      },
+      {
+        rawUrl: linked,
+        kind: "link",
+        fetchUrl:
+          "https://preview.redd.it/eocun9oheogh1.png?width=944&format=png&auto=webp&s=def",
+      },
+    ]);
+  });
+
   it("rewrites remote image destinations to local paths", () => {
     const body = "![a](https://cdn.example/a.png)\n\n![b](https://cdn.example/b.png)";
     const next = rewriteMarkdownRemoteImageUrls(
@@ -52,6 +109,24 @@ describe("remote display asset helpers (#739)", () => {
     );
     expect(next).toBe(
       "![a](/vault/media/id/a.png)\n\n![b](/vault/media/id/b.png)",
+    );
+  });
+
+  it("rewrites bare media URLs and media hyperlinks into image embeds", () => {
+    const bare =
+      "https://preview.redd.it/a.png?width=1&amp;format=png";
+    const linked =
+      "https://preview.redd.it/b.png?width=2&amp;format=png";
+    const body = `${bare}\n\n[caption](${linked})`;
+    const next = rewriteMarkdownRemoteImageUrls(
+      body,
+      new Map([
+        [bare, "/vault/media/id/a.png"],
+        [linked, "/vault/media/id/b.png"],
+      ]),
+    );
+    expect(next).toBe(
+      "![](/vault/media/id/a.png)\n\n![caption](/vault/media/id/b.png)",
     );
   });
 
@@ -75,9 +150,9 @@ describe("remote display asset helpers (#739)", () => {
       "[ref]: https://cdn.example/ref.png",
     ].join("\n");
     expect(extractMarkdownRemoteImageRefs(body).map((r) => r.rawUrl)).toEqual([
-      "https://cdn.example/ref.png",
       "HTTPS://cdn.example/Two.PNG",
       "//cdn.example/three.jpg",
+      "https://cdn.example/ref.png",
     ]);
   });
 
@@ -158,6 +233,59 @@ describe("localizeRemoteDisplayAssets (#739)", () => {
     const media = await listMediaFiles(fs, path, itemId);
     expect(media).toHaveLength(1);
     expect(media[0]!.filename).toBe("shot.png");
+  });
+
+  it("localizes bare media URLs and media hyperlinks (Reddit selftext forms)", async () => {
+    const bare =
+      "https://preview.redd.it/aaaa.png?width=914&amp;format=png&amp;s=1";
+    const linked =
+      "https://preview.redd.it/bbbb.png?width=944&amp;format=png&amp;s=2";
+    const { ctx, path, vaultId, itemId } = await seedNote(
+      "Reddit selftext",
+      [
+        "Intro",
+        "",
+        bare,
+        "",
+        `[caption](${linked})`,
+        "",
+        "See https://www.reddit.com/r/ObsidianMD/comments/1vbxnmo/title/",
+      ].join("\n"),
+    );
+    const fetched: string[] = [];
+
+    const result = await localizeRemoteDisplayAssets({
+      ctx,
+      vaultPath: path,
+      vaultId,
+      itemId,
+      rawMarkdown: await readItemRawMarkdown(fs, path, itemId),
+      fetchBytes: async (url) => {
+        fetched.push(url);
+        const marker = url.includes("aaaa") ? 1 : 2;
+        return new Uint8Array([1, 2, 3, marker]);
+      },
+      encodeCoverWebp: async () => ({
+        data: new Uint8Array([9]),
+        size: { width: 9, height: 9 },
+      }),
+    });
+
+    expect(fetched.sort()).toEqual(
+      [
+        "https://preview.redd.it/aaaa.png?width=914&format=png&s=1",
+        "https://preview.redd.it/bbbb.png?width=944&format=png&s=2",
+      ].sort(),
+    );
+    expect(result.changed).toBe(true);
+    expect(result.text).not.toContain("preview.redd.it");
+    expect(result.text).toContain(
+      "https://www.reddit.com/r/ObsidianMD/comments/1vbxnmo/title/",
+    );
+    expect(result.text).toMatch(/!\[\]\(\/.*aaaa\.png\)/);
+    expect(result.text).toMatch(/!\[caption\]\(\/.*bbbb\.png\)/);
+    const media = await listMediaFiles(fs, path, itemId);
+    expect(media).toHaveLength(2);
   });
 
   it("fails hard when markdown image download fails (no keep-remote)", async () => {

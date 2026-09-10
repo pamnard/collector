@@ -1,9 +1,10 @@
 /**
  * Localize remote display assets into the note media folder (#739).
  *
- * Product rule: covers, gallery files, and markdown `![](…)` embeds (image or
- * video) must live on disk under `media/<noteUuid>/`. Remote http(s) is never a
- * valid standing display source. `item.url` (content link) may remain remote.
+ * Product rule: covers, gallery files, and media links in the note body
+ * (`![](…)`, `[text](media)`, bare media URLs) must live on disk under
+ * `media/<noteUuid>/`. Remote http(s) is never a valid standing display source.
+ * `item.url` (content link) may remain remote.
  */
 
 import {
@@ -31,13 +32,77 @@ import {
   youtubeTeaserDownloadUrl,
 } from "./youtube-video-id.js";
 
+export type MarkdownRemoteMediaRefKind = "imageEmbed" | "link" | "bare";
+
 export interface MarkdownRemoteImageRef {
-  /** Exact destination URL token as written (may be protocol-relative). */
+  /** Exact destination URL token as written (may include HTML entities). */
   rawUrl: string;
-  /** Start index of the destination span inside `body` (after `](`). */
+  /** Decoded URL used for fetch + media classification. */
+  fetchUrl: string;
+  kind: MarkdownRemoteMediaRefKind;
+  /** Start index of the destination URL span inside `body`. */
   urlStart: number;
-  /** End index (exclusive) of the destination span inside `body`. */
+  /** End index (exclusive) of the destination URL span inside `body`. */
   urlEnd: number;
+  /** Full construct to replace for `link` / `bare` (URL span for `imageEmbed`). */
+  replaceStart: number;
+  replaceEnd: number;
+  /** Link label when `kind === "link"`. */
+  linkText?: string;
+}
+
+const MEDIA_PATH_EXT =
+  /\.(png|jpe?g|gif|webp|avif|mp4|webm|mov)(?:$|[?#])/i;
+
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ");
+}
+
+function isRedditMediaCdnHost(host: string): boolean {
+  const h = host.toLowerCase();
+  return (
+    h === "i.redd.it" ||
+    h === "v.redd.it" ||
+    h === "preview.redd.it" ||
+    h === "external-preview.redd.it" ||
+    h === "i.redditmedia.com" ||
+    h.endsWith(".redditmedia.com")
+  );
+}
+
+/**
+ * True when a remote URL is a downloadable display asset (image/video file),
+ * not a normal content page link.
+ */
+export function isRemoteMediaUrl(value: string): boolean {
+  if (!isRemoteHttpUrl(value)) {
+    return false;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(normalizeRemoteHttpUrl(decodeHtmlEntities(value.trim())));
+  } catch {
+    return false;
+  }
+  const host = parsed.hostname.toLowerCase();
+  // Bare v.redd.it/{id} is a player page — not attachable media bytes.
+  if (
+    host === "v.redd.it" &&
+    /^\/[^/?#]+\/?$/.test(parsed.pathname) &&
+    !MEDIA_PATH_EXT.test(parsed.pathname)
+  ) {
+    return false;
+  }
+  if (MEDIA_PATH_EXT.test(parsed.pathname)) {
+    return true;
+  }
+  return isRedditMediaCdnHost(host);
 }
 
 function skipInlineCode(body: string, start: number): number {
@@ -110,15 +175,150 @@ function parseDestinationUrl(rawDest: string): string | null {
   return isRemoteHttpUrl(raw) ? raw : null;
 }
 
+function mediaRefFromRawUrl(
+  rawUrl: string,
+  urlStart: number,
+  urlEnd: number,
+  kind: MarkdownRemoteMediaRefKind,
+  extra?: { replaceStart: number; replaceEnd: number; linkText?: string },
+): MarkdownRemoteImageRef | null {
+  if (!isRemoteMediaUrl(rawUrl)) {
+    return null;
+  }
+  return {
+    rawUrl,
+    fetchUrl: decodeHtmlEntities(rawUrl),
+    kind,
+    urlStart,
+    urlEnd,
+    replaceStart: extra?.replaceStart ?? urlStart,
+    replaceEnd: extra?.replaceEnd ?? urlEnd,
+    linkText: extra?.linkText,
+  };
+}
+
+function parseParenDestination(
+  body: string,
+  urlStart: number,
+): { urlEnd: number; rawUrl: string } | null {
+  let j = urlStart;
+  let depth = 1;
+  while (j < body.length && depth > 0) {
+    const ch = body[j]!;
+    if (ch === "(") {
+      depth += 1;
+    } else if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        break;
+      }
+    } else if (ch === "\n") {
+      break;
+    }
+    j += 1;
+  }
+  if (depth !== 0) {
+    return null;
+  }
+  const rawUrl = parseDestinationUrl(body.slice(urlStart, j));
+  if (!rawUrl) {
+    return null;
+  }
+  return { urlEnd: j, rawUrl };
+}
+
+function markCovered(covered: boolean[], start: number, end: number): void {
+  const lo = Math.max(0, start);
+  const hi = Math.min(covered.length, end);
+  for (let i = lo; i < hi; i += 1) {
+    covered[i] = true;
+  }
+}
+
+function isCovered(covered: boolean[], start: number, end: number): boolean {
+  for (let i = start; i < end; i += 1) {
+    if (covered[i]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function remoteUrlSchemeLength(body: string, index: number): number {
+  const slice = body.slice(index, index + 8).toLowerCase();
+  if (slice.startsWith("https://")) {
+    return 8;
+  }
+  if (slice.startsWith("http://")) {
+    return 7;
+  }
+  if (body.startsWith("//", index)) {
+    return 2;
+  }
+  return 0;
+}
+
+function scanBareMediaUrl(
+  body: string,
+  start: number,
+): { rawUrl: string; urlStart: number; urlEnd: number } | null {
+  const schemeLen = remoteUrlSchemeLength(body, start);
+  if (schemeLen === 0) {
+    return null;
+  }
+  if (start > 0) {
+    const prev = body[start - 1]!;
+    if (/[A-Za-z0-9/_-]/.test(prev)) {
+      return null;
+    }
+  }
+  let end = start + schemeLen;
+  while (end < body.length) {
+    const ch = body[end]!;
+    if (
+      ch === " " ||
+      ch === "\t" ||
+      ch === "\n" ||
+      ch === "\r" ||
+      ch === ")" ||
+      ch === "]" ||
+      ch === "<" ||
+      ch === ">" ||
+      ch === '"' ||
+      ch === "'"
+    ) {
+      break;
+    }
+    end += 1;
+  }
+  while (end > start + schemeLen) {
+    const last = body[end - 1]!;
+    if (last === "." || last === "," || last === ";" || last === "!" || last === ":") {
+      end -= 1;
+      continue;
+    }
+    break;
+  }
+  const rawUrl = body.slice(start, end);
+  if (!isRemoteMediaUrl(rawUrl)) {
+    return null;
+  }
+  return { rawUrl, urlStart: start, urlEnd: end };
+}
+
 /**
- * Collect remote image destinations: inline `![…](http…)` / `![…](//…)` and
- * reference-style `![…][id]` with `[id]: http…` (code fences skipped).
+ * Collect remote media destinations: `![…](http…)`, `[text](media)`, bare media
+ * URLs, and reference-style image defs (code fences skipped).
  */
 export function extractMarkdownRemoteImageRefs(
   body: string,
 ): MarkdownRemoteImageRef[] {
   const refs: MarkdownRemoteImageRef[] = [];
-  const definitions = new Map<string, { url: string; start: number; end: number }>();
+  const covered = Array.from({ length: body.length }, () => false);
+  const definitions = new Map<
+    string,
+    { url: string; start: number; end: number }
+  >();
 
   // Pass 1: reference definitions `[id]: url` (line-start).
   {
@@ -154,8 +354,9 @@ export function extractMarkdownRemoteImageRefs(
             valueEnd += 1;
           }
           const url = parseDestinationUrl(body.slice(valueStart, valueEnd));
-          if (label && url) {
+          if (label && url && isRemoteMediaUrl(url)) {
             definitions.set(label, { url, start: valueStart, end: valueEnd });
+            markCovered(covered, valueStart, valueEnd);
           }
           i = valueEnd;
           continue;
@@ -165,17 +366,20 @@ export function extractMarkdownRemoteImageRefs(
     }
   }
 
-  // Pass 2: inline images + reference images.
+  // Pass 2: image embeds + media hyperlinks.
   {
     let i = 0;
     while (i < body.length) {
       const fence = isFenceOpener(body, i);
       if (fence) {
+        markCovered(covered, i, findFenceClose(body, fence.end, fence.marker));
         i = findFenceClose(body, fence.end, fence.marker);
         continue;
       }
       if (body[i] === "`") {
-        i = skipInlineCode(body, i);
+        const next = skipInlineCode(body, i);
+        markCovered(covered, i, next);
+        i = next;
         continue;
       }
       if (body[i] === "!" && body[i + 1] === "[" && body[i + 2] === "[") {
@@ -192,31 +396,22 @@ export function extractMarkdownRemoteImageRefs(
         const after = body[labelClose + 1];
         if (after === "(") {
           const urlStart = labelClose + 2;
-          let j = urlStart;
-          let depth = 1;
-          while (j < body.length && depth > 0) {
-            const ch = body[j]!;
-            if (ch === "(") {
-              depth += 1;
-            } else if (ch === ")") {
-              depth -= 1;
-              if (depth === 0) {
-                break;
-              }
-            } else if (ch === "\n") {
-              break;
-            }
-            j += 1;
-          }
-          if (depth !== 0) {
+          const dest = parseParenDestination(body, urlStart);
+          if (!dest) {
             i += 1;
             continue;
           }
-          const url = parseDestinationUrl(body.slice(urlStart, j));
-          if (url) {
-            refs.push({ rawUrl: url, urlStart, urlEnd: j });
+          const ref = mediaRefFromRawUrl(
+            dest.rawUrl,
+            urlStart,
+            dest.urlEnd,
+            "imageEmbed",
+          );
+          if (ref) {
+            refs.push(ref);
+            markCovered(covered, urlStart, dest.urlEnd);
           }
-          i = j + 1;
+          i = dest.urlEnd + 1;
           continue;
         }
         if (after === "[") {
@@ -231,36 +426,112 @@ export function extractMarkdownRemoteImageRefs(
             .toLowerCase();
           const def = definitions.get(refLabel);
           if (def) {
-            refs.push({
-              rawUrl: def.url,
-              urlStart: def.start,
-              urlEnd: def.end,
-            });
+            const ref = mediaRefFromRawUrl(
+              def.url,
+              def.start,
+              def.end,
+              "imageEmbed",
+            );
+            if (ref) {
+              refs.push(ref);
+            }
           }
           i = refClose + 1;
           continue;
         }
-        // Shortcut reference `![label]` → `[label]: url`
         const shortcut = body.slice(i + 2, labelClose).trim().toLowerCase();
         const def = definitions.get(shortcut);
         if (def && (after === undefined || /\s/.test(after) || after === "\n")) {
-          refs.push({
-            rawUrl: def.url,
-            urlStart: def.start,
-            urlEnd: def.end,
-          });
+          const ref = mediaRefFromRawUrl(
+            def.url,
+            def.start,
+            def.end,
+            "imageEmbed",
+          );
+          if (ref) {
+            refs.push(ref);
+          }
         }
         i = labelClose + 1;
+        continue;
+      }
+      if (body[i] === "[" && (i === 0 || body[i - 1] !== "!")) {
+        const labelClose = body.indexOf("]", i + 1);
+        if (
+          labelClose !== -1 &&
+          body[labelClose + 1] === "(" &&
+          !body.slice(i + 1, labelClose).includes("\n")
+        ) {
+          const linkText = body.slice(i + 1, labelClose);
+          const urlStart = labelClose + 2;
+          const dest = parseParenDestination(body, urlStart);
+          if (dest) {
+            const ref = mediaRefFromRawUrl(
+              dest.rawUrl,
+              urlStart,
+              dest.urlEnd,
+              "link",
+              {
+                replaceStart: i,
+                replaceEnd: dest.urlEnd + 1,
+                linkText,
+              },
+            );
+            if (ref) {
+              refs.push(ref);
+              markCovered(covered, i, dest.urlEnd + 1);
+            }
+            i = dest.urlEnd + 1;
+            continue;
+          }
+        }
+      }
+      i += 1;
+    }
+  }
+
+  // Pass 3: bare media URLs outside covered spans / code.
+  {
+    let i = 0;
+    while (i < body.length) {
+      const fence = isFenceOpener(body, i);
+      if (fence) {
+        i = findFenceClose(body, fence.end, fence.marker);
+        continue;
+      }
+      if (body[i] === "`") {
+        i = skipInlineCode(body, i);
+        continue;
+      }
+      if (covered[i]) {
+        i += 1;
+        continue;
+      }
+      const bare = scanBareMediaUrl(body, i);
+      if (bare && !isCovered(covered, bare.urlStart, bare.urlEnd)) {
+        const ref = mediaRefFromRawUrl(
+          bare.rawUrl,
+          bare.urlStart,
+          bare.urlEnd,
+          "bare",
+          { replaceStart: bare.urlStart, replaceEnd: bare.urlEnd },
+        );
+        if (ref) {
+          refs.push(ref);
+          markCovered(covered, bare.urlStart, bare.urlEnd);
+        }
+        i = bare.urlEnd;
         continue;
       }
       i += 1;
     }
   }
 
+  refs.sort((a, b) => a.replaceStart - b.replaceStart || a.urlStart - b.urlStart);
   return refs;
 }
 
-/** Rewrite remote image URL tokens to local paths; preserve titles / definition tails. */
+/** Rewrite remote media URL constructs to local image embeds / paths. */
 export function rewriteMarkdownRemoteImageUrls(
   body: string,
   replacements: ReadonlyMap<string, string>,
@@ -273,30 +544,40 @@ export function rewriteMarkdownRemoteImageUrls(
   if (refs.length === 0) {
     return body;
   }
-  // Dedupe by span so shared reference definitions are rewritten once.
   const uniqueRefs: MarkdownRemoteImageRef[] = [];
   const seenSpans = new Set<string>();
   for (const ref of refs) {
-    const key = `${ref.urlStart}:${ref.urlEnd}`;
+    const key = `${ref.replaceStart}:${ref.replaceEnd}:${ref.kind}`;
     if (seenSpans.has(key)) {
       continue;
     }
     seenSpans.add(key);
     uniqueRefs.push(ref);
   }
+  // Rewrite from the end of the document so earlier indices stay valid.
+  uniqueRefs.sort((a, b) => b.replaceStart - a.replaceStart);
 
   let out = body;
-  for (let index = uniqueRefs.length - 1; index >= 0; index -= 1) {
-    const ref = uniqueRefs[index]!;
+  for (const ref of uniqueRefs) {
     const local = replacements.get(ref.rawUrl);
     if (!local) {
       continue;
     }
-    const span = out.slice(ref.urlStart, ref.urlEnd);
-    if (!span.includes(ref.rawUrl)) {
+    if (ref.kind === "imageEmbed") {
+      const span = out.slice(ref.urlStart, ref.urlEnd);
+      if (!span.includes(ref.rawUrl)) {
+        continue;
+      }
+      out = `${out.slice(0, ref.urlStart)}${span.replace(ref.rawUrl, local)}${out.slice(ref.urlEnd)}`;
       continue;
     }
-    out = `${out.slice(0, ref.urlStart)}${span.replace(ref.rawUrl, local)}${out.slice(ref.urlEnd)}`;
+    if (ref.kind === "bare") {
+      out = `${out.slice(0, ref.replaceStart)}![](${local})${out.slice(ref.replaceEnd)}`;
+      continue;
+    }
+    // link → ![text](local)
+    const alt = ref.linkText ?? "";
+    out = `${out.slice(0, ref.replaceStart)}![${alt}](${local})${out.slice(ref.replaceEnd)}`;
   }
   return out;
 }
@@ -304,7 +585,9 @@ export function rewriteMarkdownRemoteImageUrls(
 export function filenameFromRemoteImageUrl(url: string): string {
   let pathname: string;
   try {
-    pathname = new URL(normalizeRemoteHttpUrl(url)).pathname;
+    pathname = new URL(
+      normalizeRemoteHttpUrl(decodeHtmlEntities(url)),
+    ).pathname;
   } catch (error) {
     throw new Error(
       `localizeRemoteDisplayAssets: invalid image URL ${url}: ${
@@ -347,7 +630,7 @@ async function downloadOrThrow(
   url: string,
   role: string,
 ): Promise<Uint8Array> {
-  const fetchUrl = normalizeRemoteHttpUrl(url);
+  const fetchUrl = normalizeRemoteHttpUrl(decodeHtmlEntities(url));
   try {
     return await fetchBytes(fetchUrl);
   } catch (error) {
@@ -416,7 +699,7 @@ export function mightNeedRemoteDisplayAssetLocalization(
 }
 
 /**
- * Download remote markdown images + FM thumbnail + YouTube teaser into note media.
+ * Download remote markdown media + FM thumbnail + YouTube teaser into note media.
  * Rewrites the document to local paths. Fails hard on any download error (#739).
  * Downloads complete before any attach; attached media is cleaned up on failure.
  */
@@ -457,15 +740,17 @@ export async function localizeRemoteDisplayAssets(
   const remoteImageRefs = needsBodyScan
     ? extractMarkdownRemoteImageRefs(body)
     : [];
-  const uniqueRemoteUrls = [...new Set(remoteImageRefs.map((r) => r.rawUrl))];
+  const uniqueFetchUrls = [
+    ...new Set(remoteImageRefs.map((r) => r.fetchUrl)),
+  ];
 
   const downloadedBytes = await runWithConcurrency(
-    uniqueRemoteUrls.length,
+    uniqueFetchUrls.length,
     DISK_ITEM_READ_CONCURRENCY,
     (index) =>
       downloadOrThrow(
         fetchBytes,
-        uniqueRemoteUrls[index]!,
+        uniqueFetchUrls[index]!,
         "markdown image",
       ),
   );
@@ -492,23 +777,34 @@ export async function localizeRemoteDisplayAssets(
   }
 
   const attachedMediaIds: string[] = [];
+  const fetchUrlToLocal = new Map<string, string>();
   const urlToLocal = new Map<string, string>();
 
   try {
-    for (let i = 0; i < uniqueRemoteUrls.length; i += 1) {
-      const remoteUrl = uniqueRemoteUrls[i]!;
+    for (let i = 0; i < uniqueFetchUrls.length; i += 1) {
+      const fetchUrl = uniqueFetchUrls[i]!;
       const bytes = downloadedBytes[i]!;
-      const filename = filenameFromRemoteImageUrl(remoteUrl);
+      const filename = filenameFromRemoteImageUrl(fetchUrl);
       const media = await attachMediaFile(ctx, vaultPath, itemId, {
         filename,
         data: bytes,
         mediaType: inferMediaType(filename),
       });
       attachedMediaIds.push(media.id);
-      urlToLocal.set(
-        remoteUrl,
-        mediaFilePath(vaultPath, itemId, media.id, media.filename),
+      const localPath = mediaFilePath(
+        vaultPath,
+        itemId,
+        media.id,
+        media.filename,
       );
+      fetchUrlToLocal.set(fetchUrl, localPath);
+    }
+
+    for (const ref of remoteImageRefs) {
+      const local = fetchUrlToLocal.get(ref.fetchUrl);
+      if (local) {
+        urlToLocal.set(ref.rawUrl, local);
+      }
     }
 
     if (urlToLocal.size > 0) {
