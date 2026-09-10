@@ -182,12 +182,11 @@ async function extractFromPinResource(
     };
   }
   if (statusKind !== "ok") {
+    // Unauth PinResource lockdown is 401/403; do not surface as private pin.
+    // HTML-layer status / login_wall remains the source of private/auth codes.
     return {
       kind: "empty",
-      hint:
-        statusKind === "private_or_unavailable"
-          ? "private_or_unavailable"
-          : undefined,
+      hint: "no_media",
     };
   }
 

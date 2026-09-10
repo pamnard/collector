@@ -133,7 +133,7 @@ export function parsePinResourceData(
 }
 
 /**
- * Extract `__PWS_DATA__` pin fields from pin HTML.
+ * Extract pin fields from pin HTML (`__PWS_DATA__`, then embedded `v3GetPinQueryv2`).
  * Open Graph is not used for media (or as a pin media fallback).
  */
 export function parsePinFromHtml(
@@ -146,6 +146,179 @@ export function parsePinFromHtml(
     if (fromPws) {
       return fromPws;
     }
+  }
+
+  const fromGraphql = findPinInV3GetPinQuery(html, expectedPinId);
+  if (fromGraphql) {
+    return fromGraphql;
+  }
+
+  return null;
+}
+
+function findPinInV3GetPinQuery(
+  html: string,
+  expectedPinId: string,
+): ParsedPinFields | null {
+  const marker = '"v3GetPinQueryv2"';
+  let searchFrom = 0;
+  while (searchFrom < html.length) {
+    const markerAt = html.indexOf(marker, searchFrom);
+    if (markerAt < 0) {
+      return null;
+    }
+    const objectStart = html.lastIndexOf('{"data":{', markerAt);
+    if (objectStart < 0 || objectStart < markerAt - 80) {
+      searchFrom = markerAt + marker.length;
+      continue;
+    }
+    const extracted = extractJsonObjectAt(html, objectStart);
+    if (!extracted) {
+      searchFrom = markerAt + marker.length;
+      continue;
+    }
+    const root = asRecord(extracted.value);
+    const data = asRecord(root?.data);
+    const query = asRecord(data?.v3GetPinQueryv2);
+    const pin = asRecord(query?.data);
+    if (pin) {
+      const legacy = normalizeGraphqlPinToLegacy(pin, expectedPinId);
+      if (legacy) {
+        const parsed = parsePinResourceData({ data: legacy }, expectedPinId);
+        if (parsed) {
+          return parsed;
+        }
+      }
+    }
+    searchFrom = extracted.end;
+  }
+  return null;
+}
+
+function extractJsonObjectAt(
+  text: string,
+  start: number,
+): { value: unknown; end: number } | null {
+  if (text[start] !== "{") {
+    return null;
+  }
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i]!;
+    if (inString) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "{") {
+      depth += 1;
+      continue;
+    }
+    if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        const slice = text.slice(start, i + 1);
+        try {
+          return { value: JSON.parse(slice), end: i + 1 };
+        } catch (error) {
+          if (error instanceof SyntaxError) {
+            return null;
+          }
+          throw error;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function normalizeGraphqlPinToLegacy(
+  pin: Record<string, unknown>,
+  expectedPinId: string,
+): Record<string, unknown> | null {
+  const idRaw = pin.entityId ?? pin.id ?? pin.pin_id;
+  if (idRaw !== undefined && idRaw !== null) {
+    if (String(idRaw) !== expectedPinId) {
+      return null;
+    }
+  }
+
+  const images: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(pin)) {
+    const match = /^images_(.+)$/.exec(key);
+    if (!match?.[1]) {
+      continue;
+    }
+    const details = asRecord(value);
+    if (!details) {
+      continue;
+    }
+    images[match[1]] = details;
+  }
+
+  const title =
+    asString(pin.title) ??
+    asString(pin.gridTitle) ??
+    asString(pin.unauthOnPageTitle) ??
+    asString(pin.seoTitle);
+
+  const description =
+    asString(pin.closeupUnifiedDescription) ??
+    asString(pin.description) ??
+    asString(pin.unauthOnPageDescription);
+
+  const pinner = asRecord(pin.pinner);
+  const closeupAttribution =
+    asRecord(pin.closeupAttribution) ?? asRecord(pin.closeup_attribution);
+
+  const legacy: Record<string, unknown> = {
+    id: expectedPinId,
+    title: title ?? "",
+    grid_title: asString(pin.gridTitle) ?? title ?? "",
+    closeup_unified_description: description,
+    description,
+    pinner: pinner ?? undefined,
+    closeup_attribution: closeupAttribution ?? undefined,
+    images,
+  };
+
+  const videos = normalizeGraphqlVideos(pin.videos);
+  if (videos) {
+    legacy.videos = videos;
+  }
+
+  return legacy;
+}
+
+function normalizeGraphqlVideos(videos: unknown): Record<string, unknown> | null {
+  const record = asRecord(videos);
+  if (!record) {
+    return null;
+  }
+  const existingList = asRecord(record.video_list);
+  if (existingList) {
+    return { video_list: existingList };
+  }
+
+  // GraphQL sometimes nests playable URLs under videoList / video_list-like maps.
+  const videoList = asRecord(record.videoList);
+  if (videoList) {
+    return { video_list: videoList };
   }
 
   return null;
