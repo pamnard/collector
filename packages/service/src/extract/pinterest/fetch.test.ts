@@ -111,6 +111,95 @@ describe("fetchPinterestPin (#34)", () => {
     });
   });
 
+  it("fetches a pin from embedded v3GetPinQueryv2 when __PWS_DATA__ has no pins", async () => {
+    const html = readFixture("graphql-pin-html.html");
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("/pin/222333444555/") && !url.includes("PinResource")) {
+        return textResponse(html);
+      }
+      throw new Error(`unexpected URL in graphql-html test: ${url}`);
+    };
+
+    const result = await fetchPinterestPin(
+      "https://www.pinterest.com/pin/222333444555/",
+      { fetchImpl },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error("expected success");
+    }
+    expect(result.value).toEqual({
+      sourceUrl: "https://www.pinterest.com/pin/222333444555/",
+      pinId: "222333444555",
+      authorUsername: "graphql_user",
+      title: "GraphQL morning ride",
+      description: "GraphQL caption for the ride",
+      media: [
+        {
+          kind: "image",
+          url: "https://cdn.pinterest.fixture/graphql-orig.jpg",
+        },
+      ],
+    });
+  });
+
+  it("resolves pin.it then loads graphql HTML pin page", async () => {
+    const html = readFixture("graphql-pin-html.html");
+    const redirect = readFixture("pinit-redirect.html").replaceAll(
+      "111222333444",
+      "222333444555",
+    );
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url === "https://pin.it/AbCdEf12") {
+        return textResponse(redirect, {
+          url: "https://www.pinterest.com/pin/222333444555/",
+        });
+      }
+      if (url.includes("/pin/222333444555/") && !url.includes("PinResource")) {
+        return textResponse(html);
+      }
+      throw new Error(`unexpected URL in pin.it graphql test: ${url}`);
+    };
+
+    const result = await fetchPinterestPin("https://pin.it/AbCdEf12", {
+      fetchImpl,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error("expected success");
+    }
+    expect(result.value.pinId).toBe("222333444555");
+    expect(result.value.media).toEqual([
+      {
+        kind: "image",
+        url: "https://cdn.pinterest.fixture/graphql-orig.jpg",
+      },
+    ]);
+  });
+
+  it("returns no_media when HTML is empty and PinResource is 403 lockdown", async () => {
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("/pin/777888999000/") && !url.includes("PinResource")) {
+        return textResponse("<html><body>empty shell</body></html>");
+      }
+      if (url.includes("PinResource") && url.includes("777888999000")) {
+        return textResponse("Forbidden", { status: 403 });
+      }
+      throw new Error(`unexpected URL in lockdown-403 test: ${url}`);
+    };
+
+    const result = await fetchPinterestPin("777888999000", { fetchImpl });
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error("expected failure");
+    }
+    expect(result.code).toBe("no_media");
+  });
+
   it("falls back to PinResource when HTML has no media", async () => {
     const resource = JSON.parse(readFixture("pin-resource-video.json"));
     const fetchImpl: typeof fetch = async (input) => {
