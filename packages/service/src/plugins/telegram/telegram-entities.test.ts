@@ -151,4 +151,22 @@ describe("telegramMessageFormattedBody", () => {
       ),
     ).toBe("hi");
   });
+
+  it("formats rich_message body when text and caption are absent", () => {
+    expect(
+      telegramMessageFormattedBody(
+        baseMessage({
+          rich_message: {
+            blocks: [
+              { type: "paragraph", text: "Rich line" },
+              {
+                type: "paragraph",
+                text: { type: "bold", text: "Bold bit" },
+              },
+            ],
+          },
+        }),
+      ),
+    ).toBe("Rich line\n\n**Bold bit**");
+  });
 });

@@ -10,12 +10,28 @@ import {
   telegramRemoteId,
 } from "./telegram-config.js";
 import { telegramMessageFormattedBody } from "./telegram-entities.js";
+import {
+  formatRichMessageToMarkdown,
+  listRichMessageDownloadTargets,
+  richMessageHasMedia,
+  richMessageHasText,
+  type TelegramRichMessage,
+} from "./telegram-rich-message.js";
 
 export interface TelegramDownloadTarget {
   fileId: string;
   fileSize?: number;
   defaultName: string;
   kind: string;
+}
+
+function asRichMessage(
+  message: TelegramMessage,
+): TelegramRichMessage | undefined {
+  if (!message.rich_message) {
+    return undefined;
+  }
+  return message.rich_message as TelegramRichMessage;
 }
 
 export function deriveTelegramTitle(message: TelegramMessage): string {
@@ -26,6 +42,20 @@ export function deriveTelegramTitle(message: TelegramMessage): string {
       return line;
     }
     return `${line.slice(0, 77)}...`;
+  }
+  const richBody = formatRichMessageToMarkdown(asRichMessage(message))?.trim();
+  if (richBody) {
+    const plain = richBody
+      .replace(/^#+\s+/gm, "")
+      .replace(/[*_`~>\[\]()]/g, "")
+      .trim();
+    const line = plain.split(/\r?\n/, 1)[0]!.trim();
+    if (line) {
+      if (line.length <= 80) {
+        return line;
+      }
+      return `${line.slice(0, 77)}...`;
+    }
   }
   if (message.photo && message.photo.length > 0) {
     return "Telegram photo";
@@ -51,6 +81,9 @@ export function deriveTelegramTitle(message: TelegramMessage): string {
   if (message.document) {
     return message.document.file_name?.trim() || "Telegram document";
   }
+  if (richMessageHasMedia(asRichMessage(message))) {
+    return "Telegram message";
+  }
   return "Telegram message";
 }
 
@@ -60,6 +93,9 @@ export function deriveTelegramAlbumTitle(messages: TelegramMessage[]): string {
     if (text) {
       return deriveTelegramTitle(message);
     }
+    if (richMessageHasText(asRichMessage(message))) {
+      return deriveTelegramTitle(message);
+    }
   }
   return "Telegram album";
 }
@@ -67,6 +103,10 @@ export function deriveTelegramAlbumTitle(messages: TelegramMessage[]): string {
 export function messageHasImportableContent(message: TelegramMessage): boolean {
   const text = (message.text ?? message.caption ?? "").trim();
   if (text) {
+    return true;
+  }
+  const rich = asRichMessage(message);
+  if (richMessageHasText(rich) || richMessageHasMedia(rich)) {
     return true;
   }
   if (message.photo && message.photo.length > 0) {
@@ -194,6 +234,10 @@ export function listDownloadTargets(
       defaultName: "sticker.webp",
       kind: "sticker",
     });
+  }
+
+  for (const target of listRichMessageDownloadTargets(asRichMessage(message))) {
+    targets.push(target);
   }
 
   return targets;

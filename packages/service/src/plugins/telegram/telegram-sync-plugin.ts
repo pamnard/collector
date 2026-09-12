@@ -35,6 +35,7 @@ import {
   type TelegramPendingAlbum,
   type TelegramPluginConfig,
 } from "./telegram-config.js";
+import { telegramMessageFormattedBody } from "./telegram-entities.js";
 import {
   collectImportableMessages,
   listDownloadTargets,
@@ -362,10 +363,10 @@ export function createTelegramSyncPlugin(
           album.messages,
           warnings,
         );
-        const hasText = album.messages.some(
-          (m) => (m.text ?? m.caption ?? "").trim().length > 0,
+        const hasBody = album.messages.some(
+          (m) => telegramMessageFormattedBody(m) !== undefined,
         );
-        if (media.length === 0 && !hasText) {
+        if (media.length === 0 && !hasBody) {
           warnings.push(
             `Альбом пропущен: нет импортируемого содержимого (${album.media_group_id}).`,
           );
@@ -388,8 +389,10 @@ export function createTelegramSyncPlugin(
           [message],
           warnings,
         );
-        const hasText = (message.text ?? message.caption ?? "").trim().length > 0;
-        if (media.length === 0 && !hasText) {
+        if (
+          media.length === 0 &&
+          telegramMessageFormattedBody(message) === undefined
+        ) {
           warnings.push(
             `Сообщение пропущено: нет импортируемого содержимого (${message.message_id}).`,
           );
