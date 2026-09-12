@@ -7,6 +7,10 @@ import type {
   TelegramMessage,
   TelegramMessageEntity,
 } from "./telegram-bot-api.js";
+import {
+  formatRichMessageToMarkdown,
+  type TelegramRichMessage,
+} from "./telegram-rich-message.js";
 
 function utf16Units(text: string): number[] {
   const units: number[] = [];
@@ -92,7 +96,7 @@ export function formatTelegramTextToMarkdown(
 }
 
 /**
- * Body for vault notes: same source pick as `text ?? caption`, with matching entities.
+ * Body for vault notes: text/caption with entities, else rich_message markdown.
  * Empty / whitespace-only after format+trim → undefined.
  */
 export function telegramMessageFormattedBody(
@@ -106,6 +110,10 @@ export function telegramMessageFormattedBody(
   } else if (message.caption !== undefined) {
     raw = message.caption;
     entities = message.caption_entities;
+  } else if (message.rich_message) {
+    return formatRichMessageToMarkdown(
+      message.rich_message as TelegramRichMessage,
+    );
   } else {
     return undefined;
   }

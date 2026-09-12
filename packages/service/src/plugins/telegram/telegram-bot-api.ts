@@ -21,6 +21,7 @@ export type {
   TelegramMessage,
   TelegramMessageEntity,
   TelegramPhotoSize,
+  TelegramRichMessagePayload,
   TelegramUpdate,
   TelegramUser,
   TelegramWebhookInfo,

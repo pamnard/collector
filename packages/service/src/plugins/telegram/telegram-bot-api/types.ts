@@ -55,6 +55,12 @@ export interface TelegramMessageEntity {
   url?: string;
 }
 
+/** Inbound Bot API 10.1+ rich formatted message (Message.rich_message). */
+export interface TelegramRichMessagePayload {
+  blocks: Array<Record<string, unknown> & { type: string }>;
+  is_rtl?: boolean;
+}
+
 export interface TelegramMessage {
   message_id: number;
   date: number;
@@ -63,6 +69,8 @@ export interface TelegramMessage {
   caption?: string;
   entities?: TelegramMessageEntity[];
   caption_entities?: TelegramMessageEntity[];
+  /** Present when the client sent a rich formatted message (often without text). */
+  rich_message?: TelegramRichMessagePayload;
   media_group_id?: string;
   photo?: TelegramPhotoSize[];
   document?: TelegramDocument;

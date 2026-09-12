@@ -227,4 +227,58 @@ describe("createTelegramSyncPlugin pull (#415 / #433 / #922)", () => {
     const cfg = await loadTelegramPluginConfig(fs, dataDir, "v1");
     expect(cfg.last_pull_warnings.length).toBeGreaterThan(0);
   });
+
+  it("imports rich_message-only updates as markdown body", async () => {
+    const dataDir = await tempDataDir();
+    const fs = new NodeFileSystemAdapter();
+    const credentials = createCredentialsService({
+      backend: createMemoryKeychainBackend(),
+    });
+    await credentials.setCredential({
+      pluginId: TELEGRAM_PLUGIN_ID,
+      key: "bot_token",
+      secret: "tok",
+    });
+    await saveTelegramPluginConfig(fs, dataDir, "v1", baseConfig());
+
+    const api = mockApi({
+      getUpdates: vi.fn(async () => [
+        {
+          update_id: 50,
+          message: {
+            message_id: 77,
+            date: 1,
+            chat: { id: 100, type: "private" },
+            rich_message: {
+              blocks: [
+                { type: "paragraph", text: "Pasted rich" },
+                {
+                  type: "paragraph",
+                  text: { type: "bold", text: "Bold title" },
+                },
+              ],
+            },
+          },
+        },
+      ]),
+    });
+
+    const plugin = createTelegramSyncPlugin({
+      credentials,
+      fs,
+      dataDir,
+      resolveActiveVaultId: async () => "v1",
+      listFolderTree: async () => [
+        { name: "Inbox", path: "Inbox", item_count: 0, children: [] },
+      ],
+      api,
+    });
+
+    const pulled = await plugin.pull(null);
+    expect(pulled.items).toHaveLength(1);
+    expect(pulled.items[0]?.remoteId).toBe("100:77");
+    expect(pulled.items[0]?.title).toBe("Pasted rich");
+    expect(pulled.items[0]?.body).toBe("Pasted rich\n\n**Bold title**");
+    expect(pulled.nextCursor).toBe("51");
+  });
 });
