@@ -323,9 +323,41 @@ body
     const doc = await readItemDocument(fs, path, itemId, meta.id);
     expect(doc.item.title).toBe("Hello");
     expect(doc.body).toBe("# Body\n");
+    expect(doc.ensuredTagNames).toEqual([]);
     const raw = await readItemRawMarkdown(fs, path, itemId);
     expect(raw).toContain("title:");
     expect(raw).toContain("# Body");
+  });
+
+  it("readItemDocument ensures FM tags missing from the catalog", async () => {
+    const { meta, path } = await seedVault();
+    const itemId = `${createId()}.md`;
+    const md = `---
+title: Orphan tags
+tags:
+  - aiagents
+  - jev
+created: 2024-01-01T00:00:00.000Z
+updated: 2024-01-01T00:00:00.000Z
+---
+body
+`;
+    await fs.mkdir(path);
+    await fs.writeText(itemMarkdownPath(path, itemId), md);
+
+    const before = await readTagsFile(fs, path);
+    expect(before.tags.map((t) => t.name)).not.toContain("aiagents");
+    expect(before.tags.map((t) => t.name)).not.toContain("jev");
+
+    const doc = await readItemDocument(fs, path, itemId, meta.id);
+    expect(doc.item.title).toBe("Orphan tags");
+    expect(doc.ensuredTagNames.sort()).toEqual(["aiagents", "jev"]);
+    expect(doc.item.tag_ids).toHaveLength(2);
+
+    const after = await readTagsFile(fs, path);
+    const names = after.tags.map((t) => t.name).sort();
+    expect(names).toContain("aiagents");
+    expect(names).toContain("jev");
   });
 
   it("writeItemFile preserves body and unknown frontmatter keys", async () => {

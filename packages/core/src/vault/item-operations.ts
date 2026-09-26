@@ -7,6 +7,7 @@ import {
 } from "./item-document.js";
 import { parseDocumentMarkdown } from "./frontmatter.js";
 import {
+  ensureTagsByName,
   itemFileFromDocumentMarkdown,
   loadTagMaps,
   readItemFile,
@@ -16,6 +17,8 @@ import {
   writeItemSourceRef,
   type TagMapsHolder,
 } from "./item-io.js";
+import { resolveTagFromMaps, tagSimilarityKey } from "./tag-normalize.js";
+import { withTagCatalogLock } from "./tag-catalog-lock.js";
 import { syncTagsToIndex } from "./tag-operations.js";
 import { DISK_ITEM_READ_CONCURRENCY } from "../util/concurrency.js";
 import {
@@ -57,41 +60,121 @@ function sameTagIds(
   return left.every((id) => rightSet.has(id));
 }
 
+/** Non-empty trimmed tag names from document frontmatter (deduped by similarity). */
+export function tagNamesFromFrontmatterTags(tags: unknown): string[] {
+  if (!Array.isArray(tags)) {
+    return [];
+  }
+  const names: string[] = [];
+  const seenKeys = new Set<string>();
+  for (const raw of tags) {
+    if (typeof raw !== "string") {
+      continue;
+    }
+    const name = raw.trim();
+    if (!name) {
+      continue;
+    }
+    const sim = tagSimilarityKey(name);
+    if (seenKeys.has(sim)) {
+      continue;
+    }
+    seenKeys.add(sim);
+    names.push(name);
+  }
+  return names;
+}
+
+/**
+ * Re-ensure FM tag names under the catalog lock, then pin item_tags.
+ * Survives a full reconcile that dropped catalog rows between the first ensure
+ * and this pin (race with vaultIndexSync kickoff prune).
+ *
+ * Prefer existing `item.tag_ids` that still exist in the catalog (same similarity
+ * key as an FM name) so clone merge / item_count reconcile is not short-circuited.
+ */
 async function pinItemTagsToIndex(
   ctx: VaultContext,
   vaultPath: string,
   vaultId: string,
   item: ItemFile,
   fileMtimeMs: number,
-  options?: { preserveIndexSnapshot?: boolean },
-): Promise<void> {
-  await syncTagsToIndex(ctx, vaultPath, vaultId, { tagIds: item.tag_ids });
-  const [existing] = await ctx.index.listItemFilesByIds(vaultId, [item.id]);
-  const preserve =
-    options?.preserveIndexSnapshot === true && existing !== undefined;
-  let fileMtimeForMeta = fileMtimeMs;
-  if (preserve) {
-    const [syncMeta] = await ctx.index.listItemSyncMetaByIds(vaultId, [
-      item.id,
-    ]);
-    if (syncMeta?.file_mtime_ms != null) {
-      fileMtimeForMeta = syncMeta.file_mtime_ms;
+  options: {
+    tagNames: readonly string[];
+    preserveIndexSnapshot?: boolean;
+  },
+): Promise<ItemFile> {
+  return withTagCatalogLock(vaultPath, async () => {
+    const maps = await ensureTagsByName(
+      ctx.fs,
+      vaultPath,
+      [...options.tagNames],
+      undefined,
+      { assumeCatalogLocked: true },
+    );
+
+    const fmKeys = new Set(
+      options.tagNames.map((name) => tagSimilarityKey(name)),
+    );
+    const tagIds: string[] = [];
+    const keptKeys = new Set<string>();
+    for (const tagId of item.tag_ids) {
+      const tag = maps.byId.get(tagId);
+      if (!tag) {
+        continue;
+      }
+      const key = tagSimilarityKey(tag.name);
+      if (!fmKeys.has(key) || keptKeys.has(key)) {
+        continue;
+      }
+      tagIds.push(tagId);
+      keptKeys.add(key);
     }
-  }
-  const pinned: ItemFile = {
-    ...item,
-    collection_ids: existing?.collection_ids ?? item.collection_ids,
-    ...(preserve
-      ? {
-          content_revision: existing.content_revision,
-          updated_at: existing.updated_at,
-        }
-      : {}),
-  };
-  await ctx.index.upsertItemMetadata(
-    { item: pinned, fileMtimeMs: fileMtimeForMeta },
-    vaultId,
-  );
+    for (const rawName of options.tagNames) {
+      const key = tagSimilarityKey(rawName);
+      if (keptKeys.has(key)) {
+        continue;
+      }
+      const tag = resolveTagFromMaps(maps.byName, rawName);
+      if (!tag) {
+        continue;
+      }
+      tagIds.push(tag.id);
+      keptKeys.add(key);
+    }
+    const withTags: ItemFile = { ...item, tag_ids: tagIds };
+
+    await syncTagsToIndex(ctx, vaultPath, vaultId, { tagIds: withTags.tag_ids });
+    const [existing] = await ctx.index.listItemFilesByIds(vaultId, [
+      withTags.id,
+    ]);
+    const preserve =
+      options.preserveIndexSnapshot === true && existing !== undefined;
+    let fileMtimeForMeta = fileMtimeMs;
+    if (preserve) {
+      const [syncMeta] = await ctx.index.listItemSyncMetaByIds(vaultId, [
+        withTags.id,
+      ]);
+      if (syncMeta?.file_mtime_ms != null) {
+        fileMtimeForMeta = syncMeta.file_mtime_ms;
+      }
+    }
+    const pinned: ItemFile = {
+      ...withTags,
+      collection_ids: existing?.collection_ids ?? withTags.collection_ids,
+      ...(preserve
+        ? {
+            content_revision: existing.content_revision,
+            updated_at: existing.updated_at,
+          }
+        : {}),
+    };
+    await ctx.index.upsertItemMetadata(
+      { item: pinned, fileMtimeMs: fileMtimeForMeta },
+      vaultId,
+    );
+    return pinned;
+  });
 }
 
 /**
@@ -102,6 +185,8 @@ async function pinItemTagsToIndex(
  * - With `itemDerivedRefreshJobs`: also enqueue derived refresh with
  *   `previousTagIds` (media-only localize prune insurance).
  * - With `deferIndexRefresh`: prune immediately; caller owns derived enqueue.
+ * - Tag names default from on-disk FM so pin can recreate catalog rows after
+ *   a concurrent full reconcile.
  */
 async function pinRefreshAndPruneItemTags(
   ctx: VaultContext,
@@ -109,29 +194,55 @@ async function pinRefreshAndPruneItemTags(
   vaultId: string,
   item: ItemFile,
   fileMtimeMs: number,
-  options?: { deferIndexRefresh?: boolean },
-): Promise<void> {
+  options?: { deferIndexRefresh?: boolean; tagNames?: readonly string[] },
+): Promise<ItemFile> {
   const [beforeItem] = await ctx.index.listItemFilesByIds(vaultId, [item.id]);
   const previousTagIds = beforeItem?.tag_ids ?? [];
-  const released = releasedTagIdsFromChange(previousTagIds, item.tag_ids);
-  await pinItemTagsToIndex(ctx, vaultPath, vaultId, item, fileMtimeMs, {
-    preserveIndexSnapshot: options?.deferIndexRefresh === true,
-  });
+
+  let tagNames = options?.tagNames ? [...options.tagNames] : undefined;
+  if (tagNames === undefined) {
+    const raw = await readItemRawMarkdown(ctx.fs, vaultPath, item.id);
+    tagNames = tagNamesFromFrontmatterTags(
+      parseDocumentMarkdown(raw).frontmatter.tags,
+    );
+  }
+
+  const pinnedItem = await pinItemTagsToIndex(
+    ctx,
+    vaultPath,
+    vaultId,
+    item,
+    fileMtimeMs,
+    {
+      tagNames,
+      preserveIndexSnapshot: options?.deferIndexRefresh === true,
+    },
+  );
+  const released = releasedTagIdsFromChange(
+    previousTagIds,
+    pinnedItem.tag_ids,
+  );
 
   if (options?.deferIndexRefresh === true) {
-    await pruneReleasedTagsAfterIndexRefresh(ctx, vaultPath, vaultId, released);
-    return;
+    await pruneReleasedTagsAfterIndexRefresh(
+      ctx,
+      vaultPath,
+      vaultId,
+      released,
+    );
+    return pinnedItem;
   }
 
   await refreshItemIndexAfterWrite(
     ctx,
     vaultPath,
     vaultId,
-    item,
+    pinnedItem,
     ctx.itemDerivedRefreshJobs ? { previousTagIds } : undefined,
   );
   // Immediate prune from pre-pin snapshot even when refresh only enqueued a job.
   await pruneReleasedTagsAfterIndexRefresh(ctx, vaultPath, vaultId, released);
+  return pinnedItem;
 }
 
 async function syncParsedItemFromRawMarkdown(
@@ -152,15 +263,19 @@ async function syncParsedItemFromRawMarkdown(
     fileMtimeMs,
   );
   // Raw write always refreshes: body/FTS may change even when tag_ids match.
-  await pinRefreshAndPruneItemTags(
+  return pinRefreshAndPruneItemTags(
     ctx,
     vaultPath,
     vaultId,
     item,
     fileMtimeMs,
-    options,
+    {
+      ...options,
+      tagNames: tagNamesFromFrontmatterTags(
+        parseDocumentMarkdown(raw).frontmatter.tags,
+      ),
+    },
   );
-  return item;
 }
 
 /**
@@ -173,7 +288,7 @@ async function reconcileParsedItemWithIndex(
   vaultId: string,
   item: ItemFile,
   fileMtimeMs: number,
-  options?: { deferIndexRefresh?: boolean },
+  options?: { deferIndexRefresh?: boolean; tagNames?: readonly string[] },
 ): Promise<ItemFile> {
   const [existing] = await ctx.index.listItemFilesByIds(vaultId, [item.id]);
   if (existing && sameTagIds(existing.tag_ids, item.tag_ids)) {
@@ -184,7 +299,7 @@ async function reconcileParsedItemWithIndex(
     };
   }
 
-  await pinRefreshAndPruneItemTags(
+  const pinned = await pinRefreshAndPruneItemTags(
     ctx,
     vaultPath,
     vaultId,
@@ -193,8 +308,8 @@ async function reconcileParsedItemWithIndex(
     options,
   );
   return {
-    ...item,
-    collection_ids: existing?.collection_ids ?? item.collection_ids,
+    ...pinned,
+    collection_ids: existing?.collection_ids ?? pinned.collection_ids,
   };
 }
 
@@ -232,7 +347,7 @@ export async function upsertItem(
   if (afterStat.mtimeMs === null) {
     throw new Error(`Cannot upsert item ${id}: missing file mtime after write`);
   }
-  await pinRefreshAndPruneItemTags(
+  return pinRefreshAndPruneItemTags(
     ctx,
     vaultPath,
     vaultId,
@@ -240,7 +355,6 @@ export async function upsertItem(
     afterStat.mtimeMs,
     { deferIndexRefresh: input.deferIndexRefresh === true },
   );
-  return item;
 }
 
 /**
@@ -322,7 +436,12 @@ export async function syncItemFromDisk(
     vaultId,
     item,
     fileStat.mtimeMs,
-    options,
+    {
+      ...options,
+      tagNames: tagNamesFromFrontmatterTags(
+        parseDocumentMarkdown(raw).frontmatter.tags,
+      ),
+    },
   );
 }
 
@@ -368,6 +487,7 @@ export async function writeItemCanonicalSourceMarkdown(
   );
   const parsedRaw = parseDocumentMarkdown(raw);
   const body = parsedRaw.body;
+  const fmTagNames = tagNamesFromFrontmatterTags(parsedRaw.frontmatter.tags);
   const maps = await loadTagMaps(ctx.fs, vaultPath);
   const preferredTagNames = preferredStoredFormTagNames(
     parsedRaw.frontmatter.tags,
@@ -383,7 +503,7 @@ export async function writeItemCanonicalSourceMarkdown(
       vaultId,
       item,
       existingStat.mtimeMs,
-      options,
+      { ...options, tagNames: fmTagNames },
     );
     return { item: synced, wrote: false };
   }
@@ -402,15 +522,15 @@ export async function writeItemCanonicalSourceMarkdown(
     );
   }
 
-  await pinRefreshAndPruneItemTags(
+  const pinned = await pinRefreshAndPruneItemTags(
     ctx,
     vaultPath,
     vaultId,
     item,
     afterStat.mtimeMs,
-    options,
+    { ...options, tagNames: fmTagNames },
   );
-  return { item, wrote: true };
+  return { item: pinned, wrote: true };
 }
 
 export async function deleteItem(

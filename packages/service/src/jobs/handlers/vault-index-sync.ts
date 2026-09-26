@@ -17,7 +17,13 @@ export function createVaultIndexSyncHandler(deps: {
 }): TypedJobHandler<typeof vaultIndexSyncJobType.payload> {
   return async (job): Promise<JobHandlerResult> => {
     await deps.startVaultIndexSync(job.payload.vaultId, job.payload.vaultPath);
-    if (deps.enqueueTagCatalogReconcile) {
+    // Kickoff syncs are frequent (list/subscribe); full reconcile there races
+    // ensure→pin and drops fresh FM tags. Write-path candidate prune + force/
+    // recovery syncs still run full reconcile.
+    if (
+      deps.enqueueTagCatalogReconcile &&
+      job.payload.reason !== "kickoff"
+    ) {
       await deps.enqueueTagCatalogReconcile(
         job.payload.vaultId,
         job.payload.vaultPath,

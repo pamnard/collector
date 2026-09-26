@@ -93,6 +93,14 @@ export async function loadTagMaps(
   return buildTagMaps(file.tags);
 }
 
+export type EnsureTagsByNameOptions = {
+  /**
+   * Caller already holds `withTagCatalogLock` for this vault.
+   * Nested lock would deadlock on the per-vault queue.
+   */
+  assumeCatalogLocked?: boolean;
+};
+
 /**
  * Ensure tag names exist in tags.json; returns refreshed maps.
  * Creates new Tag records for missing similarity keys (portable import).
@@ -106,6 +114,7 @@ export async function ensureTagsByName(
   vaultPath: string,
   names: string[],
   current?: TagMaps,
+  options?: EnsureTagsByNameOptions,
 ): Promise<TagMaps> {
   if (names.length === 0) {
     return current ?? (await loadTagMaps(fs, vaultPath));
@@ -131,7 +140,7 @@ export async function ensureTagsByName(
     return maps;
   }
 
-  return withTagCatalogLock(vaultPath, async () => {
+  const mutateCatalog = async (): Promise<TagMaps> => {
     const file = await readTagsFile(fs, vaultPath);
     maps = buildTagMaps(file.tags);
     let mutated = false;
@@ -174,34 +183,26 @@ export async function ensureTagsByName(
       maps = buildTagMaps(file.tags);
     }
     return maps;
-  });
+  };
+
+  if (options?.assumeCatalogLocked === true) {
+    return mutateCatalog();
+  }
+  return withTagCatalogLock(vaultPath, mutateCatalog);
 }
 
-async function parseDocumentWithTags(
-  fs: FileSystemAdapter,
-  vaultPath: string,
-  vaultId: string,
-  itemId: string,
-  raw: string,
-  fallbackMtimeMs: number | null,
-): Promise<{ item: ItemFile; body: string }> {
-  const maps = await loadTagMaps(fs, vaultPath);
-  const fallbackIso =
-    fallbackMtimeMs !== null ? mtimeToIso(fallbackMtimeMs) : undefined;
-  return parseItemDocumentResolved(raw, {
-    itemId,
-    vaultId,
-    tagsByName: maps.byName,
-    fallbackCreatedAt: fallbackIso,
-    fallbackUpdatedAt: fallbackIso,
-  });
-}
+export type ParseDocumentWithTagsResult = {
+  item: ItemFile;
+  body: string;
+  /** FM tag names that were absent from the catalog and created on this parse. */
+  ensuredTagNames: string[];
+};
 
 /**
- * Parse raw document markdown into ItemFile, creating missing tags as needed.
- * Used by batch sync / portable import paths that already have the file contents.
+ * Parse document markdown into ItemFile + body, creating missing FM tags.
+ * Shared by read (disk SoT) and write/sync paths.
  */
-export async function itemFileFromDocumentMarkdown(
+export async function parseDocumentMarkdownWithTags(
   fs: FileSystemAdapter,
   vaultPath: string,
   vaultId: string,
@@ -209,7 +210,7 @@ export async function itemFileFromDocumentMarkdown(
   raw: string,
   diskMtimeMs: number,
   tagMaps?: TagMapsHolder,
-): Promise<ItemFile> {
+): Promise<ParseDocumentWithTagsResult> {
   let maps = tagMaps?.maps ?? (await loadTagMaps(fs, vaultPath));
   const fallbackIso = mtimeToIso(diskMtimeMs);
   const first = parseItemDocument(raw, {
@@ -219,7 +220,8 @@ export async function itemFileFromDocumentMarkdown(
     fallbackCreatedAt: fallbackIso,
     fallbackUpdatedAt: fallbackIso,
   });
-  const namesToEnsure = [...first.missingTagNames];
+  const ensuredTagNames = [...first.missingTagNames];
+  const namesToEnsure = [...ensuredTagNames];
   for (const tagId of first.item.tag_ids) {
     const tag = maps.byId.get(tagId);
     if (tag && tag.name !== tagStoredForm(tag.name)) {
@@ -242,13 +244,43 @@ export async function itemFileFromDocumentMarkdown(
       maps = await ensureTagsByName(fs, vaultPath, namesToEnsure, maps);
     }
   }
-  return parseItemDocumentResolved(raw, {
+  const resolved = parseItemDocumentResolved(raw, {
     itemId,
     vaultId,
     tagsByName: maps.byName,
     fallbackCreatedAt: fallbackIso,
     fallbackUpdatedAt: fallbackIso,
-  }).item;
+  });
+  return {
+    item: resolved.item,
+    body: resolved.body,
+    ensuredTagNames,
+  };
+}
+
+/**
+ * Parse raw document markdown into ItemFile, creating missing tags as needed.
+ * Used by batch sync / portable import paths that already have the file contents.
+ */
+export async function itemFileFromDocumentMarkdown(
+  fs: FileSystemAdapter,
+  vaultPath: string,
+  vaultId: string,
+  itemId: string,
+  raw: string,
+  diskMtimeMs: number,
+  tagMaps?: TagMapsHolder,
+): Promise<ItemFile> {
+  const parsed = await parseDocumentMarkdownWithTags(
+    fs,
+    vaultPath,
+    vaultId,
+    itemId,
+    raw,
+    diskMtimeMs,
+    tagMaps,
+  );
+  return parsed.item;
 }
 
 export async function readItemDocument(
@@ -256,7 +288,7 @@ export async function readItemDocument(
   vaultRootPath: string,
   itemRelativePath: string,
   vaultId: string,
-): Promise<{ item: ItemFile; body: string }> {
+): Promise<ParseDocumentWithTagsResult> {
   const id = normalizeRelativePath(itemRelativePath);
   const docPath = itemMarkdownPath(vaultRootPath, id);
   if (!(await fs.exists(docPath))) {
@@ -264,7 +296,10 @@ export async function readItemDocument(
   }
   const raw = await fs.readText(docPath);
   const fileStat = await fs.stat(docPath);
-  return parseDocumentWithTags(
+  if (fileStat.mtimeMs === null) {
+    throw new Error(`Cannot read item document ${id}: missing file mtime`);
+  }
+  return parseDocumentMarkdownWithTags(
     fs,
     vaultRootPath,
     vaultId,
