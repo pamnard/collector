@@ -357,6 +357,8 @@ export function createDevMockCollectorService(): CollectorService {
       // #595 wanted-links report (DevMock: empty; live host uses index)
       queryWantedLinkTargets: async () => ({ total: 0, rows: [] }),
       listWantedLinkTargetSources: async () => ({ total: 0, rows: [] }),
+      // #596 broken-outgoing sources tab (DevMock: empty)
+      queryBrokenOutgoingLinkSources: async () => ({ total: 0, rows: [] }),
       addUserEdge: async () => undefined,
       removeUserEdge: async () => undefined,
       listUserEdges: async () => [],

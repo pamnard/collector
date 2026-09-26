@@ -29,6 +29,8 @@ import {
   type WantedLinkSourcesResult,
   type WantedLinkTargetSort,
   type WantedLinkTargetsResult,
+  type BrokenOutgoingSourceSort,
+  type BrokenOutgoingSourcesResult,
 } from "@collector/api";
 import type { ItemFile, VaultMeta } from "@collector/shared";
 import type { VaultPresentationChangedPayload } from "./vault-presentation-changed.js";
@@ -120,6 +122,11 @@ export interface ItemsIndexPort {
     target: { rawTarget: string; resolveStatus: WantedLinkResolveStatus },
     page?: { limit: number; offset: number },
   ): Promise<WantedLinkSourcesResult>;
+  queryBrokenOutgoingLinkSources(
+    vaultId: string,
+    page: { limit: number; offset: number },
+    sort?: BrokenOutgoingSourceSort,
+  ): Promise<BrokenOutgoingSourcesResult>;
   getAdjacentItems(
     vaultId: string,
     anchor: AdjacentItemAnchor,
@@ -249,6 +256,10 @@ export interface ItemsSearchService {
     target: { rawTarget: string; resolveStatus: WantedLinkResolveStatus },
     page?: { limit: number; offset: number },
   ): Promise<WantedLinkSourcesResult>;
+  queryBrokenOutgoingLinkSources(
+    page: { limit: number; offset: number },
+    sort?: BrokenOutgoingSourceSort,
+  ): Promise<BrokenOutgoingSourcesResult>;
   addUserEdge(itemId: string, otherItemId: string): Promise<void>;
   removeUserEdge(itemId: string, otherItemId: string): Promise<void>;
   listUserEdges(itemId: string): Promise<UserEdgeNeighbor[]>;
@@ -462,6 +473,12 @@ export function createItemsSearchService(
       return deps
         .getIndex()
         .listWantedLinkTargetSources(vault.id, target, resolvedPage);
+    },
+    queryBrokenOutgoingLinkSources: async (page, sort) => {
+      assertSearchItemsPage(page);
+      const { vault, path } = await deps.resolveActiveVault();
+      deps.kickoffVaultIndexSync(vault.id, path);
+      return deps.getIndex().queryBrokenOutgoingLinkSources(vault.id, page, sort);
     },
     addUserEdge: crud.addUserEdge,
     removeUserEdge: crud.removeUserEdge,

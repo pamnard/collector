@@ -1,4 +1,5 @@
 import { LayoutDashboard, Menu, Plus, Table } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import type { SettingsSection } from "../../types/sidebar-mode";
 import type { ViewMode } from "../../types/ui";
 import { cn } from "../../lib/utils";
@@ -9,6 +10,12 @@ import { ItemHeaderActions } from "./ItemHeaderActions";
 import { ItemHeaderBreadcrumbs } from "./ItemHeaderBreadcrumbs";
 import { SettingsHeaderBreadcrumbs } from "./SettingsHeaderBreadcrumbs";
 import { useItemChromeHeader } from "./item-chrome";
+
+type LinksReportTab = "wanted" | "broken";
+
+function parseLinksReportTab(raw: string | null): LinksReportTab {
+  return raw === "broken" ? "broken" : "wanted";
+}
 
 interface HeaderProps {
   variant: "list" | "item" | "settings" | "wanted-links";
@@ -31,6 +38,8 @@ export function Header({
 }: HeaderProps) {
   const { breadcrumbs: itemHeader, actions: itemActions } =
     useItemChromeHeader();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linksTab = parseLinksReportTab(searchParams.get("tab"));
 
   return (
     <header className="relative shrink-0 border-b border-neutral-200 dark:border-neutral-700">
@@ -80,9 +89,36 @@ export function Header({
         ) : variant === "settings" ? (
           <SettingsHeaderBreadcrumbs section={settingsSection} />
         ) : variant === "wanted-links" ? (
-          <div className="min-w-0 text-sm font-medium text-neutral-900 dark:text-neutral-100">
-            Битые ссылки
-          </div>
+          <ButtonGroup aria-label="Отчёт по битым ссылкам">
+            <Button
+              type="button"
+              variant="secondary"
+              aria-pressed={linksTab === "wanted"}
+              className={cn(
+                headerChromeBtn,
+                "h-8 border-transparent px-2.5",
+                linksTab === "wanted" && headerChromeBtnActive,
+              )}
+              onClick={() => setSearchParams({}, { replace: true })}
+            >
+              Ссылки
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              aria-pressed={linksTab === "broken"}
+              className={cn(
+                headerChromeBtn,
+                "h-8 border-transparent px-2.5",
+                linksTab === "broken" && headerChromeBtnActive,
+              )}
+              onClick={() =>
+                setSearchParams({ tab: "broken" }, { replace: true })
+              }
+            >
+              Страницы
+            </Button>
+          </ButtonGroup>
         ) : (
           onFolderSelect && (
             <ItemHeaderBreadcrumbs

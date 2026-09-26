@@ -16,6 +16,13 @@ export const WANTED_LINK_TARGET_SOURCES_FLAGS = new Set([
   "--offset",
 ]);
 
+export const BROKEN_OUTGOING_LINK_SOURCES_FLAGS = new Set([
+  "--limit",
+  "--offset",
+  "--sort",
+  "--dir",
+]);
+
 const TARGETS_USAGE =
   "Usage: collector-cli wanted-link-targets " +
   "[--limit N] [--offset N] " +
@@ -25,6 +32,11 @@ const SOURCES_USAGE =
   "Usage: collector-cli wanted-link-target-sources " +
   "--target <raw> --status unresolved|ambiguous " +
   "[--limit N] [--offset N]";
+
+const BROKEN_SOURCES_USAGE =
+  "Usage: collector-cli broken-outgoing-link-sources " +
+  "[--limit N] [--offset N] " +
+  "[--sort broken_count|title] [--dir asc|desc]";
 
 function parseNonNegInt(
   raw: string | undefined,
@@ -132,5 +144,49 @@ export function parseWantedLinkTargetSources(
     resolveStatus,
     limit: parsePositiveInt(limitRaw, "--limit", 100),
     offset: parseNonNegInt(offsetRaw, "--offset", 0),
+  };
+}
+
+export function parseBrokenOutgoingLinkSources(
+  argv: string[],
+  rest: string[],
+): CliCommand {
+  if (rest.length !== 0) {
+    throw new CliUsageError(BROKEN_SOURCES_USAGE);
+  }
+  const limit = parsePositiveInt(
+    readOpt(argv, "--limit"),
+    "--limit",
+    SEARCH_PAGE_SIZE,
+  );
+  const offset = parseNonNegInt(readOpt(argv, "--offset"), "--offset", 0);
+  const sortKey = readOpt(argv, "--sort");
+  const sortDir = readOpt(argv, "--dir");
+  if (sortKey === undefined && sortDir === undefined) {
+    return {
+      name: "broken-outgoing-link-sources",
+      limit,
+      offset,
+      sort: { key: "broken_count", dir: "desc" },
+    };
+  }
+  if (sortKey === undefined || sortDir === undefined) {
+    throw new CliUsageError(
+      `${BROKEN_SOURCES_USAGE} (--sort and --dir must be used together)`,
+    );
+  }
+  if (sortKey !== "broken_count" && sortKey !== "title") {
+    throw new CliUsageError(
+      `Invalid --sort ${sortKey}; expected broken_count|title`,
+    );
+  }
+  if (sortDir !== "asc" && sortDir !== "desc") {
+    throw new CliUsageError(`Invalid --dir ${sortDir}; expected asc|desc`);
+  }
+  return {
+    name: "broken-outgoing-link-sources",
+    limit,
+    offset,
+    sort: { key: sortKey, dir: sortDir },
   };
 }

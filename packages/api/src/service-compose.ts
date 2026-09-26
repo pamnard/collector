@@ -40,6 +40,7 @@ export const ITEMS_PORT_KEYS = [
   "listItemOutboundLinks",
   "queryWantedLinkTargets",
   "listWantedLinkTargetSources",
+  "queryBrokenOutgoingLinkSources",
   "addUserEdge",
   "removeUserEdge",
   "listUserEdges",

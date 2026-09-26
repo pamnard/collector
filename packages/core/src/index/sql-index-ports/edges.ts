@@ -4,12 +4,15 @@ import {
   listTextBacklinkSources as listTextBacklinkSourcesImpl,
   listWantedLinkTargetSources as listWantedLinkTargetSourcesImpl,
   listUserEdges as listUserEdgesImpl,
+  queryBrokenOutgoingLinkSources as queryBrokenOutgoingLinkSourcesImpl,
   queryWantedLinkTargets as queryWantedLinkTargetsImpl,
   rebuildVaultTextEdges as rebuildVaultTextEdgesImpl,
   removeUserEdge as removeUserEdgeImpl,
   replaceTextEdgesForItem as replaceTextEdgesForItemImpl,
 } from "../../edges/sql-item-edges.js";
 import type {
+  BrokenOutgoingSourceSort,
+  BrokenOutgoingSourcesResult,
   WantedLinkResolveStatus,
   WantedLinkSourcesResult,
   WantedLinkTargetSort,
@@ -65,6 +68,13 @@ export const edgesSelectStubs = {
     _page?: { limit: number; offset: number },
   ): Promise<WantedLinkSourcesResult> {
     return requireSqlSelect("listWantedLinkTargetSources");
+  },
+  queryBrokenOutgoingLinkSources(
+    _vaultId: string,
+    _page: { limit: number; offset: number },
+    _sort?: BrokenOutgoingSourceSort,
+  ): Promise<BrokenOutgoingSourcesResult> {
+    return requireSqlSelect("queryBrokenOutgoingLinkSources");
   },
 };
 
@@ -153,6 +163,14 @@ export function createEdgesStorePort(
       page?: { limit: number; offset: number },
     ) {
       return listWantedLinkTargetSourcesImpl(selector, vaultId, target, page);
+    },
+
+    queryBrokenOutgoingLinkSources(
+      vaultId: string,
+      page: { limit: number; offset: number },
+      sort?: BrokenOutgoingSourceSort,
+    ) {
+      return queryBrokenOutgoingLinkSourcesImpl(selector, vaultId, page, sort);
     },
   };
 }

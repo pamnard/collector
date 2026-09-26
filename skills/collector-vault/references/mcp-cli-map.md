@@ -31,6 +31,7 @@ CLI always needs dial flags before the subcommand: `--base-url … --data-dir �
 | Run one of those matches | `collector_extract_item_candidate` | `extract-item-candidate <item-id> --extractor-id … --url …` |
 | Wanted link targets (paged) | `collector_query_wanted_link_targets` | `wanted-link-targets [--limit N] [--offset N] [--sort …] [--dir …]` |
 | Sources for one wanted target | `collector_list_wanted_link_target_sources` | `wanted-link-target-sources --target … --status unresolved\|ambiguous [--limit N] [--offset N]` |
+| Notes with broken outgoing links | `collector_query_broken_outgoing_link_sources` | `broken-outgoing-link-sources [--limit N] [--offset N] [--sort …] [--dir …]` |
 
 Those two extract rows are **not** for ordinary web pages. For a normal link, download the page and use `update-item` / `collector_update_item`.
 

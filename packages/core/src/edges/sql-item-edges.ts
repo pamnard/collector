@@ -9,6 +9,8 @@ import {
 import { textLinkCatalogIndexesFromItems } from "../links/text-links-reindex.js";
 import { textEdgeRowsFromBody } from "./text-edge-rows.js";
 import type {
+  BrokenOutgoingSourceSort,
+  BrokenOutgoingSourcesResult,
   ItemEdgeInsertRow,
   UserEdgeNeighbor,
   WantedLinkKind,
@@ -52,6 +54,20 @@ function wantedTargetsOrderBy(sort?: WantedLinkTargetSort): string {
     throw new Error(`wanted link targets sort.key unsupported: ${String(key)}`);
   }
   return `source_count ${dir}, raw_target ASC, resolve_status ASC`;
+}
+
+function brokenOutgoingSourcesOrderBy(sort?: BrokenOutgoingSourceSort): string {
+  const key = sort?.key ?? "broken_count";
+  const dir = (sort?.dir ?? "desc").toUpperCase() === "ASC" ? "ASC" : "DESC";
+  if (key === "title") {
+    return `title ${dir}, id ASC`;
+  }
+  if (key !== "broken_count") {
+    throw new Error(
+      `broken outgoing sources sort.key unsupported: ${String(key)}`,
+    );
+  }
+  return `broken_count ${dir}, title ASC, id ASC`;
 }
 
 const EDGE_INSERT_COLUMNS = 11;
@@ -291,6 +307,64 @@ export async function listWantedLinkTargetSources(
       itemId: row.id,
       title: row.title,
       folderPath: row.folder_path,
+    })),
+  };
+}
+
+/**
+ * Paginated notes with unresolved/ambiguous outgoing text-links (#596).
+ * Parent grain for the broken-outgoing sources report tab.
+ */
+export async function queryBrokenOutgoingLinkSources(
+  selector: SqlIndexSelector,
+  vaultId: string,
+  page: { limit: number; offset: number },
+  sort?: BrokenOutgoingSourceSort,
+): Promise<BrokenOutgoingSourcesResult> {
+  assertWantedPage(page);
+  const orderBy = brokenOutgoingSourcesOrderBy(sort);
+
+  const totalRows = await selector.select<{ total: number }>(
+    `SELECT COUNT(*) AS total FROM (
+       SELECT 1
+       FROM item_edges
+       WHERE vault_id = ?
+         AND source = 'text'
+         AND resolve_status IN ('unresolved', 'ambiguous')
+       GROUP BY from_id
+     )`,
+    [vaultId],
+  );
+  const total = Number(totalRows[0]?.total ?? 0);
+
+  const rows = await selector.select<{
+    id: string;
+    title: string;
+    folder_path: string | null;
+    broken_count: number;
+  }>(
+    `SELECT i.id AS id,
+            i.title AS title,
+            i.folder_path AS folder_path,
+            COUNT(*) AS broken_count
+     FROM item_edges e
+     INNER JOIN items i ON i.id = e.from_id
+     WHERE e.vault_id = ?
+       AND e.source = 'text'
+       AND e.resolve_status IN ('unresolved', 'ambiguous')
+     GROUP BY i.id, i.title, i.folder_path
+     ORDER BY ${orderBy}
+     LIMIT ? OFFSET ?`,
+    [vaultId, page.limit, page.offset],
+  );
+
+  return {
+    total,
+    rows: rows.map((row) => ({
+      itemId: row.id,
+      title: row.title,
+      folderPath: row.folder_path,
+      brokenCount: Number(row.broken_count),
     })),
   };
 }

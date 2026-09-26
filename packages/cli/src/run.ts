@@ -298,6 +298,14 @@ export async function runCollectorCli(
       io.stdout(JSON.stringify(result, null, 2));
       return 0;
     }
+    if (cmd.name === "broken-outgoing-link-sources") {
+      const result = await client.items.queryBrokenOutgoingLinkSources(
+        { limit: cmd.limit, offset: cmd.offset },
+        cmd.sort,
+      );
+      io.stdout(JSON.stringify(result, null, 2));
+      return 0;
+    }
     const _exhaustive: never = cmd;
     throw new Error(`unhandled command: ${JSON.stringify(_exhaustive)}`);
   } catch (error) {

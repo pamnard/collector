@@ -322,3 +322,114 @@ describe("wanted link targets query (#595)", () => {
     expect(byName.rows.map((r) => r.rawTarget)).toEqual(["Apple", "Zebra"]);
   });
 });
+
+describe("broken outgoing link sources query (#596)", () => {
+  const suite = createSqlIndexTestSuite();
+  suite.registerCleanup();
+
+  async function seedNote(
+    index: Awaited<ReturnType<typeof suite.openVaultIndex>>["index"],
+    vaultId: string,
+    itemId: string,
+    title: string,
+    body: string,
+    folderPath: string | null = null,
+  ): Promise<void> {
+    const timestamp = new Date().toISOString();
+    await index.upsertItemMetadata(
+      {
+        item: noteItemFields(vaultId, itemId, {
+          title,
+          folder_path: folderPath,
+          created_at: timestamp,
+          updated_at: timestamp,
+        }),
+        fileMtimeMs: 1,
+      },
+      vaultId,
+    );
+    await index.upsertItemContent({
+      itemId,
+      title,
+      description: "",
+      content: body,
+      hasContentFile: true,
+      sourceRef: null,
+    });
+  }
+
+  it("returns empty when no unresolved edges", async () => {
+    const { index, vault } = await suite.openVaultIndex(
+      "collector-broken-empty-",
+    );
+    await seedNote(index, vault.meta.id, "Inbox/ok.md", "Ok", "# Ok\n");
+    await index.rebuildVaultTextEdges(vault.meta.id);
+    const result = await index.queryBrokenOutgoingLinkSources(vault.meta.id, {
+      limit: 50,
+      offset: 0,
+    });
+    expect(result).toEqual({ total: 0, rows: [] });
+  });
+
+  it("groups by source note; sorts by broken_count desc; paginates", async () => {
+    const { index, vault } = await suite.openVaultIndex(
+      "collector-broken-group-",
+    );
+    const vaultId = vault.meta.id;
+
+    await seedNote(
+      index,
+      vaultId,
+      "Inbox/many.md",
+      "Many",
+      "[[MissingA]] [[MissingB]] [[MissingC]]\n",
+      "Inbox",
+    );
+    await seedNote(
+      index,
+      vaultId,
+      "Notes/one.md",
+      "One",
+      "Only [[Lonely]]\n",
+      "Notes",
+    );
+    await seedNote(index, vaultId, "clean.md", "Clean", "# Clean\n");
+
+    await index.rebuildVaultTextEdges(vaultId);
+
+    const all = await index.queryBrokenOutgoingLinkSources(
+      vaultId,
+      { limit: 50, offset: 0 },
+      { key: "broken_count", dir: "desc" },
+    );
+    expect(all.total).toBe(2);
+    expect(all.rows).toHaveLength(2);
+    expect(all.rows[0]).toMatchObject({
+      itemId: "Inbox/many.md",
+      title: "Many",
+      folderPath: "Inbox",
+      brokenCount: 3,
+    });
+    expect(all.rows[1]).toMatchObject({
+      itemId: "Notes/one.md",
+      title: "One",
+      folderPath: "Notes",
+      brokenCount: 1,
+    });
+
+    const page1 = await index.queryBrokenOutgoingLinkSources(vaultId, {
+      limit: 1,
+      offset: 0,
+    });
+    expect(page1.total).toBe(2);
+    expect(page1.rows).toHaveLength(1);
+    expect(page1.rows[0]!.brokenCount).toBe(3);
+
+    const byTitle = await index.queryBrokenOutgoingLinkSources(
+      vaultId,
+      { limit: 10, offset: 0 },
+      { key: "title", dir: "asc" },
+    );
+    expect(byTitle.rows.map((r) => r.title)).toEqual(["Many", "One"]);
+  });
+});

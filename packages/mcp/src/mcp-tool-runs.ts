@@ -292,4 +292,33 @@ export const COLLECTOR_MCP_TOOL_RUNS = {
       page,
     );
   },
+
+  collector_query_broken_outgoing_link_sources: (args, client) => {
+    const limit =
+      args.limit === undefined ? SEARCH_PAGE_SIZE : (args.limit as number);
+    const offset = args.offset === undefined ? 0 : (args.offset as number);
+    const sortKey = args.sortKey as string | undefined;
+    const sortDir = args.sortDir as string | undefined;
+    let sort:
+      | { key: "broken_count" | "title"; dir: "asc" | "desc" }
+      | undefined;
+    if (sortKey === undefined && sortDir === undefined) {
+      sort = { key: "broken_count", dir: "desc" };
+    } else if (sortKey === undefined || sortDir === undefined) {
+      throw new Error(
+        "collector_query_broken_outgoing_link_sources: sortKey and sortDir must be used together",
+      );
+    } else if (sortKey !== "broken_count" && sortKey !== "title") {
+      throw new Error(
+        "collector_query_broken_outgoing_link_sources: sortKey must be broken_count or title",
+      );
+    } else if (sortDir !== "asc" && sortDir !== "desc") {
+      throw new Error(
+        "collector_query_broken_outgoing_link_sources: sortDir must be asc or desc",
+      );
+    } else {
+      sort = { key: sortKey, dir: sortDir };
+    }
+    return client.items.queryBrokenOutgoingLinkSources({ limit, offset }, sort);
+  },
 } as const satisfies Record<ToolName, McpToolRun>;
