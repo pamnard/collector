@@ -32,6 +32,7 @@ import {
   resolveOrCreateInboxFolder,
   resolveTagFromMaps,
   serializeItemDocument,
+  syncItemFromDisk,
   textLinkResolveContextFromItems,
   upsertItem,
   writeItemCanonicalSourceMarkdown,
@@ -81,7 +82,9 @@ export function createItemsCrud(
       throw new Error(`Item not found: ${itemId}`);
     }
 
-    const item = await readItemFile(ctx.fs, path, itemId, vault.id);
+    // Disk FM is source of truth: ensure missing catalog tags and pin item_tags
+    // so a concurrent full reconcile cannot drop them again.
+    const item = await syncItemFromDisk(ctx, path, vault.id, itemId);
     const content = await readItemContent(ctx.fs, path, itemId);
     return { item, content };
   };

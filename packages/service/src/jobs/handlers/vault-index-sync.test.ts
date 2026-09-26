@@ -37,7 +37,11 @@ describe("vaultIndexSync job (#631 / #638)", () => {
 
   it("runs the existing vault index sync and succeeds", async () => {
     const startVaultIndexSync = vi.fn(async () => undefined);
-    const handler = createVaultIndexSyncHandler({ startVaultIndexSync });
+    const enqueueTagCatalogReconcile = vi.fn(async () => undefined);
+    const handler = createVaultIndexSyncHandler({
+      startVaultIndexSync,
+      enqueueTagCatalogReconcile,
+    });
 
     await expect(
       handler({
@@ -52,6 +56,60 @@ describe("vaultIndexSync job (#631 / #638)", () => {
       }),
     ).resolves.toEqual({ status: "ok" });
     expect(startVaultIndexSync).toHaveBeenCalledWith("vault-1", "/vault");
+    expect(enqueueTagCatalogReconcile).toHaveBeenCalledWith(
+      "vault-1",
+      "/vault",
+    );
+  });
+
+  it("does not enqueue full tag reconcile after kickoff sync", async () => {
+    const startVaultIndexSync = vi.fn(async () => undefined);
+    const enqueueTagCatalogReconcile = vi.fn(async () => undefined);
+    const handler = createVaultIndexSyncHandler({
+      startVaultIndexSync,
+      enqueueTagCatalogReconcile,
+    });
+
+    await expect(
+      handler({
+        id: "job-kickoff",
+        type: "vaultIndexSync",
+        attempts: 0,
+        payload: {
+          vaultId: "vault-1",
+          vaultPath: "/vault",
+          reason: "kickoff",
+        },
+      }),
+    ).resolves.toEqual({ status: "ok" });
+    expect(startVaultIndexSync).toHaveBeenCalledWith("vault-1", "/vault");
+    expect(enqueueTagCatalogReconcile).not.toHaveBeenCalled();
+  });
+
+  it("enqueues full tag reconcile after recovery sync", async () => {
+    const startVaultIndexSync = vi.fn(async () => undefined);
+    const enqueueTagCatalogReconcile = vi.fn(async () => undefined);
+    const handler = createVaultIndexSyncHandler({
+      startVaultIndexSync,
+      enqueueTagCatalogReconcile,
+    });
+
+    await expect(
+      handler({
+        id: "job-recovery",
+        type: "vaultIndexSync",
+        attempts: 0,
+        payload: {
+          vaultId: "vault-1",
+          vaultPath: "/vault",
+          reason: "recovery",
+        },
+      }),
+    ).resolves.toEqual({ status: "ok" });
+    expect(enqueueTagCatalogReconcile).toHaveBeenCalledWith(
+      "vault-1",
+      "/vault",
+    );
   });
 
   it("coalesces repeated kickoff jobs by vault id", async () => {

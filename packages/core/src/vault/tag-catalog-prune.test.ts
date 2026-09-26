@@ -7,7 +7,7 @@ import { BetterSqliteMigrator } from "../../../db/src/testing/better-sqlite.js";
 import { NodeFileSystemAdapter } from "../adapters/node-fs.js";
 import { SqlVaultIndexStore } from "../index/sql-index.js";
 import { createId } from "../util/ids.js";
-import { upsertItem, writeItemRawMarkdown } from "./item-operations.js";
+import { upsertItem, writeItemRawMarkdown, syncItemFromDisk } from "./item-operations.js";
 import { createVault } from "./vault-operations.js";
 import { listTagsOnDisk, readTagsFile, writeTagsFile } from "./tag-io.js";
 import {
@@ -15,6 +15,7 @@ import {
   reconcileTagCatalog,
 } from "./tag-catalog-prune.js";
 import { ensureTagsByName } from "./item-io.js";
+import { itemMarkdownPath } from "./paths.js";
 
 function noteMarkdown(args: {
   tagsYaml: string;
@@ -520,6 +521,60 @@ describe("tag catalog prune / reconcile (#935)", () => {
     expect(result.prunedTagIds).toContain(orphanId);
     expect(await listTagsOnDisk(fs, path)).toEqual([]);
     expect(await ctx.index.listOrphanTagIds(meta.id)).toEqual([]);
+  });
+
+  it("pin re-ensures FM tags after full reconcile dropped unpinned catalog rows", async () => {
+    const { ctx, meta, path } = await openVault();
+    const createdAt = "2024-01-01T00:00:00.000Z";
+    const itemId = `${createId()}.md`;
+    await upsertItem(ctx, path, meta.id, {
+      item: {
+        id: itemId,
+        vault_id: meta.id,
+        title: "Note",
+        description: "",
+        content_type: "note",
+        source_type: "manual",
+        metadata: {},
+        properties: {},
+        tag_ids: [],
+        collection_ids: [],
+        folder_path: "",
+        content_revision: 1,
+        word_count: 0,
+        character_count: 0,
+        created_at: createdAt,
+        updated_at: createdAt,
+      },
+      content: "body",
+    });
+
+    // Catalog rows exist, FM names them, but item_tags were never pinned —
+    // same window as ensure→pin raced with full reconcile.
+    await ensureTagsByName(fs, path, ["aiagents", "jev"]);
+    await fs.writeText(
+      itemMarkdownPath(path, itemId),
+      noteMarkdown({
+        tagsYaml: "tags:\n  - aiagents\n  - jev",
+        contentRevision: 2,
+        createdAt,
+      }),
+    );
+
+    await reconcileTagCatalog(ctx, path, meta.id);
+    const afterPrune = (await listTagsOnDisk(fs, path)).map((t) => t.name);
+    expect(afterPrune).not.toContain("aiagents");
+    expect(afterPrune).not.toContain("jev");
+
+    const synced = await syncItemFromDisk(ctx, path, meta.id, itemId);
+    expect(synced.tag_ids).toHaveLength(2);
+    const restored = (await listTagsOnDisk(fs, path)).map((t) => t.name).sort();
+    expect(restored).toEqual(["aiagents", "jev"]);
+
+    await reconcileTagCatalog(ctx, path, meta.id);
+    expect(
+      (await listTagsOnDisk(fs, path)).map((t) => t.name).sort(),
+    ).toEqual(["aiagents", "jev"]);
   });
 
   it("concurrent ensure + prune does not clobber creates", async () => {
