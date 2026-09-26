@@ -6,22 +6,18 @@ import {
   type MutableRefObject,
 } from "react";
 import type { DashboardItemSort, VaultIndexSyncStatus } from "@collector/api";
+import { snapshotToCacheEntry } from "../../lib/dashboard-commit";
+import { mapIndexQueryResult } from "../../lib/dashboard-display";
+import { applyDashboardQueryKeyChange } from "../../lib/dashboard-query-key-change";
 import {
-  bodyStampsFromMap,
-  snapshotToCacheEntry,
-} from "../../lib/dashboard-commit";
+  cleanupDashboardIndexQueryWindow,
+  prepareDashboardIndexQueryWindow,
+  runDashboardIndexQueryWindow,
+} from "../../lib/dashboard-index-query-run";
 import {
-  coverMapsPersistenceViews,
-} from "../../lib/cover-maps";
-import {
-  createThrottledPublisher,
-  mapIndexQueryResult,
-} from "../../lib/dashboard-display";
-import {
-  buildDashboardQueryCacheEntry,
-  readInitialDashboardCacheEntry,
-  stateFromDashboardCacheEntry,
-} from "../../lib/dashboard-query-load";
+  scheduleDashboardQueryPersist,
+  shouldScheduleDashboardQueryPersist,
+} from "../../lib/dashboard-query-persist";
 import {
   mergePendingIntoItemsById,
   runDashboardLoadMore,
@@ -39,16 +35,9 @@ import {
   setDashboardQueryCache,
 } from "../../services/dashboard-query-cache";
 import { reportServiceError } from "../../services/runtime-error";
-import {
-  dashboardPerfActiveRunId,
-  dashboardPerfBeginPhase,
-  dashboardPerfEndPhase,
-} from "../../lib/dashboard-perf";
 import type { DashboardListState } from "./dashboard-list-state-types";
 import { applyIndexPageAgainstListState } from "./apply-index-page-against-list";
-
-/** Matches service `syncRepublishThrottleMs` for IndexPort-driven re-query (#367). */
-const DASHBOARD_SYNC_REPUBLISH_MS = 500;
+import { useDashboardSyncRepublish } from "./useDashboardSyncRepublish";
 
 export type UseDashboardQueryLifecycleOptions = {
   filter: NavFilter;
@@ -99,7 +88,6 @@ export function useDashboardQueryLifecycle(
     bodyStampsRef,
     totalCountRef,
     committedItemsRef,
-    committedTotalCountRef,
     queryKeyRef,
     streamAbortRef,
     persistTimerRef,
@@ -120,13 +108,6 @@ export function useDashboardQueryLifecycle(
     clearWorkingWindow,
     clearCommittedPaint,
   } = list;
-
-  const prevIndexSyncStatusRef = useRef(indexSync.status);
-  const syncRepublishRef = useRef<{
-    schedule: () => void;
-    flush: () => void;
-    cancel: () => void;
-  } | null>(null);
 
   const listRef = useRef(list);
   listRef.current = list;
@@ -197,21 +178,13 @@ export function useDashboardQueryLifecycle(
   );
 
   useLayoutEffect(() => {
-    if (queryKeyRef.current === queryKey) {
-      return;
-    }
-    const prevCommitted = committedItemsRef.current.length;
-    queryKeyRef.current = queryKey;
-
-    // Drop the previous folder's cover flight before warm maps land (#913).
-    abortCoverFlight();
-
-    setError(null);
-    const warmed = readInitialDashboardCacheEntry({
-      cacheKey: queryKey,
+    const result = applyDashboardQueryKeyChange({
+      prevQueryKey: queryKeyRef.current,
+      nextQueryKey: queryKey,
+      prevCommittedCount: committedItemsRef.current.length,
+      vaultId,
       getCached: getDashboardQueryCache,
       setCached: setDashboardQueryCache,
-      vaultId,
       peekWarmSnapshot: () => {
         if (!vaultId) {
           return null;
@@ -224,20 +197,18 @@ export function useDashboardQueryLifecycle(
         });
       },
       snapshotToEntry: snapshotToCacheEntry,
+      sinks: {
+        abortCoverFlight,
+        setError,
+        applyCacheEntryToState,
+        setIsLoading,
+        clearWorkingWindow,
+        clearCommittedPaint,
+      },
     });
-    if (warmed) {
-      applyCacheEntryToState(warmed);
-      setIsLoading(false);
-      return;
+    if (result.kind !== "unchanged") {
+      queryKeyRef.current = queryKey;
     }
-
-    // Keep committed paint until the new query commits — clearing here forces
-    // grid-skeleton blank flash on every cold folder switch.
-    clearWorkingWindow();
-    if (prevCommitted === 0) {
-      clearCommittedPaint();
-    }
-    setIsLoading(true);
   }, [
     abortCoverFlight,
     applyCacheEntryToState,
@@ -258,113 +229,67 @@ export function useDashboardQueryLifecycle(
     queryKeyRef.current = queryKey;
     queryBusyRef.current = true;
 
-    const cached = getDashboardQueryCache(queryKey);
-    setError(null);
-
-    if (cached) {
-      const working = stateFromDashboardCacheEntry(cached);
-      setLoadedItemIds(working.itemIds);
-      itemsByIdRef.current = working.itemsById;
-      bodyStampsRef.current = working.bodyStamps;
-      setItemsById(working.itemsById);
-      totalCountRef.current = working.totalCount;
-      setTotalCount(working.totalCount);
-      setStreamWindowEnd(working.streamEndOffset);
-      setIsLoading(false);
-    } else {
-      // Cache miss after invalidate: drop bodies so ids-same re-hydrates.
-      itemsByIdRef.current = new Map();
-      bodyStampsRef.current = new Map();
-      setItemsById(new Map());
-      if (committedItemsRef.current.length === 0) {
-        setIsLoading(true);
-        setLoadedItemIds([]);
-        totalCountRef.current = 0;
-        setTotalCount(0);
-        setStreamWindowEnd(0);
-      }
-    }
-
-    streamAbortRef.current?.abort();
-    abortCoverFlight();
+    prepareDashboardIndexQueryWindow({
+      queryKey,
+      getCached: getDashboardQueryCache,
+      sinks: {
+        setError,
+        setLoadedItemIds,
+        setItemsById,
+        setTotalCount,
+        setStreamWindowEnd,
+        setIsLoading,
+        syncWorkingRefs: (working) => {
+          itemsByIdRef.current = working.itemsById;
+          bodyStampsRef.current = working.bodyStamps;
+          totalCountRef.current = working.totalCount;
+        },
+        clearWorkingBodies: () => {
+          itemsByIdRef.current = new Map();
+          bodyStampsRef.current = new Map();
+        },
+        getCommittedCount: () => committedItemsRef.current.length,
+        abortStream: () => {
+          streamAbortRef.current?.abort();
+        },
+        abortCoverFlight,
+      },
+    });
 
     const controller = new AbortController();
-
-    const tryCommitAfterIndexPage = async () => {
-      if (requestVersionRef.current !== requestVersion) {
-        return;
-      }
-      try {
-        // Cold first window: await covers, then one list+maps paint (#855).
-        await commitWorkingToDisplay(requestVersion, { blockOnCovers: true });
-      } catch (err: unknown) {
-        if (requestVersionRef.current !== requestVersion) {
-          return;
-        }
-        reportServiceError("dashboard cover paths", err);
-        setError(err instanceof Error ? err.message : String(err));
-      } finally {
-        if (requestVersionRef.current === requestVersion) {
-          const perfRunId = dashboardPerfActiveRunId();
-          dashboardPerfBeginPhase(perfRunId, "loadingOff");
-          setIsLoading(false);
-          dashboardPerfEndPhase(perfRunId, "loadingOff");
-          queryBusyRef.current = false;
-        }
-      }
-    };
-
-    void (async () => {
-      try {
-        if (controller.signal.aborted) {
-          return;
-        }
-        const perfRunId = dashboardPerfActiveRunId();
-        dashboardPerfBeginPhase(perfRunId, "queryIndex");
-        const result = await getCollectorService().items.queryIndex(
-          filter,
-          searchQuery,
-          { offset: 0, limit: DASHBOARD_PREFETCH_SIZE },
-          sort,
-        );
-        dashboardPerfEndPhase(perfRunId, "queryIndex");
-        if (
-          controller.signal.aborted ||
-          requestVersionRef.current !== requestVersion
-        ) {
-          return;
-        }
-        const page = mapIndexQueryResult(result);
-        dashboardPerfBeginPhase(perfRunId, "applyIndexPage");
-        await applyIndexPage(page, requestVersion);
-        dashboardPerfEndPhase(perfRunId, "applyIndexPage");
-        if (requestVersionRef.current !== requestVersion) {
-          return;
-        }
-        if (page.offset === 0) {
-          await tryCommitAfterIndexPage();
-        }
-      } catch (err: unknown) {
-        if (
-          controller.signal.aborted ||
-          requestVersionRef.current !== requestVersion
-        ) {
-          return;
-        }
-        reportServiceError("dashboard index page", err);
-        setError(err instanceof Error ? err.message : String(err));
-        setIsLoading(false);
-        queryBusyRef.current = false;
-      }
-    })();
+    void runDashboardIndexQueryWindow({
+      requestVersion,
+      signal: controller.signal,
+      filter,
+      searchQuery,
+      sort,
+      prefetchSize: DASHBOARD_PREFETCH_SIZE,
+      getRequestVersion: () => requestVersionRef.current,
+      queryIndex: (f, search, range, s) =>
+        getCollectorService().items.queryIndex(f, search, range, s),
+      applyIndexPage,
+      commitWorkingToDisplay,
+      setError,
+      setIsLoading,
+      setQueryBusy: (busy) => {
+        queryBusyRef.current = busy;
+      },
+      reportError: reportServiceError,
+    });
 
     return () => {
-      controller.abort();
-      streamAbortRef.current?.abort();
-      abortCoverFlight();
-      if (requestVersionRef.current === requestVersion) {
-        queryBusyRef.current = false;
-      }
+      cleanupDashboardIndexQueryWindow({
+        requestVersion,
+        getRequestVersion: () => requestVersionRef.current,
+        abortController: controller,
+        abortStream: () => {
+          streamAbortRef.current?.abort();
+        },
+        abortCoverFlight,
+        setQueryBusy: (busy) => {
+          queryBusyRef.current = busy;
+        },
+      });
     };
   }, [
     applyIndexPage,
@@ -379,73 +304,16 @@ export function useDashboardQueryLifecycle(
     abortCoverFlight,
   ]);
 
-  // IndexPort-driven live refresh: replaces subscribeDashboardLoad vault sync listener.
-  useEffect(() => {
-    const publisher = createThrottledPublisher(() => {
-      const requestVersion = requestVersionRef.current;
-      const limit = Math.max(
-        itemIdsRef.current.length,
-        DASHBOARD_PREFETCH_SIZE,
-      );
-      void (async () => {
-        try {
-          const result = await getCollectorService().items.queryIndex(
-            filterRef.current,
-            searchQueryRef.current,
-            { offset: 0, limit },
-            sortRef.current,
-          );
-          if (requestVersionRef.current !== requestVersion) {
-            return;
-          }
-          await applyIndexPage(mapIndexQueryResult(result), requestVersion);
-          if (requestVersionRef.current !== requestVersion) {
-            return;
-          }
-          await commitWorkingToDisplay(requestVersion, {
-            blockOnCovers: false,
-          });
-        } catch (err: unknown) {
-          if (requestVersionRef.current !== requestVersion) {
-            return;
-          }
-          reportServiceError("dashboard sync republish", err);
-        }
-      })();
-    }, DASHBOARD_SYNC_REPUBLISH_MS);
-    syncRepublishRef.current = publisher;
-    return () => {
-      publisher.cancel();
-      if (syncRepublishRef.current === publisher) {
-        syncRepublishRef.current = null;
-      }
-    };
-  }, [
+  const { syncRepublishRef } = useDashboardSyncRepublish({
+    indexSync,
+    requestVersionRef,
+    itemIdsRef,
+    filterRef,
+    searchQueryRef,
+    sortRef,
     applyIndexPage,
     commitWorkingToDisplay,
-  ]);
-
-  useEffect(() => {
-    const prev = prevIndexSyncStatusRef.current;
-    prevIndexSyncStatusRef.current = indexSync.status;
-    const active =
-      indexSync.status === "running" || indexSync.status === "rebuilding";
-    if (active) {
-      syncRepublishRef.current?.schedule();
-    }
-    if (
-      (prev === "running" || prev === "rebuilding") &&
-      indexSync.status === "done"
-    ) {
-      syncRepublishRef.current?.flush();
-    }
-  }, [
-    indexSync.status,
-    indexSync.progress?.processed,
-    indexSync.progress?.total,
-    indexSync.metadataReady,
-    indexSync.ftsReady,
-  ]);
+  });
 
   useEffect(() => {
     if (isLoading || queryBusyRef.current) {
@@ -473,47 +341,47 @@ export function useDashboardQueryLifecycle(
   ]);
 
   useEffect(() => {
-    if (!vaultId || isLoading || !itemIds.length || !workingItems.length) {
+    if (
+      !shouldScheduleDashboardQueryPersist({
+        vaultId,
+        isLoading,
+        itemIdsLength: itemIds.length,
+        workingItemsLength: workingItems.length,
+      })
+    ) {
+      return;
+    }
+    if (!vaultId) {
       return;
     }
 
-    persistTimerRef.current = setTimeout(() => {
-      const session = getUiSession();
-      const maps = covers.getMaps();
-      const { maps: persisted, record: coverPaths } =
-        coverMapsPersistenceViews(maps);
-      void session.snapshot.persistDashboardSnapshot(
-        session.snapshot.buildDashboardSnapshot({
-          vaultId,
-          filter,
-          search: searchQuery,
-          sort,
-          itemIds,
-          items: workingItems,
-          totalCount,
-          streamEndOffset,
-          coverPaths,
-          bodyStamps: bodyStampsFromMap(bodyStampsRef.current),
-        }),
-      );
-      setDashboardQueryCache(
-        queryKey,
-        buildDashboardQueryCacheEntry({
-          itemIds,
-          itemsById,
-          bodyStamps: bodyStampsRef.current,
-          streamEndOffset,
-          totalCount,
-          covers: persisted,
-        }),
-      );
-    }, 400);
-
-    return () => {
-      if (persistTimerRef.current) {
-        clearTimeout(persistTimerRef.current);
-      }
-    };
+    return scheduleDashboardQueryPersist({
+      setTimer: (timer) => {
+        persistTimerRef.current = timer;
+      },
+      clearTimer: () => {
+        if (persistTimerRef.current) {
+          clearTimeout(persistTimerRef.current);
+          persistTimerRef.current = null;
+        }
+      },
+      getCoverMaps: () => covers.getMaps(),
+      payloadInput: {
+        vaultId,
+        filter,
+        searchQuery,
+        sort,
+        itemIds,
+        workingItems,
+        itemsById,
+        totalCount,
+        streamEndOffset,
+        bodyStamps: bodyStampsRef.current,
+      },
+      snapshotPort: getUiSession().snapshot,
+      setCached: setDashboardQueryCache,
+      queryKey,
+    });
   }, [
     covers,
     filterKey,
