@@ -63,6 +63,10 @@ export const COMMAND_USAGE = {
     "Usage: collector-cli wanted-link-target-sources " +
     "--target <raw> --status unresolved|ambiguous " +
     "[--limit N] [--offset N]",
+  "broken-outgoing-link-sources":
+    "Usage: collector-cli broken-outgoing-link-sources " +
+    "[--limit N] [--offset N] " +
+    "[--sort broken_count|title] [--dir asc|desc]",
 } as const satisfies Record<RegisteredCommandName, string>;
 
 const HELP_FLAGS = new Set(["--help", "-h"]);

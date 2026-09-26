@@ -295,4 +295,17 @@ describe("COLLECTOR_MCP_TOOL_DEFS table ↔ MCP server registration", () => {
     );
     expect(resolveStatus?.required).toBe(true);
   });
+
+  it("documents broken-outgoing sources tool for agents (#596)", () => {
+    const broken = COLLECTOR_MCP_TOOLS.find(
+      (tool) => tool.name === "collector_query_broken_outgoing_link_sources",
+    );
+    expect(broken).toBeDefined();
+    expect(broken!.description).toMatch(/broken outgoing/i);
+    expect(broken!.description).not.toMatch(/item_edges/i);
+    expect(broken!.description).toMatch(/brokenCount/);
+    expect(broken!.description).toMatch(/collector_get_item/);
+    expect(broken!.params.some((p) => p.name === "limit")).toBe(true);
+    expect(broken!.params.some((p) => p.name === "offset")).toBe(true);
+  });
 });

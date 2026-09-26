@@ -115,6 +115,10 @@ export {
   type WantedLinkTargetSort,
   type WantedLinkTargetSortKey,
   type WantedLinkTargetsResult,
+  type BrokenOutgoingSourceRow,
+  type BrokenOutgoingSourceSort,
+  type BrokenOutgoingSourceSortKey,
+  type BrokenOutgoingSourcesResult,
   type VaultsPort,
 } from "./service-api.js";
 

@@ -1,5 +1,7 @@
 import type { ItemFile, MediaFileMeta, SourceRef, Tag, VaultMeta } from "@collector/shared";
 import type {
+  BrokenOutgoingSourceSort,
+  BrokenOutgoingSourcesResult,
   WantedLinkResolveStatus,
   WantedLinkSourcesResult,
   WantedLinkTargetSort,
@@ -267,6 +269,12 @@ export interface VaultIndexAdapter {
     },
     page?: { limit: number; offset: number },
   ): Promise<WantedLinkSourcesResult>;
+  /** Notes with broken outgoing text-links (#596). */
+  queryBrokenOutgoingLinkSources(
+    vaultId: string,
+    page: { limit: number; offset: number },
+    sort?: BrokenOutgoingSourceSort,
+  ): Promise<BrokenOutgoingSourcesResult>;
 }
 
 export interface ItemIdPageOptions {

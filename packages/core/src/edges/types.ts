@@ -55,3 +55,23 @@ export type WantedLinkSourcesResult = {
   total: number;
   rows: WantedLinkSourceRow[];
 };
+
+/** Parent row for notes with broken outgoing text-links (#596). */
+export type BrokenOutgoingSourceRow = {
+  itemId: string;
+  title: string;
+  folderPath: string | null;
+  brokenCount: number;
+};
+
+export type BrokenOutgoingSourcesResult = {
+  total: number;
+  rows: BrokenOutgoingSourceRow[];
+};
+
+export type BrokenOutgoingSourceSortKey = "broken_count" | "title";
+
+export type BrokenOutgoingSourceSort = {
+  key: BrokenOutgoingSourceSortKey;
+  dir: "asc" | "desc";
+};

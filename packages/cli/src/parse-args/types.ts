@@ -90,6 +90,12 @@ export type CliCommand =
       resolveStatus: "unresolved" | "ambiguous";
       limit?: number;
       offset?: number;
+    }
+  | {
+      name: "broken-outgoing-link-sources";
+      limit: number;
+      offset: number;
+      sort: { key: "broken_count" | "title"; dir: "asc" | "desc" };
     };
 
 export interface ParsedCliArgs {

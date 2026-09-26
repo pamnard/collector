@@ -44,8 +44,10 @@ import {
 import {
   WANTED_LINK_TARGETS_FLAGS,
   WANTED_LINK_TARGET_SOURCES_FLAGS,
+  BROKEN_OUTGOING_LINK_SOURCES_FLAGS,
   parseWantedLinkTargets,
   parseWantedLinkTargetSources,
+  parseBrokenOutgoingLinkSources,
 } from "./wanted-links.js";
 
 export type CommandParser = (argv: string[], rest: string[]) => CliCommand;
@@ -63,6 +65,7 @@ export const ALL_COMMAND_FLAGS = unionFlagSets(
   EXTRACT_ITEM_CANDIDATE_FLAGS,
   WANTED_LINK_TARGETS_FLAGS,
   WANTED_LINK_TARGET_SOURCES_FLAGS,
+  BROKEN_OUTGOING_LINK_SOURCES_FLAGS,
 );
 
 /** Literal keys stay aligned with `COMMAND_USAGE` / help output. */
@@ -93,6 +96,7 @@ export const COMMAND_PARSERS = {
   "extract-item-candidate": parseExtractItemCandidate,
   "wanted-link-targets": parseWantedLinkTargets,
   "wanted-link-target-sources": parseWantedLinkTargetSources,
+  "broken-outgoing-link-sources": parseBrokenOutgoingLinkSources,
 } satisfies Record<string, CommandParser>;
 
 export type RegisteredCommandName = keyof typeof COMMAND_PARSERS;

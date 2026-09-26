@@ -398,6 +398,32 @@ export const COLLECTOR_MCP_TOOL_DEFS = [
       ),
     }),
   },
+  {
+    name: "collector_query_broken_outgoing_link_sources",
+    description:
+      "List notes that have at least one broken outgoing internal link " +
+      "(missing or ambiguous target). External web URLs are not included. " +
+      "Returns { total, rows } for one page (default 60). " +
+      "Each row: itemId, title, folderPath, brokenCount. " +
+      "When rows.length < total, raise offset for the next page. " +
+      "Pass each itemId unchanged to collector_get_item.",
+    buildSchema: (p) => ({
+      limit: p.optionalPositiveInt(
+        "How many source notes to return (default 60).",
+      ),
+      offset: p.optionalNonNegInt(
+        "Skip this many notes before returning (default 0).",
+      ),
+      sortKey: p.optionalString(
+        "Sort by broken_count or title. Must be paired with sortDir. " +
+          "Omit both to sort by broken_count descending.",
+      ),
+      sortDir: p.optionalString(
+        "asc or desc. Must be paired with sortKey. " +
+          "Omit both to sort by broken_count descending.",
+      ),
+    }),
+  },
 ] as const satisfies readonly McpToolDef[];
 
 /** Settings → MCP and docs tests: derived from the tool table (not a parallel list). */

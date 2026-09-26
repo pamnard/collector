@@ -41,6 +41,10 @@ export type {
   WantedLinkTargetSort,
   WantedLinkTargetSortKey,
   WantedLinkTargetsResult,
+  BrokenOutgoingSourceRow,
+  BrokenOutgoingSourceSort,
+  BrokenOutgoingSourceSortKey,
+  BrokenOutgoingSourcesResult,
 } from "./items.js";
 
 export type { BootPort } from "./boot.js";

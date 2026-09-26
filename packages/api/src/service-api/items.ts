@@ -162,6 +162,26 @@ export interface WantedLinkSourcesResult {
   rows: WantedLinkSourceRow[];
 }
 
+/** Parent row for notes with broken outgoing text-links (#596). */
+export interface BrokenOutgoingSourceRow {
+  itemId: string;
+  title: string;
+  folderPath: string | null;
+  brokenCount: number;
+}
+
+export interface BrokenOutgoingSourcesResult {
+  total: number;
+  rows: BrokenOutgoingSourceRow[];
+}
+
+export type BrokenOutgoingSourceSortKey = "broken_count" | "title";
+
+export interface BrokenOutgoingSourceSort {
+  key: BrokenOutgoingSourceSortKey;
+  dir: "asc" | "desc";
+}
+
 /** Items / search / dashboard loaders (#361 / #362). */
 export interface ItemsPort {
   /**
@@ -253,6 +273,14 @@ export interface ItemsPort {
     target: { rawTarget: string; resolveStatus: WantedLinkResolveStatus },
     page?: { limit: number; offset: number },
   ): Promise<WantedLinkSourcesResult>;
+  /**
+   * Paginated notes with at least one broken outgoing text-link (#596).
+   * Same contract for the report tab and a future dashboard widget.
+   */
+  queryBrokenOutgoingLinkSources(
+    page: { limit: number; offset: number },
+    sort?: BrokenOutgoingSourceSort,
+  ): Promise<BrokenOutgoingSourcesResult>;
   /** Undirected user edges for one item (#407). */
   addUserEdge(itemId: string, otherItemId: string): Promise<void>;
   removeUserEdge(itemId: string, otherItemId: string): Promise<void>;

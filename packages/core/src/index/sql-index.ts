@@ -78,6 +78,7 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
   listTextBacklinkSources;
   queryWantedLinkTargets;
   listWantedLinkTargetSources;
+  queryBrokenOutgoingLinkSources;
 
   constructor(db: SqlIndexDb) {
     const vault = createVaultPort(db);
@@ -129,6 +130,8 @@ export class SqlVaultIndexAdapter implements VaultIndexAdapter {
     this.queryWantedLinkTargets = edgesSelectStubs.queryWantedLinkTargets;
     this.listWantedLinkTargetSources =
       edgesSelectStubs.listWantedLinkTargetSources;
+    this.queryBrokenOutgoingLinkSources =
+      edgesSelectStubs.queryBrokenOutgoingLinkSources;
   }
 
   /** Polymorphic: Store overrides `upsertItemContent` for text-edge sync. */
@@ -214,5 +217,6 @@ export class SqlVaultIndexStore extends SqlVaultIndexAdapter {
     this.listTextBacklinkSources = edges.listTextBacklinkSources;
     this.queryWantedLinkTargets = edges.queryWantedLinkTargets;
     this.listWantedLinkTargetSources = edges.listWantedLinkTargetSources;
+    this.queryBrokenOutgoingLinkSources = edges.queryBrokenOutgoingLinkSources;
   }
 }

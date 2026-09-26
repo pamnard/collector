@@ -515,4 +515,59 @@ describe("parseCliArgs (#172/#173 / #550 G)", () => {
       ]),
     ).toThrow(/Usage: collector-cli wanted-link-target-sources/);
   });
+
+  it("parses broken-outgoing-link-sources with defaults and optional page/sort (#596)", () => {
+    expect(
+      parseCliArgs([
+        ...BASE,
+        "--data-dir",
+        "/data",
+        "broken-outgoing-link-sources",
+      ]),
+    ).toEqual({
+      command: {
+        name: "broken-outgoing-link-sources",
+        limit: 60,
+        offset: 0,
+        sort: { key: "broken_count", dir: "desc" },
+      },
+      baseUrl: "http://127.0.0.1:9",
+      dataDir: "/data",
+    });
+    expect(
+      parseCliArgs([
+        ...BASE,
+        "--data-dir",
+        "/data",
+        "broken-outgoing-link-sources",
+        "--limit",
+        "5",
+        "--offset",
+        "10",
+        "--sort",
+        "title",
+        "--dir",
+        "asc",
+      ]),
+    ).toEqual({
+      command: {
+        name: "broken-outgoing-link-sources",
+        limit: 5,
+        offset: 10,
+        sort: { key: "title", dir: "asc" },
+      },
+      baseUrl: "http://127.0.0.1:9",
+      dataDir: "/data",
+    });
+    expect(() =>
+      parseCliArgs([
+        ...BASE,
+        "--data-dir",
+        "/data",
+        "broken-outgoing-link-sources",
+        "--sort",
+        "broken_count",
+      ]),
+    ).toThrow(/--sort and --dir/);
+  });
 });
