@@ -22,6 +22,7 @@ import {
   type UserEdgeNeighbor,
   type SearchItemsResult,
   type SimilarItemHit,
+  type FolderMoveSuggestion,
   type Subscription,
   type UpdateItemInput,
 } from "@collector/api";
@@ -31,6 +32,8 @@ import {
   type AdjacentItemAnchor,
   type IndexSyncProgress,
   type VaultContext,
+  listFolderTree,
+  type FolderTreeNode,
 } from "@collector/core";
 import {
   assertDashboardItemSort,
@@ -47,6 +50,18 @@ export {
   assertDashboardItemSort,
   queryDashboardIndexPage,
 } from "./dashboard-index-page.js";
+
+function flattenFolderTreePaths(tree: FolderTreeNode[]): string[] {
+  const collected: string[] = [];
+  const walk = (nodes: FolderTreeNode[]) => {
+    for (const node of nodes) {
+      collected.push(node.path);
+      walk(node.children);
+    }
+  };
+  walk(tree);
+  return collected;
+}
 
 export interface ItemsIndexPort {
   listItemIdsByNavFilter(
@@ -124,6 +139,11 @@ export interface ItemsSearchServiceDeps {
     itemId: string,
     limit: number,
   ) => Promise<SimilarItemHit[]>;
+  suggestItemFolderMoves: (
+    itemId: string,
+    limit: number,
+    candidateFolderPaths: readonly string[],
+  ) => Promise<FolderMoveSuggestion[]>;
   /**
    * Host injects Node markdownlint normalize. Keep out of the static import
    * graph of this module so the Vite UI never pulls `node:fs` via `@collector/core/node`.
@@ -197,6 +217,10 @@ export interface ItemsSearchService {
     itemId: string,
     limit: number,
   ): Promise<SimilarItemHit[]>;
+  suggestItemFolderMoves(
+    itemId: string,
+    limit: number,
+  ): Promise<FolderMoveSuggestion[]>;
   resolveContentTextLinks(
     itemId: string,
     body: string,
@@ -390,6 +414,15 @@ export function createItemsSearchService(
     getItemById: crud.getItemById,
     getAdjacentItems: crud.getAdjacentItems,
     findSimilarItems: deps.findSimilarItems,
+    suggestItemFolderMoves: async (itemId, limit) => {
+      const { vault, path } = await deps.resolveActiveVault();
+      const tree = await listFolderTree(deps.getContext(), path, vault.id);
+      return deps.suggestItemFolderMoves(
+        itemId,
+        limit,
+        flattenFolderTreePaths(tree),
+      );
+    },
     resolveContentTextLinks: crud.resolveContentTextLinks,
     listItemBacklinks: crud.listItemBacklinks,
     listItemOutboundLinks: crud.listItemOutboundLinks,

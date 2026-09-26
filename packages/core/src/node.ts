@@ -14,12 +14,15 @@ export {
   listItemEmbeddingsForModel,
   putItemEmbedding,
   recomputeItemEmbedding,
+  suggestItemFolderMoves,
 } from "./embeddings/node.js";
 export type {
   EmbeddingEngine,
+  FolderMoveSuggestion,
   ItemEmbeddingRow,
   ItemEmbeddingSource,
   SimilarItemHit,
+  SuggestItemFolderMovesOptions,
 } from "./embeddings/node.js";
 
 export { normalizeMarkdown } from "./markdown/normalize-markdown.js";

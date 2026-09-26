@@ -163,6 +163,7 @@ export function ItemRowActions({
 
       <MoveItemDialog
         open={moveOpen}
+        itemId={itemId}
         itemLabel={itemLabel}
         currentFolderPath={currentFolderPath}
         tree={folders}

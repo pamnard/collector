@@ -1,5 +1,6 @@
 import type { SqlExecutor, SqlReader } from "@collector/db";
 import { mappingsHaveOverlappingIds } from "../util/id-rewrite-mappings.js";
+import { rebuildAllFolderCentroids } from "./folder-centroid-store.js";
 import type { ItemEmbeddingPut, ItemEmbeddingRow } from "./types.js";
 import { blobToVector, vectorToBlob } from "./vector-blob.js";
 
@@ -230,5 +231,12 @@ export async function rewriteItemEmbeddingIds(
       ) VALUES ${rowPlaceholders}`,
       binds,
     );
+  }
+
+  // Folder paths / item ids may have changed with the rewrite — rebuild
+  // centroids for every model touched by this batch.
+  const modelIds = [...new Set(remapped.map((row) => row.modelId))];
+  for (const modelId of modelIds) {
+    await rebuildAllFolderCentroids(db, modelId);
   }
 }

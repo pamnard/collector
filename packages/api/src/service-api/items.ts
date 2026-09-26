@@ -85,6 +85,12 @@ export interface SimilarItemHit {
   score: number;
 }
 
+/** Suggested destination folder for move dialog (hybrid centroid + name). */
+export interface FolderMoveSuggestion {
+  path: string;
+  score: number;
+}
+
 /** Parsed text link from note body (#409). Mirrors core ResolvedTextLink. */
 export interface ResolvedTextLink {
   kind: "wikilink" | "md";
@@ -185,6 +191,11 @@ export interface ItemsPort {
   getAdjacentItems(itemId: string): Promise<AdjacentItemsResult>;
   /** Top-k semantic neighbors from item embeddings (#413). */
   findSimilarItems(itemId: string, limit: number): Promise<SimilarItemHit[]>;
+  /** Top-k destination folders for move dialog (hybrid centroid + name). */
+  suggestItemFolderMoves(
+    itemId: string,
+    limit: number,
+  ): Promise<FolderMoveSuggestion[]>;
   /** Resolve `[[wikilink]]` / vault md links in a note body (#409). */
   resolveContentTextLinks(
     itemId: string,

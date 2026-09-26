@@ -10,6 +10,7 @@ export const INDEX_TABLES = [
   "source_refs",
   "items_fts",
   "item_embeddings",
+  "folder_centroids",
   "item_edges",
   "index_build",
 ] as const;
@@ -21,6 +22,15 @@ export const ITEM_EMBEDDINGS_COLUMNS = [
   "input_fingerprint",
   "dims",
   "vector",
+  "updated_at",
+] as const;
+
+export const FOLDER_CENTROIDS_COLUMNS = [
+  "folder_path",
+  "model_id",
+  "dims",
+  "item_count",
+  "sum_vector",
   "updated_at",
 ] as const;
 

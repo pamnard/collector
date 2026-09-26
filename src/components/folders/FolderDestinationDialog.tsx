@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { FolderInput } from "lucide-react";
+import { ChevronRight, FolderInput } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,6 +17,11 @@ export type FolderDestinationRow = {
   disabled?: boolean;
 };
 
+export type FolderSuggestionRow = {
+  path: string;
+  label: string;
+};
+
 export interface FolderDestinationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -27,7 +32,24 @@ export interface FolderDestinationDialogProps {
   confirmLabel?: string;
   /** Prefill selection when the dialog opens (`""` = vault root). */
   initialSelectedPath?: string;
+  /** Optional suggestions shown below the full destination list. */
+  suggestions?: readonly FolderSuggestionRow[];
   onConfirm: (path: string) => void;
+}
+
+function destinationRowClassName(input: {
+  disabled: boolean;
+  selected: boolean;
+}): string {
+  return cn(
+    "flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors",
+    input.disabled
+      ? "cursor-not-allowed text-muted-foreground opacity-50"
+      : "hover:bg-accent hover:text-accent-foreground",
+    input.selected && !input.disabled
+      ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-600/10 dark:text-indigo-400"
+      : null,
+  );
 }
 
 export function FolderDestinationDialog({
@@ -39,6 +61,7 @@ export function FolderDestinationDialog({
   listAriaLabel,
   confirmLabel = "Переместить",
   initialSelectedPath,
+  suggestions,
   onConfirm,
 }: FolderDestinationDialogProps) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -68,6 +91,14 @@ export function FolderDestinationDialog({
     onConfirm(path);
   };
 
+  const destinationByPath = new Map(
+    destinations.map((row) => [row.path, row] as const),
+  );
+  const visibleSuggestions = (suggestions ?? []).filter((row) => {
+    const dest = destinationByPath.get(row.path);
+    return dest !== undefined && dest.disabled !== true;
+  });
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-2xl">
@@ -94,21 +125,49 @@ export function FolderDestinationDialog({
                 aria-selected={selected}
                 disabled={disabled}
                 onClick={() => setSelectedPath(row.path)}
-                className={cn(
-                  "flex w-full items-center px-3 py-2.5 text-left text-sm transition-colors",
-                  disabled
-                    ? "cursor-not-allowed text-muted-foreground opacity-50"
-                    : "hover:bg-accent hover:text-accent-foreground",
-                  selected && !disabled
-                    ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-600/10 dark:text-indigo-400"
-                    : null,
-                )}
+                className={destinationRowClassName({ disabled, selected })}
               >
-                <span className="break-all font-mono">{row.label}</span>
+                <span className="min-w-0 flex-1 break-all font-mono">
+                  {row.label}
+                </span>
               </button>
             );
           })}
         </div>
+        {visibleSuggestions.length > 0 ? (
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-foreground">Возможно сюда</p>
+            <div
+              role="group"
+              aria-label="Предлагаемые папки"
+              className="overflow-hidden rounded-lg border border-border"
+            >
+              {visibleSuggestions.map((row) => {
+                const selected = selectedPath === row.path;
+                return (
+                  <button
+                    key={row.path}
+                    type="button"
+                    onClick={() => setSelectedPath(row.path)}
+                    className={destinationRowClassName({
+                      disabled: false,
+                      selected,
+                    })}
+                  >
+                    <span className="min-w-0 flex-1 break-all font-mono">
+                      {row.label}
+                    </span>
+                    <ChevronRight
+                      size={16}
+                      className="shrink-0 text-muted-foreground"
+                      aria-hidden
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
         <DialogFooter>
           <Button
             type="button"

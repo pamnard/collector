@@ -167,6 +167,7 @@ function createItemsReadMethods(
   | "getItemById"
   | "getAdjacentItems"
   | "findSimilarItems"
+  | "suggestItemFolderMoves"
   | "resolveContentTextLinks"
   | "listItemBacklinks"
   | "listItemOutboundLinks"
@@ -187,6 +188,11 @@ function createItemsReadMethods(
         itemId,
         limit,
       }) as ReturnType<ItemsPort["findSimilarItems"]>,
+    suggestItemFolderMoves: (itemId: string, limit: number) =>
+      transport.request("suggestItemFolderMoves", {
+        itemId,
+        limit,
+      }) as ReturnType<ItemsPort["suggestItemFolderMoves"]>,
     resolveContentTextLinks: (itemId: string, body: string) =>
       transport.request("resolveContentTextLinks", {
         itemId,
