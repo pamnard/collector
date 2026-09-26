@@ -41,6 +41,12 @@ import {
   parseDiscoverExtractCandidates,
   parseExtractItemCandidate,
 } from "./extract.js";
+import {
+  WANTED_LINK_TARGETS_FLAGS,
+  WANTED_LINK_TARGET_SOURCES_FLAGS,
+  parseWantedLinkTargets,
+  parseWantedLinkTargetSources,
+} from "./wanted-links.js";
 
 export type CommandParser = (argv: string[], rest: string[]) => CliCommand;
 
@@ -55,6 +61,8 @@ export const ALL_COMMAND_FLAGS = unionFlagSets(
   ATTACH_MEDIA_FLAGS,
   REPLACE_MEDIA_FLAGS,
   EXTRACT_ITEM_CANDIDATE_FLAGS,
+  WANTED_LINK_TARGETS_FLAGS,
+  WANTED_LINK_TARGET_SOURCES_FLAGS,
 );
 
 /** Literal keys stay aligned with `COMMAND_USAGE` / help output. */
@@ -83,6 +91,8 @@ export const COMMAND_PARSERS = {
   "set-item-cover": parseSetItemCover,
   "discover-extract-candidates": parseDiscoverExtractCandidates,
   "extract-item-candidate": parseExtractItemCandidate,
+  "wanted-link-targets": parseWantedLinkTargets,
+  "wanted-link-target-sources": parseWantedLinkTargetSources,
 } satisfies Record<string, CommandParser>;
 
 export type RegisteredCommandName = keyof typeof COMMAND_PARSERS;

@@ -77,6 +77,19 @@ export type CliCommand =
       extractorId: string;
       url: string;
       meta?: Record<string, string>;
+    }
+  | {
+      name: "wanted-link-targets";
+      limit: number;
+      offset: number;
+      sort: { key: "source_count" | "raw_target"; dir: "asc" | "desc" };
+    }
+  | {
+      name: "wanted-link-target-sources";
+      rawTarget: string;
+      resolveStatus: "unresolved" | "ambiguous";
+      limit?: number;
+      offset?: number;
     };
 
 export interface ParsedCliArgs {

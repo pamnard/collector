@@ -29,8 +29,10 @@ CLI always needs dial flags before the subcommand: `--base-url … --data-dir �
 | Set cover | `collector_set_item_cover` | `set-item-cover <item-id> <media-id>` |
 | Find Instagram-style extract matches (few sites only) | `collector_discover_extract_candidates` | `discover-extract-candidates <item-id>` |
 | Run one of those matches | `collector_extract_item_candidate` | `extract-item-candidate <item-id> --extractor-id … --url …` |
+| Wanted link targets (paged) | `collector_query_wanted_link_targets` | `wanted-link-targets [--limit N] [--offset N] [--sort …] [--dir …]` |
+| Sources for one wanted target | `collector_list_wanted_link_target_sources` | `wanted-link-target-sources --target … --status unresolved\|ambiguous [--limit N] [--offset N]` |
 
-Those two rows are **not** for ordinary web pages. For a normal link, download the page and use `update-item` / `collector_update_item`.
+Those two extract rows are **not** for ordinary web pages. For a normal link, download the page and use `update-item` / `collector_update_item`.
 
 ## Flag notes (CLI)
 
@@ -42,5 +44,9 @@ Those two rows are **not** for ordinary web pages. For a normal link, download t
 - Folder item list sort: `--sort` + `--dir` together (MCP: `sortKey` + `sortDir`).
   Keys: `title`, `created_at`, `updated_at`, `content_type`, `word_count`,
   `character_count`. Dirs: `asc`|`desc`. Omit both → `created_at` desc.
+- Wanted link targets: `--limit` / `--offset` (defaults 60 / 0). Optional `--sort` + `--dir`
+  together (`source_count`|`raw_target`, `asc`|`desc`; default `source_count` desc).
+  Sources for one target: required `--target` + `--status`; optional `--limit` / `--offset`
+  (omit both → service default 100 / 0).
 
 If a command is missing here, trust the installed binary / MCP catalog over this file.

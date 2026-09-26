@@ -246,7 +246,9 @@ function AppLayoutInner() {
             isDesktop={isDesktop}
             isSidebarOpen={isSidebarOpen}
             sidebarWidthPx={sidebarWidthPx}
-            sidebarCollapsed={sidebarCollapsed}
+            sidebarCollapsed={
+              sidebarCollapsed || pathname === "/links/wanted"
+            }
             sidebarPinned={sidebarPinned}
             sidebarContentProps={sidebarContentProps}
             sidebarPanelRef={sidebarPanelRef}
@@ -255,7 +257,12 @@ function AppLayoutInner() {
             onToggleSidebarPin={handleToggleSidebarPin}
             onCollapseAfterUse={handleCollapseAfterUse}
             onSidebarModeNavigation={markSidebarModeNavigation}
-            onRequestExpand={handleExpandSidebar}
+            onRequestExpand={() => {
+              if (pathname === "/links/wanted") {
+                return;
+              }
+              handleExpandSidebar();
+            }}
             onCloseSidebar={() => setIsSidebarOpen(false)}
             mainColumn={mainColumn}
           />

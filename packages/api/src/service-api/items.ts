@@ -127,6 +127,41 @@ export interface BacklinkSource {
 /** Neighbor connected by a user edge (#407). Same fields as {@link BacklinkSource}. */
 export type UserEdgeNeighbor = BacklinkSource;
 
+/** Parent row for wanted / missing link targets report (#595). */
+export type WantedLinkResolveStatus = "unresolved" | "ambiguous";
+
+export type WantedLinkKind = "wikilink" | "md";
+
+export interface WantedLinkTargetRow {
+  rawTarget: string;
+  resolveStatus: WantedLinkResolveStatus;
+  kind: WantedLinkKind;
+  sourceCount: number;
+}
+
+export interface WantedLinkTargetsResult {
+  total: number;
+  rows: WantedLinkTargetRow[];
+}
+
+export type WantedLinkTargetSortKey = "source_count" | "raw_target";
+
+export interface WantedLinkTargetSort {
+  key: WantedLinkTargetSortKey;
+  dir: "asc" | "desc";
+}
+
+export interface WantedLinkSourceRow {
+  itemId: string;
+  title: string;
+  folderPath: string | null;
+}
+
+export interface WantedLinkSourcesResult {
+  total: number;
+  rows: WantedLinkSourceRow[];
+}
+
 /** Items / search / dashboard loaders (#361 / #362). */
 export interface ItemsPort {
   /**
@@ -205,6 +240,19 @@ export interface ItemsPort {
   listItemBacklinks(itemId: string): Promise<BacklinkSource[]>;
   /** Outgoing text links from the current item body (#457). */
   listItemOutboundLinks(itemId: string): Promise<OutboundTextLink[]>;
+  /**
+   * Paginated wanted / missing text-link targets (#595).
+   * Same contract for the report page and a future dashboard top-N widget.
+   */
+  queryWantedLinkTargets(
+    page: { limit: number; offset: number },
+    sort?: WantedLinkTargetSort,
+  ): Promise<WantedLinkTargetsResult>;
+  /** Source notes for one wanted target — load on expand (#595). */
+  listWantedLinkTargetSources(
+    target: { rawTarget: string; resolveStatus: WantedLinkResolveStatus },
+    page?: { limit: number; offset: number },
+  ): Promise<WantedLinkSourcesResult>;
   /** Undirected user edges for one item (#407). */
   addUserEdge(itemId: string, otherItemId: string): Promise<void>;
   removeUserEdge(itemId: string, otherItemId: string): Promise<void>;

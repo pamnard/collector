@@ -33,6 +33,14 @@ export type {
   SimilarItemHit,
   FolderMoveSuggestion,
   UserEdgeNeighbor,
+  WantedLinkKind,
+  WantedLinkResolveStatus,
+  WantedLinkSourceRow,
+  WantedLinkSourcesResult,
+  WantedLinkTargetRow,
+  WantedLinkTargetSort,
+  WantedLinkTargetSortKey,
+  WantedLinkTargetsResult,
 } from "./items.js";
 
 export type { BootPort } from "./boot.js";

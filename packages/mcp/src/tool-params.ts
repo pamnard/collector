@@ -23,6 +23,10 @@ export function createToolParams() {
       z.array(z.string().min(1)).optional().describe(description),
     requiredInt: (description: string) =>
       z.number().int().describe(description),
+    optionalNonNegInt: (description: string) =>
+      z.number().int().min(0).optional().describe(description),
+    optionalPositiveInt: (description: string) =>
+      z.number().int().positive().optional().describe(description),
     optionalPositiveNumber: (description: string) =>
       z.number().positive().optional().describe(description),
     contentTypeDefaultNote: (description: string) =>

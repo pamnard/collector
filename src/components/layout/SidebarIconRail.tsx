@@ -1,4 +1,4 @@
-import { Folder, Hash, Moon, Search, Settings, Sun } from "lucide-react";
+import { Folder, Hash, Link2Off, Moon, Search, Settings, Sun } from "lucide-react";
 import type { Theme } from "../../hooks/useTheme";
 import type { SidebarMode } from "../../types/sidebar-mode";
 import {
@@ -14,6 +14,11 @@ import {
 interface SidebarIconRailProps {
   mode: SidebarMode;
   onModeChange: (mode: SidebarMode) => void;
+  /** Active when main content is the wanted-links report page — not a sidebar panel mode. */
+  wantedLinksActive: boolean;
+  /** Red dot on the wanted-links rail icon when the vault has broken targets. */
+  wantedLinksPresent: boolean;
+  onOpenWantedLinks: () => void;
   theme: Theme;
   onToggleTheme: () => void;
 }
@@ -50,6 +55,9 @@ function CollectorMark({ className }: { className?: string }) {
 export function SidebarIconRail({
   mode,
   onModeChange,
+  wantedLinksActive,
+  wantedLinksPresent,
+  onOpenWantedLinks,
   theme,
   onToggleTheme,
 }: SidebarIconRailProps) {
@@ -72,7 +80,7 @@ export function SidebarIconRail({
                   <SidebarMenuItem key={item.mode}>
                     <SidebarMenuButton
                       tooltip={{ children: item.label, hidden: false }}
-                      isActive={mode === item.mode}
+                      isActive={mode === item.mode && !wantedLinksActive}
                       onClick={() => onModeChange(item.mode)}
                       className={railButtonClassName}
                     >
@@ -81,6 +89,28 @@ export function SidebarIconRail({
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    tooltip={{ children: "Битые ссылки", hidden: false }}
+                    isActive={wantedLinksActive}
+                    onClick={onOpenWantedLinks}
+                    className={railButtonClassName}
+                  >
+                    <span className="relative inline-flex">
+                      <Link2Off size={20} strokeWidth={2.5} />
+                      {wantedLinksPresent ? (
+                        <span
+                          className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-neutral-900"
+                          aria-hidden
+                        />
+                      ) : null}
+                    </span>
+                    <span className="sr-only">
+                      Битые ссылки
+                      {wantedLinksPresent ? " — есть битые ссылки" : ""}
+                    </span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

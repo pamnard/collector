@@ -12,6 +12,11 @@ const ItemDetailPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })),
 );
+const WantedLinksPage = lazy(() =>
+  import("./pages/WantedLinksPage").then((m) => ({
+    default: m.WantedLinksPage,
+  })),
+);
 
 /** Keeps AppLayout mounted while page route chunks resolve.
  * No layout status copy — loading belongs in AlertStack (#801 regression). */
@@ -33,6 +38,7 @@ function App() {
               <Route path="/" element={<DashboardPage />} />
               <Route path="/item/*" element={<ItemDetailPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/links/wanted" element={<WantedLinksPage />} />
             </Route>
           </Route>
         </Routes>

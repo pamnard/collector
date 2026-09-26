@@ -267,4 +267,32 @@ describe("COLLECTOR_MCP_TOOL_DEFS table ↔ MCP server registration", () => {
     const url = extract!.params.find((param) => param.name === "url");
     expect(url?.description).toMatch(/discover match/i);
   });
+
+  it("documents wanted-link report tools for agents (#595)", () => {
+    const targets = COLLECTOR_MCP_TOOLS.find(
+      (tool) => tool.name === "collector_query_wanted_link_targets",
+    );
+    expect(targets).toBeDefined();
+    expect(targets!.description).toMatch(/do not resolve|missing/i);
+    expect(targets!.description).not.toMatch(/item_edges/i);
+    expect(targets!.description).toMatch(/total/i);
+    expect(targets!.description).toMatch(
+      /collector_list_wanted_link_target_sources/,
+    );
+    expect(targets!.params.some((p) => p.name === "limit")).toBe(true);
+    expect(targets!.params.some((p) => p.name === "offset")).toBe(true);
+
+    const sources = COLLECTOR_MCP_TOOLS.find(
+      (tool) => tool.name === "collector_list_wanted_link_target_sources",
+    );
+    expect(sources).toBeDefined();
+    expect(sources!.description).toMatch(/collector_get_item/);
+    expect(sources!.description).not.toMatch(/service default/i);
+    const rawTarget = sources!.params.find((p) => p.name === "rawTarget");
+    expect(rawTarget?.required).toBe(true);
+    const resolveStatus = sources!.params.find(
+      (p) => p.name === "resolveStatus",
+    );
+    expect(resolveStatus?.required).toBe(true);
+  });
 });

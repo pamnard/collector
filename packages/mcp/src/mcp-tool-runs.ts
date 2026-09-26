@@ -5,6 +5,7 @@
 
 import type { CollectorHostServiceClient } from "@collector/client";
 import type { ContentType } from "@collector/shared";
+import { SEARCH_PAGE_SIZE } from "@collector/service";
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { COLLECTOR_MCP_TOOL_DEFS } from "./mcp-tool-defs.js";
@@ -236,5 +237,59 @@ export const COLLECTOR_MCP_TOOL_RUNS = {
       ...(meta === undefined ? {} : { meta }),
     });
     return { ok: true };
+  },
+
+  collector_query_wanted_link_targets: (args, client) => {
+    const limit =
+      args.limit === undefined ? SEARCH_PAGE_SIZE : (args.limit as number);
+    const offset = args.offset === undefined ? 0 : (args.offset as number);
+    const sortKey = args.sortKey as string | undefined;
+    const sortDir = args.sortDir as string | undefined;
+    let sort:
+      | { key: "source_count" | "raw_target"; dir: "asc" | "desc" }
+      | undefined;
+    if (sortKey === undefined && sortDir === undefined) {
+      sort = { key: "source_count", dir: "desc" };
+    } else if (sortKey === undefined || sortDir === undefined) {
+      throw new Error(
+        "collector_query_wanted_link_targets: sortKey and sortDir must be used together",
+      );
+    } else if (sortKey !== "source_count" && sortKey !== "raw_target") {
+      throw new Error(
+        "collector_query_wanted_link_targets: sortKey must be source_count or raw_target",
+      );
+    } else if (sortDir !== "asc" && sortDir !== "desc") {
+      throw new Error(
+        "collector_query_wanted_link_targets: sortDir must be asc or desc",
+      );
+    } else {
+      sort = { key: sortKey, dir: sortDir };
+    }
+    return client.items.queryWantedLinkTargets({ limit, offset }, sort);
+  },
+
+  collector_list_wanted_link_target_sources: (args, client) => {
+    const resolveStatus = args.resolveStatus as string;
+    if (resolveStatus !== "unresolved" && resolveStatus !== "ambiguous") {
+      throw new Error(
+        "collector_list_wanted_link_target_sources: resolveStatus must be unresolved or ambiguous",
+      );
+    }
+    const limit = args.limit as number | undefined;
+    const offset = args.offset as number | undefined;
+    const page =
+      limit === undefined && offset === undefined
+        ? undefined
+        : {
+            limit: limit ?? 100,
+            offset: offset ?? 0,
+          };
+    return client.items.listWantedLinkTargetSources(
+      {
+        rawTarget: args.rawTarget as string,
+        resolveStatus,
+      },
+      page,
+    );
   },
 } as const satisfies Record<ToolName, McpToolRun>;
