@@ -272,6 +272,32 @@ export async function runCollectorCli(
       );
       return 0;
     }
+    if (cmd.name === "wanted-link-targets") {
+      const result = await client.items.queryWantedLinkTargets(
+        { limit: cmd.limit, offset: cmd.offset },
+        cmd.sort,
+      );
+      io.stdout(JSON.stringify(result, null, 2));
+      return 0;
+    }
+    if (cmd.name === "wanted-link-target-sources") {
+      const page =
+        cmd.limit === undefined && cmd.offset === undefined
+          ? undefined
+          : {
+              limit: cmd.limit ?? 100,
+              offset: cmd.offset ?? 0,
+            };
+      const result = await client.items.listWantedLinkTargetSources(
+        {
+          rawTarget: cmd.rawTarget,
+          resolveStatus: cmd.resolveStatus,
+        },
+        page,
+      );
+      io.stdout(JSON.stringify(result, null, 2));
+      return 0;
+    }
     const _exhaustive: never = cmd;
     throw new Error(`unhandled command: ${JSON.stringify(_exhaustive)}`);
   } catch (error) {

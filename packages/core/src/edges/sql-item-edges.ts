@@ -8,8 +8,51 @@ import {
 } from "../index/sql-index-helpers.js";
 import { textLinkCatalogIndexesFromItems } from "../links/text-links-reindex.js";
 import { textEdgeRowsFromBody } from "./text-edge-rows.js";
-import type { ItemEdgeInsertRow, UserEdgeNeighbor } from "./types.js";
+import type {
+  ItemEdgeInsertRow,
+  UserEdgeNeighbor,
+  WantedLinkKind,
+  WantedLinkResolveStatus,
+  WantedLinkSourcesResult,
+  WantedLinkTargetSort,
+  WantedLinkTargetsResult,
+} from "./types.js";
 import { canonicalUserEdgePair } from "./user-edge-canonical.js";
+
+const WANTED_RESOLVE_STATUSES = ["unresolved", "ambiguous"] as const;
+
+function assertWantedPage(page: { limit: number; offset: number }): void {
+  if (
+    typeof page.limit !== "number" ||
+    !Number.isFinite(page.limit) ||
+    !Number.isInteger(page.limit) ||
+    page.limit <= 0
+  ) {
+    throw new Error("wanted link targets page.limit must be a positive integer");
+  }
+  if (
+    typeof page.offset !== "number" ||
+    !Number.isFinite(page.offset) ||
+    !Number.isInteger(page.offset) ||
+    page.offset < 0
+  ) {
+    throw new Error(
+      "wanted link targets page.offset must be a non-negative integer",
+    );
+  }
+}
+
+function wantedTargetsOrderBy(sort?: WantedLinkTargetSort): string {
+  const key = sort?.key ?? "source_count";
+  const dir = (sort?.dir ?? "desc").toUpperCase() === "ASC" ? "ASC" : "DESC";
+  if (key === "raw_target") {
+    return `raw_target ${dir}, resolve_status ASC`;
+  }
+  if (key !== "source_count") {
+    throw new Error(`wanted link targets sort.key unsupported: ${String(key)}`);
+  }
+  return `source_count ${dir}, raw_target ASC, resolve_status ASC`;
+}
 
 const EDGE_INSERT_COLUMNS = 11;
 
@@ -127,6 +170,129 @@ export async function listTextBacklinkSources(
     [targetItemId],
   );
   return rows.map((row) => ({ id: row.id, title: row.title }));
+}
+
+/**
+ * Paginated unique unresolved/ambiguous text-link targets for a vault (#595).
+ * Parent grain for the wanted-links report / future top-N widget.
+ */
+export async function queryWantedLinkTargets(
+  selector: SqlIndexSelector,
+  vaultId: string,
+  page: { limit: number; offset: number },
+  sort?: WantedLinkTargetSort,
+): Promise<WantedLinkTargetsResult> {
+  assertWantedPage(page);
+  const orderBy = wantedTargetsOrderBy(sort);
+
+  const totalRows = await selector.select<{ total: number }>(
+    `SELECT COUNT(*) AS total FROM (
+       SELECT 1
+       FROM item_edges
+       WHERE vault_id = ?
+         AND source = 'text'
+         AND resolve_status IN ('unresolved', 'ambiguous')
+       GROUP BY raw_target, resolve_status
+     )`,
+    [vaultId],
+  );
+  const total = Number(totalRows[0]?.total ?? 0);
+
+  const rows = await selector.select<{
+    raw_target: string;
+    resolve_status: string;
+    kind: string;
+    source_count: number;
+  }>(
+    `SELECT raw_target,
+            resolve_status,
+            MIN(kind) AS kind,
+            COUNT(DISTINCT from_id) AS source_count
+     FROM item_edges
+     WHERE vault_id = ?
+       AND source = 'text'
+       AND resolve_status IN ('unresolved', 'ambiguous')
+     GROUP BY raw_target, resolve_status
+     ORDER BY ${orderBy}
+     LIMIT ? OFFSET ?`,
+    [vaultId, page.limit, page.offset],
+  );
+
+  return {
+    total,
+    rows: rows.map((row) => ({
+      rawTarget: row.raw_target,
+      resolveStatus: row.resolve_status as WantedLinkResolveStatus,
+      kind: row.kind as WantedLinkKind,
+      sourceCount: Number(row.source_count),
+    })),
+  };
+}
+
+/**
+ * Source notes that contain one wanted (unresolved/ambiguous) target (#595).
+ * Loaded on report-row expand — not embedded in {@link queryWantedLinkTargets}.
+ */
+export async function listWantedLinkTargetSources(
+  selector: SqlIndexSelector,
+  vaultId: string,
+  target: { rawTarget: string; resolveStatus: WantedLinkResolveStatus },
+  page: { limit: number; offset: number } = { limit: 100, offset: 0 },
+): Promise<WantedLinkSourcesResult> {
+  assertWantedPage(page);
+  if (
+    !(WANTED_RESOLVE_STATUSES as readonly string[]).includes(
+      target.resolveStatus,
+    )
+  ) {
+    throw new Error(
+      `wanted link sources resolveStatus unsupported: ${target.resolveStatus}`,
+    );
+  }
+
+  const totalRows = await selector.select<{ total: number }>(
+    `SELECT COUNT(DISTINCT from_id) AS total
+     FROM item_edges
+     WHERE vault_id = ?
+       AND source = 'text'
+       AND raw_target = ?
+       AND resolve_status = ?`,
+    [vaultId, target.rawTarget, target.resolveStatus],
+  );
+  const total = Number(totalRows[0]?.total ?? 0);
+
+  const rows = await selector.select<{
+    id: string;
+    title: string;
+    folder_path: string | null;
+  }>(
+    `SELECT i.id AS id, i.title AS title, i.folder_path AS folder_path
+     FROM item_edges e
+     INNER JOIN items i ON i.id = e.from_id
+     WHERE e.vault_id = ?
+       AND e.source = 'text'
+       AND e.raw_target = ?
+       AND e.resolve_status = ?
+     GROUP BY i.id, i.title, i.folder_path
+     ORDER BY i.title ASC, i.id ASC
+     LIMIT ? OFFSET ?`,
+    [
+      vaultId,
+      target.rawTarget,
+      target.resolveStatus,
+      page.limit,
+      page.offset,
+    ],
+  );
+
+  return {
+    total,
+    rows: rows.map((row) => ({
+      itemId: row.id,
+      title: row.title,
+      folderPath: row.folder_path,
+    })),
+  };
 }
 
 export async function addUserEdge(

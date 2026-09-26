@@ -223,6 +223,47 @@ describe("MCP tools over host HTTP (#556)", () => {
     await host.close();
   });
 
+  it("queryWantedLinkTargets via MCP on empty vault (#595)", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-mcp-wanted-"));
+    dirs.push(dataDir);
+    const host = await startServiceHost({ dataDir, host: "127.0.0.1", port: 0 });
+    const client = await dialHttpClient(host.baseUrl, dataDir);
+    const mcp = createCollectorMcpServer(createStaticMcpHostSession(client));
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const mcpClient = new Client({ name: "test-wanted", version: "0.0.1" });
+    await Promise.all([
+      mcp.connect(serverTransport),
+      mcpClient.connect(clientTransport),
+    ]);
+
+    const listed = await mcpClient.listTools();
+    expect(
+      listed.tools.some((t) => t.name === "collector_query_wanted_link_targets"),
+    ).toBe(true);
+    expect(
+      listed.tools.some(
+        (t) => t.name === "collector_list_wanted_link_target_sources",
+      ),
+    ).toBe(true);
+
+    const result = await mcpClient.callTool({
+      name: "collector_query_wanted_link_targets",
+      arguments: { limit: 5, offset: 0 },
+    });
+    expect(result.isError).toBeFalsy();
+    const body = JSON.parse(
+      (result.content as { text: string }[])[0]!.text,
+    ) as { total: number; rows: unknown[] };
+    expect(body.total).toBe(0);
+    expect(body.rows).toEqual([]);
+
+    await mcpClient.close();
+    await mcp.close();
+    await client.close();
+    await host.close();
+  });
+
   it("update content_type + tags by name and source round-trip (#351 / #348 / #354)", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "collector-mcp-351-"));
     dirs.push(dataDir);

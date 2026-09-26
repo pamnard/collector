@@ -38,6 +38,8 @@ export const ITEMS_PORT_KEYS = [
   "resolveContentTextLinks",
   "listItemBacklinks",
   "listItemOutboundLinks",
+  "queryWantedLinkTargets",
+  "listWantedLinkTargetSources",
   "addUserEdge",
   "removeUserEdge",
   "listUserEdges",

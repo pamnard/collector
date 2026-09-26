@@ -1,4 +1,10 @@
 import type { ItemFile, MediaFileMeta, SourceRef, Tag, VaultMeta } from "@collector/shared";
+import type {
+  WantedLinkResolveStatus,
+  WantedLinkSourcesResult,
+  WantedLinkTargetSort,
+  WantedLinkTargetsResult,
+} from "../edges/types.js";
 import type { NavSearchFilter } from "../search/nav-filter.js";
 
 export interface VaultItemStatMeta {
@@ -246,6 +252,21 @@ export interface VaultIndexAdapter {
   listTextBacklinkSources(
     targetItemId: string,
   ): Promise<Array<{ id: string; title: string }>>;
+  /** Paginated wanted / missing text-link targets (#595). */
+  queryWantedLinkTargets(
+    vaultId: string,
+    page: { limit: number; offset: number },
+    sort?: WantedLinkTargetSort,
+  ): Promise<WantedLinkTargetsResult>;
+  /** Source notes for one wanted target (#595). */
+  listWantedLinkTargetSources(
+    vaultId: string,
+    target: {
+      rawTarget: string;
+      resolveStatus: WantedLinkResolveStatus;
+    },
+    page?: { limit: number; offset: number },
+  ): Promise<WantedLinkSourcesResult>;
 }
 
 export interface ItemIdPageOptions {

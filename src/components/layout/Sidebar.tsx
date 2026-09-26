@@ -20,6 +20,7 @@ import { SidebarSearchPanel } from "./SidebarSearchPanel";
 import { SidebarSettingsNav } from "./SidebarSettingsNav";
 import { SidebarTags } from "./SidebarTags";
 import { useSidebarTags } from "./use-sidebar-tags";
+import { useWantedLinksPresence } from "../../hooks/useWantedLinksPresence";
 
 interface AppSidebarProps {
   variant?: "drawer" | "docked";
@@ -100,6 +101,7 @@ export function Sidebar({
     finishSelection();
   };
   const tags = useSidebarTags(vaultRevision);
+  const wantedLinksPresent = useWantedLinksPresence(vaultRevision, pathname);
 
   const goToDashboard = (filter: NavFilter) => {
     onFilterSelect(filter);
@@ -117,10 +119,15 @@ export function Sidebar({
       navigate("/settings?section=general");
       return;
     }
-    if (pathname === "/settings") {
+    if (pathname === "/settings" || pathname === "/links/wanted") {
       onSidebarModeNavigation?.();
       navigate("/");
     }
+  };
+
+  const openWantedLinks = () => {
+    navigate("/links/wanted");
+    finishSelection();
   };
 
   const pinLabel = pinned ? "Открепить сайдбар" : "Закрепить сайдбар";
@@ -144,14 +151,16 @@ export function Sidebar({
         <SidebarIconRail
           mode={mode}
           onModeChange={handleModeChange}
+          wantedLinksActive={pathname === "/links/wanted"}
+          wantedLinksPresent={wantedLinksPresent}
+          onOpenWantedLinks={openWantedLinks}
           theme={theme}
           onToggleTheme={onToggleTheme}
         />
 
-        {variant === "docked" || !collapsed ? (
+        {collapsed ? null : (
           <div
             className="flex min-w-0 flex-1 flex-col overflow-hidden"
-            inert={variant === "docked" && collapsed ? true : undefined}
           >
             <div className="box-border flex shrink-0 items-center gap-2 px-4 py-3">
               <div className="min-w-0 flex-1 text-sm font-medium text-neutral-900 dark:text-neutral-100">
@@ -217,7 +226,7 @@ export function Sidebar({
               </SidebarContent>
             )}
           </div>
-        ) : null}
+        )}
       </ShadcnSidebar>
     </SidebarProvider>
   );

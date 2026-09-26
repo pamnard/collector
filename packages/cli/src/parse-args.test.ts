@@ -406,4 +406,113 @@ describe("parseCliArgs (#172/#173 / #550 G)", () => {
       dataDir: "/data",
     });
   });
+
+  it("parses wanted-link-targets with defaults and optional page/sort (#595)", () => {
+    expect(
+      parseCliArgs([...BASE, "--data-dir", "/data", "wanted-link-targets"]),
+    ).toEqual({
+      command: {
+        name: "wanted-link-targets",
+        limit: 60,
+        offset: 0,
+        sort: { key: "source_count", dir: "desc" },
+      },
+      baseUrl: "http://127.0.0.1:9",
+      dataDir: "/data",
+    });
+    expect(
+      parseCliArgs([
+        ...BASE,
+        "--data-dir",
+        "/data",
+        "wanted-link-targets",
+        "--limit",
+        "5",
+        "--offset",
+        "10",
+        "--sort",
+        "raw_target",
+        "--dir",
+        "asc",
+      ]),
+    ).toEqual({
+      command: {
+        name: "wanted-link-targets",
+        limit: 5,
+        offset: 10,
+        sort: { key: "raw_target", dir: "asc" },
+      },
+      baseUrl: "http://127.0.0.1:9",
+      dataDir: "/data",
+    });
+    expect(() =>
+      parseCliArgs([
+        ...BASE,
+        "--data-dir",
+        "/data",
+        "wanted-link-targets",
+        "--sort",
+        "source_count",
+      ]),
+    ).toThrow(/--sort and --dir/);
+  });
+
+  it("parses wanted-link-target-sources (#595)", () => {
+    expect(
+      parseCliArgs([
+        ...BASE,
+        "--data-dir",
+        "/data",
+        "wanted-link-target-sources",
+        "--target",
+        "Missing Note",
+        "--status",
+        "unresolved",
+      ]),
+    ).toEqual({
+      command: {
+        name: "wanted-link-target-sources",
+        rawTarget: "Missing Note",
+        resolveStatus: "unresolved",
+      },
+      baseUrl: "http://127.0.0.1:9",
+      dataDir: "/data",
+    });
+    expect(
+      parseCliArgs([
+        ...BASE,
+        "--data-dir",
+        "/data",
+        "wanted-link-target-sources",
+        "--target",
+        "x",
+        "--status",
+        "ambiguous",
+        "--limit",
+        "20",
+        "--offset",
+        "5",
+      ]),
+    ).toEqual({
+      command: {
+        name: "wanted-link-target-sources",
+        rawTarget: "x",
+        resolveStatus: "ambiguous",
+        limit: 20,
+        offset: 5,
+      },
+      baseUrl: "http://127.0.0.1:9",
+      dataDir: "/data",
+    });
+    expect(() =>
+      parseCliArgs([
+        ...BASE,
+        "--data-dir",
+        "/data",
+        "wanted-link-target-sources",
+        "--target",
+        "x",
+      ]),
+    ).toThrow(/Usage: collector-cli wanted-link-target-sources/);
+  });
 });

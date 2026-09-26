@@ -2,11 +2,19 @@ import type { ItemContentUpsert, ItemIdRewriteMapping } from "../../adapters/typ
 import {
   addUserEdge as addUserEdgeImpl,
   listTextBacklinkSources as listTextBacklinkSourcesImpl,
+  listWantedLinkTargetSources as listWantedLinkTargetSourcesImpl,
   listUserEdges as listUserEdgesImpl,
+  queryWantedLinkTargets as queryWantedLinkTargetsImpl,
   rebuildVaultTextEdges as rebuildVaultTextEdgesImpl,
   removeUserEdge as removeUserEdgeImpl,
   replaceTextEdgesForItem as replaceTextEdgesForItemImpl,
 } from "../../edges/sql-item-edges.js";
+import type {
+  WantedLinkResolveStatus,
+  WantedLinkSourcesResult,
+  WantedLinkTargetSort,
+  WantedLinkTargetsResult,
+} from "../../edges/types.js";
 import { invalidateAllVaultIdTitleCatalogs } from "../../links/vault-id-title-catalog.js";
 import { rewriteItemIds as rewriteItemIdsImpl } from "../sql-index-rewrite.js";
 import { requireSqlSelect } from "./require-select.js";
@@ -43,6 +51,20 @@ export const edgesSelectStubs = {
     _targetItemId: string,
   ): Promise<Array<{ id: string; title: string }>> {
     return requireSqlSelect("listTextBacklinkSources");
+  },
+  queryWantedLinkTargets(
+    _vaultId: string,
+    _page: { limit: number; offset: number },
+    _sort?: WantedLinkTargetSort,
+  ): Promise<WantedLinkTargetsResult> {
+    return requireSqlSelect("queryWantedLinkTargets");
+  },
+  listWantedLinkTargetSources(
+    _vaultId: string,
+    _target: { rawTarget: string; resolveStatus: WantedLinkResolveStatus },
+    _page?: { limit: number; offset: number },
+  ): Promise<WantedLinkSourcesResult> {
+    return requireSqlSelect("listWantedLinkTargetSources");
   },
 };
 
@@ -115,6 +137,22 @@ export function createEdgesStorePort(
 
     listTextBacklinkSources(targetItemId: string) {
       return listTextBacklinkSourcesImpl(selector, targetItemId);
+    },
+
+    queryWantedLinkTargets(
+      vaultId: string,
+      page: { limit: number; offset: number },
+      sort?: WantedLinkTargetSort,
+    ) {
+      return queryWantedLinkTargetsImpl(selector, vaultId, page, sort);
+    },
+
+    listWantedLinkTargetSources(
+      vaultId: string,
+      target: { rawTarget: string; resolveStatus: WantedLinkResolveStatus },
+      page?: { limit: number; offset: number },
+    ) {
+      return listWantedLinkTargetSourcesImpl(selector, vaultId, target, page);
     },
   };
 }

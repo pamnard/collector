@@ -7,6 +7,7 @@ describe("resolveAppLayoutRouteChrome", () => {
     assert.deepEqual(resolveAppLayoutRouteChrome("/", null), {
       isItemRoute: false,
       isSettingsRoute: false,
+      isWantedLinksRoute: false,
       settingsSection: "general",
       showCardHeader: true,
       headerVariant: "list",
@@ -17,6 +18,7 @@ describe("resolveAppLayoutRouteChrome", () => {
     assert.deepEqual(resolveAppLayoutRouteChrome("/settings", "telegram"), {
       isItemRoute: false,
       isSettingsRoute: true,
+      isWantedLinksRoute: false,
       settingsSection: "telegram",
       showCardHeader: true,
       headerVariant: "settings",
@@ -27,9 +29,21 @@ describe("resolveAppLayoutRouteChrome", () => {
     assert.deepEqual(resolveAppLayoutRouteChrome("/item/abc", null), {
       isItemRoute: true,
       isSettingsRoute: false,
+      isWantedLinksRoute: false,
       settingsSection: "general",
       showCardHeader: true,
       headerVariant: "item",
+    });
+  });
+
+  it("marks wanted-links report route", () => {
+    assert.deepEqual(resolveAppLayoutRouteChrome("/links/wanted", null), {
+      isItemRoute: false,
+      isSettingsRoute: false,
+      isWantedLinksRoute: true,
+      settingsSection: "general",
+      showCardHeader: true,
+      headerVariant: "wanted-links",
     });
   });
 

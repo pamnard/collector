@@ -11,7 +11,7 @@ import { SettingsHeaderBreadcrumbs } from "./SettingsHeaderBreadcrumbs";
 import { useItemChromeHeader } from "./item-chrome";
 
 interface HeaderProps {
-  variant: "list" | "item" | "settings";
+  variant: "list" | "item" | "settings" | "wanted-links";
   onOpenSidebar: () => void;
   viewMode?: ViewMode;
   onViewModeChange?: (mode: ViewMode) => void;
@@ -79,6 +79,10 @@ export function Header({
           </ButtonGroup>
         ) : variant === "settings" ? (
           <SettingsHeaderBreadcrumbs section={settingsSection} />
+        ) : variant === "wanted-links" ? (
+          <div className="min-w-0 text-sm font-medium text-neutral-900 dark:text-neutral-100">
+            Битые ссылки
+          </div>
         ) : (
           onFolderSelect && (
             <ItemHeaderBreadcrumbs

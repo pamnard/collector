@@ -152,3 +152,173 @@ describe("item_edges SQL (#407)", () => {
     expect(await index.listUserEdges(meta.id, itemA)).toEqual([]);
   });
 });
+
+describe("wanted link targets query (#595)", () => {
+  const suite = createSqlIndexTestSuite();
+  suite.registerCleanup();
+
+  async function seedNote(
+    index: Awaited<ReturnType<typeof suite.openVaultIndex>>["index"],
+    vaultId: string,
+    itemId: string,
+    title: string,
+    body: string,
+    folderPath: string | null = null,
+  ): Promise<void> {
+    const timestamp = new Date().toISOString();
+    await index.upsertItemMetadata(
+      {
+        item: noteItemFields(vaultId, itemId, {
+          title,
+          folder_path: folderPath,
+          created_at: timestamp,
+          updated_at: timestamp,
+        }),
+        fileMtimeMs: 1,
+      },
+      vaultId,
+    );
+    await index.upsertItemContent({
+      itemId,
+      title,
+      description: "",
+      content: body,
+      hasContentFile: true,
+      sourceRef: null,
+    });
+  }
+
+  it("returns empty when no unresolved edges", async () => {
+    const { index, vault } = await suite.openVaultIndex("collector-wanted-empty-");
+    await seedNote(
+      index,
+      vault.meta.id,
+      "Inbox/ok.md",
+      "Ok",
+      "# Ok\n",
+    );
+    await index.rebuildVaultTextEdges(vault.meta.id);
+    const result = await index.queryWantedLinkTargets(vault.meta.id, {
+      limit: 50,
+      offset: 0,
+    });
+    expect(result).toEqual({ total: 0, rows: [] });
+  });
+
+  it("groups unresolved by raw_target; ambiguous stays separate; paginates; lists sources", async () => {
+    const { index, vault } = await suite.openVaultIndex("collector-wanted-group-");
+    const vaultId = vault.meta.id;
+
+    await seedNote(index, vaultId, "Inbox/alpha.md", "Alpha", "[[Missing]]\n", "Inbox");
+    await seedNote(index, vaultId, "Notes/beta.md", "Beta", "Also [[Missing]]\n", "Notes");
+    await seedNote(
+      index,
+      vaultId,
+      "Notes/dup-a.md",
+      "Dup A",
+      "[[AmbiguousTitle]]\n",
+      "Notes",
+    );
+    await seedNote(
+      index,
+      vaultId,
+      "Other/dup-b.md",
+      "AmbiguousTitle",
+      "# AmbiguousTitle\n",
+      "Other",
+    );
+    await seedNote(
+      index,
+      vaultId,
+      "Other/dup-c.md",
+      "AmbiguousTitle",
+      "# AmbiguousTitle\n",
+      "Other",
+    );
+    await seedNote(
+      index,
+      vaultId,
+      "Shelf/gamma.md",
+      "Gamma",
+      "See [[AmbiguousTitle]]\n",
+      "Shelf",
+    );
+    await seedNote(
+      index,
+      vaultId,
+      "Shelf/only.md",
+      "Only",
+      "[[Lonely]]\n",
+      "Shelf",
+    );
+
+    await index.rebuildVaultTextEdges(vaultId);
+
+    const all = await index.queryWantedLinkTargets(
+      vaultId,
+      { limit: 50, offset: 0 },
+      { key: "source_count", dir: "desc" },
+    );
+    expect(all.total).toBeGreaterThanOrEqual(2);
+
+    const missing = all.rows.find(
+      (row) => row.rawTarget === "Missing" && row.resolveStatus === "unresolved",
+    );
+    expect(missing).toMatchObject({
+      rawTarget: "Missing",
+      resolveStatus: "unresolved",
+      sourceCount: 2,
+    });
+
+    const ambiguous = all.rows.find(
+      (row) =>
+        row.rawTarget === "AmbiguousTitle" &&
+        row.resolveStatus === "ambiguous",
+    );
+    expect(ambiguous).toMatchObject({
+      rawTarget: "AmbiguousTitle",
+      resolveStatus: "ambiguous",
+      sourceCount: 2,
+    });
+
+    const page1 = await index.queryWantedLinkTargets(vaultId, {
+      limit: 1,
+      offset: 0,
+    });
+    expect(page1.total).toBe(all.total);
+    expect(page1.rows).toHaveLength(1);
+    expect(page1.rows[0]!.sourceCount).toBeGreaterThanOrEqual(
+      all.rows[1]?.sourceCount ?? 0,
+    );
+
+    const sources = await index.listWantedLinkTargetSources(
+      vaultId,
+      { rawTarget: "Missing", resolveStatus: "unresolved" },
+      { limit: 100, offset: 0 },
+    );
+    expect(sources.total).toBe(2);
+    expect(sources.rows.map((r) => r.itemId).sort()).toEqual([
+      "Inbox/alpha.md",
+      "Notes/beta.md",
+    ]);
+    expect(sources.rows.find((r) => r.itemId === "Inbox/alpha.md")).toMatchObject({
+      title: "Alpha",
+      folderPath: "Inbox",
+    });
+  });
+
+  it("sorts by raw_target ascending when requested", async () => {
+    const { index, vault } = await suite.openVaultIndex("collector-wanted-sort-");
+    const vaultId = vault.meta.id;
+    await seedNote(index, vaultId, "a.md", "A", "[[Zebra]]\n");
+    await seedNote(index, vaultId, "b.md", "B", "[[Apple]]\n");
+    await index.rebuildVaultTextEdges(vaultId);
+
+    const byName = await index.queryWantedLinkTargets(
+      vaultId,
+      { limit: 10, offset: 0 },
+      { key: "raw_target", dir: "asc" },
+    );
+    expect(byName.rows.map((r) => r.rawTarget)).toEqual(["Apple", "Zebra"]);
+  });
+});

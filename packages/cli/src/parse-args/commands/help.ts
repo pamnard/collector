@@ -55,6 +55,14 @@ export const COMMAND_USAGE = {
     "Usage: collector-cli discover-extract-candidates <item-id>  (Instagram and other site-specific extract tools only; not for ordinary web pages)",
   "extract-item-candidate":
     "Usage: collector-cli extract-item-candidate <item-id> --extractor-id <id> --url <url> [--meta '{...}']  (use a match from discover only)",
+  "wanted-link-targets":
+    "Usage: collector-cli wanted-link-targets " +
+    "[--limit N] [--offset N] " +
+    "[--sort source_count|raw_target] [--dir asc|desc]",
+  "wanted-link-target-sources":
+    "Usage: collector-cli wanted-link-target-sources " +
+    "--target <raw> --status unresolved|ambiguous " +
+    "[--limit N] [--offset N]",
 } as const satisfies Record<RegisteredCommandName, string>;
 
 const HELP_FLAGS = new Set(["--help", "-h"]);

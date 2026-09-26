@@ -219,4 +219,45 @@ describe("runCollectorCli unit smoke", () => {
     expect(JSON.parse(stdout.join("\n")).result.failed).toBe(1);
     expect(close).toHaveBeenCalledTimes(1);
   });
+
+  it("wanted-link-targets forwards page+sort then closes (#595)", async () => {
+    const close = vi.fn(async () => undefined);
+    const queryWantedLinkTargets = vi.fn(async () => ({
+      total: 0,
+      rows: [],
+    }));
+    createHttpHostTransport.mockResolvedValue({});
+    createCollectorHostServiceClient.mockReturnValue({
+      health: vi.fn(),
+      close,
+      items: { queryWantedLinkTargets },
+      tags: {},
+      folders: {},
+      media: {},
+    });
+    const stdout: string[] = [];
+    const code = await runCollectorCli(
+      [
+        ...BASE,
+        "--data-dir",
+        "/tmp/collector-data",
+        "wanted-link-targets",
+        "--limit",
+        "5",
+        "--offset",
+        "0",
+      ],
+      {
+        stdout: (line) => stdout.push(line),
+        stderr: () => {},
+      },
+    );
+    expect(code).toBe(0);
+    expect(queryWantedLinkTargets).toHaveBeenCalledWith(
+      { limit: 5, offset: 0 },
+      { key: "source_count", dir: "desc" },
+    );
+    expect(JSON.parse(stdout.join("\n"))).toEqual({ total: 0, rows: [] });
+    expect(close).toHaveBeenCalledTimes(1);
+  });
 });

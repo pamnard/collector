@@ -25,6 +25,10 @@ import {
   type FolderMoveSuggestion,
   type Subscription,
   type UpdateItemInput,
+  type WantedLinkResolveStatus,
+  type WantedLinkSourcesResult,
+  type WantedLinkTargetSort,
+  type WantedLinkTargetsResult,
 } from "@collector/api";
 import type { ItemFile, VaultMeta } from "@collector/shared";
 import type { VaultPresentationChangedPayload } from "./vault-presentation-changed.js";
@@ -106,6 +110,16 @@ export interface ItemsIndexPort {
   listTextBacklinkSources(
     targetItemId: string,
   ): Promise<Array<{ id: string; title: string }>>;
+  queryWantedLinkTargets(
+    vaultId: string,
+    page: { limit: number; offset: number },
+    sort?: WantedLinkTargetSort,
+  ): Promise<WantedLinkTargetsResult>;
+  listWantedLinkTargetSources(
+    vaultId: string,
+    target: { rawTarget: string; resolveStatus: WantedLinkResolveStatus },
+    page?: { limit: number; offset: number },
+  ): Promise<WantedLinkSourcesResult>;
   getAdjacentItems(
     vaultId: string,
     anchor: AdjacentItemAnchor,
@@ -227,6 +241,14 @@ export interface ItemsSearchService {
   ): Promise<ResolvedTextLink[]>;
   listItemBacklinks(itemId: string): Promise<BacklinkSource[]>;
   listItemOutboundLinks(itemId: string): Promise<OutboundTextLink[]>;
+  queryWantedLinkTargets(
+    page: { limit: number; offset: number },
+    sort?: WantedLinkTargetSort,
+  ): Promise<WantedLinkTargetsResult>;
+  listWantedLinkTargetSources(
+    target: { rawTarget: string; resolveStatus: WantedLinkResolveStatus },
+    page?: { limit: number; offset: number },
+  ): Promise<WantedLinkSourcesResult>;
   addUserEdge(itemId: string, otherItemId: string): Promise<void>;
   removeUserEdge(itemId: string, otherItemId: string): Promise<void>;
   listUserEdges(itemId: string): Promise<UserEdgeNeighbor[]>;
@@ -426,6 +448,21 @@ export function createItemsSearchService(
     resolveContentTextLinks: crud.resolveContentTextLinks,
     listItemBacklinks: crud.listItemBacklinks,
     listItemOutboundLinks: crud.listItemOutboundLinks,
+    queryWantedLinkTargets: async (page, sort) => {
+      assertSearchItemsPage(page);
+      const { vault, path } = await deps.resolveActiveVault();
+      deps.kickoffVaultIndexSync(vault.id, path);
+      return deps.getIndex().queryWantedLinkTargets(vault.id, page, sort);
+    },
+    listWantedLinkTargetSources: async (target, page) => {
+      const resolvedPage = page ?? { limit: 100, offset: 0 };
+      assertSearchItemsPage(resolvedPage);
+      const { vault, path } = await deps.resolveActiveVault();
+      deps.kickoffVaultIndexSync(vault.id, path);
+      return deps
+        .getIndex()
+        .listWantedLinkTargetSources(vault.id, target, resolvedPage);
+    },
     addUserEdge: crud.addUserEdge,
     removeUserEdge: crud.removeUserEdge,
     listUserEdges: crud.listUserEdges,

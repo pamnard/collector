@@ -354,6 +354,12 @@ export function createDevMockCollectorService(): CollectorService {
       resolveContentTextLinks: mockCollector.resolveContentTextLinks,
       listItemBacklinks: mockCollector.listItemBacklinks,
       listItemOutboundLinks: mockCollector.listItemOutboundLinks,
+      // #595 wanted-links report (DevMock: empty; live host uses index)
+      queryWantedLinkTargets: async () => ({ total: 0, rows: [] }),
+      listWantedLinkTargetSources: async () => ({ total: 0, rows: [] }),
+      addUserEdge: async () => undefined,
+      removeUserEdge: async () => undefined,
+      listUserEdges: async () => [],
       getItemSource: mockCollector.getItemSource,
       updateItemSource: mockCollector.updateItemSource,
       createItem: async (_input: UiCreateItemInput) => refuseUnsupported(),

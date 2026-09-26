@@ -171,6 +171,8 @@ function createItemsReadMethods(
   | "resolveContentTextLinks"
   | "listItemBacklinks"
   | "listItemOutboundLinks"
+  | "queryWantedLinkTargets"
+  | "listWantedLinkTargetSources"
   | "addUserEdge"
   | "removeUserEdge"
   | "listUserEdges"
@@ -206,6 +208,17 @@ function createItemsReadMethods(
       transport.request("listItemOutboundLinks", {
         itemId,
       }) as ReturnType<ItemsPort["listItemOutboundLinks"]>,
+    queryWantedLinkTargets: (page, sort) =>
+      transport.request("queryWantedLinkTargets", {
+        page,
+        sort,
+      }) as ReturnType<ItemsPort["queryWantedLinkTargets"]>,
+    listWantedLinkTargetSources: (target, page) =>
+      transport.request("listWantedLinkTargetSources", {
+        rawTarget: target.rawTarget,
+        resolveStatus: target.resolveStatus,
+        page,
+      }) as ReturnType<ItemsPort["listWantedLinkTargetSources"]>,
     addUserEdge: (itemId: string, otherItemId: string) =>
       transport.request("addUserEdge", {
         itemId,

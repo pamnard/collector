@@ -349,6 +349,55 @@ export const COLLECTOR_MCP_TOOL_DEFS = [
       ),
     }),
   },
+  {
+    name: "collector_query_wanted_link_targets",
+    description:
+      "List internal link targets that do not resolve to a note in the vault " +
+      "(missing or ambiguous). External web URLs are not included. " +
+      "Returns { total, rows } for one page (default 60). " +
+      "Each row: rawTarget, resolveStatus (unresolved|ambiguous), kind, sourceCount. " +
+      "When rows.length < total, raise offset for the next page. " +
+      "Use collector_list_wanted_link_target_sources to see which notes link to one target.",
+    buildSchema: (p) => ({
+      limit: p.optionalPositiveInt(
+        "How many targets to return (default 60).",
+      ),
+      offset: p.optionalNonNegInt(
+        "Skip this many targets before returning (default 0).",
+      ),
+      sortKey: p.optionalString(
+        "Sort by source_count or raw_target. Must be paired with sortDir. " +
+          "Omit both to sort by source_count descending.",
+      ),
+      sortDir: p.optionalString(
+        "asc or desc. Must be paired with sortKey. " +
+          "Omit both to sort by source_count descending.",
+      ),
+    }),
+  },
+  {
+    name: "collector_list_wanted_link_target_sources",
+    description:
+      "List notes that contain a given broken/missing internal link target. " +
+      "Pass rawTarget and resolveStatus from a collector_query_wanted_link_targets row. " +
+      "Returns { total, rows } with itemId, title, folderPath. " +
+      "Pass each itemId unchanged to collector_get_item. " +
+      "Omit limit and offset for the first page (100 notes).",
+    buildSchema: (p) => ({
+      rawTarget: p.requiredString(
+        "Link target text from collector_query_wanted_link_targets.",
+      ),
+      resolveStatus: p.requiredString(
+        "unresolved or ambiguous — same value as on the parent target row.",
+      ),
+      limit: p.optionalPositiveInt(
+        "How many source notes to return (default 100 when paging).",
+      ),
+      offset: p.optionalNonNegInt(
+        "Skip this many sources before returning (default 0 when paging).",
+      ),
+    }),
+  },
 ] as const satisfies readonly McpToolDef[];
 
 /** Settings → MCP and docs tests: derived from the tool table (not a parallel list). */

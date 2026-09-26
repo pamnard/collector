@@ -107,6 +107,14 @@ export {
   type VaultIndexSyncStatus,
   type VaultPresentationChangeKind,
   type VaultPresentationChangedPayload,
+  type WantedLinkKind,
+  type WantedLinkResolveStatus,
+  type WantedLinkSourceRow,
+  type WantedLinkSourcesResult,
+  type WantedLinkTargetRow,
+  type WantedLinkTargetSort,
+  type WantedLinkTargetSortKey,
+  type WantedLinkTargetsResult,
   type VaultsPort,
 } from "./service-api.js";
 

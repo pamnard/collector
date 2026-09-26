@@ -189,6 +189,84 @@ export const ITEMS_DISPATCH = {
       return runtime.itemsSearch.listItemOutboundLinks(itemId);
     },
   },
+  [M.queryWantedLinkTargets]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.queryWantedLinkTargets);
+      if (!p.page || typeof p.page !== "object" || Array.isArray(p.page)) {
+        badRequest(`${M.queryWantedLinkTargets}: page required`);
+      }
+      const raw = p.page as Record<string, unknown>;
+      if (typeof raw.limit !== "number" || !Number.isFinite(raw.limit)) {
+        badRequest(`${M.queryWantedLinkTargets}: page.limit must be a number`);
+      }
+      if (typeof raw.offset !== "number" || !Number.isFinite(raw.offset)) {
+        badRequest(`${M.queryWantedLinkTargets}: page.offset must be a number`);
+      }
+      const page = { limit: raw.limit, offset: raw.offset };
+      const violation = searchItemsPageViolation(page);
+      if (violation !== null) {
+        badRequest(`${M.queryWantedLinkTargets}: ${violation}`);
+      }
+      let sort: { key: "source_count" | "raw_target"; dir: "asc" | "desc" } | undefined;
+      if (p.sort !== undefined) {
+        if (!p.sort || typeof p.sort !== "object" || Array.isArray(p.sort)) {
+          badRequest(`${M.queryWantedLinkTargets}: sort must be an object`);
+        }
+        const s = p.sort as Record<string, unknown>;
+        if (s.key !== "source_count" && s.key !== "raw_target") {
+          badRequest(`${M.queryWantedLinkTargets}: sort.key unsupported`);
+        }
+        if (s.dir !== "asc" && s.dir !== "desc") {
+          badRequest(`${M.queryWantedLinkTargets}: sort.dir must be asc|desc`);
+        }
+        sort = { key: s.key, dir: s.dir };
+      }
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.queryWantedLinkTargets(page, sort);
+    },
+  },
+  [M.listWantedLinkTargetSources]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.listWantedLinkTargetSources);
+      const rawTarget = requireString(
+        p.rawTarget,
+        "rawTarget",
+        M.listWantedLinkTargetSources,
+      );
+      if (p.resolveStatus !== "unresolved" && p.resolveStatus !== "ambiguous") {
+        badRequest(
+          `${M.listWantedLinkTargetSources}: resolveStatus must be unresolved|ambiguous`,
+        );
+      }
+      let page: { limit: number; offset: number } | undefined;
+      if (p.page !== undefined) {
+        if (!p.page || typeof p.page !== "object" || Array.isArray(p.page)) {
+          badRequest(`${M.listWantedLinkTargetSources}: page must be an object`);
+        }
+        const raw = p.page as Record<string, unknown>;
+        if (typeof raw.limit !== "number" || !Number.isFinite(raw.limit)) {
+          badRequest(
+            `${M.listWantedLinkTargetSources}: page.limit must be a number`,
+          );
+        }
+        if (typeof raw.offset !== "number" || !Number.isFinite(raw.offset)) {
+          badRequest(
+            `${M.listWantedLinkTargetSources}: page.offset must be a number`,
+          );
+        }
+        page = { limit: raw.limit, offset: raw.offset };
+        const violation = searchItemsPageViolation(page);
+        if (violation !== null) {
+          badRequest(`${M.listWantedLinkTargetSources}: ${violation}`);
+        }
+      }
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.listWantedLinkTargetSources(
+        { rawTarget, resolveStatus: p.resolveStatus },
+        page,
+      );
+    },
+  },
   [M.addUserEdge]: {
     handle: async (runtime, params) => {
       const p = asObject(params, M.addUserEdge);
