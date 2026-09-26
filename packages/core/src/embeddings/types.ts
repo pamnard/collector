@@ -40,3 +40,8 @@ export type SimilarItemHit = {
   id: string;
   score: number;
 };
+
+export type FolderMoveSuggestion = {
+  path: string;
+  score: number;
+};

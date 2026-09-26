@@ -233,6 +233,7 @@ export function ItemDetailPage() {
       {item ? (
         <MoveItemDialog
           open={moveOpen}
+          itemId={item.id}
           itemLabel={item.title.trim() || item.id}
           currentFolderPath={item.folder_path}
           tree={folders}

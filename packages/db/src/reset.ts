@@ -4,6 +4,7 @@ import type { SqlMigrator } from "./migrate.js";
 const DROP_ORDER = [
   "index_build",
   "item_edges",
+  "folder_centroids",
   "item_embeddings",
   "items_fts",
   "source_refs",

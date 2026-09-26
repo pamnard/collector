@@ -1,13 +1,16 @@
 import type { SqlExecutor, SqlReader } from "@collector/db";
-import type { ItemEmbeddingRefreshInput, ItemEmbeddingsPort } from "@collector/core";
 import type {
   EmbeddingEngine,
+  FolderMoveSuggestion,
+  ItemEmbeddingRefreshInput,
+  ItemEmbeddingsPort,
   SimilarItemHit,
 } from "@collector/core";
 import {
   FakeEmbeddingEngine,
   findSimilarItemIds,
   recomputeItemEmbedding,
+  suggestItemFolderMoves,
 } from "@collector/core/node";
 import { TransformersEmbeddingEngine } from "./transformers-engine.js";
 
@@ -15,6 +18,11 @@ type SqlDb = SqlExecutor & SqlReader;
 
 export type ItemEmbeddingsService = ItemEmbeddingsPort & {
   findSimilarItems(itemId: string, limit: number): Promise<SimilarItemHit[]>;
+  suggestItemFolderMoves(
+    itemId: string,
+    limit: number,
+    candidateFolderPaths: readonly string[],
+  ): Promise<FolderMoveSuggestion[]>;
   readonly engine: EmbeddingEngine;
 };
 
@@ -56,6 +64,15 @@ export function createItemEmbeddingsService(deps: {
       limit: number,
     ): Promise<SimilarItemHit[]> {
       return findSimilarItemIds(deps.getDb(), engine, itemId, limit);
+    },
+    async suggestItemFolderMoves(
+      itemId: string,
+      limit: number,
+      candidateFolderPaths: readonly string[],
+    ): Promise<FolderMoveSuggestion[]> {
+      return suggestItemFolderMoves(deps.getDb(), engine, itemId, limit, {
+        candidateFolderPaths,
+      });
     },
   };
 }

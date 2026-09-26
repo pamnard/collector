@@ -9,6 +9,7 @@ import { getItemEmbedding } from "./embedding-store.js";
 import {
   findSimilarItemIds,
   recomputeItemEmbedding,
+  suggestItemFolderMoves,
 } from "./item-embeddings.js";
 
 describe("item embedding orchestration", () => {
@@ -172,5 +173,64 @@ describe("item embedding orchestration", () => {
     expect(kept).toBe(false);
     expect(await getItemEmbedding(sql, "a.md")).toBeNull();
     expect(await findSimilarItemIds(sql, engine, "a.md", 2)).toEqual([]);
+  });
+
+  it("suggestItemFolderMoves ranks by hybrid score; excludes Inbox and current", async () => {
+    const sql = await openDb();
+    await insertItem("Inbox/note.md", "Design systems handbook", "Inbox");
+    await insertItem(
+      "Design/ref.md",
+      "Design systems handbook",
+      "Design",
+      "tokens and components",
+    );
+    await insertItem(
+      "Health/ref.md",
+      "Morning jog routine",
+      "Health",
+      "fitness tips",
+    );
+
+    await recomputeItemEmbedding(sql, engine, {
+      itemId: "Inbox/note.md",
+      title: "Design systems handbook",
+      description: "tokens and components",
+      tagNames: ["ui"],
+      contentRevision: 1,
+    });
+    await recomputeItemEmbedding(sql, engine, {
+      itemId: "Design/ref.md",
+      title: "Design systems handbook",
+      description: "tokens and components",
+      tagNames: ["ui"],
+      contentRevision: 1,
+    });
+    await recomputeItemEmbedding(sql, engine, {
+      itemId: "Health/ref.md",
+      title: "Morning jog routine",
+      description: "fitness tips",
+      tagNames: ["sport"],
+      contentRevision: 1,
+    });
+
+    const hits = await suggestItemFolderMoves(sql, engine, "Inbox/note.md", 3, {
+      candidateFolderPaths: ["Inbox", "Design", "Health", "Archive"],
+    });
+
+    expect(hits.every((hit) => hit.path !== "Inbox")).toBe(true);
+    expect(hits[0]?.path).toBe("Design");
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.length).toBeLessThanOrEqual(3);
+  });
+
+  it("suggestItemFolderMoves falls back to name overlap without embedding", async () => {
+    const sql = await openDb();
+    await insertItem("Inbox/x.md", "Recipes for pasta", "Inbox", "cooking");
+    await insertItem("Cooking/y.md", "Other", "Cooking", "");
+
+    const hits = await suggestItemFolderMoves(sql, engine, "Inbox/x.md", 3, {
+      candidateFolderPaths: ["Inbox", "Cooking", "Work"],
+    });
+    expect(hits.map((hit) => hit.path)).toEqual(["Cooking"]);
   });
 });

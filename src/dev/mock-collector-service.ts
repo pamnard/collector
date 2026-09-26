@@ -350,6 +350,7 @@ export function createDevMockCollectorService(): CollectorService {
       getItemById: mockCollector.getItemById,
       getAdjacentItems: mockCollector.getAdjacentItems,
       findSimilarItems: async (_itemId: string, _limit: number) => [],
+      suggestItemFolderMoves: async (_itemId: string, _limit: number) => [],
       resolveContentTextLinks: mockCollector.resolveContentTextLinks,
       listItemBacklinks: mockCollector.listItemBacklinks,
       listItemOutboundLinks: mockCollector.listItemOutboundLinks,

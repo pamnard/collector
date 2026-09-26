@@ -139,6 +139,21 @@ export const ITEMS_DISPATCH = {
       return runtime.itemsSearch.findSimilarItems(itemId, p.limit);
     },
   },
+  [M.suggestItemFolderMoves]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.suggestItemFolderMoves);
+      const itemId = requireString(
+        p.itemId,
+        "itemId",
+        M.suggestItemFolderMoves,
+      );
+      if (typeof p.limit !== "number" || !Number.isFinite(p.limit)) {
+        badRequest(`${M.suggestItemFolderMoves}: limit must be a number`);
+      }
+      await runtime.ensureInitialized();
+      return runtime.itemsSearch.suggestItemFolderMoves(itemId, p.limit);
+    },
+  },
   [M.resolveContentTextLinks]: {
     handle: async (runtime, params) => {
       const p = asObject(params, M.resolveContentTextLinks);

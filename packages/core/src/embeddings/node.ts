@@ -3,8 +3,12 @@ export { FakeEmbeddingEngine } from "./fake-engine.js";
 export {
   findSimilarItemIds,
   recomputeItemEmbedding,
+  suggestItemFolderMoves,
 } from "./item-embeddings.js";
-export type { ItemEmbeddingSource } from "./item-embeddings.js";
+export type {
+  ItemEmbeddingSource,
+  SuggestItemFolderMovesOptions,
+} from "./item-embeddings.js";
 export {
   deleteItemEmbedding,
   getItemEmbedding,
@@ -12,8 +16,18 @@ export {
   putItemEmbedding,
   rewriteItemEmbeddingId,
 } from "./embedding-store.js";
+export {
+  deleteFolderCentroid,
+  getFolderCentroid,
+  listFolderCentroidsForModel,
+  rebuildAllFolderCentroids,
+  rebuildFolderCentroid,
+  rebuildFolderCentroids,
+} from "./folder-centroid-store.js";
+export type { FolderCentroidRow } from "./folder-centroid-store.js";
 export type {
   EmbeddingEngine,
+  FolderMoveSuggestion,
   ItemEmbeddingRow,
   SimilarItemHit,
 } from "./types.js";

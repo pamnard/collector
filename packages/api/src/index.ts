@@ -64,6 +64,7 @@ export {
   type AdjacentItemRef,
   type AdjacentItemsResult,
   type SimilarItemHit,
+  type FolderMoveSuggestion,
   type BootPort,
   type CollectorService,
   type CredentialRef,

@@ -120,6 +120,19 @@ CREATE TABLE IF NOT EXISTS item_embeddings (
 CREATE INDEX IF NOT EXISTS idx_item_embeddings_model
   ON item_embeddings(model_id);
 
+-- Precomputed folder content profiles for move suggestions. Disposable with the index.
+CREATE TABLE IF NOT EXISTS folder_centroids (
+  folder_path TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  dims INTEGER NOT NULL,
+  item_count INTEGER NOT NULL,
+  sum_vector BLOB NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (folder_path, model_id)
+);
+CREATE INDEX IF NOT EXISTS idx_folder_centroids_model
+  ON folder_centroids(model_id);
+
 -- Item↔item edges: text links + user edges (#407). Disposable with the index.
 CREATE TABLE IF NOT EXISTS item_edges (
   id TEXT PRIMARY KEY,

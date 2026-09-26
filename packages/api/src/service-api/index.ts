@@ -31,6 +31,7 @@ export type {
   ResolvedTextLink,
   SearchItemsResult,
   SimilarItemHit,
+  FolderMoveSuggestion,
   UserEdgeNeighbor,
 } from "./items.js";
 

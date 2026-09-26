@@ -96,6 +96,12 @@ export function createDomainServices(deps: DomainServicesDeps): DomainServices {
       deps.vaultPresentationChanged.notify(payload),
     findSimilarItems: (itemId, limit) =>
       deps.itemEmbeddings.findSimilarItems(itemId, limit),
+    suggestItemFolderMoves: (itemId, limit, candidateFolderPaths) =>
+      deps.itemEmbeddings.suggestItemFolderMoves(
+        itemId,
+        limit,
+        candidateFolderPaths,
+      ),
     normalizeMarkdown,
     enqueueItemDerivedRefresh: (input) =>
       enqueueItemDerivedRefreshWithFailureReporting(

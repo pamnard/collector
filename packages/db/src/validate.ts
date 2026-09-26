@@ -1,4 +1,10 @@
-import { ITEMS_COLUMNS, INDEX_TABLES, ITEM_EMBEDDINGS_COLUMNS, ITEM_EDGES_COLUMNS } from "./schema.js";
+import {
+  ITEMS_COLUMNS,
+  INDEX_TABLES,
+  ITEM_EMBEDDINGS_COLUMNS,
+  FOLDER_CENTROIDS_COLUMNS,
+  ITEM_EDGES_COLUMNS,
+} from "./schema.js";
 import type { SqlMigrator } from "./migrate.js";
 
 export interface IndexValidationResult {
@@ -39,6 +45,12 @@ export async function validateIndexSchema(db: SqlMigrator): Promise<IndexValidat
     for (const column of ITEM_EMBEDDINGS_COLUMNS) {
       if (!embeddingColumns.has(column)) {
         errors.push(`item_embeddings missing column: ${column}`);
+      }
+    }
+    const centroidColumns = await tableColumns(db, "folder_centroids");
+    for (const column of FOLDER_CENTROIDS_COLUMNS) {
+      if (!centroidColumns.has(column)) {
+        errors.push(`folder_centroids missing column: ${column}`);
       }
     }
     const edgeColumns = await tableColumns(db, "item_edges");

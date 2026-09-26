@@ -18,6 +18,17 @@ export type {
   EmbeddingEngine,
   EmbedTextMode,
   EmbedTextResult,
+  FolderMoveSuggestion,
   ItemEmbeddingRow,
   SimilarItemHit,
 } from "./types.js";
+export {
+  cosineToUnitInterval,
+  folderPathNameTokens,
+  hybridFolderMoveScore,
+  itemSignalNameTokens,
+  tokenizeForFolderNameOverlap,
+  tokenSetOverlap,
+  FOLDER_MOVE_CENTROID_WEIGHT,
+  FOLDER_MOVE_NAME_WEIGHT,
+} from "./folder-move-score.js";

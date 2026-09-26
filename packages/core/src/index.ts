@@ -352,6 +352,7 @@ export type {
   EmbeddingReconcileTickOptions,
   EmbeddingReconcileTickResult,
   EmbeddingReconcileTickStats,
+  FolderMoveSuggestion,
   SimilarItemHit,
 } from "./embeddings/index.js";
 export { extractTextLinks } from "./links/extract-text-links.js";
