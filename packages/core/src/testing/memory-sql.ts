@@ -621,6 +621,40 @@ export class MemorySqlAdapter implements SqlExecutor, SqlSelector {
     }
 
     if (
+      normalized.startsWith(
+        "SELECT DISTINCT i.folder_path AS folder_path, e.model_id AS model_id",
+      ) &&
+      normalized.includes("INNER JOIN item_embeddings") &&
+      normalized.includes("WHERE i.id IN")
+    ) {
+      const ids = new Set(bindValues.map(String));
+      const items = this.tables.get("items") ?? new Map();
+      const embeddings = this.tables.get("item_embeddings") ?? new Map();
+      const itemsById = new Map(
+        [...items.values()]
+          .filter((row) => ids.has(String(row.id)))
+          .map((row) => [String(row.id), row] as const),
+      );
+      const seen = new Set<string>();
+      const out: Array<{ folder_path: string; model_id: string }> = [];
+      for (const emb of embeddings.values()) {
+        const item = itemsById.get(String(emb.item_id));
+        if (!item) {
+          continue;
+        }
+        const folder_path = String(item.folder_path ?? "");
+        const model_id = String(emb.model_id ?? "");
+        const key = `${folder_path}\0${model_id}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        out.push({ folder_path, model_id });
+      }
+      return out as T[];
+    }
+
+    if (
       normalized.startsWith("SELECT t.id FROM tags t WHERE t.vault_id = ?") &&
       normalized.includes("NOT EXISTS")
     ) {
