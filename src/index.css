@@ -145,11 +145,17 @@
   font-family: "Golos Text", system-ui, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color-scheme: light dark;
+  /* Follow app theme, not OS — native scrollbars (e.g. KaTeX overflow-x) use this. */
+  color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* After :root so it wins when <html class="dark"> (same specificity as :root). */
+:root.dark {
+  color-scheme: dark;
 }
 
 /* Single page scrollport = MainScrollArea (#117). Keep document from scrolling
