@@ -3,16 +3,71 @@
  * Production uses Playwright; offline tests inject a mock.
  */
 
+import { existsSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveServiceHostDir } from "../host/node-cover.js";
 
 export type HtmlToPdf = (html: string) => Promise<Uint8Array>;
 
 const PRINT_READY_TIMEOUT_MS = 60_000;
+const BROWSERS_DIR_NAME = "ms-playwright";
+
+/**
+ * Host-bundled Playwright browsers tree (build/release ensure), same idea as
+ * host `bin/yt-dlp`. COLLECTOR_PLAYWRIGHT_BROWSERS is tests/debug only.
+ */
+export function resolvePlaywrightBrowsersPath(input?: {
+  env?: NodeJS.ProcessEnv;
+  argv1?: string | undefined;
+  execPath?: string;
+  exists?: (path: string) => boolean;
+}): string | null {
+  const env = input?.env ?? process.env;
+  const exists = input?.exists ?? existsSync;
+  const fromEnv = env.COLLECTOR_PLAYWRIGHT_BROWSERS?.trim();
+  if (fromEnv && exists(fromEnv)) {
+    return fromEnv;
+  }
+
+  const root = resolveServiceHostDir({
+    argv1: input?.argv1 ?? process.argv[1],
+    execPath: input?.execPath ?? process.execPath,
+  });
+  const candidates = [
+    join(root, BROWSERS_DIR_NAME),
+    join(
+      root,
+      "..",
+      "..",
+      "..",
+      "..",
+      "dist",
+      "collector-release",
+      "collector-service-host",
+      BROWSERS_DIR_NAME,
+    ),
+  ];
+  for (const candidate of candidates) {
+    if (exists(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function applyBundledPlaywrightBrowsersPath(): string | null {
+  const browsersPath = resolvePlaywrightBrowsersPath();
+  if (browsersPath) {
+    process.env.PLAYWRIGHT_BROWSERS_PATH = browsersPath;
+  }
+  return browsersPath;
+}
 
 function resolvePlaywright(): typeof import("playwright") {
+  applyBundledPlaywrightBrowsersPath();
   const require = createRequire(import.meta.url);
   try {
     return require("playwright") as typeof import("playwright");
@@ -89,14 +144,18 @@ async function waitForPrintReady(
  * never reports success with an empty or absent PDF.
  */
 export async function assertPlaywrightChromiumReady(): Promise<void> {
+  const browsersPath = applyBundledPlaywrightBrowsersPath();
   const playwright = resolvePlaywright();
   const executablePath = playwright.chromium.executablePath();
   try {
     await access(executablePath);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const hint = browsersPath
+      ? `bundled browsers at ${browsersPath}`
+      : "no host ms-playwright tree (service build / release pack must run ensure-host-chromium)";
     throw new Error(
-      `Playwright Chromium cannot launch for PDF export: executable missing at ${executablePath} (${message})`,
+      `Playwright Chromium cannot launch for PDF export: executable missing at ${executablePath} (${hint}; ${message})`,
     );
   }
 }
