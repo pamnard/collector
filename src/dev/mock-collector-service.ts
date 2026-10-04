@@ -11,6 +11,7 @@ import type {
   CollectorService,
   ImportDroppedFilesInput,
   ImportDroppedFilesResult,
+  ExportItemPdfJobSnapshot,
   ImportFolderInput,
   ImportFolderJobSnapshot,
   MediaWithPath,
@@ -374,6 +375,16 @@ export function createDevMockCollectorService(): CollectorService {
         refuseUnsupported() as Promise<{ jobId: string }>,
       getImportFolderJob: async (_jobId: string) =>
         refuseUnsupported() as Promise<ImportFolderJobSnapshot>,
+      exportItemPdf: async (_itemId: string) =>
+        refuseUnsupported() as Promise<{ jobId: string }>,
+      getExportItemPdfJob: async (_jobId: string) =>
+        refuseUnsupported() as Promise<ExportItemPdfJobSnapshot>,
+      waitDerived: async () =>
+        refuseUnsupported() as Promise<{
+          status: "succeeded";
+          jobId: string;
+          contentRevision: number;
+        }>,
     },
     tags: {
       subscribeTags,

@@ -50,6 +50,15 @@ function stubRuntime(overrides: {
       importDroppedFiles: vi.fn(async (input: unknown) => input),
       ...overrides.dropImport,
     },
+    exportItemPdf: {
+      exportItemPdf: vi.fn(async () => ({ jobId: "pdf-job-1" })),
+      getExportItemPdfJob: vi.fn(async () => ({
+        jobId: "pdf-job-1",
+        status: "succeeded" as const,
+        result: null,
+        error: null,
+      })),
+    },
     waitDerived: {
       waitDerived: vi.fn(async () => ({
         status: "succeeded" as const,

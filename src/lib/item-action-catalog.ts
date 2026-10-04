@@ -2,6 +2,7 @@ export type ItemActionId =
   | "move"
   | "rename"
   | "import"
+  | "exportPdf"
   | "lint"
   | "delete";
 
@@ -18,6 +19,7 @@ export const ITEM_ACTION_ORDER: readonly ItemActionDef[] = [
   { id: "move", group: "manage", label: "Переместить файл в…" },
   { id: "rename", group: "modify", label: "Переименовать" },
   { id: "import", group: "modify", label: "Импорт" },
+  { id: "exportPdf", group: "modify", label: "Экспортировать в PDF" },
   { id: "lint", group: "modify", label: "Линт файла" },
   { id: "delete", group: "modify", label: "Удалить" },
 ] as const;

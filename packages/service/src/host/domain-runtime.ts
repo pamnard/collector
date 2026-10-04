@@ -61,6 +61,13 @@ import {
   createDropImportBatchHandler,
 } from "../jobs/handlers/drop-import-batch.js";
 import { createImportFolderHandler } from "../jobs/handlers/import-folder.js";
+import { createExportItemPdfHandler } from "../jobs/handlers/export-item-pdf.js";
+import { createBuildItemPrintHtml } from "../export/build-item-print-document.js";
+import { configureExportItemPdfStore } from "../export/export-item-pdf-store.js";
+import {
+  assertPlaywrightChromiumReady,
+  createPlaywrightHtmlToPdf,
+} from "../export/html-to-pdf.js";
 import { createLocalizeItemRemoteDisplayAssets } from "../localize-item-remote-display-assets.js";
 import {
   enqueueJobWithFailureReporting,
@@ -74,6 +81,7 @@ import {
 import { createDomainServices } from "./domain-runtime/domain-services.js";
 import { enqueueItemDerivedRefreshWithFailureReporting } from "./domain-runtime/item-derived-refresh-enqueue.js";
 import { createDropImportRuntime } from "./domain-runtime/drop-import.js";
+import { createExportItemPdfRuntime } from "./domain-runtime/export-item-pdf.js";
 import { createWaitDerivedRuntime } from "./domain-runtime/wait-derived.js";
 import { createSyncPluginRuntime } from "./domain-runtime/sync-plugins.js";
 import { createExtractPluginRegistry } from "../extract-plugin-registry.js";
@@ -435,8 +443,37 @@ export function createServiceDomainRuntime(
     },
   });
 
+  configureExportItemPdfStore(dataDir);
+  const buildItemPrintHtml = createBuildItemPrintHtml({
+    getContext,
+    resolveActiveVault: () => vaults.resolveActiveVault(),
+    getItem: (itemId) => itemsSearch.getItemById(itemId),
+    videoStillBytes: async (absolutePath, filename) => {
+      const cover = await generateCoverFromMediaPath(
+        absolutePath,
+        filename,
+        "video",
+      );
+      return cover?.data ?? null;
+    },
+  });
+
+  phaseBHandlerBindings.exportItemPdf = createExportItemPdfHandler({
+    buildItemPrintHtml,
+    htmlToPdf: createPlaywrightHtmlToPdf(),
+    assertPdfEngineReady: assertPlaywrightChromiumReady,
+    assertActiveVault: async (vaultId) => {
+      await requireActiveVaultPath(vaultId);
+    },
+  });
+
   const dropImport = createDropImportRuntime({
     dataDir,
+    resolveActiveVault: () => vaults.resolveActiveVault(),
+    requireJobs,
+  });
+
+  const exportItemPdf = createExportItemPdfRuntime({
     resolveActiveVault: () => vaults.resolveActiveVault(),
     requireJobs,
   });
@@ -602,6 +639,7 @@ export function createServiceDomainRuntime(
     tagsFolders,
     mediaCover,
     dropImport,
+    exportItemPdf,
     waitDerived,
     vaults,
     appSettings,

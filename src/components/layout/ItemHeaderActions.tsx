@@ -20,6 +20,7 @@ export interface ItemHeaderActionsModel {
   onMove: () => void;
   onRename: () => void;
   onImport: () => void;
+  onExportPdf: () => void;
   onLint: () => void;
   onDelete: () => void;
   importAvailable: boolean;
@@ -54,6 +55,7 @@ export function ItemHeaderActions({ actions }: ItemHeaderActionsProps) {
     onMove,
     onRename,
     onImport,
+    onExportPdf,
     onLint,
     onDelete,
     importAvailable,
@@ -71,6 +73,10 @@ export function ItemHeaderActions({ actions }: ItemHeaderActionsProps) {
     }
     if (id === "import") {
       onImport();
+      return;
+    }
+    if (id === "exportPdf") {
+      onExportPdf();
       return;
     }
     if (id === "lint") {

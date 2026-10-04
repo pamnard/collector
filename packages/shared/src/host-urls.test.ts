@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildHostExportItemPdfUrl,
   buildHostMediaDeriveUrl,
   buildHostMediaFileUrl,
   deriveWsEventsUrl,
@@ -16,6 +17,28 @@ describe("host-urls (#550 E)", () => {
     const parsed = new URL(url);
     expect(parsed.searchParams.get("path")).toBe("/vault/a b.webp");
     expect(parsed.searchParams.get("token")).toBe("tok");
+  });
+
+  it("buildHostExportItemPdfUrl attaches host token (#304)", () => {
+    const url = buildHostExportItemPdfUrl(
+      "http://127.0.0.1:9",
+      "tok",
+      "/export/item-pdf?jobId=job-1",
+    );
+    const parsed = new URL(url);
+    expect(parsed.pathname).toBe("/export/item-pdf");
+    expect(parsed.searchParams.get("jobId")).toBe("job-1");
+    expect(parsed.searchParams.get("token")).toBe("tok");
+  });
+
+  it("buildHostExportItemPdfUrl rejects non-export paths", () => {
+    expect(() =>
+      buildHostExportItemPdfUrl(
+        "http://127.0.0.1:9",
+        "tok",
+        "/media/file?path=/x",
+      ),
+    ).toThrow(/export\/item-pdf/);
   });
 
   it("buildHostMediaDeriveUrl encodes path, whitelist w, and token (#882)", () => {

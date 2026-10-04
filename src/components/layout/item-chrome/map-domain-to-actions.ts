@@ -44,6 +44,7 @@ export function mapDomainToActions(
     onMove: domain.onMove,
     onRename: domain.onRename,
     onImport: domain.onImport,
+    onExportPdf: domain.onExportPdf,
     onLint: domain.onLint,
     onDelete: domain.onDelete,
     importAvailable: domain.importAvailable,

@@ -33,6 +33,7 @@ export type ItemChromeDomain = {
   onMove: () => void;
   onRename: () => void;
   onImport: () => void;
+  onExportPdf: () => void;
   onLint: () => void;
   onDelete: () => void;
   /** Host discover found import candidates for the open item. */

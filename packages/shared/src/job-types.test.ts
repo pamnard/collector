@@ -5,6 +5,8 @@ import {
   JOB_TYPE_CATALOG,
   VAULT_MUTATING_BULK_JOB_TYPE_IDS,
   defineJobType,
+  exportItemPdfIdempotencyKey,
+  exportItemPdfJobType,
   importFolderJobType,
   itemDerivedRefreshIdempotencyKey,
   itemDerivedRefreshIdempotencyKeyPrefix,
@@ -187,5 +189,25 @@ describe("job type catalog (#629)", () => {
         contentRevision: 2,
       }),
     ).toBe("itemExtractAuto:v1:Inbox/n.md:2");
+  });
+
+  it("includes exportItemPdf as non-bulk one-shot with vault+item dedupe (#304)", () => {
+    expect(JOB_TYPE_CATALOG.some((t) => t.id === "exportItemPdf")).toBe(true);
+    expect(exportItemPdfJobType.id).toBe("exportItemPdf");
+    expect(exportItemPdfJobType.maxAttempts).toBe(1);
+    expect(exportItemPdfJobType.timeoutMs).toBeGreaterThanOrEqual(60_000);
+    expect(isVaultMutatingBulkJobType("exportItemPdf")).toBe(false);
+    expect(
+      exportItemPdfJobType.payload.parse({
+        vaultId: "v1",
+        itemId: "Inbox/n.md",
+      }),
+    ).toEqual({ vaultId: "v1", itemId: "Inbox/n.md" });
+    expect(
+      exportItemPdfIdempotencyKey({
+        vaultId: "v1",
+        itemId: "Inbox/n.md",
+      }),
+    ).toBe("exportItemPdf:v1:Inbox/n.md");
   });
 });

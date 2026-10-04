@@ -2,6 +2,7 @@ import { useState } from "react";
 import { folderPathFromItemPath } from "@collector/shared";
 import { useFolderTree } from "../../../hooks/useFolderTree";
 import type { ItemActionId } from "../../../lib/item-action-catalog";
+import { enqueueItemPdfExport } from "../../../lib/export-item-pdf";
 import {
   ITEM_IMPORT_BUSY_ID,
   ITEM_IMPORT_ERROR_ID,
@@ -128,6 +129,10 @@ export function ItemRowActions({
     }
     if (id === "import") {
       void handleImport();
+      return;
+    }
+    if (id === "exportPdf") {
+      void enqueueItemPdfExport(alerts, itemId);
       return;
     }
     if (id === "lint") {
