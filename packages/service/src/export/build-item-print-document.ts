@@ -19,6 +19,10 @@ import {
   filenameFromMediaSrc,
   safePdfBasename,
 } from "./item-print-model.js";
+import {
+  buildGolosTextPrintFontCss,
+  buildKatexPrintCss,
+} from "./print-assets.js";
 
 export type BuildItemPrintHtml = (itemId: string) => Promise<{
   html: string;
@@ -71,13 +75,6 @@ function resolveVaultRelativePath(vaultPath: string, src: string): string {
   return join(vaultPath, src.replace(/^\.\//, ""));
 }
 
-function golosFontCss(fontFilePath: string | null): string {
-  if (!fontFilePath) {
-    return '@font-face{font-family:"Golos Text";src:local("Golos Text");font-weight:400 600;}';
-  }
-  return `@font-face{font-family:"Golos Text";src:url("file://${fontFilePath}") format("woff2");font-weight:400 600;font-display:block;}`;
-}
-
 export function createBuildItemPrintHtml(deps: {
   getContext: () => VaultContext;
   resolveActiveVault: () => Promise<{ vault: { id: string }; path: string }>;
@@ -86,7 +83,6 @@ export function createBuildItemPrintHtml(deps: {
     content: string | null;
   }>;
   videoStillBytes: VideoStillBytes;
-  golosFontPath?: string | null;
 }): BuildItemPrintHtml {
   return async (itemId) => {
     const { path: vaultPath } = await deps.resolveActiveVault();
@@ -184,7 +180,8 @@ export function createBuildItemPrintHtml(deps: {
 
     const referenced = new Set(model.referencedFilenames);
     const resolved = resolvePrintDocument(model, {
-      fontCss: golosFontCss(deps.golosFontPath ?? null),
+      fontCss: buildGolosTextPrintFontCss(),
+      katexCss: buildKatexPrintCss(),
       heroDataUri,
       imageDataUri: (src) =>
         src.startsWith("data:") ? src : (imageCache.get(src) ?? null),

@@ -2,7 +2,7 @@ import type { ExportItemPdfJobSnapshot } from "@collector/api";
 import type { JobQueue } from "../../jobs/job-queue.js";
 import {
   enqueueExportItemPdf,
-  peekExportItemPdfResult,
+  toExportItemPdfResult,
 } from "../../jobs/handlers/export-item-pdf.js";
 
 export interface ExportItemPdfRuntimeDeps {
@@ -30,11 +30,10 @@ export function createExportItemPdfRuntime(deps: ExportItemPdfRuntimeDeps) {
       if (!row) {
         throw new Error(`exportItemPdf job not found: ${jobId}`);
       }
-      const result = peekExportItemPdfResult(jobId);
       return {
         jobId,
         status: row.status as ExportItemPdfJobSnapshot["status"],
-        result,
+        result: toExportItemPdfResult(jobId),
         error: row.last_error,
       };
     },

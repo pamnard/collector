@@ -4,8 +4,8 @@
  *
  * Uses the canonical profile layout (#238).
  *
- * Browser surfaces (#551/#553/#555/#882): always-on POST /api/rpc + WS /api/events +
- * GET/HEAD /media/file and /media/derive with the same host token.
+ * Browser surfaces (#551/#553/#555/#882/#304): always-on POST /api/rpc + WS /api/events +
+ * GET/HEAD /media/file, /media/derive, and /export/item-pdf with the same host token.
  * Optional static UI dir + GET /api/ui-bootstrap for packaged browser UI (#555).
  */
 
@@ -45,6 +45,10 @@ import {
   handleMediaFile,
   isMediaFileRequest,
 } from "./http/media-handler.js";
+import {
+  handleExportItemPdf,
+  isExportItemPdfRequest,
+} from "./http/export-item-pdf-handler.js";
 import { runServiceHostHttpRequest } from "./http/host-request.js";
 import { handleHttpRpc, writeUnauthorized } from "./http/rpc-handler.js";
 import { tryServeStaticUi } from "./http/static-ui.js";
@@ -254,6 +258,13 @@ export async function startServiceHost(
           ...(vaultsRootResolved === undefined
             ? {}
             : { vaultsRootResolved }),
+        });
+        return;
+      }
+
+      if (isExportItemPdfRequest(req.method, url.pathname)) {
+        await handleExportItemPdf(req, res, url, {
+          expectedToken: hostToken,
         });
         return;
       }

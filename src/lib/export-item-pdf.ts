@@ -1,5 +1,7 @@
+import { buildHostExportItemPdfUrl } from "@collector/shared";
 import type { AlertsApi } from "../components/alerts/alert-store";
 import { getCollectorService } from "../services/collector-client";
+import { getHostMediaCredentials } from "../utils/asset-src";
 
 export const ITEM_EXPORT_PDF_SUCCESS_ID = "item-export-pdf-success";
 export const ITEM_EXPORT_PDF_ENQUEUE_ERROR_ID = "item-export-pdf-enqueue-error";
@@ -18,6 +20,27 @@ function triggerBrowserDownload(filename: string, bytes: Uint8Array): void {
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+}
+
+async function fetchExportPdfBytes(
+  downloadPath: string,
+): Promise<Uint8Array> {
+  const host = getHostMediaCredentials();
+  if (!host) {
+    throw new Error("host media credentials required for PDF download (#304)");
+  }
+  const url = buildHostExportItemPdfUrl(
+    host.baseUrl,
+    host.token,
+    downloadPath,
+  );
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(
+      `PDF download failed: HTTP ${response.status} ${response.statusText}`,
+    );
+  }
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 async function waitAndDownload(
@@ -42,10 +65,9 @@ async function waitAndDownload(
         continue;
       }
       if (snap.status === "succeeded" && snap.result) {
-        const binary = atob(snap.result.pdfBase64);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i += 1) {
-          bytes[i] = binary.charCodeAt(i);
+        const bytes = await fetchExportPdfBytes(snap.result.downloadPath);
+        if (bytes.byteLength === 0) {
+          throw new Error("PDF download returned empty body");
         }
         triggerBrowserDownload(snap.result.filename, bytes);
         alerts.upsert(ITEM_EXPORT_PDF_SUCCESS_ID, {
@@ -64,6 +86,15 @@ async function waitAndDownload(
       dismissible: true,
       message: "Экспорт в PDF не завершился вовремя",
       detail: `jobId=${jobId}`,
+    });
+  } catch (error: unknown) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error("[exportItemPdf] download failed", { jobId, error });
+    alerts.upsert(ITEM_EXPORT_PDF_ENQUEUE_ERROR_ID, {
+      tone: "danger",
+      dismissible: true,
+      message: "Не удалось скачать PDF",
+      detail,
     });
   } finally {
     activeWaits.delete(jobId);

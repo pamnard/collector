@@ -303,7 +303,8 @@ export interface ItemsPort {
   getImportFolderJob(jobId: string): Promise<ImportFolderJobSnapshot>;
   /**
    * Enqueue one-item PDF export and return immediately (#304).
-   * Poll {@link ItemsPort.getExportItemPdfJob} for status/result; UI downloads on success.
+   * Poll {@link ItemsPort.getExportItemPdfJob} for status/filename/downloadPath;
+   * UI fetches PDF bytes from the host download path on success.
    */
   exportItemPdf(itemId: string): Promise<{ jobId: string }>;
   /** Snapshot of an {@link ItemsPort.exportItemPdf} job (#304). */

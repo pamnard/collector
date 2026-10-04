@@ -1,14 +1,19 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { exportItemPdfJobType } from "@collector/shared";
+import {
+  configureExportItemPdfStore,
+  peekExportItemPdfResult,
+} from "../../export/export-item-pdf-store.js";
 import { createJobQueue, type JobQueue } from "../job-queue.js";
 import { createJobRegistry } from "../job-registry.js";
 import {
   createExportItemPdfHandler,
   enqueueExportItemPdf,
   takeExportItemPdfResult,
+  toExportItemPdfResult,
 } from "./export-item-pdf.js";
 
 const FAKE_PDF = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]);
@@ -38,7 +43,11 @@ describe("exportItemPdf job (#304)", () => {
     }
   });
 
-  it("builds HTML, calls htmlToPdf, and stores mailbox PDF", async () => {
+  it("builds HTML, calls htmlToPdf, and stores a temp PDF for HTTP download", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-export-pdf-data-"));
+    dirs.push(dataDir);
+    configureExportItemPdfStore(dataDir);
+
     const htmlToPdf = vi.fn(async () => FAKE_PDF);
     const buildItemPrintHtml = vi.fn(async () => ({
       html: '<html data-print-theme="light"><body>Fixture</body></html>',
@@ -50,9 +59,11 @@ describe("exportItemPdf job (#304)", () => {
         referencedFilenames: [],
       },
     }));
+    const assertPdfEngineReady = vi.fn(async () => {});
     const handler = createExportItemPdfHandler({
       buildItemPrintHtml,
       htmlToPdf,
+      assertPdfEngineReady,
       assertActiveVault: async () => {},
     });
 
@@ -64,12 +75,54 @@ describe("exportItemPdf job (#304)", () => {
     });
 
     expect(result).toEqual({ status: "ok" });
+    expect(assertPdfEngineReady).toHaveBeenCalledOnce();
     expect(buildItemPrintHtml).toHaveBeenCalledWith("Inbox/fixture.md");
     expect(htmlToPdf).toHaveBeenCalledOnce();
-    expect(takeExportItemPdfResult("job-pdf-1")).toEqual({
+    const stored = peekExportItemPdfResult("job-pdf-1");
+    expect(stored?.filename).toBe("Fixture.pdf");
+    expect(stored?.absolutePath).toBeTruthy();
+    expect(readFileSync(stored!.absolutePath)).toEqual(Buffer.from(FAKE_PDF));
+    expect(toExportItemPdfResult("job-pdf-1")).toEqual({
       filename: "Fixture.pdf",
-      pdfBase64: Buffer.from(FAKE_PDF).toString("base64"),
+      downloadPath: "/export/item-pdf?jobId=job-pdf-1",
     });
+    expect(JSON.stringify(toExportItemPdfResult("job-pdf-1"))).not.toContain(
+      "pdfBase64",
+    );
+  });
+
+  it("fails permanently when Playwright/Chromium is not ready", async () => {
+    const handler = createExportItemPdfHandler({
+      buildItemPrintHtml: async () => ({
+        html: "<html></html>",
+        filename: "X.pdf",
+        model: {
+          title: "X",
+          hero: null,
+          bodyParts: [],
+          referencedFilenames: [],
+        },
+      }),
+      htmlToPdf: async () => FAKE_PDF,
+      assertPdfEngineReady: async () => {
+        throw new Error("Playwright Chromium cannot launch for PDF export: missing");
+      },
+      assertActiveVault: async () => {},
+    });
+
+    const result = await handler({
+      id: "job-pdf-engine",
+      type: "exportItemPdf",
+      attempts: 0,
+      payload: { vaultId: "v1", itemId: "Inbox/fixture.md" },
+    });
+
+    expect(result).toEqual({
+      status: "fail",
+      retryable: false,
+      error: "Playwright Chromium cannot launch for PDF export: missing",
+    });
+    expect(takeExportItemPdfResult("job-pdf-engine")).toBeNull();
   });
 
   it("fails permanently when print composition is not ready", async () => {
@@ -78,6 +131,7 @@ describe("exportItemPdf job (#304)", () => {
         throw new Error("print image not ready: media/u/x.png");
       },
       htmlToPdf: async () => FAKE_PDF,
+      assertPdfEngineReady: async () => {},
       assertActiveVault: async () => {},
     });
 
@@ -99,6 +153,7 @@ describe("exportItemPdf job (#304)", () => {
   it("dedupes active export for same vaultId+itemId", async () => {
     const dir = mkdtempSync(join(tmpdir(), "collector-export-pdf-"));
     dirs.push(dir);
+    configureExportItemPdfStore(dir);
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -121,6 +176,7 @@ describe("exportItemPdf job (#304)", () => {
           };
         },
         htmlToPdf: async () => FAKE_PDF,
+        assertPdfEngineReady: async () => {},
         assertActiveVault: async () => {},
       }),
     );

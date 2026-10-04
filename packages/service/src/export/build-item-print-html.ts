@@ -6,6 +6,7 @@ import type {
   ItemPrintInlineMedia,
   ItemPrintModel,
 } from "./item-print-model.js";
+import { markdownSegmentToHtml } from "./markdown-to-print-html.js";
 
 export type ResolvedPrintMedia =
   | { kind: "image"; dataUri: string; alt: string }
@@ -24,6 +25,7 @@ export type ResolvedItemPrintDocument = {
     { kind: "markdown"; text: string } | { kind: "media"; media: ResolvedPrintMedia }
   >;
   fontCss: string;
+  katexCss: string;
 };
 
 function escapeHtml(text: string): string {
@@ -34,65 +36,7 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/** Minimal markdown → HTML for print body text segments (GFM-ish subset). */
-export function markdownSegmentToHtml(text: string): string {
-  if (!text.trim()) {
-    return "";
-  }
-  const escaped = escapeHtml(text);
-  const withCode = escaped.replace(
-    /```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g,
-    (_m, lang: string, code: string) => {
-      const cls = lang ? ` language-${lang}` : "";
-      if (lang === "mermaid") {
-        return `<pre class="mermaid">${code}</pre>`;
-      }
-      return `<pre><code class="${cls.trim()}">${code}</code></pre>`;
-    },
-  );
-  const withInlineCode = withCode.replace(
-    /`([^`]+)`/g,
-    "<code>$1</code>",
-  );
-  const withBold = withInlineCode.replace(
-    /\*\*([^*]+)\*\*/g,
-    "<strong>$1</strong>",
-  );
-  const withItalic = withBold.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-  const withLinks = withItalic.replace(
-    /\[([^\]]+)\]\(([^)\s]+)\)/g,
-    '<a href="$2">$1</a>',
-  );
-  const paragraphs = withLinks
-    .split(/\n{2,}/)
-    .map((block) => {
-      const trimmed = block.trim();
-      if (!trimmed) {
-        return "";
-      }
-      if (trimmed.startsWith("<pre")) {
-        return trimmed;
-      }
-      if (/^#{1,6}\s/.test(trimmed)) {
-        return trimmed.replace(/^(#{1,6})\s+(.+)$/gm, (_m, hashes: string, title: string) => {
-          const level = hashes.length;
-          return `<h${level}>${title}</h${level}>`;
-        });
-      }
-      if (/^[-*]\s+/m.test(trimmed)) {
-        const items = trimmed
-          .split(/\n/)
-          .filter((line) => /^[-*]\s+/.test(line))
-          .map((line) => `<li>${line.replace(/^[-*]\s+/, "")}</li>`)
-          .join("");
-        return `<ul>${items}</ul>`;
-      }
-      return `<p>${trimmed.replace(/\n/g, "<br />")}</p>`;
-    })
-    .filter(Boolean)
-    .join("\n");
-  return paragraphs;
-}
+export { markdownSegmentToHtml };
 
 function mediaToHtml(media: ResolvedPrintMedia): string {
   if (media.kind === "image") {
@@ -126,6 +70,7 @@ export function renderResolvedPrintHtml(doc: ResolvedItemPrintDocument): string 
 <title>${escapeHtml(doc.title)}</title>
 <style>
 ${doc.fontCss}
+${doc.katexCss}
 :root { color-scheme: light; }
 html, body {
   margin: 0;
@@ -160,6 +105,18 @@ html, body {
   line-height: 1.3;
   margin: 1.4em 0 0.6em;
 }
+.print-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+}
+.print-body th, .print-body td {
+  border: 1px solid #d4d4d4;
+  padding: 0.4em 0.65em;
+  text-align: left;
+}
+.print-body th { background: #f5f5f5; font-weight: 600; }
+.print-body .katex-display { margin: 1em 0; overflow: hidden; }
 .print-inline-media {
   margin: 1.25em 0;
 }
@@ -193,6 +150,10 @@ html, body {
   padding: 0.9em 1em;
   overflow: auto;
   border-radius: 6px;
+}
+.print-body pre.mermaid {
+  background: transparent;
+  padding: 0;
 }
 .print-body a { color: #4338ca; }
 </style>
@@ -247,6 +208,7 @@ export function resolvePrintDocument(
   model: ItemPrintModel,
   options: {
     fontCss: string;
+    katexCss: string;
     heroDataUri: string | null;
     imageDataUri: (src: string) => string | null;
     videoStillDataUri: (src: string) => string | null;
@@ -271,5 +233,6 @@ export function resolvePrintDocument(
     heroDataUri: options.heroDataUri,
     bodyParts,
     fontCss: options.fontCss,
+    katexCss: options.katexCss,
   };
 }

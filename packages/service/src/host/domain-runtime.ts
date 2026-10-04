@@ -63,7 +63,11 @@ import {
 import { createImportFolderHandler } from "../jobs/handlers/import-folder.js";
 import { createExportItemPdfHandler } from "../jobs/handlers/export-item-pdf.js";
 import { createBuildItemPrintHtml } from "../export/build-item-print-document.js";
-import { createPlaywrightHtmlToPdf } from "../export/html-to-pdf.js";
+import { configureExportItemPdfStore } from "../export/export-item-pdf-store.js";
+import {
+  assertPlaywrightChromiumReady,
+  createPlaywrightHtmlToPdf,
+} from "../export/html-to-pdf.js";
 import { createLocalizeItemRemoteDisplayAssets } from "../localize-item-remote-display-assets.js";
 import {
   enqueueJobWithFailureReporting,
@@ -80,9 +84,6 @@ import { createDropImportRuntime } from "./domain-runtime/drop-import.js";
 import { createExportItemPdfRuntime } from "./domain-runtime/export-item-pdf.js";
 import { createWaitDerivedRuntime } from "./domain-runtime/wait-derived.js";
 import { createSyncPluginRuntime } from "./domain-runtime/sync-plugins.js";
-import { existsSync } from "node:fs";
-import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
 import { createExtractPluginRegistry } from "../extract-plugin-registry.js";
 import { createExtractAutoAttemptStore } from "../extract/extract-auto-attempt-store.js";
 import { createInstagramExtractorPlugin } from "../extract/instagram/instagram-extractor-plugin.js";
@@ -101,37 +102,6 @@ import type {
 import { mkdir } from "node:fs/promises";
 
 export type { ServiceDomainRuntime, ServiceDomainRuntimeOptions } from "./domain-runtime/types.js";
-
-/** Prefer latin + cyrillic Golos Text files for Chromium print (#304). */
-function resolveGolosTextFontPath(): string | null {
-  const require = createRequire(import.meta.url);
-  let pkgDir: string;
-  try {
-    pkgDir = dirname(require.resolve("@fontsource/golos-text/package.json"));
-  } catch {
-    const fallback = join(
-      process.cwd(),
-      "node_modules",
-      "@fontsource",
-      "golos-text",
-    );
-    if (!existsSync(fallback)) {
-      return null;
-    }
-    pkgDir = fallback;
-  }
-  const candidates = [
-    "golos-text-cyrillic-400-normal.woff2",
-    "golos-text-latin-400-normal.woff2",
-  ];
-  for (const name of candidates) {
-    const abs = join(pkgDir, "files", name);
-    if (existsSync(abs)) {
-      return abs;
-    }
-  }
-  return null;
-}
 
 export function createServiceDomainRuntime(
   layout: CollectorProfileLayout,
@@ -473,7 +443,7 @@ export function createServiceDomainRuntime(
     },
   });
 
-  const golosFontPath = resolveGolosTextFontPath();
+  configureExportItemPdfStore(dataDir);
   const buildItemPrintHtml = createBuildItemPrintHtml({
     getContext,
     resolveActiveVault: () => vaults.resolveActiveVault(),
@@ -486,14 +456,12 @@ export function createServiceDomainRuntime(
       );
       return cover?.data ?? null;
     },
-    golosFontPath,
   });
 
   phaseBHandlerBindings.exportItemPdf = createExportItemPdfHandler({
     buildItemPrintHtml,
-    htmlToPdf: createPlaywrightHtmlToPdf({
-      ...(golosFontPath ? { golosFontPath } : {}),
-    }),
+    htmlToPdf: createPlaywrightHtmlToPdf(),
+    assertPdfEngineReady: assertPlaywrightChromiumReady,
     assertActiveVault: async (vaultId) => {
       await requireActiveVaultPath(vaultId);
     },

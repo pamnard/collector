@@ -16,21 +16,15 @@ function resolvePlaywright(): typeof import("playwright") {
   const require = createRequire(import.meta.url);
   try {
     return require("playwright") as typeof import("playwright");
-  } catch {
-    const root = join(
-      dirname(fileURLToPath(import.meta.url)),
-      "..",
-      "..",
-      "..",
-      "..",
-      "node_modules",
-      "playwright",
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `playwright is required for htmlToPdf on the host: ${message}`,
     );
-    return require(root) as typeof import("playwright");
   }
 }
 
-function resolveMermaidBrowserBundle(): string | null {
+function resolveMermaidBrowserBundle(): string {
   const require = createRequire(import.meta.url);
   try {
     return require.resolve("mermaid/dist/mermaid.min.js");
@@ -91,37 +85,47 @@ async function waitForPrintReady(
 }
 
 /**
+ * Fail loudly at job start when Playwright/Chromium is missing so the job
+ * never reports success with an empty or absent PDF.
+ */
+export async function assertPlaywrightChromiumReady(): Promise<void> {
+  const playwright = resolvePlaywright();
+  const executablePath = playwright.chromium.executablePath();
+  try {
+    await access(executablePath);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Playwright Chromium cannot launch for PDF export: executable missing at ${executablePath} (${message})`,
+    );
+  }
+}
+
+/**
  * Production Chromium print pipeline via Playwright `page.pdf`.
  * Not html2canvas / jsPDF-as-engine.
  */
-export function createPlaywrightHtmlToPdf(options?: {
-  /** Optional absolute path to Golos Text woff2 for @font-face. */
-  golosFontPath?: string;
-}): HtmlToPdf {
+export function createPlaywrightHtmlToPdf(): HtmlToPdf {
   return async (html: string): Promise<Uint8Array> => {
     const playwright = resolvePlaywright();
-    const browser = await playwright.chromium.launch({
-      headless: true,
-    });
+    let browser: import("playwright").Browser;
+    try {
+      browser = await playwright.chromium.launch({
+        headless: true,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Playwright Chromium cannot launch for PDF export: ${message}`,
+      );
+    }
     try {
       const page = await browser.newPage();
-      let documentHtml = html;
-      if (options?.golosFontPath) {
-        await access(options.golosFontPath);
-        const fontUrl = `file://${options.golosFontPath}`;
-        documentHtml = html.replace(
-          "</style>",
-          `@font-face{font-family:"Golos Text";src:url("${fontUrl}") format("woff2");font-weight:400 600;font-display:block;}</style>`,
-        );
-      }
-      await page.setContent(documentHtml, { waitUntil: "load" });
+      await page.setContent(html, { waitUntil: "load" });
 
       const hasMermaid = await page.locator("pre.mermaid").count();
       if (hasMermaid > 0) {
         const mermaidPath = resolveMermaidBrowserBundle();
-        if (!mermaidPath) {
-          throw new Error("mermaid bundle not found for print readiness");
-        }
         await access(mermaidPath);
         await page.addScriptTag({ path: mermaidPath });
         await page.evaluate(async () => {
@@ -148,6 +152,9 @@ export function createPlaywrightHtmlToPdf(options?: {
         printBackground: true,
         margin: { top: "12mm", bottom: "12mm", left: "10mm", right: "10mm" },
       });
+      if (pdf.byteLength === 0) {
+        throw new Error("Playwright page.pdf returned empty PDF");
+      }
       return new Uint8Array(pdf);
     } finally {
       await browser.close();

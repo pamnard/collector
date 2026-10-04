@@ -22,6 +22,7 @@ describe("static-ui helpers (#555)", () => {
     expect(isReservedHostPath("/api/events")).toBe(true);
     expect(isReservedHostPath("/api/ui-bootstrap")).toBe(true);
     expect(isReservedHostPath("/media/file")).toBe(true);
+    expect(isReservedHostPath("/export/item-pdf")).toBe(true);
     expect(isReservedHostPath("/ping")).toBe(true);
     expect(isReservedHostPath("/")).toBe(false);
     expect(isReservedHostPath("/settings")).toBe(false);

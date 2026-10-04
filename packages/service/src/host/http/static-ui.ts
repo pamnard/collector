@@ -42,6 +42,9 @@ export function isReservedHostPath(pathname: string): boolean {
   if (pathname === "/media/file" || pathname.startsWith("/media/")) {
     return true;
   }
+  if (pathname === "/export/item-pdf" || pathname.startsWith("/export/")) {
+    return true;
+  }
   return false;
 }
 

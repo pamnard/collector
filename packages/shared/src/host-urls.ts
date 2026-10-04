@@ -21,6 +21,26 @@ export function buildHostMediaFileUrl(
 }
 
 /**
+ * Authenticated absolute URL for a completed item PDF download (#304).
+ * `downloadPath` is the host-relative path from the export job snapshot.
+ */
+export function buildHostExportItemPdfUrl(
+  baseUrl: string,
+  token: string,
+  downloadPath: string,
+): string {
+  const trimmedPath = downloadPath.trim();
+  if (!trimmedPath.startsWith("/export/item-pdf")) {
+    throw new Error(
+      `export downloadPath must start with /export/item-pdf, got ${downloadPath}`,
+    );
+  }
+  const url = new URL(trimmedPath, `${baseUrl.replace(/\/+$/, "")}/`);
+  url.searchParams.set("token", token);
+  return url.toString();
+}
+
+/**
  * Authenticated `/media/derive` URL for a vault file at a whitelist width (#882).
  * `w` must be on the locked whitelist — unknown widths are rejected by the host.
  *

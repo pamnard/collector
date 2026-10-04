@@ -126,8 +126,11 @@ export interface ImportFolderJobSnapshot {
 /** Mailbox payload for one-item PDF export (#304). */
 export interface ExportItemPdfResult {
   filename: string;
-  /** PDF bytes as base64 for wire transport. */
-  pdfBase64: string;
+  /**
+   * Host-relative download path (e.g. `/export/item-pdf?jobId=…`).
+   * PDF bytes are fetched over HTTP — never embedded as base64 in the job snapshot.
+   */
+  downloadPath: string;
 }
 
 export type ExportItemPdfJobStatus = ImportFolderJobStatus;
