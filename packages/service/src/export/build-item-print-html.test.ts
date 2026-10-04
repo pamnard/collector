@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  markdownSegmentToHtml,
   renderResolvedPrintHtml,
   resolvePrintDocument,
 } from "./build-item-print-html.js";
 import { buildItemPrintModel } from "./item-print-model.js";
+import { markdownSegmentToHtml } from "./markdown-to-print-html.js";
 import { buildGolosTextPrintFontCss, buildKatexPrintCss } from "./print-assets.js";
 
 const TINY_PNG =

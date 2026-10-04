@@ -107,7 +107,7 @@ export async function handleExportItemPdf(
   const headers: Record<string, string> = {
     "content-type": "application/pdf",
     "content-length": String(fileStat.size),
-    "content-disposition": `attachment; filename="${stored.filename.replace(/"/g, "")}"`,
+    "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(stored.filename)}`,
     "cache-control": "no-store",
     ...cors,
   };

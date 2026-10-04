@@ -8,6 +8,9 @@ import { dirname, join } from "node:path";
 
 const GOLOS_CSS_FILES = ["400.css", "600.css"] as const;
 
+let cachedGolosCss: string | null = null;
+let cachedKatexCss: string | null = null;
+
 function resolvePackageDir(packageName: string): string {
   const require = createRequire(import.meta.url);
   try {
@@ -26,6 +29,9 @@ function resolvePackageDir(packageName: string): string {
  * Uses the same fontsource CSS the UI loads, with file:// URLs for Chromium.
  */
 export function buildGolosTextPrintFontCss(): string {
+  if (cachedGolosCss !== null) {
+    return cachedGolosCss;
+  }
   const pkgDir = resolvePackageDir("@fontsource/golos-text");
   const requiredWoff2 = [
     "golos-text-latin-400-normal.woff2",
@@ -54,7 +60,8 @@ export function buildGolosTextPrintFontCss(): string {
       .replace(/font-display:\s*swap;/g, "font-display: block;");
     chunks.push(rewritten);
   }
-  return chunks.join("\n");
+  cachedGolosCss = chunks.join("\n");
+  return cachedGolosCss;
 }
 
 /**
@@ -62,6 +69,9 @@ export function buildGolosTextPrintFontCss(): string {
  * Chromium print can load formula glyphs without a network base.
  */
 export function buildKatexPrintCss(): string {
+  if (cachedKatexCss !== null) {
+    return cachedKatexCss;
+  }
   const katexDir = resolvePackageDir("katex");
   const cssPath = join(katexDir, "dist", "katex.min.css");
   if (!existsSync(cssPath)) {
@@ -69,8 +79,8 @@ export function buildKatexPrintCss(): string {
   }
   const fontsDir = join(katexDir, "dist", "fonts").replace(/\\/g, "/");
   const raw = readFileSync(cssPath, "utf8");
-  return raw.replace(/url\(fonts\//g, `url("file://${fontsDir}/`).replace(
-    /\) format\(/g,
-    `") format(`,
-  );
+  cachedKatexCss = raw
+    .replace(/url\(fonts\//g, `url("file://${fontsDir}/`)
+    .replace(/\) format\(/g, `") format(`);
+  return cachedKatexCss;
 }

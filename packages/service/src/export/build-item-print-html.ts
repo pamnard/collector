@@ -36,8 +36,6 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export { markdownSegmentToHtml };
-
 function mediaToHtml(media: ResolvedPrintMedia): string {
   if (media.kind === "image") {
     return `<figure class="print-inline-media"><img src="${media.dataUri}" alt="${escapeHtml(media.alt)}" /></figure>`;
