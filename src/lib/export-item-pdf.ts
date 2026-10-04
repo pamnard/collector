@@ -42,10 +42,11 @@ async function waitAndDownload(
         continue;
       }
       if (snap.status === "succeeded" && snap.result) {
-        const bytes = Uint8Array.from(
-          atob(snap.result.pdfBase64),
-          (c) => c.charCodeAt(0),
-        );
+        const binary = atob(snap.result.pdfBase64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+          bytes[i] = binary.charCodeAt(i);
+        }
         triggerBrowserDownload(snap.result.filename, bytes);
         alerts.upsert(ITEM_EXPORT_PDF_SUCCESS_ID, {
           tone: "info",
@@ -57,6 +58,13 @@ async function waitAndDownload(
       // Permanent failures are surfaced by the global job AlertStack path.
       return;
     }
+    console.error("[exportItemPdf] wait timed out", { jobId });
+    alerts.upsert(ITEM_EXPORT_PDF_ENQUEUE_ERROR_ID, {
+      tone: "danger",
+      dismissible: true,
+      message: "Экспорт в PDF не завершился вовремя",
+      detail: `jobId=${jobId}`,
+    });
   } finally {
     activeWaits.delete(jobId);
   }

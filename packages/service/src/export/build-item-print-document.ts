@@ -9,10 +9,10 @@ import {
 } from "@collector/core";
 import { readFile } from "node:fs/promises";
 import { basename, isAbsolute, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
-  buildItemPrintHtmlFromResolved,
+  renderResolvedPrintHtml,
   resolvePrintDocument,
-  type ResolvedItemPrintDocument,
 } from "./build-item-print-html.js";
 import {
   buildItemPrintModel,
@@ -61,28 +61,14 @@ async function readDataUri(absolutePath: string): Promise<string> {
   return toDataUri(bytes, mimeForFilename(basename(absolutePath)));
 }
 
-function resolveVaultRelativePath(
-  vaultPath: string,
-  _itemId: string,
-  src: string,
-): string {
-  if (src.startsWith("data:")) {
-    return src;
-  }
-  if (isAbsolute(src)) {
+function resolveVaultRelativePath(vaultPath: string, src: string): string {
+  if (src.startsWith("data:") || isAbsolute(src)) {
     return src;
   }
   if (src.startsWith("file://")) {
-    return fileURLToPathSafe(src);
+    return fileURLToPath(src);
   }
-  // Vault-relative (media/<uuid>/…) or note-relative — prefer vault root join.
-  const normalized = src.replace(/^\.\//, "");
-  return join(vaultPath, normalized);
-}
-
-function fileURLToPathSafe(url: string): string {
-  const u = new URL(url);
-  return decodeURIComponent(u.pathname);
+  return join(vaultPath, src.replace(/^\.\//, ""));
 }
 
 function golosFontCss(fontFilePath: string | null): string {
@@ -124,74 +110,62 @@ export function createBuildItemPrintHtml(deps: {
     const imageCache = new Map<string, string>();
     const videoCache = new Map<string, string>();
 
-    const imageDataUri = (src: string): string | null => {
-      if (src.startsWith("data:")) {
-        return src;
-      }
-      const cached = imageCache.get(src);
-      if (cached) {
-        return cached;
-      }
-      return null;
-    };
-
-    const videoStillDataUri = (src: string): string | null => {
-      if (src.startsWith("data:")) {
-        return src;
-      }
-      return videoCache.get(src) ?? null;
-    };
-
-    // Prefetch inline images / video stills referenced in the body.
+    const mediaLoads: Array<Promise<void>> = [];
     for (const part of model.bodyParts) {
       if (part.kind !== "media") {
         continue;
       }
       if (part.media.kind === "image") {
-        const abs = resolveVaultRelativePath(vaultPath, itemId, part.media.src);
-        if (abs.startsWith("data:")) {
-          imageCache.set(part.media.src, abs);
-          continue;
-        }
-        const exists = await ctx.fs.exists(abs);
-        if (!exists) {
-          const byName = byFilename.get(filenameFromMediaSrc(part.media.src));
-          if (!byName) {
-            throw new Error(`print image not ready: ${part.media.src}`);
-          }
-          imageCache.set(part.media.src, await readDataUri(byName.absolute_path));
-        } else {
-          imageCache.set(part.media.src, await readDataUri(abs));
-        }
-      } else if (part.media.kind === "videoStill") {
-        const abs = resolveVaultRelativePath(vaultPath, itemId, part.media.src);
-        const pathForStill = (await ctx.fs.exists(abs))
-          ? abs
-          : byFilename.get(part.media.filename)?.absolute_path;
-        if (!pathForStill) {
-          throw new Error(`print video still not ready: ${part.media.src}`);
-        }
-        const still = await deps.videoStillBytes(
-          pathForStill,
-          part.media.filename,
+        const src = part.media.src;
+        mediaLoads.push(
+          (async () => {
+            if (src.startsWith("data:")) {
+              imageCache.set(src, src);
+              return;
+            }
+            const abs = resolveVaultRelativePath(vaultPath, src);
+            const exists = await ctx.fs.exists(abs);
+            if (exists) {
+              imageCache.set(src, await readDataUri(abs));
+              return;
+            }
+            const byName = byFilename.get(filenameFromMediaSrc(src));
+            if (!byName) {
+              throw new Error(`print image not ready: ${src}`);
+            }
+            imageCache.set(src, await readDataUri(byName.absolute_path));
+          })(),
         );
-        if (!still) {
-          throw new Error(`print video still not ready: ${part.media.src}`);
-        }
-        videoCache.set(
-          part.media.src,
-          toDataUri(still, "image/webp"),
+      } else if (part.media.kind === "videoStill") {
+        const src = part.media.src;
+        const filename = part.media.filename;
+        mediaLoads.push(
+          (async () => {
+            const abs = resolveVaultRelativePath(vaultPath, src);
+            const pathForStill = (await ctx.fs.exists(abs))
+              ? abs
+              : byFilename.get(filename)?.absolute_path;
+            if (!pathForStill) {
+              throw new Error(`print video still not ready: ${src}`);
+            }
+            const still = await deps.videoStillBytes(pathForStill, filename);
+            if (!still) {
+              throw new Error(`print video still not ready: ${src}`);
+            }
+            videoCache.set(src, toDataUri(still, "image/webp"));
+          })(),
         );
       }
     }
+    await Promise.all(mediaLoads);
 
     let heroDataUri: string | null = null;
     if (heroSrc) {
       if (hero?.kind === "video") {
-        const stillPath = hero.displayPath ?? hero.filePath;
         if (hero.displayPath && (await ctx.fs.exists(hero.displayPath))) {
           heroDataUri = await readDataUri(hero.displayPath);
         } else {
+          const stillPath = hero.displayPath ?? hero.filePath;
           const still = await deps.videoStillBytes(
             stillPath,
             basename(stillPath),
@@ -209,14 +183,16 @@ export function createBuildItemPrintHtml(deps: {
     }
 
     const referenced = new Set(model.referencedFilenames);
-    const resolved: ResolvedItemPrintDocument = resolvePrintDocument(model, {
+    const resolved = resolvePrintDocument(model, {
       fontCss: golosFontCss(deps.golosFontPath ?? null),
       heroDataUri,
-      imageDataUri,
-      videoStillDataUri,
+      imageDataUri: (src) =>
+        src.startsWith("data:") ? src : (imageCache.get(src) ?? null),
+      videoStillDataUri: (src) =>
+        src.startsWith("data:") ? src : (videoCache.get(src) ?? null),
     });
 
-    const html = buildItemPrintHtmlFromResolved(resolved);
+    const html = renderResolvedPrintHtml(resolved);
     for (const row of mediaRows) {
       if (
         !referenced.has(row.filename) &&

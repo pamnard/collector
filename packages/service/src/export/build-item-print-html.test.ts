@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildItemPrintHtmlFromResolved,
   markdownSegmentToHtml,
+  renderResolvedPrintHtml,
   resolvePrintDocument,
 } from "./build-item-print-html.js";
 import { buildItemPrintModel } from "./item-print-model.js";
@@ -36,7 +36,7 @@ describe("build-item-print-html (#304)", () => {
         src.endsWith("clip.mp4") ? TINY_PNG : null,
     });
 
-    const html = buildItemPrintHtmlFromResolved(resolved);
+    const html = renderResolvedPrintHtml(resolved);
     expect(html).toContain('data-print-theme="light"');
     expect(html).toContain("background: #ffffff");
     expect(html).toContain("Golos Text");

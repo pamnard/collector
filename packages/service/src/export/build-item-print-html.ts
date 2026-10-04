@@ -3,7 +3,6 @@
  */
 
 import type {
-  ItemPrintBodyPart,
   ItemPrintInlineMedia,
   ItemPrintModel,
 } from "./item-print-model.js";
@@ -257,7 +256,7 @@ export function resolvePrintDocument(
     throw new Error("print hero not ready");
   }
   const bodyParts: ResolvedItemPrintDocument["bodyParts"] = [];
-  for (const part of model.bodyParts as ItemPrintBodyPart[]) {
+  for (const part of model.bodyParts) {
     if (part.kind === "markdown") {
       bodyParts.push(part);
       continue;
@@ -273,10 +272,4 @@ export function resolvePrintDocument(
     bodyParts,
     fontCss: options.fontCss,
   };
-}
-
-export function buildItemPrintHtmlFromResolved(
-  doc: ResolvedItemPrintDocument,
-): string {
-  return renderResolvedPrintHtml(doc);
 }
