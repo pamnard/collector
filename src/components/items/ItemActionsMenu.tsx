@@ -1,5 +1,6 @@
 import {
   FileCheck,
+  FileDown,
   FolderInput,
   Import,
   MoreVertical,
@@ -27,6 +28,7 @@ const ITEM_ACTION_ICONS: Record<ItemActionId, LucideIcon> = {
   move: FolderInput,
   rename: Pencil,
   import: Import,
+  exportPdf: FileDown,
   lint: FileCheck,
   delete: Trash2,
 };

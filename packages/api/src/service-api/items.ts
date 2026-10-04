@@ -1,6 +1,7 @@
 import type { ItemFile, VaultMeta } from "@collector/shared";
 import type {
   CreateItemInput,
+  ExportItemPdfJobSnapshot,
   ImportDroppedFilesInput,
   ImportDroppedFilesResult,
   ImportFolderInput,
@@ -300,6 +301,13 @@ export interface ItemsPort {
   importFolder(input: ImportFolderInput): Promise<{ jobId: string }>;
   /** Snapshot of an {@link ItemsPort.importFolder} job (#747). */
   getImportFolderJob(jobId: string): Promise<ImportFolderJobSnapshot>;
+  /**
+   * Enqueue one-item PDF export and return immediately (#304).
+   * Poll {@link ItemsPort.getExportItemPdfJob} for status/result; UI downloads on success.
+   */
+  exportItemPdf(itemId: string): Promise<{ jobId: string }>;
+  /** Snapshot of an {@link ItemsPort.exportItemPdf} job (#304). */
+  getExportItemPdfJob(jobId: string): Promise<ExportItemPdfJobSnapshot>;
   /**
    * Opt-in await of `itemDerivedRefresh` for one item revision (#770 / #765).
    * For scripts/agents that must chain on fully caught-up derived state.

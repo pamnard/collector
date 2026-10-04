@@ -441,6 +441,22 @@ export const ITEMS_DISPATCH = {
       return runtime.dropImport.getImportFolderJob(jobId);
     },
   },
+  [M.exportItemPdf]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.exportItemPdf);
+      const itemId = requireString(p.itemId, "itemId", M.exportItemPdf);
+      await runtime.ensureInitialized();
+      return runtime.exportItemPdf.exportItemPdf(itemId);
+    },
+  },
+  [M.getExportItemPdfJob]: {
+    handle: async (runtime, params) => {
+      const p = asObject(params, M.getExportItemPdfJob);
+      const jobId = requireString(p.jobId, "jobId", M.getExportItemPdfJob);
+      await runtime.ensureInitialized();
+      return runtime.exportItemPdf.getExportItemPdfJob(jobId);
+    },
+  },
   [M.waitDerived]: {
     handle: async (runtime, params) => {
       const p = asObject(params, M.waitDerived);

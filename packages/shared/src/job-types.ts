@@ -338,6 +338,33 @@ export function tagCatalogPruneFullIdempotencyKey(vaultId: string): string {
 }
 
 /**
+ * One-item PDF export via Chromium print pipeline (#304).
+ * maxAttempts=1 — print readiness failures surface once via AlertStack.
+ */
+export const EXPORT_ITEM_PDF_TIMEOUT_MS = 5 * 60 * 1000;
+
+export const exportItemPdfJobPayloadSchema = z.object({
+  vaultId: z.string().min(1),
+  itemId: z.string().min(1),
+});
+export type ExportItemPdfJobPayload = z.infer<
+  typeof exportItemPdfJobPayloadSchema
+>;
+export const exportItemPdfJobType = defineJobType({
+  id: "exportItemPdf",
+  payload: exportItemPdfJobPayloadSchema,
+  timeoutMs: EXPORT_ITEM_PDF_TIMEOUT_MS,
+  maxAttempts: 1,
+});
+
+/** Active dedupe: one in-flight PDF export per vault item (#304). */
+export function exportItemPdfIdempotencyKey(
+  payload: Pick<ExportItemPdfJobPayload, "vaultId" | "itemId">,
+): string {
+  return `exportItemPdf:${payload.vaultId}:${payload.itemId}`;
+}
+
+/**
  * Production catalog — the single explicit list of job type ids (#629).
  * Phase B types join here; test suites may pass a local catalog to
  * `createJobRegistry` without mutating this array.
@@ -354,6 +381,7 @@ export const JOB_TYPE_CATALOG = [
   dropImportBatchJobType,
   importFolderJobType,
   tagCatalogPruneJobType,
+  exportItemPdfJobType,
 ] as const;
 
 export type JobTypeId = (typeof JOB_TYPE_CATALOG)[number]["id"];

@@ -32,6 +32,7 @@ export const phaseBHandlerBindings: {
   dropImportBatch: AnyTypedHandler | null;
   importFolder: AnyTypedHandler | null;
   tagCatalogPrune: AnyTypedHandler | null;
+  exportItemPdf: AnyTypedHandler | null;
 } = {
   vaultIndexSync: null,
   reindexVaultBatch: null,
@@ -43,6 +44,7 @@ export const phaseBHandlerBindings: {
   dropImportBatch: null,
   importFolder: null,
   tagCatalogPrune: null,
+  exportItemPdf: null,
 };
 
 export function boundPhaseBHandler(

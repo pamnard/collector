@@ -5,6 +5,7 @@ import type {
   DashboardItemIdsResult,
   DashboardItemSort,
   DashboardLoadHandlers,
+  ExportItemPdfJobSnapshot,
   GetItemResult,
   ImportDroppedFilesInput,
   ImportDroppedFilesResult,
@@ -256,6 +257,8 @@ function createItemsWriteMethods(
   | "importDroppedFiles"
   | "importFolder"
   | "getImportFolderJob"
+  | "exportItemPdf"
+  | "getExportItemPdfJob"
   | "waitDerived"
 > {
   return {
@@ -307,6 +310,14 @@ function createItemsWriteMethods(
       transport.request("getImportFolderJob", {
         jobId,
       }) as Promise<ImportFolderJobSnapshot>,
+    exportItemPdf: async (itemId: string): Promise<{ jobId: string }> =>
+      transport.request("exportItemPdf", { itemId }) as Promise<{
+        jobId: string;
+      }>,
+    getExportItemPdfJob: (jobId: string): Promise<ExportItemPdfJobSnapshot> =>
+      transport.request("getExportItemPdfJob", {
+        jobId,
+      }) as Promise<ExportItemPdfJobSnapshot>,
     waitDerived: (
       itemId: string,
       contentRevision: number,

@@ -9,6 +9,7 @@ import {
   useItemChrome,
   type ItemDetailMode,
 } from "../components/layout/item-chrome";
+import { enqueueItemPdfExport } from "../lib/export-item-pdf";
 import {
   ITEM_IMPORT_BUSY_ID,
   ITEM_IMPORT_ERROR_ID,
@@ -211,6 +212,12 @@ export function useItemDetailChrome(
       },
       onImport: () => {
         void handleImportRef.current();
+      },
+      onExportPdf: () => {
+        if (!item) {
+          return;
+        }
+        void enqueueItemPdfExport(alerts, item.id);
       },
       onLint: () => {
         void handleLint();

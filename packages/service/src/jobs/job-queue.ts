@@ -3,6 +3,7 @@ import {
   JOB_PRIORITY_BULK,
   JOB_TYPE_CATALOG,
   dropImportBatchJobType,
+  exportItemPdfJobType,
   importFolderJobType,
   itemDerivedRefreshJobType,
   itemExtractAutoJobType,
@@ -284,5 +285,6 @@ export function createHostJobRegistry(): JobRegistry {
   );
   registry.register(importFolderJobType, boundPhaseBHandler("importFolder"));
   registry.register(tagCatalogPruneJobType, boundPhaseBHandler("tagCatalogPrune"));
+  registry.register(exportItemPdfJobType, boundPhaseBHandler("exportItemPdf"));
   return registry;
 }

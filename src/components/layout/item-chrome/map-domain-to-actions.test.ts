@@ -23,6 +23,7 @@ function domain(
     onMove: () => {},
     onRename: () => {},
     onImport: () => {},
+    onExportPdf: () => {},
     onLint: () => {},
     onDelete: () => {},
     importAvailable: false,
@@ -106,6 +107,7 @@ describe("mapDomainToActions", () => {
     const onMove = () => {};
     const onRename = () => {};
     const onImport = () => {};
+    const onExportPdf = () => {};
     const onLint = () => {};
     const onDelete = () => {};
     const onActionsMenuOpenChange = () => {};
@@ -120,6 +122,7 @@ describe("mapDomainToActions", () => {
         onMove,
         onRename,
         onImport,
+        onExportPdf,
         onLint,
         onDelete,
         importAvailable: true,
@@ -138,6 +141,7 @@ describe("mapDomainToActions", () => {
         onMove: actions?.onMove,
         onRename: actions?.onRename,
         onImport: actions?.onImport,
+        onExportPdf: actions?.onExportPdf,
         onLint: actions?.onLint,
         onDelete: actions?.onDelete,
         importAvailable: actions?.importAvailable,
@@ -154,6 +158,7 @@ describe("mapDomainToActions", () => {
         onMove,
         onRename,
         onImport,
+        onExportPdf,
         onLint,
         onDelete,
         importAvailable: true,

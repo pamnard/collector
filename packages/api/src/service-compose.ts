@@ -52,6 +52,8 @@ export const ITEMS_PORT_KEYS = [
   "importDroppedFiles",
   "importFolder",
   "getImportFolderJob",
+  "exportItemPdf",
+  "getExportItemPdfJob",
   "waitDerived",
 ] as const satisfies readonly (keyof ItemsPort)[];
 

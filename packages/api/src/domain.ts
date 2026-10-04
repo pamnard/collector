@@ -123,6 +123,23 @@ export interface ImportFolderJobSnapshot {
   error: string | null;
 }
 
+/** Mailbox payload for one-item PDF export (#304). */
+export interface ExportItemPdfResult {
+  filename: string;
+  /** PDF bytes as base64 for wire transport. */
+  pdfBase64: string;
+}
+
+export type ExportItemPdfJobStatus = ImportFolderJobStatus;
+
+/** Snapshot of an {@link ItemsPort.exportItemPdf} job (#304). */
+export interface ExportItemPdfJobSnapshot {
+  jobId: string;
+  status: ExportItemPdfJobStatus;
+  result: ExportItemPdfResult | null;
+  error: string | null;
+}
+
 /**
  * Result of opt-in {@link ItemsPort.waitDerived} (#770).
  * Terminal status of the `itemDerivedRefresh` job for one item revision.
