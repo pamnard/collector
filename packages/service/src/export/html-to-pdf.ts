@@ -21,7 +21,7 @@ const BROWSERS_DIR_NAME = "ms-playwright";
  */
 export function resolvePlaywrightBrowsersPath(input?: {
   env?: NodeJS.ProcessEnv;
-  argv1?: string | undefined;
+  argv1?: string;
   execPath?: string;
   exists?: (path: string) => boolean;
 }): string | null {
@@ -144,8 +144,8 @@ async function waitForPrintReady(
  * never reports success with an empty or absent PDF.
  */
 export async function assertPlaywrightChromiumReady(): Promise<void> {
-  const browsersPath = applyBundledPlaywrightBrowsersPath();
   const playwright = resolvePlaywright();
+  const browsersPath = resolvePlaywrightBrowsersPath();
   const executablePath = playwright.chromium.executablePath();
   try {
     await access(executablePath);

@@ -133,7 +133,6 @@ html, body {
 }
 .print-body .katex-display .katex-html,
 .print-body .katex-display .katex-html .base {
-  white-space: normal !important;
   max-width: 100%;
 }
 .print-body .katex-display .katex-html * {
@@ -192,8 +191,6 @@ html, body {
   background: transparent;
   padding: 0;
   white-space: normal;
-  max-width: 100%;
-  overflow: visible;
 }
 /* Vector diagrams cannot line-wrap; keep full glyph size (may span page width). */
 .print-body .mermaid svg {

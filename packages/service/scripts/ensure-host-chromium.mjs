@@ -34,11 +34,6 @@ function playwrightVersion() {
   return raw.replace(/^[^0-9]*/, "");
 }
 
-function playwrightCliPath() {
-  // package exports omit ./cli.js; bin points at cli.js next to index.js
-  return join(dirname(require.resolve("playwright")), "cli.js");
-}
-
 /**
  * Fresh Node process: Playwright caches browsers path on first import in-process.
  */
@@ -65,7 +60,8 @@ process.stdout.write(exe);
 
 function installChromium(browsersPath) {
   mkdirSync(browsersPath, { recursive: true });
-  const cli = playwrightCliPath();
+  // package exports omit ./cli.js; bin points at cli.js next to index.js
+  const cli = join(dirname(require.resolve("playwright")), "cli.js");
   if (!existsSync(cli)) {
     throw new Error(`ensure-host-chromium: playwright cli missing at ${cli}`);
   }
@@ -99,10 +95,11 @@ function main() {
     return;
   }
 
-  if (!chromiumExecutable(cacheDir)) {
+  let cachedExe = chromiumExecutable(cacheDir);
+  if (!cachedExe) {
     installChromium(cacheDir);
+    cachedExe = chromiumExecutable(cacheDir);
   }
-  const cachedExe = chromiumExecutable(cacheDir);
   if (!cachedExe) {
     throw new Error(
       `ensure-host-chromium: chromium missing under cache ${cacheDir}`,
