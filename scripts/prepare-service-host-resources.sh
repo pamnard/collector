@@ -414,6 +414,27 @@ if [[ ! -f "$HOST_OUT/bin/${YT_DLP_BIN_NAME}" ]]; then
   exit 1
 fi
 
+echo "==> publish Playwright Chromium → $HOST_OUT/ms-playwright (#304)"
+# Shared ensure with packages/service/scripts/ensure-host-chromium.mjs (service build).
+SERVICE_MS_PLAYWRIGHT="$ROOT/packages/service/dist/host/ms-playwright"
+node "$ROOT/packages/service/scripts/ensure-host-chromium.mjs"
+if [[ ! -d "$SERVICE_MS_PLAYWRIGHT" ]]; then
+  echo "FAIL: missing service ms-playwright at $SERVICE_MS_PLAYWRIGHT" >&2
+  exit 1
+fi
+rm -rf "$HOST_OUT/ms-playwright"
+cp -a "$SERVICE_MS_PLAYWRIGHT" "$HOST_OUT/ms-playwright"
+HOST_CHROME="$(
+  PLAYWRIGHT_BROWSERS_PATH="$HOST_OUT/ms-playwright" \
+    node -e "const {createRequire}=require('module'); const r=createRequire(process.argv[1]); const {chromium}=r('playwright'); process.stdout.write(chromium.executablePath())" \
+    "$ROOT/packages/service/package.json"
+)"
+if [[ ! -f "$HOST_CHROME" ]]; then
+  echo "FAIL: missing bundled Chromium at $HOST_CHROME" >&2
+  exit 1
+fi
+echo "    chromium: $HOST_CHROME"
+
 echo "==> ABI probe: open :memory: DB + sharp with bundled Node"
 (
   cd "$HOST_OUT"
@@ -503,6 +524,10 @@ if [[ ! -f "$HOST_OUT/bin/${FFMPEG_BIN_NAME}" ]]; then
 fi
 if [[ ! -f "$HOST_OUT/bin/${YT_DLP_BIN_NAME}" ]]; then
   echo "FAIL: missing yt-dlp under $HOST_OUT/bin" >&2
+  exit 1
+fi
+if [[ ! -d "$HOST_OUT/ms-playwright" || ! -f "$HOST_CHROME" ]]; then
+  echo "FAIL: missing Chromium under $HOST_OUT/ms-playwright (#304)" >&2
   exit 1
 fi
 

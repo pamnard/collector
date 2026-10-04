@@ -105,6 +105,7 @@ html, body {
 }
 .print-body table {
   width: 100%;
+  max-width: 100%;
   border-collapse: collapse;
   margin: 1em 0;
 }
@@ -112,9 +113,40 @@ html, body {
   border: 1px solid #d4d4d4;
   padding: 0.4em 0.65em;
   text-align: left;
+  overflow-wrap: anywhere;
 }
 .print-body th { background: #f5f5f5; font-weight: 600; }
-.print-body .katex-display { margin: 1em 0; overflow: hidden; }
+/*
+ * Web: overflow-x scroll for wide blocks. PDF: wrap instead of shrink/clip.
+ * KaTeX defaults to nowrap — override so long formulas break across lines.
+ */
+.print-body .katex-display {
+  margin: 1em 0;
+  max-width: 100%;
+  overflow: visible;
+  text-align: center;
+}
+.print-body .katex-display > .katex {
+  max-width: 100%;
+  display: inline-block;
+  text-align: initial;
+}
+.print-body .katex-display .katex-html,
+.print-body .katex-display .katex-html .base {
+  max-width: 100%;
+}
+.print-body .katex-display .katex-html * {
+  white-space: normal !important;
+}
+.print-body .katex {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.print-body p,
+.print-body li {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .print-inline-media {
   margin: 1.25em 0;
 }
@@ -136,22 +168,35 @@ html, body {
   color: #262626;
   font-family: ui-monospace, monospace;
   font-size: 0.9rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .print-body code {
   font-family: ui-monospace, monospace;
   background: #f5f5f5;
   padding: 0.1em 0.35em;
   border-radius: 4px;
+  overflow-wrap: anywhere;
 }
 .print-body pre {
   background: #f5f5f5;
   padding: 0.9em 1em;
-  overflow: auto;
+  max-width: 100%;
+  overflow: visible;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   border-radius: 6px;
 }
 .print-body pre.mermaid {
   background: transparent;
   padding: 0;
+  white-space: normal;
+}
+/* Vector diagrams cannot line-wrap; keep full glyph size (may span page width). */
+.print-body .mermaid svg {
+  max-width: none;
+  height: auto;
+  overflow: visible;
 }
 .print-body a { color: #4338ca; }
 </style>
