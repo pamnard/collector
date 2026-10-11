@@ -44,6 +44,7 @@ export type YoutubeExecFile = (
     maxBuffer?: number;
     timeout?: number;
     encoding?: BufferEncoding;
+    env?: NodeJS.ProcessEnv;
   },
 ) => Promise<{ stdout: string; stderr: string }>;
 

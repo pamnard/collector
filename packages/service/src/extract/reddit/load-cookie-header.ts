@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { processEnvForBrowserCookieAccess } from "../browser-cookie-process-env.js";
 import { resolveYtdlpBinary } from "../youtube/resolve-ytdlp.js";
 import { listRedditCookiesBrowserCandidates } from "./resolve-cookies-browser.js";
 
@@ -22,7 +23,11 @@ const defaultExecFile = promisify(execFile);
 export type RedditCookieExecFile = (
   file: string,
   args: readonly string[],
-  options: { maxBuffer?: number; timeout?: number },
+  options: {
+    maxBuffer?: number;
+    timeout?: number;
+    env?: NodeJS.ProcessEnv;
+  },
 ) => Promise<{ stdout: string; stderr: string }>;
 
 export type LoadRedditCookieHeaderOptions = {
@@ -148,6 +153,7 @@ async function dumpCookieHeaderForBrowser(input: {
         {
           maxBuffer: 16 * 1024 * 1024,
           timeout: 60_000,
+          env: processEnvForBrowserCookieAccess(),
         },
       );
     } catch (error) {

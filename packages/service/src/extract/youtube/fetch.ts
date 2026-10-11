@@ -25,6 +25,7 @@ import {
   youtubeFormatForMaxHeight,
   youtubeMaxHeightForDurationSeconds,
 } from "./duration-height.js";
+import { processEnvForBrowserCookieAccess } from "../browser-cookie-process-env.js";
 import { resolveYoutubeCookiesBrowser } from "./resolve-cookies-browser.js";
 import { resolveYtdlpBinary } from "./resolve-ytdlp.js";
 import type {
@@ -35,7 +36,14 @@ import type {
   YoutubeFetchSuccess,
 } from "./types.js";
 
-const defaultExecFile: YoutubeExecFile = promisify(execFile) as YoutubeExecFile;
+const promisifiedExecFile = promisify(execFile) as YoutubeExecFile;
+
+/** Default spawn: ensure Linux keyring unlock env for --cookies-from-browser. */
+const defaultExecFile: YoutubeExecFile = (file, args, options) =>
+  promisifiedExecFile(file, args, {
+    ...options,
+    env: options.env ?? processEnvForBrowserCookieAccess(),
+  });
 
 /** Download may be multi‑hundred MB; allow a long run. */
 export const YOUTUBE_DOWNLOAD_TIMEOUT_MS = 3 * 60 * 60 * 1000;
