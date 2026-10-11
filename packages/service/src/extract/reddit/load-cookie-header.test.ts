@@ -51,10 +51,12 @@ describe("loadRedditCookieHeader (#955)", () => {
 
   it("parses Netscape dump from yt-dlp without logging values", async () => {
     const netscape = `.reddit.com\tTRUE\t/\tTRUE\t0\treddit_session\tok_token\n`;
+    let seenEnv: NodeJS.ProcessEnv | undefined;
     const result = await loadRedditCookieHeader({
       cookiesBrowser: "chrome:Default",
       ytdlpBinary: "/fake/yt-dlp",
-      execFileImpl: async (_file, args) => {
+      execFileImpl: async (_file, args, options) => {
+        seenEnv = options.env;
         const cookieIdx = args.indexOf("--cookies");
         const cookieFile = args[cookieIdx + 1];
         if (typeof cookieFile !== "string") {
@@ -72,5 +74,6 @@ describe("loadRedditCookieHeader (#955)", () => {
     }
     expect(result.cookieCount).toBe(1);
     expect(result.cookieHeader).toBe("reddit_session=ok_token");
+    expect(seenEnv).toBeDefined();
   });
 });
