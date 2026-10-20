@@ -1,26 +1,8 @@
 import type { CSSProperties } from "react";
 import type { ItemThumbnailPixelSize } from "@collector/api";
-import { measureCoverImageForm } from "../../lib/teaser-layout/cover-image-form.ts";
 
 /** Decoded / resolved cover pixel size used to reserve masonry teaser layout. */
 export type ItemGridCoverPixelSize = ItemThumbnailPixelSize;
-
-/**
- * Portrait overlay chrome from reserved WxH — before decode settles.
- * Waiting for decode flipped meta below→overlay and jerked masonry height.
- */
-export function itemGridCoverOverlayLayout(args: {
-  hasCover: boolean;
-  slotSize: ItemGridCoverPixelSize | null;
-}): boolean {
-  if (!args.hasCover || args.slotSize === null) {
-    return false;
-  }
-  return (
-    measureCoverImageForm(args.slotSize.width, args.slotSize.height) ===
-    "portrait"
-  );
-}
 
 /** Pure cover-slot flags for ItemGridCard (keeps failed loads from sticky gray teasers). */
 export function itemGridCoverSlot(args: {

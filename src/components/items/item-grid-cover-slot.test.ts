@@ -4,7 +4,6 @@ import {
   itemGridCoverImgClassName,
   itemGridCoverImgSizeAttrs,
   itemGridCoverLayoutPhase,
-  itemGridCoverOverlayLayout,
   itemGridCoverPixelSizeFromImg,
   itemGridCoverPulseClassName,
   itemGridCoverSlot,
@@ -164,49 +163,6 @@ describe("itemGridCoverPulseClassName", () => {
     const classes = itemGridCoverPulseClassName({ visible: false });
     assert.match(classes, /\bopacity-0\b/);
     assert.doesNotMatch(classes, /\banimate-pulse\b/);
-  });
-});
-
-describe("itemGridCoverOverlayLayout", () => {
-  it("uses reserved WxH so portrait chrome is stable before decode", () => {
-    assert.equal(
-      itemGridCoverOverlayLayout({
-        hasCover: true,
-        slotSize: { width: 421, height: 610 },
-      }),
-      true,
-    );
-  });
-
-  it("keeps square and landscape meta below the cover", () => {
-    assert.equal(
-      itemGridCoverOverlayLayout({
-        hasCover: true,
-        slotSize: { width: 736, height: 736 },
-      }),
-      false,
-    );
-    assert.equal(
-      itemGridCoverOverlayLayout({
-        hasCover: true,
-        slotSize: { width: 800, height: 400 },
-      }),
-      false,
-    );
-  });
-
-  it("stays off without a cover slot", () => {
-    assert.equal(
-      itemGridCoverOverlayLayout({
-        hasCover: false,
-        slotSize: { width: 421, height: 610 },
-      }),
-      false,
-    );
-    assert.equal(
-      itemGridCoverOverlayLayout({ hasCover: true, slotSize: null }),
-      false,
-    );
   });
 });
 

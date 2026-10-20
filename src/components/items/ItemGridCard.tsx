@@ -12,7 +12,6 @@ import { textOnlyTeaserChromeClass } from "./text-only-teaser-chrome";
 import {
   itemGridCoverImgClassName,
   itemGridCoverImgSizeAttrs,
-  itemGridCoverOverlayLayout,
   itemGridCoverPulseClassName,
   itemGridCoverSlotAspectStyle,
   itemGridCoverSlotPending,
@@ -93,18 +92,6 @@ function ItemGridCardInner({
   if (showCover && !slotSize) {
     throw new Error("settled grid cover requires reserved pixel size");
   }
-  const overlayLayout = itemGridCoverOverlayLayout({ hasCover, slotSize });
-
-  const meta = (
-    <ItemGridCardMeta
-      title={item.title}
-      description={item.description}
-      contentType={item.content_type}
-      createdAt={item.created_at}
-      tags={tags}
-      overlayLayout={overlayLayout}
-    />
-  );
 
   return (
     <div
@@ -122,15 +109,11 @@ function ItemGridCardInner({
         "group flex cursor-pointer flex-col overflow-hidden",
         !hasCover && "h-full",
         !hasCover && textOnlyTeaserChromeClass,
-        hasCover && overlayLayout && "relative h-full",
       )}
     >
       {hasCover && slotSize ? (
         <div
-          className={cn(
-            "relative w-full overflow-hidden rounded-lg bg-neutral-100 dark:bg-neutral-700",
-            !overlayLayout && "mb-4 shrink-0",
-          )}
+          className="relative mb-4 w-full shrink-0 overflow-hidden rounded-lg bg-neutral-100 dark:bg-neutral-700"
           style={itemGridCoverSlotAspectStyle(slotSize)}
         >
           {(loadCover || showCover) && coverSrc ? (
@@ -156,15 +139,16 @@ function ItemGridCardInner({
               className={itemGridCoverPulseClassName({ visible: !showCover })}
             />
           ) : null}
-          {overlayLayout ? (
-            <div className="absolute inset-x-0 bottom-0 flex flex-col bg-gradient-to-t from-neutral-950/95 via-neutral-950/75 to-transparent p-5 pt-16 dark:from-white/95 dark:via-white/75 dark:to-transparent">
-              {meta}
-            </div>
-          ) : null}
         </div>
       ) : null}
 
-      {!overlayLayout && meta}
+      <ItemGridCardMeta
+        title={item.title}
+        description={item.description}
+        contentType={item.content_type}
+        createdAt={item.created_at}
+        tags={tags}
+      />
     </div>
   );
 }
