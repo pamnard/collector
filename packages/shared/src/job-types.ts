@@ -277,6 +277,12 @@ export function generateCoverIdempotencyKeyPrefix(
   return `generateCover:${payload.vaultId}:${payload.itemId}:`;
 }
 
+/** Host-path folder bulk import (#747). Large trees may run for hours. */
+export const IMPORT_FOLDER_JOB_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
+/** Browser drop-import (#637). Same ceiling as importFolder (not the 60s default). */
+export const DROP_IMPORT_BATCH_JOB_TIMEOUT_MS = IMPORT_FOLDER_JOB_TIMEOUT_MS;
+
 /** Drop-import heavy batch (#637). */
 export const dropImportBatchJobPayloadSchema = z.object({
   vaultId: z.string().min(1),
@@ -290,10 +296,11 @@ export type DropImportBatchJobPayload = z.infer<
 export const dropImportBatchJobType = defineJobType({
   id: "dropImportBatch",
   payload: dropImportBatchJobPayloadSchema,
+  timeoutMs: DROP_IMPORT_BATCH_JOB_TIMEOUT_MS,
+  // Never retry: timeout does not cancel the in-flight handler, and the
+  // awaiter deletes staging on settle — a second attempt would ENOENT.
+  maxAttempts: 1,
 });
-
-/** Host-path folder bulk import (#747). Large trees may run for hours. */
-export const IMPORT_FOLDER_JOB_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 /** Host-path folder bulk import (#747). */
 export const importFolderJobPayloadSchema = z.object({

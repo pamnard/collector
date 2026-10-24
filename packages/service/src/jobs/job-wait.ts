@@ -41,9 +41,15 @@ export async function enqueueAndAwaitResult<T>(options: {
   label: string;
   /** When true, return takeResult even if the job status is failed. */
   acceptFailed?: boolean;
+  /** Wait ceiling; omit → 120s. Use Infinity when staging dies on settle. */
+  timeoutMs?: number;
 }): Promise<T> {
   const { id } = await options.enqueue();
-  const terminal = await waitForJobTerminal(options.queue, id);
+  const terminal = await waitForJobTerminal(
+    options.queue,
+    id,
+    options.timeoutMs,
+  );
   const result = options.takeResult(id);
   if (!result) {
     throw new Error(

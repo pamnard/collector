@@ -7,6 +7,7 @@ import {
   defineJobType,
   exportItemPdfIdempotencyKey,
   exportItemPdfJobType,
+  dropImportBatchJobType,
   importFolderJobType,
   itemDerivedRefreshIdempotencyKey,
   itemDerivedRefreshIdempotencyKeyPrefix,
@@ -120,6 +121,13 @@ describe("job type catalog (#629)", () => {
       60 * 60 * 1000,
     );
     expect(importFolderJobType.maxAttempts).toBe(1);
+  });
+
+  it("dropImportBatch declares a long-running non-retryable contract", () => {
+    expect(dropImportBatchJobType.timeoutMs).toBeGreaterThanOrEqual(
+      60 * 60 * 1000,
+    );
+    expect(dropImportBatchJobType.maxAttempts).toBe(1);
   });
 
   it("itemDerivedRefresh idempotency keys align enqueue and waitDerived (#770)", () => {

@@ -62,7 +62,10 @@ export interface ImportDroppedFileInput extends BinaryPayload {
 }
 
 export interface ImportDroppedFilesInput {
-  /** Target list folder; omit/empty → Inbox via createItem. */
+  /**
+   * Target list folder. Omit/empty → Inbox prefix so nested drop paths
+   * (e.g. `Analytics/a.md`) land under `Inbox/Analytics/…`, not vault root.
+   */
   folder_path?: string;
   files: ImportDroppedFileInput[];
 }

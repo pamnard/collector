@@ -103,6 +103,52 @@ describe("createDropImportRuntime staging cleanup (#745)", () => {
     expect(await listStagingChildren(dataDir)).toEqual([]);
   });
 
+  it("defaults empty folder_path to Inbox on the dropImportBatch payload", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "collector-drop-runtime-inbox-"));
+    dirs.push(dataDir);
+
+    let enqueuedTarget: string | null | undefined;
+    const handler = createDropImportBatchHandler({
+      createItem,
+      attachMediaFiles,
+      updateItemSource,
+    });
+    const registry = createJobRegistry([dropImportBatchJobType]);
+    registry.register(dropImportBatchJobType, async (job) => {
+      enqueuedTarget = job.payload.targetFolderId;
+      return handler(job);
+    });
+    const queue = await createJobQueue({
+      dbPath: join(dataDir, "jobs.db"),
+      registry,
+      concurrency: 1,
+      pollIntervalMs: 20,
+    });
+    queues.push(queue);
+    queue.start();
+
+    const runtime = createDropImportRuntime({
+      dataDir,
+      resolveActiveVault: async () => ({ vault: { id: "vault-1" } }),
+      requireJobs: () => queue,
+    });
+
+    await runtime.importDroppedFiles({
+      files: [
+        {
+          relativePath: "Analytics/note.md",
+          name: "note.md",
+          bytes: new TextEncoder().encode("---\ntitle: N\n---\n\nHi\n"),
+        },
+      ],
+    });
+
+    expect(enqueuedTarget).toBe("Inbox");
+    expect(createItem).toHaveBeenCalledWith(
+      expect.objectContaining({ folder_path: "Inbox/Analytics" }),
+    );
+  });
+
   it("cleans staging after job failure that occurs after a successful read", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "collector-drop-runtime-fail-"));
     dirs.push(dataDir);

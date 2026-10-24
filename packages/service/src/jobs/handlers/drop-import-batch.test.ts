@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -52,6 +52,34 @@ describe("dropImportBatch job (#637 / #640)", () => {
     }
   });
 
+  it("defaults missing targetFolderId to Inbox for nested paths", async () => {
+    const stagingDir = mkdtempSync(join(tmpdir(), "collector-drop-import-inbox-"));
+    dirs.push(stagingDir);
+    mkdirSync(join(stagingDir, "Analytics"), { recursive: true });
+    const absPath = join(stagingDir, "Analytics", "note.md");
+    writeFileSync(absPath, "---\ntitle: N\n---\n\nHi\n");
+
+    const handler = createDropImportBatchHandler({
+      createItem,
+      attachMediaFiles,
+      updateItemSource,
+    });
+    await handler({
+      id: "job-inbox",
+      type: "dropImportBatch",
+      attempts: 0,
+      payload: {
+        vaultId: "vault-1",
+        stagingDir,
+        paths: [absPath],
+      },
+    });
+
+    expect(createItem).toHaveBeenCalledWith(
+      expect.objectContaining({ folder_path: "Inbox/Analytics" }),
+    );
+  });
+
   it("reads staging files, imports, and stores the mailbox result", async () => {
     const stagingDir = mkdtempSync(join(tmpdir(), "collector-drop-import-job-"));
     dirs.push(stagingDir);
@@ -80,6 +108,7 @@ describe("dropImportBatch job (#637 / #640)", () => {
         title: "shot",
         content_type: "image",
         source_type: "import",
+        folder_path: "Inbox",
       }),
     );
     expect(attachMediaFiles).toHaveBeenCalledWith("Inbox/shot.md", [

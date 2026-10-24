@@ -8,8 +8,8 @@ import {
 } from "../components/alerts/AlertBusProvider";
 import { errorMessage } from "../components/alerts/alert-store";
 import { collectDroppedFiles } from "../lib/drop-entries";
+import { resolveDropTargetFolder } from "../lib/resolve-drop-target-folder";
 import { getCollectorService } from "../services/collector-client";
-import { isFolderFilter } from "../types/ui";
 
 const DASHBOARD_IMPORT_ID = "dashboard-import";
 const DASHBOARD_IMPORT_ERROR_ID = "dashboard-import-error";
@@ -28,10 +28,6 @@ export function DashboardPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const dragDepthRef = useRef(0);
-
-  const targetFolderPath = isFolderFilter(activeFilter)
-    ? activeFilter.folderPath
-    : undefined;
 
   useEffect(() => {
     if (isImporting) {
@@ -82,6 +78,9 @@ export function DashboardPage() {
         return;
       }
 
+      // Capture before any await — navigation during collect must not change target.
+      const folder_path = resolveDropTargetFolder(activeFilter);
+
       setIsImporting(true);
       alerts.dismiss(DASHBOARD_IMPORT_ERROR_ID);
       try {
@@ -90,7 +89,7 @@ export function DashboardPage() {
           return;
         }
         await getCollectorService().items.importDroppedFiles({
-          folder_path: targetFolderPath,
+          folder_path,
           files,
         });
         // Presentation events soft-refresh the affected dashboard (#756).
@@ -103,7 +102,7 @@ export function DashboardPage() {
         setIsImporting(false);
       }
     },
-    [alerts, isImporting, targetFolderPath],
+    [activeFilter, alerts, isImporting],
   );
 
   return (

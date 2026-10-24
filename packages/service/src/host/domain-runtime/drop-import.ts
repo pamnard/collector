@@ -3,6 +3,7 @@ import type {
   ImportFolderInput,
   ImportFolderJobSnapshot,
 } from "@collector/api";
+import { INBOX_FOLDER_NAME } from "@collector/shared";
 import type { JobQueue } from "../../jobs/job-queue.js";
 import {
   enqueueDropImportBatch,
@@ -44,17 +45,22 @@ export function createDropImportRuntime(deps: DropImportRuntimeDeps) {
         if (paths.length === 0) {
           return { createdIds: [] };
         }
+        // Omit/empty → Inbox. Await until terminal (job timeout owns the run
+        // budget; pending behind another bulk must not burn the same clock).
+        const targetFolderId =
+          input.folder_path?.trim() || INBOX_FOLDER_NAME;
         return await enqueueAndAwaitResult({
           queue: deps.requireJobs(),
           label: "dropImportBatch",
           takeResult: takeDropImportResult,
           acceptFailed: true,
+          timeoutMs: Number.POSITIVE_INFINITY,
           enqueue: () =>
             enqueueDropImportBatch(deps.requireJobs(), {
               vaultId: active.vault.id,
               stagingDir,
               paths,
-              targetFolderId: input.folder_path?.trim() || null,
+              targetFolderId,
             }),
         });
       } finally {
