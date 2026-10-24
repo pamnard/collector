@@ -42,7 +42,7 @@ function reportShortcodeFailure(
   notifyJobPermanentFailure(store, {
     id: `itemExtractAuto:${itemId}:${shortcode}`,
     type: itemExtractAutoJobType.id,
-    summary: "Автоимпорт не удался",
+    summary: "Не удалось импортировать по ссылке в заметке",
     detail: [
       `itemId: ${itemId}`,
       `shortcode: ${shortcode}`,

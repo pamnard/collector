@@ -383,7 +383,9 @@ describe("createItemExtractAutoHandler", () => {
     };
     expect(notified.type).toBe("itemExtractAuto");
     expect(notified.attempts).toBe(1);
-    expect(notified.summary).toBe("Автоимпорт не удался");
+    expect(notified.summary).toBe(
+      "Не удалось импортировать по ссылке в заметке",
+    );
     expect(notified.detail).toContain(FAIL_SHORTCODE);
     expect(notified.detail).toContain(h.itemId);
   });

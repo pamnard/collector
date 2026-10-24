@@ -23,6 +23,12 @@ describe("permanentFailureSummary", () => {
     ).toBe("Не удалось обновить материалы заметки");
   });
 
+  it("names itemExtractAuto without the raw job-type id", () => {
+    expect(permanentFailureSummary("itemExtractAuto", "extract failed")).toBe(
+      "Не удалось импортировать по ссылке в заметке",
+    );
+  });
+
   it("keeps the generic template for unknown job types", () => {
     expect(permanentFailureSummary("__test_noop", "boom")).toBe(
       "Задача «__test_noop» не выполнилась",
