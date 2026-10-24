@@ -5,6 +5,7 @@ import type {
 } from "@collector/api";
 import type { ItemFile } from "@collector/shared";
 import {
+  INBOX_FOLDER_NAME,
   JOB_PRIORITY_BULK,
   dropImportBatchJobType,
   type DropImportBatchJobPayload,
@@ -53,7 +54,8 @@ export function createDropImportBatchHandler(deps: {
       });
     }
     const result = await importer.importDroppedFiles({
-      folder_path: job.payload.targetFolderId?.trim() || undefined,
+      // null/omit → Inbox (nested drop paths must not land at vault root)
+      folder_path: job.payload.targetFolderId?.trim() || INBOX_FOLDER_NAME,
       files,
     });
     dropImportResults.set(job.id, result);
@@ -65,9 +67,13 @@ export function enqueueDropImportBatch(
   queue: JobQueue,
   payload: DropImportBatchJobPayload,
 ): Promise<EnqueueResult> {
+  if (dropImportBatchJobType.maxAttempts === undefined) {
+    throw new Error("dropImportBatch job type must declare maxAttempts");
+  }
   return queue.enqueue({
     type: "dropImportBatch",
     payload,
     priority: JOB_PRIORITY_BULK,
+    maxAttempts: dropImportBatchJobType.maxAttempts,
   });
 }
