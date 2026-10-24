@@ -19,6 +19,7 @@ import {
   createFolder as createFolderOnVault,
   deleteItem as deleteItemOnDisk,
   ensureTagsByName,
+  joinSegments,
   itemMarkdownPath,
   loadTagMaps,
   mightNeedRemoteDisplayAssetLocalization,
@@ -294,10 +295,13 @@ export function createItemsCrud(
     const ctx = deps.getContext();
     const timestamp = new Date().toISOString();
     let folderPath = input.folder_path?.trim() ?? "";
+    let createdNewFolder = false;
     if (!folderPath) {
       folderPath = await resolveOrCreateInboxFolder(ctx, path);
     } else {
+      const existed = await ctx.fs.exists(joinSegments(path, folderPath));
       await createFolderOnVault(ctx, path, folderPath);
+      createdNewFolder = !existed;
     }
     const fileName = `${newItemId()}.md`;
     const id = `${folderPath}/${fileName}`;
@@ -337,6 +341,15 @@ export function createItemsCrud(
     // upsert already persisted body; when normalize was a no-op, still enqueue once.
     if (!wrote) {
       await enqueueExtractAutoForItem(vault.id, path, item);
+    }
+    // New nested folder → recount tree (chevron/children); itemCreated alone
+    // only patches counts on nodes already in the sidebar.
+    if (createdNewFolder) {
+      deps.onVaultPresentationChanged?.({
+        vaultId: vault.id,
+        kind: "folderChanged",
+        folderPath,
+      });
     }
     deps.onVaultPresentationChanged?.({
       vaultId: vault.id,
